@@ -17,7 +17,7 @@ Before building and running the containers, you need to update the production en
 Edit `.env.prod` in the root directory and update all values:
 
 **Frontend Variables:**
-- `NEXT_PUBLIC_API_URL` - Your backend API URL (use `http://localhost:3001/api/v1` for local, or your public URL for production)
+- `NEXT_PUBLIC_API_URL` - Your backend API URL (use `http://localhost:6001/api/v1` for local, or your public server URL for production)
 - `NEXT_PUBLIC_SUPABASE_URL` - Your Supabase project URL
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Your Supabase anonymous key
 
@@ -66,19 +66,19 @@ docker-compose down -v
 
 ### 3. Access the Application
 
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:3001/api/v1
-- API Documentation (Swagger): http://localhost:3001/api/docs
+- Frontend: http://localhost:6000
+- Backend API: http://localhost:6001/api/v1
+- API Documentation (Swagger): http://localhost:6001/api/docs
 
 ## Docker Services
 
 ### Backend Service
 - **Container Name**: `rms-backend`
-- **Port**: 3001
+- **Host Port**: 6001 (maps to container port 3001)
 
 ### Frontend Service
 - **Container Name**: `rms-frontend`
-- **Port**: 3000
+- **Host Port**: 6000 (maps to container port 3000)
 - **Depends on**: Backend service
 
 ## Production Deployment
@@ -86,8 +86,8 @@ docker-compose down -v
 For production deployment:
 
 1. Update all environment variables in `.env.prod` (root directory) with production values
-2. Update `FRONTEND_URL` to your production frontend URL
-3. Update `NEXT_PUBLIC_API_URL` to your production backend URL
+2. Update `FRONTEND_URL` to your production frontend URL (e.g., `http://your-server-ip:6000` or `https://your-domain.com`)
+3. Update `NEXT_PUBLIC_API_URL` to your production backend URL (e.g., `http://your-server-ip:6001/api/v1` or `https://api.your-domain.com/api/v1`)
 4. Consider using a reverse proxy (nginx) in front of the containers
 5. Use Docker secrets or environment variable management for sensitive data
 6. Set up proper SSL/TLS certificates
