@@ -5,7 +5,7 @@
       dockerfile: Dockerfile
     container_name: rms-backend
     ports:
-      - "6001:3001"
+      - "5001:3001"
     env_file:
       - ./.env.prod
     environment:
@@ -36,7 +36,7 @@
         - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
     container_name: rms-frontend
     ports:
-      - "6000:3000"
+      - "5000:3000"
     env_file:
       - ./.env.prod
     environment:
