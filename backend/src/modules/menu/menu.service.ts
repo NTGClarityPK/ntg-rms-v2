@@ -1,0 +1,1501 @@
+import { 
+  Injectable, 
+  NotFoundException, 
+  BadRequestException, 
+  ConflictException 
+} from '@nestjs/common';
+import { SupabaseService } from '../../database/supabase.service';
+import { StorageService } from './utils/storage.service';
+import { CreateCategoryDto } from './dto/create-category.dto';
+import { UpdateCategoryDto } from './dto/update-category.dto';
+import { CreateFoodItemDto } from './dto/create-food-item.dto';
+import { UpdateFoodItemDto } from './dto/update-food-item.dto';
+import { CreateAddOnGroupDto } from './dto/create-add-on-group.dto';
+import { UpdateAddOnGroupDto } from './dto/update-add-on-group.dto';
+import { CreateAddOnDto } from './dto/create-add-on.dto';
+import { UpdateAddOnDto } from './dto/update-add-on.dto';
+import { CreateMenuDto } from './dto/create-menu.dto';
+import { UpdateMenuDto } from './dto/update-menu.dto';
+
+@Injectable()
+export class MenuService {
+  private readonly IMAGE_BUCKET = 'menu-images';
+
+  constructor(
+    private supabaseService: SupabaseService,
+    private storageService: StorageService,
+  ) {}
+
+  // ============================================
+  // CATEGORY MANAGEMENT
+  // ============================================
+
+  async getCategories(tenantId: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+    
+    const { data: categories, error } = await supabase
+      .from('categories')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .order('display_order', { ascending: true });
+
+    if (error) {
+      throw new BadRequestException(`Failed to fetch categories: ${error.message}`);
+    }
+
+    // Organize categories with subcategories
+    const categoryMap = new Map();
+    const rootCategories = [];
+
+    categories.forEach((cat) => {
+      const category = {
+        id: cat.id,
+        nameEn: cat.name_en,
+        nameAr: cat.name_ar,
+        descriptionEn: cat.description_en,
+        descriptionAr: cat.description_ar,
+        imageUrl: cat.image_url,
+        categoryType: cat.category_type,
+        parentId: cat.parent_id,
+        displayOrder: cat.display_order,
+        isActive: cat.is_active,
+        createdAt: cat.created_at,
+        updatedAt: cat.updated_at,
+        subcategories: [],
+      };
+      categoryMap.set(cat.id, category);
+    });
+
+    categories.forEach((cat) => {
+      const category = categoryMap.get(cat.id);
+      if (cat.parent_id) {
+        const parent = categoryMap.get(cat.parent_id);
+        if (parent) {
+          parent.subcategories.push(category);
+        }
+      } else {
+        rootCategories.push(category);
+      }
+    });
+
+    return rootCategories;
+  }
+
+  async getCategoryById(tenantId: string, id: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+    
+    const { data: category, error } = await supabase
+      .from('categories')
+      .select('*')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (error || !category) {
+      throw new NotFoundException('Category not found');
+    }
+
+    // Get subcategories
+    const { data: subcategories } = await supabase
+      .from('categories')
+      .select('*')
+      .eq('parent_id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .order('display_order', { ascending: true });
+
+    return {
+      id: category.id,
+      nameEn: category.name_en,
+      nameAr: category.name_ar,
+      descriptionEn: category.description_en,
+      descriptionAr: category.description_ar,
+      imageUrl: category.image_url,
+      categoryType: category.category_type,
+      parentId: category.parent_id,
+      displayOrder: category.display_order,
+      isActive: category.is_active,
+      createdAt: category.created_at,
+      updatedAt: category.updated_at,
+      subcategories: subcategories?.map((sub) => ({
+        id: sub.id,
+        nameEn: sub.name_en,
+        nameAr: sub.name_ar,
+        descriptionEn: sub.description_en,
+        descriptionAr: sub.description_ar,
+        imageUrl: sub.image_url,
+        categoryType: sub.category_type,
+        displayOrder: sub.display_order,
+        isActive: sub.is_active,
+      })) || [],
+    };
+  }
+
+  async createCategory(tenantId: string, createDto: CreateCategoryDto) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Validate parent category if provided
+    if (createDto.parentId) {
+      const { data: parent } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('id', createDto.parentId)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .single();
+
+      if (!parent) {
+        throw new NotFoundException('Parent category not found');
+      }
+    }
+
+    const { data: category, error } = await supabase
+      .from('categories')
+      .insert({
+        tenant_id: tenantId,
+        name_en: createDto.nameEn,
+        name_ar: createDto.nameAr || null,
+        description_en: createDto.descriptionEn || null,
+        description_ar: createDto.descriptionAr || null,
+        image_url: createDto.imageUrl || null,
+        category_type: createDto.categoryType || 'food',
+        parent_id: createDto.parentId || null,
+        display_order: 0,
+        is_active: createDto.isActive !== undefined ? createDto.isActive : true,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(`Failed to create category: ${error.message}`);
+    }
+
+    return {
+      id: category.id,
+      nameEn: category.name_en,
+      nameAr: category.name_ar,
+      descriptionEn: category.description_en,
+      descriptionAr: category.description_ar,
+      imageUrl: category.image_url,
+      categoryType: category.category_type,
+      parentId: category.parent_id,
+      displayOrder: category.display_order,
+      isActive: category.is_active,
+      createdAt: category.created_at,
+      updatedAt: category.updated_at,
+    };
+  }
+
+  async updateCategory(tenantId: string, id: string, updateDto: UpdateCategoryDto) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Check if category exists
+    const { data: existing } = await supabase
+      .from('categories')
+      .select('id')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!existing) {
+      throw new NotFoundException('Category not found');
+    }
+
+    // Validate parent category if provided
+    if (updateDto.parentId && updateDto.parentId !== id) {
+      const { data: parent } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('id', updateDto.parentId)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .single();
+
+      if (!parent) {
+        throw new NotFoundException('Parent category not found');
+      }
+
+      // Prevent circular reference
+      if (updateDto.parentId === id) {
+        throw new BadRequestException('Category cannot be its own parent');
+      }
+    }
+
+    const updateData: any = {};
+    if (updateDto.nameEn !== undefined) updateData.name_en = updateDto.nameEn;
+    if (updateDto.nameAr !== undefined) updateData.name_ar = updateDto.nameAr;
+    if (updateDto.descriptionEn !== undefined) updateData.description_en = updateDto.descriptionEn;
+    if (updateDto.descriptionAr !== undefined) updateData.description_ar = updateDto.descriptionAr;
+    if (updateDto.imageUrl !== undefined) updateData.image_url = updateDto.imageUrl;
+    if (updateDto.categoryType !== undefined) updateData.category_type = updateDto.categoryType;
+    if (updateDto.parentId !== undefined) updateData.parent_id = updateDto.parentId;
+    if (updateDto.displayOrder !== undefined) updateData.display_order = updateDto.displayOrder;
+    if (updateDto.isActive !== undefined) updateData.is_active = updateDto.isActive;
+    updateData.updated_at = new Date().toISOString();
+
+    const { data: category, error } = await supabase
+      .from('categories')
+      .update(updateData)
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(`Failed to update category: ${error.message}`);
+    }
+
+    return {
+      id: category.id,
+      nameEn: category.name_en,
+      nameAr: category.name_ar,
+      descriptionEn: category.description_en,
+      descriptionAr: category.description_ar,
+      imageUrl: category.image_url,
+      categoryType: category.category_type,
+      parentId: category.parent_id,
+      displayOrder: category.display_order,
+      isActive: category.is_active,
+      createdAt: category.created_at,
+      updatedAt: category.updated_at,
+    };
+  }
+
+  async deleteCategory(tenantId: string, id: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Check if category exists
+    const { data: existing } = await supabase
+      .from('categories')
+      .select('id')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!existing) {
+      throw new NotFoundException('Category not found');
+    }
+
+    // Check if category has food items
+    const { data: foodItems } = await supabase
+      .from('food_items')
+      .select('id')
+      .eq('category_id', id)
+      .is('deleted_at', null)
+      .limit(1);
+
+    if (foodItems && foodItems.length > 0) {
+      throw new ConflictException('Cannot delete category with associated food items');
+    }
+
+    // Check if category has subcategories
+    const { data: subcategories } = await supabase
+      .from('categories')
+      .select('id')
+      .eq('parent_id', id)
+      .is('deleted_at', null)
+      .limit(1);
+
+    if (subcategories && subcategories.length > 0) {
+      throw new ConflictException('Cannot delete category with subcategories');
+    }
+
+    // Soft delete
+    const { error } = await supabase
+      .from('categories')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('tenant_id', tenantId);
+
+    if (error) {
+      throw new BadRequestException(`Failed to delete category: ${error.message}`);
+    }
+
+    return { message: 'Category deleted successfully' };
+  }
+
+  // ============================================
+  // FOOD ITEM MANAGEMENT
+  // ============================================
+
+  async getFoodItems(tenantId: string, categoryId?: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+    
+    let query = supabase
+      .from('food_items')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+
+    if (categoryId) {
+      query = query.eq('category_id', categoryId);
+    }
+
+    const { data: foodItems, error } = await query.order('display_order', { ascending: true });
+
+    if (error) {
+      throw new BadRequestException(`Failed to fetch food items: ${error.message}`);
+    }
+
+    // Get variations, labels, and add-on groups for each item
+    const itemsWithDetails = await Promise.all(
+      foodItems.map(async (item) => {
+        const [variations, labels, addOnGroups, discounts, menuItems] = await Promise.all([
+          supabase
+            .from('food_item_variations')
+            .select('*')
+            .eq('food_item_id', item.id)
+            .order('display_order', { ascending: true }),
+          supabase
+            .from('food_item_labels')
+            .select('label')
+            .eq('food_item_id', item.id),
+          supabase
+            .from('food_item_add_on_groups')
+            .select('add_on_group_id')
+            .eq('food_item_id', item.id),
+          supabase
+            .from('food_item_discounts')
+            .select('*')
+            .eq('food_item_id', item.id)
+            .eq('is_active', true)
+            .gte('end_date', new Date().toISOString()),
+          supabase
+            .from('menu_items')
+            .select('menu_type')
+            .eq('food_item_id', item.id),
+        ]);
+
+        return {
+          id: item.id,
+          nameEn: item.name_en,
+          nameAr: item.name_ar,
+          descriptionEn: item.description_en,
+          descriptionAr: item.description_ar,
+          imageUrl: item.image_url,
+          categoryId: item.category_id,
+          basePrice: parseFloat(item.base_price),
+          stockType: item.stock_type,
+          stockQuantity: item.stock_quantity,
+          menuType: item.menu_type, // Legacy field
+          menuTypes: menuItems.data?.map((m: any) => m.menu_type) || [], // Array of menu types
+          ageLimit: item.age_limit,
+          displayOrder: item.display_order,
+          isActive: item.is_active,
+          createdAt: item.created_at,
+          updatedAt: item.updated_at,
+          variations: variations.data?.map((v) => ({
+            id: v.id,
+            variationGroup: v.variation_group,
+            variationName: v.variation_name,
+            priceAdjustment: parseFloat(v.price_adjustment),
+            stockQuantity: v.stock_quantity,
+            displayOrder: v.display_order,
+          })) || [],
+          labels: labels.data?.map((l) => l.label) || [],
+          addOnGroupIds: addOnGroups.data?.map((a) => a.add_on_group_id) || [],
+          activeDiscounts: discounts.data?.map((d) => ({
+            id: d.id,
+            discountType: d.discount_type,
+            discountValue: parseFloat(d.discount_value),
+            startDate: d.start_date,
+            endDate: d.end_date,
+            reason: d.reason,
+          })) || [],
+        };
+      })
+    );
+
+    return itemsWithDetails;
+  }
+
+  async getFoodItemById(tenantId: string, id: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+    
+    const { data: foodItem, error } = await supabase
+      .from('food_items')
+      .select('*')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (error || !foodItem) {
+      throw new NotFoundException('Food item not found');
+    }
+
+    // Get all related data
+    const [variations, labels, addOnGroups, discounts, menuItems] = await Promise.all([
+      supabase
+        .from('food_item_variations')
+        .select('*')
+        .eq('food_item_id', id)
+        .order('display_order', { ascending: true }),
+      supabase
+        .from('food_item_labels')
+        .select('label')
+        .eq('food_item_id', id),
+      supabase
+        .from('food_item_add_on_groups')
+        .select('add_on_group_id')
+        .eq('food_item_id', id),
+      supabase
+        .from('food_item_discounts')
+        .select('*')
+        .eq('food_item_id', id)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('menu_items')
+        .select('menu_type')
+        .eq('food_item_id', id),
+    ]);
+
+    return {
+      id: foodItem.id,
+      nameEn: foodItem.name_en,
+      nameAr: foodItem.name_ar,
+      descriptionEn: foodItem.description_en,
+      descriptionAr: foodItem.description_ar,
+      imageUrl: foodItem.image_url,
+      categoryId: foodItem.category_id,
+      basePrice: parseFloat(foodItem.base_price),
+      stockType: foodItem.stock_type,
+      stockQuantity: foodItem.stock_quantity,
+      menuType: foodItem.menu_type, // Legacy field
+      menuTypes: menuItems.data?.map((m: any) => m.menu_type) || [], // Array of menu types
+      ageLimit: foodItem.age_limit,
+      displayOrder: foodItem.display_order,
+      isActive: foodItem.is_active,
+      createdAt: foodItem.created_at,
+      updatedAt: foodItem.updated_at,
+      variations: variations.data?.map((v) => ({
+        id: v.id,
+        variationGroup: v.variation_group,
+        variationName: v.variation_name,
+        priceAdjustment: parseFloat(v.price_adjustment),
+        stockQuantity: v.stock_quantity,
+        displayOrder: v.display_order,
+      })) || [],
+      labels: labels.data?.map((l) => l.label) || [],
+      addOnGroupIds: addOnGroups.data?.map((a) => a.add_on_group_id) || [],
+      discounts: discounts.data?.map((d) => ({
+        id: d.id,
+        discountType: d.discount_type,
+        discountValue: parseFloat(d.discount_value),
+        startDate: d.start_date,
+        endDate: d.end_date,
+        reason: d.reason,
+        isActive: d.is_active,
+      })) || [],
+    };
+  }
+
+  async createFoodItem(tenantId: string, createDto: CreateFoodItemDto) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Validate category
+    const { data: category } = await supabase
+      .from('categories')
+      .select('id')
+      .eq('id', createDto.categoryId)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!category) {
+      throw new NotFoundException('Category not found');
+    }
+
+    // Create food item
+    const { data: foodItem, error } = await supabase
+      .from('food_items')
+      .insert({
+        tenant_id: tenantId,
+        category_id: createDto.categoryId,
+        name_en: createDto.nameEn,
+        name_ar: createDto.nameAr || null,
+        description_en: createDto.descriptionEn || null,
+        description_ar: createDto.descriptionAr || null,
+        image_url: createDto.imageUrl || null,
+        base_price: createDto.basePrice,
+        stock_type: createDto.stockType || 'unlimited',
+        stock_quantity: createDto.stockQuantity || 0,
+        menu_type: createDto.menuType || 'all_day',
+        age_limit: createDto.ageLimit || null,
+        display_order: 0,
+        is_active: true,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(`Failed to create food item: ${error.message}`);
+    }
+
+    // Create variations
+    if (createDto.variations && createDto.variations.length > 0) {
+      const variationsData = createDto.variations.map((v, index) => ({
+        food_item_id: foodItem.id,
+        variation_group: v.variationGroup,
+        variation_name: v.variationName,
+        price_adjustment: v.priceAdjustment || 0,
+        stock_quantity: v.stockQuantity || null,
+        display_order: v.displayOrder || index,
+      }));
+
+      await supabase.from('food_item_variations').insert(variationsData);
+    }
+
+    // Create labels
+    if (createDto.labels && createDto.labels.length > 0) {
+      const labelsData = createDto.labels.map((label) => ({
+        food_item_id: foodItem.id,
+        label: label,
+      }));
+
+      await supabase.from('food_item_labels').insert(labelsData);
+    }
+
+    // Link add-on groups
+    if (createDto.addOnGroupIds && createDto.addOnGroupIds.length > 0) {
+      // Validate add-on groups belong to tenant
+      const { data: addOnGroups } = await supabase
+        .from('add_on_groups')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .in('id', createDto.addOnGroupIds)
+        .is('deleted_at', null);
+
+      if (addOnGroups.length !== createDto.addOnGroupIds.length) {
+        throw new BadRequestException('One or more add-on groups not found');
+      }
+
+      const addOnGroupsData = createDto.addOnGroupIds.map((groupId) => ({
+        food_item_id: foodItem.id,
+        add_on_group_id: groupId,
+      }));
+
+      await supabase.from('food_item_add_on_groups').insert(addOnGroupsData);
+    }
+
+    // Create menu assignments
+    if (createDto.menuTypes && createDto.menuTypes.length > 0) {
+      const menuItemsData = createDto.menuTypes.map((menuType, index) => ({
+        tenant_id: tenantId,
+        menu_type: menuType,
+        food_item_id: foodItem.id,
+        display_order: index,
+      }));
+
+      await supabase.from('menu_items').insert(menuItemsData);
+    } else if (createDto.menuType) {
+      // Legacy support: if menuType is provided, use it
+      await supabase.from('menu_items').insert({
+        tenant_id: tenantId,
+        menu_type: createDto.menuType,
+        food_item_id: foodItem.id,
+        display_order: 0,
+      });
+    }
+
+    // Create discounts
+    if (createDto.discounts && createDto.discounts.length > 0) {
+      const discountsData = createDto.discounts.map((d) => ({
+        food_item_id: foodItem.id,
+        discount_type: d.discountType,
+        discount_value: d.discountValue,
+        start_date: d.startDate,
+        end_date: d.endDate,
+        reason: d.reason || null,
+        is_active: true,
+      }));
+
+      await supabase.from('food_item_discounts').insert(discountsData);
+    }
+
+    return this.getFoodItemById(tenantId, foodItem.id);
+  }
+
+  async updateFoodItem(tenantId: string, id: string, updateDto: UpdateFoodItemDto) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Check if food item exists
+    const { data: existing } = await supabase
+      .from('food_items')
+      .select('id')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!existing) {
+      throw new NotFoundException('Food item not found');
+    }
+
+    // Validate category if provided
+    if (updateDto.categoryId) {
+      const { data: category } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('id', updateDto.categoryId)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .single();
+
+      if (!category) {
+        throw new NotFoundException('Category not found');
+      }
+    }
+
+    // Update food item
+    const updateData: any = {};
+    if (updateDto.nameEn !== undefined) updateData.name_en = updateDto.nameEn;
+    if (updateDto.nameAr !== undefined) updateData.name_ar = updateDto.nameAr;
+    if (updateDto.descriptionEn !== undefined) updateData.description_en = updateDto.descriptionEn;
+    if (updateDto.descriptionAr !== undefined) updateData.description_ar = updateDto.descriptionAr;
+    if (updateDto.imageUrl !== undefined) updateData.image_url = updateDto.imageUrl;
+    if (updateDto.categoryId !== undefined) updateData.category_id = updateDto.categoryId;
+    if (updateDto.basePrice !== undefined) updateData.base_price = updateDto.basePrice;
+    if (updateDto.stockType !== undefined) updateData.stock_type = updateDto.stockType;
+    if (updateDto.stockQuantity !== undefined) updateData.stock_quantity = updateDto.stockQuantity;
+    if (updateDto.menuType !== undefined) updateData.menu_type = updateDto.menuType;
+    if (updateDto.ageLimit !== undefined) updateData.age_limit = updateDto.ageLimit;
+    if (updateDto.displayOrder !== undefined) updateData.display_order = updateDto.displayOrder;
+    if (updateDto.isActive !== undefined) updateData.is_active = updateDto.isActive;
+    updateData.updated_at = new Date().toISOString();
+
+    const { error: updateError } = await supabase
+      .from('food_items')
+      .update(updateData)
+      .eq('id', id)
+      .eq('tenant_id', tenantId);
+
+    if (updateError) {
+      throw new BadRequestException(`Failed to update food item: ${updateError.message}`);
+    }
+
+    // Update variations if provided
+    if (updateDto.variations !== undefined) {
+      // Delete existing variations
+      await supabase.from('food_item_variations').delete().eq('food_item_id', id);
+
+      // Insert new variations
+      if (updateDto.variations.length > 0) {
+        const variationsData = updateDto.variations.map((v, index) => ({
+          food_item_id: id,
+          variation_group: v.variationGroup,
+          variation_name: v.variationName,
+          price_adjustment: v.priceAdjustment || 0,
+          stock_quantity: v.stockQuantity || null,
+          display_order: v.displayOrder || index,
+        }));
+
+        await supabase.from('food_item_variations').insert(variationsData);
+      }
+    }
+
+    // Update labels if provided
+    if (updateDto.labels !== undefined) {
+      // Delete existing labels
+      await supabase.from('food_item_labels').delete().eq('food_item_id', id);
+
+      // Insert new labels
+      if (updateDto.labels.length > 0) {
+        const labelsData = updateDto.labels.map((label) => ({
+          food_item_id: id,
+          label: label,
+        }));
+
+        await supabase.from('food_item_labels').insert(labelsData);
+      }
+    }
+
+    // Update add-on groups if provided
+    if (updateDto.addOnGroupIds !== undefined) {
+      // Delete existing links
+      await supabase.from('food_item_add_on_groups').delete().eq('food_item_id', id);
+
+      // Insert new links
+      if (updateDto.addOnGroupIds.length > 0) {
+        // Validate add-on groups
+        const { data: addOnGroups } = await supabase
+          .from('add_on_groups')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .in('id', updateDto.addOnGroupIds)
+          .is('deleted_at', null);
+
+        if (addOnGroups.length !== updateDto.addOnGroupIds.length) {
+          throw new BadRequestException('One or more add-on groups not found');
+        }
+
+        const addOnGroupsData = updateDto.addOnGroupIds.map((groupId) => ({
+          food_item_id: id,
+          add_on_group_id: groupId,
+        }));
+
+        await supabase.from('food_item_add_on_groups').insert(addOnGroupsData);
+      }
+    }
+
+    // Update menu assignments if provided
+    if (updateDto.menuTypes !== undefined) {
+      // Delete existing menu assignments
+      await supabase.from('menu_items').delete().eq('food_item_id', id);
+
+      // Insert new menu assignments
+      if (updateDto.menuTypes.length > 0) {
+        const menuItemsData = updateDto.menuTypes.map((menuType, index) => ({
+          tenant_id: tenantId,
+          menu_type: menuType,
+          food_item_id: id,
+          display_order: index,
+        }));
+
+        await supabase.from('menu_items').insert(menuItemsData);
+      }
+    } else if (updateDto.menuType !== undefined) {
+      // Legacy support: if menuType is provided, replace all assignments
+      await supabase.from('menu_items').delete().eq('food_item_id', id);
+      await supabase.from('menu_items').insert({
+        tenant_id: tenantId,
+        menu_type: updateDto.menuType,
+        food_item_id: id,
+        display_order: 0,
+      });
+    }
+
+    // Update discounts if provided
+    if (updateDto.discounts !== undefined) {
+      // Note: We don't delete existing discounts, only add new ones
+      // To deactivate, use the discount's own update endpoint
+      if (updateDto.discounts.length > 0) {
+        const discountsData = updateDto.discounts.map((d) => ({
+          food_item_id: id,
+          discount_type: d.discountType,
+          discount_value: d.discountValue,
+          start_date: d.startDate,
+          end_date: d.endDate,
+          reason: d.reason || null,
+          is_active: true,
+        }));
+
+        await supabase.from('food_item_discounts').insert(discountsData);
+      }
+    }
+
+    return this.getFoodItemById(tenantId, id);
+  }
+
+  async deleteFoodItem(tenantId: string, id: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Check if food item exists
+    const { data: existing } = await supabase
+      .from('food_items')
+      .select('id')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!existing) {
+      throw new NotFoundException('Food item not found');
+    }
+
+    // Check if food item has orders
+    const { data: orderItems } = await supabase
+      .from('order_items')
+      .select('id')
+      .eq('food_item_id', id)
+      .limit(1);
+
+    if (orderItems && orderItems.length > 0) {
+      throw new ConflictException('Cannot delete food item with associated orders');
+    }
+
+    // Soft delete
+    const { error } = await supabase
+      .from('food_items')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('tenant_id', tenantId);
+
+    if (error) {
+      throw new BadRequestException(`Failed to delete food item: ${error.message}`);
+    }
+
+    return { message: 'Food item deleted successfully' };
+  }
+
+  // ============================================
+  // ADD-ON GROUP MANAGEMENT
+  // ============================================
+
+  async getAddOnGroups(tenantId: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+    
+    const { data: addOnGroups, error } = await supabase
+      .from('add_on_groups')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .order('display_order', { ascending: true });
+
+    if (error) {
+      throw new BadRequestException(`Failed to fetch add-on groups: ${error.message}`);
+    }
+
+    // Get add-ons for each group
+    const groupsWithAddOns = await Promise.all(
+      addOnGroups.map(async (group) => {
+        const { data: addOns } = await supabase
+          .from('add_ons')
+          .select('*')
+          .eq('add_on_group_id', group.id)
+          .is('deleted_at', null)
+          .order('display_order', { ascending: true });
+
+        return {
+          id: group.id,
+          nameEn: group.name_en,
+          nameAr: group.name_ar,
+          selectionType: group.selection_type,
+          isRequired: group.is_required,
+          minSelections: group.min_selections,
+          maxSelections: group.max_selections,
+          displayOrder: group.display_order,
+          isActive: group.is_active,
+          createdAt: group.created_at,
+          updatedAt: group.updated_at,
+          addOns: addOns?.map((addOn) => ({
+            id: addOn.id,
+            nameEn: addOn.name_en,
+            nameAr: addOn.name_ar,
+            price: parseFloat(addOn.price),
+            isActive: addOn.is_active,
+            displayOrder: addOn.display_order,
+          })) || [],
+        };
+      })
+    );
+
+    return groupsWithAddOns;
+  }
+
+  async getAddOnGroupById(tenantId: string, id: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+    
+    const { data: addOnGroup, error } = await supabase
+      .from('add_on_groups')
+      .select('*')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (error || !addOnGroup) {
+      throw new NotFoundException('Add-on group not found');
+    }
+
+    const { data: addOns } = await supabase
+      .from('add_ons')
+      .select('*')
+      .eq('add_on_group_id', id)
+      .is('deleted_at', null)
+      .order('display_order', { ascending: true });
+
+    return {
+      id: addOnGroup.id,
+      nameEn: addOnGroup.name_en,
+      nameAr: addOnGroup.name_ar,
+      selectionType: addOnGroup.selection_type,
+      isRequired: addOnGroup.is_required,
+      minSelections: addOnGroup.min_selections,
+      maxSelections: addOnGroup.max_selections,
+      displayOrder: addOnGroup.display_order,
+      isActive: addOnGroup.is_active,
+      createdAt: addOnGroup.created_at,
+      updatedAt: addOnGroup.updated_at,
+      addOns: addOns?.map((addOn) => ({
+        id: addOn.id,
+        nameEn: addOn.name_en,
+        nameAr: addOn.name_ar,
+        price: parseFloat(addOn.price),
+        isActive: addOn.is_active,
+        displayOrder: addOn.display_order,
+      })) || [],
+    };
+  }
+
+  async createAddOnGroup(tenantId: string, createDto: CreateAddOnGroupDto) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Auto-set maxSelections to 1 if selectionType is single
+    const maxSelections = createDto.selectionType === 'single' 
+      ? 1 
+      : (createDto.maxSelections ?? null);
+    
+    // Auto-set minSelections based on selectionType and isRequired
+    const minSelections = createDto.selectionType === 'single' && createDto.isRequired
+      ? 1
+      : (createDto.minSelections ?? 0);
+
+    const { data: addOnGroup, error } = await supabase
+      .from('add_on_groups')
+      .insert({
+        tenant_id: tenantId,
+        name_en: createDto.nameEn,
+        name_ar: createDto.nameAr || null,
+        selection_type: createDto.selectionType || 'multiple',
+        is_required: createDto.isRequired || false,
+        min_selections: minSelections,
+        max_selections: maxSelections,
+        display_order: 0,
+        is_active: true,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(`Failed to create add-on group: ${error.message}`);
+    }
+
+    return {
+      id: addOnGroup.id,
+      nameEn: addOnGroup.name_en,
+      nameAr: addOnGroup.name_ar,
+      selectionType: addOnGroup.selection_type,
+      isRequired: addOnGroup.is_required,
+      minSelections: addOnGroup.min_selections,
+      maxSelections: addOnGroup.max_selections,
+      displayOrder: addOnGroup.display_order,
+      isActive: addOnGroup.is_active,
+      createdAt: addOnGroup.created_at,
+      updatedAt: addOnGroup.updated_at,
+      addOns: [],
+    };
+  }
+
+  async updateAddOnGroup(tenantId: string, id: string, updateDto: UpdateAddOnGroupDto) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Check if add-on group exists
+    const { data: existing } = await supabase
+      .from('add_on_groups')
+      .select('id')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!existing) {
+      throw new NotFoundException('Add-on group not found');
+    }
+
+    // Get current values to check selectionType
+    const { data: current } = await supabase
+      .from('add_on_groups')
+      .select('selection_type, is_required')
+      .eq('id', id)
+      .single();
+
+    const updateData: any = {};
+    if (updateDto.nameEn !== undefined) updateData.name_en = updateDto.nameEn;
+    if (updateDto.nameAr !== undefined) updateData.name_ar = updateDto.nameAr;
+    
+    const selectionType = updateDto.selectionType !== undefined ? updateDto.selectionType : current?.selection_type;
+    const isRequired = updateDto.isRequired !== undefined ? updateDto.isRequired : current?.is_required;
+    
+    if (updateDto.selectionType !== undefined) {
+      updateData.selection_type = updateDto.selectionType;
+      // Auto-set maxSelections to 1 if selectionType is single
+      if (updateDto.selectionType === 'single') {
+        updateData.max_selections = 1;
+        // Auto-set minSelections based on isRequired
+        if (isRequired) {
+          updateData.min_selections = 1;
+        } else {
+          updateData.min_selections = 0;
+        }
+      }
+    }
+    
+    if (updateDto.isRequired !== undefined) {
+      updateData.is_required = updateDto.isRequired;
+      // If selectionType is single and isRequired changes, update minSelections
+      if (selectionType === 'single') {
+        updateData.min_selections = updateDto.isRequired ? 1 : 0;
+      }
+    }
+    
+    if (updateDto.minSelections !== undefined) {
+      // Only allow minSelections update if selectionType is not single, or if it's 0 or 1
+      if (selectionType !== 'single' || (updateDto.minSelections === 0 || updateDto.minSelections === 1)) {
+        updateData.min_selections = updateDto.minSelections;
+      }
+    }
+    
+    if (updateDto.maxSelections !== undefined) {
+      // Only allow maxSelections update if selectionType is not single
+      if (selectionType !== 'single') {
+        updateData.max_selections = updateDto.maxSelections;
+      } else {
+        // Force to 1 if selectionType is single
+        updateData.max_selections = 1;
+      }
+    }
+    if (updateDto.displayOrder !== undefined) updateData.display_order = updateDto.displayOrder;
+    if (updateDto.isActive !== undefined) updateData.is_active = updateDto.isActive;
+    updateData.updated_at = new Date().toISOString();
+
+    const { data: addOnGroup, error } = await supabase
+      .from('add_on_groups')
+      .update(updateData)
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(`Failed to update add-on group: ${error.message}`);
+    }
+
+    return this.getAddOnGroupById(tenantId, id);
+  }
+
+  async deleteAddOnGroup(tenantId: string, id: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Check if add-on group exists
+    const { data: existing } = await supabase
+      .from('add_on_groups')
+      .select('id')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!existing) {
+      throw new NotFoundException('Add-on group not found');
+    }
+
+    // Soft delete
+    const { error } = await supabase
+      .from('add_on_groups')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('tenant_id', tenantId);
+
+    if (error) {
+      throw new BadRequestException(`Failed to delete add-on group: ${error.message}`);
+    }
+
+    return { message: 'Add-on group deleted successfully' };
+  }
+
+  // ============================================
+  // ADD-ON MANAGEMENT
+  // ============================================
+
+  async getAddOns(tenantId: string, addOnGroupId: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Verify add-on group belongs to tenant
+    const { data: group } = await supabase
+      .from('add_on_groups')
+      .select('id')
+      .eq('id', addOnGroupId)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!group) {
+      throw new NotFoundException('Add-on group not found');
+    }
+
+    const { data: addOns, error } = await supabase
+      .from('add_ons')
+      .select('*')
+      .eq('add_on_group_id', addOnGroupId)
+      .is('deleted_at', null)
+      .order('display_order', { ascending: true });
+
+    if (error) {
+      throw new BadRequestException(`Failed to fetch add-ons: ${error.message}`);
+    }
+
+    return addOns.map((addOn) => ({
+      id: addOn.id,
+      addOnGroupId: addOn.add_on_group_id,
+      nameEn: addOn.name_en,
+      nameAr: addOn.name_ar,
+      price: parseFloat(addOn.price),
+      isActive: addOn.is_active,
+      displayOrder: addOn.display_order,
+      createdAt: addOn.created_at,
+      updatedAt: addOn.updated_at,
+    }));
+  }
+
+  async getAddOnById(tenantId: string, addOnGroupId: string, id: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Verify add-on group belongs to tenant
+    const { data: group } = await supabase
+      .from('add_on_groups')
+      .select('id')
+      .eq('id', addOnGroupId)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!group) {
+      throw new NotFoundException('Add-on group not found');
+    }
+
+    const { data: addOn, error } = await supabase
+      .from('add_ons')
+      .select('*')
+      .eq('id', id)
+      .eq('add_on_group_id', addOnGroupId)
+      .is('deleted_at', null)
+      .single();
+
+    if (error || !addOn) {
+      throw new NotFoundException('Add-on not found');
+    }
+
+    return {
+      id: addOn.id,
+      addOnGroupId: addOn.add_on_group_id,
+      nameEn: addOn.name_en,
+      nameAr: addOn.name_ar,
+      price: parseFloat(addOn.price),
+      isActive: addOn.is_active,
+      displayOrder: addOn.display_order,
+      createdAt: addOn.created_at,
+      updatedAt: addOn.updated_at,
+    };
+  }
+
+  async createAddOn(tenantId: string, createDto: CreateAddOnDto) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Verify add-on group belongs to tenant
+    const { data: group } = await supabase
+      .from('add_on_groups')
+      .select('id')
+      .eq('id', createDto.addOnGroupId)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!group) {
+      throw new NotFoundException('Add-on group not found');
+    }
+
+    const { data: addOn, error } = await supabase
+      .from('add_ons')
+      .insert({
+        add_on_group_id: createDto.addOnGroupId,
+        name_en: createDto.nameEn,
+        name_ar: createDto.nameAr || null,
+        price: createDto.price || 0,
+        is_active: createDto.isActive !== undefined ? createDto.isActive : true,
+        display_order: createDto.displayOrder || 0,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(`Failed to create add-on: ${error.message}`);
+    }
+
+    return {
+      id: addOn.id,
+      addOnGroupId: addOn.add_on_group_id,
+      nameEn: addOn.name_en,
+      nameAr: addOn.name_ar,
+      price: parseFloat(addOn.price),
+      isActive: addOn.is_active,
+      displayOrder: addOn.display_order,
+      createdAt: addOn.created_at,
+      updatedAt: addOn.updated_at,
+    };
+  }
+
+  async updateAddOn(tenantId: string, addOnGroupId: string, id: string, updateDto: UpdateAddOnDto) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Verify add-on group belongs to tenant
+    const { data: group } = await supabase
+      .from('add_on_groups')
+      .select('id')
+      .eq('id', addOnGroupId)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!group) {
+      throw new NotFoundException('Add-on group not found');
+    }
+
+    // Check if add-on exists
+    const { data: existing } = await supabase
+      .from('add_ons')
+      .select('id')
+      .eq('id', id)
+      .eq('add_on_group_id', addOnGroupId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!existing) {
+      throw new NotFoundException('Add-on not found');
+    }
+
+    const updateData: any = {};
+    if (updateDto.nameEn !== undefined) updateData.name_en = updateDto.nameEn;
+    if (updateDto.nameAr !== undefined) updateData.name_ar = updateDto.nameAr;
+    if (updateDto.price !== undefined) updateData.price = updateDto.price;
+    if (updateDto.isActive !== undefined) updateData.is_active = updateDto.isActive;
+    if (updateDto.displayOrder !== undefined) updateData.display_order = updateDto.displayOrder;
+    updateData.updated_at = new Date().toISOString();
+
+    const { data: addOn, error } = await supabase
+      .from('add_ons')
+      .update(updateData)
+      .eq('id', id)
+      .eq('add_on_group_id', addOnGroupId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(`Failed to update add-on: ${error.message}`);
+    }
+
+    return {
+      id: addOn.id,
+      addOnGroupId: addOn.add_on_group_id,
+      nameEn: addOn.name_en,
+      nameAr: addOn.name_ar,
+      price: parseFloat(addOn.price),
+      isActive: addOn.is_active,
+      displayOrder: addOn.display_order,
+      createdAt: addOn.created_at,
+      updatedAt: addOn.updated_at,
+    };
+  }
+
+  async deleteAddOn(tenantId: string, addOnGroupId: string, id: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Verify add-on group belongs to tenant
+    const { data: group } = await supabase
+      .from('add_on_groups')
+      .select('id')
+      .eq('id', addOnGroupId)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!group) {
+      throw new NotFoundException('Add-on group not found');
+    }
+
+    // Check if add-on exists
+    const { data: existing } = await supabase
+      .from('add_ons')
+      .select('id')
+      .eq('id', id)
+      .eq('add_on_group_id', addOnGroupId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!existing) {
+      throw new NotFoundException('Add-on not found');
+    }
+
+    // Check if add-on is used in orders
+    const { data: orderAddOns } = await supabase
+      .from('order_item_add_ons')
+      .select('id')
+      .eq('add_on_id', id)
+      .limit(1);
+
+    if (orderAddOns && orderAddOns.length > 0) {
+      throw new ConflictException('Cannot delete add-on with associated orders');
+    }
+
+    // Soft delete
+    const { error } = await supabase
+      .from('add_ons')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('add_on_group_id', addOnGroupId);
+
+    if (error) {
+      throw new BadRequestException(`Failed to delete add-on: ${error.message}`);
+    }
+
+    return { message: 'Add-on deleted successfully' };
+  }
+
+  // ============================================
+  // MENU MANAGEMENT
+  // Note: Since there's no menus table in the schema,
+  // this is a simplified implementation that works with food items
+  // and their menu_type field. A proper menus table can be added later.
+  // ============================================
+
+  async getMenus(tenantId: string) {
+    // Get menus from menu_items junction table
+    const supabase = this.supabaseService.getServiceRoleClient();
+    
+    const menuTypes = ['all_day', 'breakfast', 'lunch', 'dinner', 'kids_special'];
+    
+    // Get item counts for each menu type from menu_items
+    const { data: menuItems, error } = await supabase
+      .from('menu_items')
+      .select('menu_type, food_item_id')
+      .eq('tenant_id', tenantId);
+
+    if (error) {
+      throw new BadRequestException(`Failed to fetch menus: ${error.message}`);
+    }
+
+    // Get active food items to filter counts
+    const foodItemIds = menuItems.map((mi) => mi.food_item_id);
+    let activeItemIds: string[] = [];
+    
+    if (foodItemIds.length > 0) {
+      const { data: activeItems } = await supabase
+        .from('food_items')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .in('id', foodItemIds)
+        .eq('is_active', true)
+        .is('deleted_at', null);
+      
+      activeItemIds = activeItems?.map((item) => item.id) || [];
+    }
+
+    // Group by menu_type and count active items
+    const menus = menuTypes.map((menuType) => {
+      const itemsInMenu = menuItems.filter((mi) => mi.menu_type === menuType);
+      const activeItemsInMenu = itemsInMenu.filter((mi) => activeItemIds.includes(mi.food_item_id));
+      
+      return {
+        menuType,
+        nameEn: menuType.charAt(0).toUpperCase() + menuType.slice(1).replace('_', ' '),
+        nameAr: null, // Can be added to translations
+        isActive: activeItemsInMenu.length > 0,
+        itemCount: activeItemsInMenu.length,
+      };
+    });
+
+    return menus;
+  }
+
+  async getMenuItems(tenantId: string, menuType: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+    
+    // Get food item IDs from menu_items junction table
+    const { data: menuItems, error } = await supabase
+      .from('menu_items')
+      .select('food_item_id')
+      .eq('tenant_id', tenantId)
+      .eq('menu_type', menuType);
+
+    if (error) {
+      throw new BadRequestException(`Failed to fetch menu items: ${error.message}`);
+    }
+
+    // Verify items are still active
+    const foodItemIds = menuItems.map((mi) => mi.food_item_id);
+    if (foodItemIds.length === 0) {
+      return [];
+    }
+
+    const { data: activeItems } = await supabase
+      .from('food_items')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .in('id', foodItemIds)
+      .eq('is_active', true)
+      .is('deleted_at', null);
+
+    return activeItems.map((item) => item.id);
+  }
+
+  async assignItemsToMenu(tenantId: string, menuType: string, foodItemIds: string[]) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Validate food items belong to tenant
+    const { data: foodItems } = await supabase
+      .from('food_items')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .in('id', foodItemIds)
+      .is('deleted_at', null);
+
+    if (foodItems.length !== foodItemIds.length) {
+      throw new BadRequestException('One or more food items not found');
+    }
+
+    // Remove existing assignments for this menu type
+    const { error: deleteError } = await supabase
+      .from('menu_items')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('menu_type', menuType);
+
+    if (deleteError) {
+      throw new BadRequestException(`Failed to clear existing menu assignments: ${deleteError.message}`);
+    }
+
+    // Insert new assignments
+    if (foodItemIds.length > 0) {
+      const menuItemsToInsert = foodItemIds.map((foodItemId, index) => ({
+        tenant_id: tenantId,
+        menu_type: menuType,
+        food_item_id: foodItemId,
+        display_order: index,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }));
+
+      const { error: insertError } = await supabase
+        .from('menu_items')
+        .insert(menuItemsToInsert);
+
+      if (insertError) {
+        throw new BadRequestException(`Failed to assign items to menu: ${insertError.message}`);
+      }
+    }
+
+    return { message: 'Items assigned to menu successfully', menuType, itemCount: foodItemIds.length };
+  }
+
+  async activateMenu(tenantId: string, menuType: string, isActive: boolean) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Activate/deactivate all items in the menu
+    const { error } = await supabase
+      .from('food_items')
+      .update({ is_active: isActive, updated_at: new Date().toISOString() })
+      .eq('tenant_id', tenantId)
+      .eq('menu_type', menuType)
+      .is('deleted_at', null);
+
+    if (error) {
+      throw new BadRequestException(`Failed to ${isActive ? 'activate' : 'deactivate'} menu: ${error.message}`);
+    }
+
+    return { message: `Menu ${isActive ? 'activated' : 'deactivated'} successfully`, menuType, isActive };
+  }
+}

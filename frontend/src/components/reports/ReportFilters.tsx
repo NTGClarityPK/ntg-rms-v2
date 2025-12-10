@@ -1,0 +1,344 @@
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import {
+  Paper,
+  Group,
+  Button,
+  Select,
+  Stack,
+  Text,
+  ActionIcon,
+} from '@mantine/core';
+import { DatePickerInput } from '@mantine/dates';
+import '@mantine/dates/styles.css';
+import { IconCalendar, IconDownload, IconPrinter, IconRefresh } from '@tabler/icons-react';
+import { useLanguageStore } from '@/lib/store/language-store';
+import { t } from '@/lib/utils/translations';
+import { useThemeColor } from '@/lib/hooks/use-theme-color';
+import { ReportQueryParams } from '@/lib/api/reports';
+import dayjs from 'dayjs';
+
+interface ReportFiltersProps {
+  branches: Array<{ value: string; label: string }>;
+  onFilterChange: (filters: ReportQueryParams) => void;
+  onExport: (format: 'csv' | 'excel') => void;
+  onPrint: () => void;
+  onRefresh: () => void;
+  loading?: boolean;
+  defaultDateRange?: { start: Date | null; end: Date | null };
+  currentFilters?: ReportQueryParams;
+  showGroupBy?: boolean;
+}
+
+export function ReportFilters({
+  branches,
+  onFilterChange,
+  onExport,
+  onPrint,
+  onRefresh,
+  loading = false,
+  defaultDateRange,
+  currentFilters,
+  showGroupBy = false,
+}: ReportFiltersProps) {
+  const language = useLanguageStore((state) => state.language);
+  const themeColor = useThemeColor();
+
+  // Parse dates from currentFilters or use defaults
+  const parseDate = (dateString: string | undefined): Date | null => {
+    if (!dateString) return null;
+    const date = new Date(dateString);
+    return isNaN(date.getTime()) ? null : date;
+  };
+
+  const [startDate, setStartDate] = useState<Date | null>(
+    currentFilters?.startDate ? parseDate(currentFilters.startDate) : (defaultDateRange?.start || null)
+  );
+  const [endDate, setEndDate] = useState<Date | null>(
+    currentFilters?.endDate ? parseDate(currentFilters.endDate) : (defaultDateRange?.end || null)
+  );
+  const [selectedBranch, setSelectedBranch] = useState<string>(
+    currentFilters?.branchId || ''
+  );
+  const [groupBy, setGroupBy] = useState<string>(
+    currentFilters?.groupBy || 'day'
+  );
+  const hasInitialized = useRef(false);
+
+  // Sync with currentFilters when they change externally (only if different from current state)
+  // This ensures the filter inputs stay in sync with the parent's filter state
+  useEffect(() => {
+    if (currentFilters) {
+      const newStartDate = currentFilters.startDate ? parseDate(currentFilters.startDate) : null;
+      const newEndDate = currentFilters.endDate ? parseDate(currentFilters.endDate) : null;
+      const newBranch = currentFilters.branchId || '';
+      const newGroupBy = currentFilters.groupBy || 'day';
+
+      // Only update if values are actually different to prevent unnecessary re-renders
+      // Compare dates by timestamp to avoid unnecessary updates
+      const startDateTime = startDate?.getTime() ?? null;
+      const newStartDateTime = newStartDate?.getTime() ?? null;
+      if (startDateTime !== newStartDateTime) {
+        setStartDate(newStartDate);
+      }
+      
+      const endDateTime = endDate?.getTime() ?? null;
+      const newEndDateTime = newEndDate?.getTime() ?? null;
+      if (endDateTime !== newEndDateTime) {
+        setEndDate(newEndDate);
+      }
+      
+      if (newBranch !== selectedBranch) {
+        setSelectedBranch(newBranch);
+      }
+      if (newGroupBy !== groupBy) {
+        setGroupBy(newGroupBy);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentFilters?.startDate, currentFilters?.endDate, currentFilters?.branchId, currentFilters?.groupBy]);
+
+  const handleQuickDateRange = (range: string) => {
+    const now = dayjs();
+    let start: Date | null = null;
+    let end: Date | null = now.toDate();
+
+    switch (range) {
+      case 'last7Days':
+        start = now.subtract(7, 'days').toDate();
+        break;
+      case 'last30Days':
+        start = now.subtract(30, 'days').toDate();
+        break;
+      case 'last90Days':
+        start = now.subtract(90, 'days').toDate();
+        break;
+      case 'thisMonth':
+        start = now.startOf('month').toDate();
+        break;
+      case 'lastMonth':
+        start = now.subtract(1, 'month').startOf('month').toDate();
+        end = now.subtract(1, 'month').endOf('month').toDate();
+        break;
+      case 'thisYear':
+        start = now.startOf('year').toDate();
+        break;
+      default:
+        return;
+    }
+
+    setStartDate(start);
+    setEndDate(end);
+    applyFilters(start, end, selectedBranch, groupBy);
+  };
+
+  const applyFilters = (
+    start: Date | null,
+    end: Date | null,
+    branch: string,
+    group: string
+  ) => {
+    // Format dates as YYYY-MM-DD for API
+    const formatDate = (date: Date | null): string | undefined => {
+      if (!date) return undefined;
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const filters: ReportQueryParams = {
+      startDate: formatDate(start),
+      endDate: formatDate(end),
+      branchId: branch || undefined,
+    };
+
+    // Only include groupBy if showGroupBy is true
+    if (showGroupBy) {
+      filters.groupBy = group as 'day' | 'week' | 'month' | 'year';
+    }
+
+    onFilterChange(filters);
+  };
+
+  const handleDateChange = () => {
+    applyFilters(startDate, endDate, selectedBranch, groupBy);
+  };
+
+  const handleBranchChange = (value: string | null) => {
+    const branch = value || '';
+    setSelectedBranch(branch);
+    applyFilters(startDate, endDate, branch, groupBy);
+  };
+
+  const handleGroupByChange = (value: string | null) => {
+    const group = value || 'day';
+    setGroupBy(group);
+    applyFilters(startDate, endDate, selectedBranch, group);
+  };
+
+  // Apply initial filters on mount (only once) - only if no currentFilters provided
+  useEffect(() => {
+    if (!hasInitialized.current) {
+      hasInitialized.current = true;
+      // Only apply initial filters if currentFilters is not provided
+      // If currentFilters is provided, the parent is managing the state
+      if (!currentFilters) {
+        applyFilters(null, null, selectedBranch, groupBy);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount
+
+  return (
+    <Paper p="md" withBorder className="report-filters">
+      <Stack gap="md">
+        {/* Quick Date Range Buttons */}
+        <Group gap="xs">
+          <Text size="sm" fw={500}>
+            {t('reports.selectDateRange' as any, language)}:
+          </Text>
+          <Button
+            size="xs"
+            variant="light"
+            onClick={() => handleQuickDateRange('last7Days')}
+            style={{ color: themeColor }}
+          >
+            {t('reports.last7Days' as any, language)}
+          </Button>
+          <Button
+            size="xs"
+            variant="light"
+            onClick={() => handleQuickDateRange('last30Days')}
+            style={{ color: themeColor }}
+          >
+            {t('reports.last30Days' as any, language)}
+          </Button>
+          <Button
+            size="xs"
+            variant="light"
+            onClick={() => handleQuickDateRange('last90Days')}
+            style={{ color: themeColor }}
+          >
+            {t('reports.last90Days' as any, language)}
+          </Button>
+          <Button
+            size="xs"
+            variant="light"
+            onClick={() => handleQuickDateRange('thisMonth')}
+            style={{ color: themeColor }}
+          >
+            {t('reports.thisMonth' as any, language)}
+          </Button>
+          <Button
+            size="xs"
+            variant="light"
+            onClick={() => handleQuickDateRange('lastMonth')}
+            style={{ color: themeColor }}
+          >
+            {t('reports.lastMonth' as any, language)}
+          </Button>
+          <Button
+            size="xs"
+            variant="light"
+            onClick={() => handleQuickDateRange('thisYear')}
+            style={{ color: themeColor }}
+          >
+            {t('reports.thisYear' as any, language)}
+          </Button>
+        </Group>
+
+        {/* Date Pickers and Filters */}
+        <Group gap="md" align="flex-end">
+          <DatePickerInput
+            label={t('reports.startDate' as any, language)}
+            value={startDate}
+            onChange={(date) => {
+              setStartDate(date);
+              // Always apply filters when date changes
+              applyFilters(date, endDate, selectedBranch, groupBy);
+            }}
+            leftSection={<IconCalendar size={16} />}
+            style={{ flex: 1 }}
+            maxDate={endDate || undefined}
+          />
+          <DatePickerInput
+            label={t('reports.endDate' as any, language)}
+            value={endDate}
+            onChange={(date) => {
+              setEndDate(date);
+              // Always apply filters when date changes
+              applyFilters(startDate, date, selectedBranch, groupBy);
+            }}
+            leftSection={<IconCalendar size={16} />}
+            style={{ flex: 1 }}
+            minDate={startDate || undefined}
+          />
+          <Select
+            label={t('reports.filterByBranch' as any, language)}
+            data={[
+              { value: '', label: t('reports.allBranches' as any, language) },
+              ...branches,
+            ]}
+            value={selectedBranch}
+            onChange={handleBranchChange}
+            clearable
+            style={{ flex: 1 }}
+          />
+          {showGroupBy && (
+            <Select
+              label={t('reports.groupBy' as any, language)}
+              data={[
+                { value: 'day', label: t('reports.day' as any, language) },
+                { value: 'week', label: t('reports.week' as any, language) },
+                { value: 'month', label: t('reports.month' as any, language) },
+                { value: 'year', label: t('reports.year' as any, language) },
+              ]}
+              value={groupBy}
+              onChange={handleGroupByChange}
+              style={{ flex: 1 }}
+            />
+          )}
+        </Group>
+
+        {/* Action Buttons */}
+        <Group justify="flex-end">
+          <ActionIcon
+            variant="light"
+            onClick={onRefresh}
+            loading={loading}
+            style={{ color: themeColor }}
+          >
+            <IconRefresh size={18} />
+          </ActionIcon>
+          <Button
+            leftSection={<IconDownload size={16} />}
+            variant="light"
+            onClick={() => onExport('csv')}
+            style={{ color: themeColor }}
+          >
+            {t('reports.exportCSV' as any, language)}
+          </Button>
+          <Button
+            leftSection={<IconDownload size={16} />}
+            variant="light"
+            onClick={() => onExport('excel')}
+            style={{ color: themeColor }}
+          >
+            {t('reports.exportExcel' as any, language)}
+          </Button>
+          <Button
+            leftSection={<IconPrinter size={16} />}
+            variant="light"
+            onClick={onPrint}
+            style={{ color: themeColor }}
+          >
+            {t('reports.print' as any, language)}
+          </Button>
+        </Group>
+      </Stack>
+    </Paper>
+  );
+}
+

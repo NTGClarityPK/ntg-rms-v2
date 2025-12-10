@@ -1,0 +1,108 @@
+import apiClient from './client';
+import { API_ENDPOINTS } from '../constants/api';
+
+export interface GeneralSettings {
+  defaultLanguage?: string;
+  defaultCurrency?: string;
+  dateFormat?: string;
+  timeFormat?: '12' | '24';
+  firstDayOfWeek?: string;
+  defaultOrderType?: string;
+  autoPrintInvoices?: boolean;
+  autoPrintKitchenTickets?: boolean;
+  enableTableManagement?: boolean;
+  enableDeliveryManagement?: boolean;
+  minimumDeliveryOrderAmount?: number;
+  emailNotifications?: boolean;
+  smsNotifications?: boolean;
+  soundAlerts?: boolean;
+}
+
+export interface InvoiceSettings {
+  headerText?: string;
+  footerText?: string;
+  termsAndConditions?: string;
+  showLogo?: boolean;
+  showVatNumber?: boolean;
+  showQrCode?: boolean;
+  invoiceNumberFormat?: string;
+  receiptTemplate?: 'thermal' | 'a4';
+  customTemplate?: string;
+}
+
+export interface PaymentMethodSettings {
+  enableCash?: boolean;
+  enableCard?: boolean;
+  enableZainCash?: boolean;
+  enableAsiaHawala?: boolean;
+  enableBankTransfer?: boolean;
+  paymentGatewayConfig?: Record<string, any>;
+}
+
+export interface Printer {
+  id?: string;
+  name: string;
+  type: 'receipt' | 'kitchen' | 'invoice';
+  connectionType: 'usb' | 'network' | 'bluetooth';
+  ipAddress?: string;
+  counterId?: string;
+}
+
+export interface PrinterSettings {
+  printers?: Printer[];
+  autoPrint?: boolean;
+  numberOfCopies?: number;
+  paperSize?: string;
+}
+
+export interface TaxSettings {
+  enableTaxSystem?: boolean;
+  taxCalculationMethod?: 'included' | 'excluded';
+  taxApplicationType?: 'order' | 'category' | 'item';
+  applyTaxOnDelivery?: boolean;
+  applyTaxOnServiceCharge?: boolean;
+  applyTaxOnReservations?: boolean;
+}
+
+export interface Settings {
+  general: GeneralSettings;
+  invoice: InvoiceSettings;
+  paymentMethods: PaymentMethodSettings;
+  printers: PrinterSettings;
+  tax: TaxSettings;
+}
+
+export interface UpdateSettingsDto {
+  general?: GeneralSettings;
+  invoice?: InvoiceSettings;
+  paymentMethods?: PaymentMethodSettings;
+  printers?: PrinterSettings;
+  tax?: TaxSettings;
+}
+
+export const settingsApi = {
+  /**
+   * Get all settings
+   */
+  getSettings: async (): Promise<Settings> => {
+    const response = await apiClient.get(API_ENDPOINTS.SETTINGS);
+    return response.data;
+  },
+
+  /**
+   * Get a specific settings category
+   */
+  getSettingCategory: async (category: string): Promise<any> => {
+    const response = await apiClient.get(`${API_ENDPOINTS.SETTINGS}/${category}`);
+    return response.data;
+  },
+
+  /**
+   * Update settings
+   */
+  updateSettings: async (data: UpdateSettingsDto): Promise<Settings> => {
+    const response = await apiClient.put(API_ENDPOINTS.SETTINGS, data);
+    return response.data;
+  },
+};
+

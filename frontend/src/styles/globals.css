@@ -1,0 +1,172 @@
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  color: var(--mantine-color-text);
+  background: var(--mantine-color-body);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* RTL Support */
+[dir='rtl'] {
+  direction: rtl;
+}
+
+[dir='ltr'] {
+  direction: ltr;
+}
+
+/* Theme-aware Progress component - override Mantine's default blue */
+[data-progress-section] {
+  background-color: var(--progress-section-color, var(--mantine-primary-color)) !important;
+}
+
+.mantine-Progress-section {
+  background-color: var(--progress-section-color, var(--mantine-primary-color)) !important;
+}
+
+/* More specific selectors for Progress component */
+div[class*="Progress-section"] {
+  background-color: var(--progress-section-color, var(--mantine-primary-color)) !important;
+}
+
+/* Invisible scrollbar for POS cart */
+.custom-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+.custom-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+/* Ensure notifications appear above all content, including fixed position elements */
+.mantine-Notifications-root {
+  z-index: 10000 !important;
+  pointer-events: none;
+}
+
+.mantine-Notifications-notification {
+  pointer-events: auto;
+}
+
+/* Print styles - Hide sidebar, header, and show only report content */
+@media print {
+  /* Hide AppShell header and navbar */
+  header[class*="AppShell-header"],
+  nav[class*="AppShell-navbar"],
+  .mantine-AppShell-header,
+  .mantine-AppShell-navbar {
+    display: none !important;
+  }
+
+  /* Make main content full width and remove padding */
+  .mantine-AppShell-main {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* Hide navigation elements and buttons */
+  .mantine-Burger-root,
+  button[aria-label*="language"],
+  .mantine-Menu-root {
+    display: none !important;
+  }
+
+  /* Ensure report content is visible and properly formatted */
+  .mantine-Container-root {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Hide page title when printing - target the reports page title */
+  .mantine-Container-root > .mantine-Stack-root > .mantine-Text-root:first-child {
+    display: none !important;
+  }
+
+  /* Hide tabs navigation when printing */
+  .mantine-Tabs-list {
+    display: none !important;
+  }
+
+  /* Hide all tab panels by default when printing */
+  .mantine-Tabs-panel {
+    display: none !important;
+    padding: 0 !important;
+  }
+
+  /* Show only the active tab panel when printing - match data-tab-value with data-active-tab */
+  /* Use attribute selectors to match active tab */
+  [data-active-tab="sales"] .mantine-Tabs-panel[data-tab-value="sales"],
+  [data-active-tab="orders"] .mantine-Tabs-panel[data-tab-value="orders"],
+  [data-active-tab="customers"] .mantine-Tabs-panel[data-tab-value="customers"],
+  [data-active-tab="inventory"] .mantine-Tabs-panel[data-tab-value="inventory"],
+  [data-active-tab="financial"] .mantine-Tabs-panel[data-tab-value="financial"],
+  [data-active-tab="tax"] .mantine-Tabs-panel[data-tab-value="tax"],
+  [data-active-tab="top-items"] .mantine-Tabs-panel[data-tab-value="top-items"] {
+    display: block !important;
+  }
+
+  /* Fallback: Show panels that don't have hidden attribute (Mantine's default behavior) */
+  .mantine-Tabs-panel:not([hidden]):not([style*="display: none"]) {
+    display: block !important;
+  }
+
+  /* Force hide panels with hidden attribute */
+  .mantine-Tabs-panel[hidden] {
+    display: none !important;
+  }
+
+  /* Hide filter controls when printing */
+  .report-filters {
+    display: none !important;
+  }
+
+  /* Ensure charts and tables print properly */
+  .recharts-wrapper {
+    page-break-inside: avoid;
+  }
+
+  /* Remove background colors for better printing, but keep text readable */
+  body {
+    background: white !important;
+  }
+
+  /* Ensure proper page breaks */
+  .mantine-Paper-root:not(.report-filters),
+  .mantine-Card-root {
+    page-break-inside: avoid;
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+  }
+
+  /* Remove unnecessary spacing */
+  .mantine-Stack-root {
+    gap: 0.5rem !important;
+  }
+
+  /* Ensure buttons and action icons are hidden */
+  button[class*="IconRefresh"],
+  button[class*="IconDownload"],
+  button[class*="IconPrinter"],
+  .mantine-ActionIcon-root {
+    display: none !important;
+  }
+}
+

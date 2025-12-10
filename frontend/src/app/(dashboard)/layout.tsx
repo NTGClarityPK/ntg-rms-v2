@@ -1,0 +1,120 @@
+'use client';
+
+import { AppShell } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
+import { Header } from '@/components/layout/Header';
+import { Sidebar } from '@/components/layout/Sidebar';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuthStore } from '@/lib/store/auth-store';
+import { syncService } from '@/lib/sync/sync-service';
+import { authApi } from '@/lib/api/auth';
+import { tokenStorage } from '@/lib/api/client';
+
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const [mobileOpened, { toggle: toggleMobile }] = useDisclosure();
+  const [desktopOpened, { toggle: toggleDesktop }] = useDisclosure(true);
+  const { isAuthenticated, user, setUser } = useAuthStore();
+  const router = useRouter();
+  const [isInitializing, setIsInitializing] = useState(true);
+
+  useEffect(() => {
+    // Initialize sync service
+    syncService.initialize().catch(console.error);
+
+    // Initialize authentication state on mount
+    const initializeAuth = async () => {
+      try {
+        const accessToken = tokenStorage.getAccessToken();
+        const refreshToken = tokenStorage.getRefreshToken();
+
+        // If no tokens at all, clear auth state and redirect
+        if (!accessToken && !refreshToken) {
+          // Check current auth state from store
+          const currentAuthState = useAuthStore.getState();
+          if (currentAuthState.isAuthenticated) {
+            currentAuthState.logout();
+          }
+          setIsInitializing(false);
+          router.push('/login');
+          return;
+        }
+
+        // If we have tokens, verify they're valid by calling /auth/me
+        // The axios interceptor will handle token refresh automatically if needed
+        try {
+          const userData = await authApi.getCurrentUser();
+          // If we get here, token is valid (or was refreshed by interceptor)
+          setUser(userData);
+        } catch (error: any) {
+          // If error is 401 and interceptor couldn't refresh, clear everything
+          // The interceptor should have already redirected, but just in case:
+          if (error?.response?.status === 401 || !refreshToken) {
+            tokenStorage.clearTokens();
+            useAuthStore.getState().logout();
+            setIsInitializing(false);
+            // Only redirect if interceptor didn't already redirect
+            if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+              router.push('/login');
+            }
+            return;
+          }
+          // Other errors, just log and continue
+          console.error('Auth initialization error:', error);
+        }
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+        tokenStorage.clearTokens();
+        useAuthStore.getState().logout();
+        setIsInitializing(false);
+        if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+          router.push('/login');
+        }
+      } finally {
+        setIsInitializing(false);
+      }
+    };
+
+    initializeAuth();
+
+    // Cleanup on unmount
+    return () => {
+      syncService.stopPeriodicSync();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount - router and setUser are stable, isAuthenticated/user are checked inside the function
+
+  // Show loading state while initializing
+  if (isInitializing) {
+    return null;
+  }
+
+  // Check authentication after initialization
+  if (!isAuthenticated) {
+    return null;
+  }
+
+  return (
+    <AppShell
+      header={{ height: 60 }}
+      navbar={{
+        width: 250,
+        breakpoint: 'sm',
+        collapsed: { mobile: !mobileOpened, desktop: !desktopOpened },
+      }}
+      padding="md"
+    >
+      <Header mobileOpened={mobileOpened} toggleMobile={toggleMobile} />
+      <AppShell.Navbar p="md">
+        <Sidebar onMobileClose={() => mobileOpened && toggleMobile()} />
+      </AppShell.Navbar>
+
+      <AppShell.Main>{children}</AppShell.Main>
+    </AppShell>
+  );
+}
+
