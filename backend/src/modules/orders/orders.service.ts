@@ -781,12 +781,17 @@ export class OrdersService {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Fetch orders without joins to avoid relationship errors
+    // Supabase PostgREST has a default limit (usually 1000, but can be configured lower)
+    // Set a high default limit to ensure all orders are returned when no limit is specified
+    const defaultLimit = filters.limit || 10000;
+    
     let query = supabase
       .from('orders')
       .select('*')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(defaultLimit); // Always set a limit to avoid PostgREST default limit issues
 
     if (filters.status) {
       query = query.eq('status', filters.status);
@@ -812,6 +817,7 @@ export class OrdersService {
       query = query.lte('order_date', filters.endDate);
     }
 
+    // Re-apply limit if explicitly provided (overrides default)
     if (filters.limit) {
       query = query.limit(filters.limit);
     }

@@ -19,9 +19,11 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "script:delete-orders": "ts-node -r dotenv/config scripts/delete-all-orders.ts",
+    "script:delete-tenant-data": "ts-node -r dotenv/config scripts/delete-tenant-data.ts",
     "script:remove-table-constraints": "ts-node -r dotenv/config scripts/remove-table-constraints.ts",
     "script:create-default-coupon": "ts-node -r dotenv/config scripts/create-default-coupon.ts",
-    "script:create-default-branches": "ts-node -r dotenv/config scripts/create-default-branches.ts"
+    "script:create-default-branches": "ts-node -r dotenv/config scripts/create-default-branches.ts",
+    "script:seed-data": "ts-node -r dotenv/config scripts/seed-data.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",
