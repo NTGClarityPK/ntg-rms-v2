@@ -101,8 +101,8 @@ async function createNewTenant(): Promise<{ tenantId: string; ownerCredentials: 
   const { data: newTenant, error: createError } = await supabase
     .from('tenants')
     .insert({
-      name_en: 'Seed Data Restaurant',
-      name_ar: 'مطعم بيانات تجريبية',
+      name_en: 'Al Siraj',
+      name_ar: 'السراج',
       subdomain: subdomain,
       email: ownerEmail,
       default_currency: 'IQD',
@@ -124,8 +124,8 @@ async function createNewTenant(): Promise<{ tenantId: string; ownerCredentials: 
       tenant_id: newTenant.id,
       supabase_auth_id: authData.user.id,
       email: ownerEmail,
-      name_en: 'Restaurant Owner',
-      name_ar: 'مالك المطعم',
+      name_en: 'Aurooba Parker',
+      name_ar: 'أوروبا باركر',
       role: 'tenant_owner',
       is_active: true,
     });
@@ -140,7 +140,7 @@ async function createNewTenant(): Promise<{ tenantId: string; ownerCredentials: 
     tenantId: newTenant.id,
     ownerCredentials: {
       role: 'Tenant Owner',
-      name: 'Restaurant Owner',
+      name: 'Aurooba Parker',
       email: ownerEmail,
       password: ownerPassword,
     },
@@ -1009,6 +1009,35 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
         food_item_id: itemId,
         label: label,
       }, { onConflict: 'food_item_id,label' });
+    }
+
+    // Add menu assignment to menu_items junction table
+    if (item.menu_type) {
+      // Check if menu assignment already exists
+      const { data: existingMenuAssignment } = await supabase
+        .from('menu_items')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('food_item_id', itemId)
+        .eq('menu_type', item.menu_type)
+        .maybeSingle();
+
+      if (!existingMenuAssignment) {
+        const { error: menuError } = await supabase
+          .from('menu_items')
+          .insert({
+            tenant_id: tenantId,
+            food_item_id: itemId,
+            menu_type: item.menu_type,
+            display_order: item.display_order || 0,
+          });
+
+        if (menuError) {
+          console.error(`   ⚠️  Failed to add "${item.name_en}" to menu "${item.menu_type}":`, menuError.message);
+        } else {
+          console.log(`   ✅ Added "${item.name_en}" to menu "${item.menu_type}"`);
+        }
+      }
     }
   }
 
