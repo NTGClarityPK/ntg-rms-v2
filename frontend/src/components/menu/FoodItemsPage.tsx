@@ -435,9 +435,10 @@ export function FoodItemsPage() {
       // Notify other tabs that food items have been updated
       notifyMenuDataUpdate('food-items-updated');
     } catch (err: any) {
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to upload image';
       notifications.show({
         title: t('common.error' as any, language) || 'Error',
-        message: err.message || 'Failed to upload image',
+        message: errorMessage,
         color: errorColor,
       });
     } finally {
@@ -699,9 +700,29 @@ export function FoodItemsPage() {
       // Notify other tabs that food items have been updated
       notifyMenuDataUpdate('food-items-updated');
         } catch (err: any) {
+          // Extract error message from NestJS response
+          // The global exception filter formats errors as: { success: false, error: { message: "..." } }
+          let errorMessage = 'Failed to delete food item';
+          
+          if (err.response?.data) {
+            const data = err.response.data;
+            // Check the custom error format from HttpExceptionFilter first
+            if (data.error?.message) {
+              errorMessage = data.error.message;
+            } else if (typeof data === 'object' && data.message) {
+              // Fallback to standard NestJS format
+              errorMessage = data.message;
+            } else if (typeof data === 'string') {
+              errorMessage = data;
+            }
+          } else if (err.message && !err.message.includes('status code')) {
+            // Only use err.message if it's not the generic Axios status code message
+            errorMessage = err.message;
+          }
+          
           notifications.show({
             title: t('common.error' as any, language) || 'Error',
-            message: err.message || 'Failed to delete food item',
+            message: errorMessage,
             color: errorColor,
           });
         }
