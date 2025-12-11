@@ -3,9 +3,10 @@ import { SyncController } from './sync.controller';
 import { SyncService } from './sync.service';
 import { OrdersModule } from '../orders/orders.module';
 import { InventoryModule } from '../inventory/inventory.module';
+import { RestaurantModule } from '../restaurant/restaurant.module';
 
 @Module({
-  imports: [OrdersModule, InventoryModule],
+  imports: [OrdersModule, InventoryModule, RestaurantModule],
   controllers: [SyncController],
   providers: [SyncService],
   exports: [SyncService],

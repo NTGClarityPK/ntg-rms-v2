@@ -146,51 +146,77 @@ export default function RestaurantPage() {
       }
 
       // Then sync from server if online
+      // But only if there are no pending local changes
       if (navigator.onLine) {
         try {
-          const serverData = await restaurantApi.getInfo();
-          const formValues = {
-            nameEn: serverData.nameEn,
-            nameAr: serverData.nameAr || '',
-            email: serverData.email,
-            phone: serverData.phone || '',
-            logoUrl: serverData.logoUrl || '',
-            primaryColor: serverData.primaryColor || getCurrentThemeColor(),
-            timezone: serverData.timezone || 'Asia/Baghdad',
-            fiscalYearStart: serverData.fiscalYearStart || '',
-            vatNumber: serverData.vatNumber || '',
-            isActive: serverData.isActive ?? true,
-          };
-          form.setValues(formValues);
-          if (serverData.logoUrl) {
-            setLogoPreview(serverData.logoUrl);
-          }
-          
-          // Update restaurant store for Header
-          setRestaurant({
-            id: serverData.id,
-            nameEn: serverData.nameEn || 'RMS',
-            nameAr: serverData.nameAr,
-            logoUrl: serverData.logoUrl,
-            primaryColor: serverData.primaryColor,
-          });
+          // Check if there are pending sync changes for tenants
+          const pendingTenantChanges = await db.syncQueue
+            .where('table')
+            .equals('tenants')
+            .and((item) => item.status === 'PENDING' || item.status === 'SYNCING' || item.status === 'FAILED')
+            .toArray();
 
-          // Update IndexedDB with server data
-          await db.tenants.put({
-            id: serverData.id,
-            nameEn: serverData.nameEn,
-            nameAr: serverData.nameAr,
-            subdomain: serverData.subdomain,
-            email: serverData.email,
-            phone: serverData.phone,
-            logoUrl: serverData.logoUrl,
-            primaryColor: serverData.primaryColor,
-            defaultCurrency: serverData.defaultCurrency,
-            timezone: serverData.timezone,
-            isActive: serverData.isActive,
-            createdAt: serverData.createdAt,
-            updatedAt: serverData.updatedAt,
-          });
+          // If there are pending changes, don't overwrite local data with server data
+          if (pendingTenantChanges.length > 0) {
+            console.log('⚠️ Pending tenant changes detected, keeping local data');
+            // Still try to sync pending changes
+            await syncService.syncPendingChanges();
+            return;
+          }
+
+          const serverData = await restaurantApi.getInfo();
+          
+          // Only update if server data is newer than local data
+          const shouldUpdate = !localData || 
+            !localData.updatedAt || 
+            new Date(serverData.updatedAt) > new Date(localData.updatedAt);
+
+          if (shouldUpdate) {
+            const formValues = {
+              nameEn: serverData.nameEn,
+              nameAr: serverData.nameAr || '',
+              email: serverData.email,
+              phone: serverData.phone || '',
+              logoUrl: serverData.logoUrl || '',
+              primaryColor: serverData.primaryColor || getCurrentThemeColor(),
+              timezone: serverData.timezone || 'Asia/Baghdad',
+              fiscalYearStart: serverData.fiscalYearStart || '',
+              vatNumber: serverData.vatNumber || '',
+              isActive: serverData.isActive ?? true,
+            };
+            form.setValues(formValues);
+            if (serverData.logoUrl) {
+              setLogoPreview(serverData.logoUrl);
+            }
+            
+            // Update restaurant store for Header
+            setRestaurant({
+              id: serverData.id,
+              nameEn: serverData.nameEn || 'RMS',
+              nameAr: serverData.nameAr,
+              logoUrl: serverData.logoUrl,
+              primaryColor: serverData.primaryColor,
+            });
+
+            // Update IndexedDB with server data
+            await db.tenants.put({
+              id: serverData.id,
+              nameEn: serverData.nameEn,
+              nameAr: serverData.nameAr,
+              subdomain: serverData.subdomain,
+              email: serverData.email,
+              phone: serverData.phone,
+              logoUrl: serverData.logoUrl,
+              primaryColor: serverData.primaryColor,
+              defaultCurrency: serverData.defaultCurrency,
+              timezone: serverData.timezone,
+              isActive: serverData.isActive,
+              createdAt: serverData.createdAt,
+              updatedAt: serverData.updatedAt,
+              lastSynced: new Date().toISOString(),
+              syncStatus: 'synced' as const,
+            });
+          }
         } catch (err: any) {
           console.warn('Failed to load from server, using local data:', err);
         }
@@ -269,6 +295,21 @@ export default function RestaurantPage() {
       if (updateData.logoUrl && updateData.logoUrl.startsWith('data:')) {
         // If it's still base64, remove it (should have been uploaded)
         delete updateData.logoUrl;
+      }
+
+      // Remove empty strings for optional fields - backend expects undefined/null or valid values
+      // Don't send empty strings as they fail validation
+      if (updateData.fiscalYearStart === '' || !updateData.fiscalYearStart) {
+        delete updateData.fiscalYearStart;
+      }
+      if (updateData.vatNumber === '' || !updateData.vatNumber) {
+        delete updateData.vatNumber;
+      }
+      if (updateData.phone === '' || !updateData.phone) {
+        delete updateData.phone;
+      }
+      if (updateData.nameAr === '' || !updateData.nameAr) {
+        delete updateData.nameAr;
       }
 
       // Save to IndexedDB first (offline-first)

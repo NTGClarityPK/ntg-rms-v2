@@ -3,6 +3,7 @@ import { SupabaseService } from '../../database/supabase.service';
 import { PushSyncDto } from './dto/push-sync.dto';
 import { OrdersService } from '../orders/orders.service';
 import { InventoryService } from '../inventory/inventory.service';
+import { RestaurantService } from '../restaurant/restaurant.service';
 import { CreateIngredientDto } from '../inventory/dto/create-ingredient.dto';
 import { UpdateIngredientDto } from '../inventory/dto/update-ingredient.dto';
 import { AddStockDto } from '../inventory/dto/add-stock.dto';
@@ -17,6 +18,7 @@ export class SyncService {
     private supabaseService: SupabaseService,
     private ordersService: OrdersService,
     private inventoryService: InventoryService,
+    private restaurantService: RestaurantService,
   ) {}
 
   async pushSync(pushDto: PushSyncDto, tenantId: string, userId: string) {
@@ -33,6 +35,9 @@ export class SyncService {
     const ingredientsToDelete: any[] = [];
     const stockTransactionsToCreate: any[] = [];
     const recipesToCreate: any[] = [];
+    
+    // Group tenant updates
+    const tenantsToUpdate: any[] = [];
 
     // First pass: collect orders, order items, and inventory changes
     for (const change of pushDto.changes) {
@@ -57,6 +62,8 @@ export class SyncService {
           stockTransactionsToCreate.push({ id: change.recordId, data: change.data });
         } else if (change.table === 'recipes' && change.action === 'CREATE') {
           recipesToCreate.push({ id: change.recordId, data: change.data });
+        } else if (change.table === 'tenants' && change.action === 'UPDATE') {
+          tenantsToUpdate.push({ id: change.recordId, data: change.data });
         } else {
           // Handle other table types (customers, tables, etc.) if needed
           console.log(`Skipping sync for table: ${change.table}, action: ${change.action}`);
@@ -407,6 +414,27 @@ export class SyncService {
             error: errorMessage,
           });
         }
+      }
+    }
+
+    // Process tenant updates
+    for (const tenant of tenantsToUpdate) {
+      try {
+        // The recordId should be the tenantId
+        const tenantId = tenant.id;
+        await this.restaurantService.updateRestaurantInfo(tenantId, tenant.data);
+        results.push({
+          table: 'tenants',
+          recordId: tenantId,
+          status: 'SUCCESS',
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        errors.push({
+          table: 'tenants',
+          recordId: tenant.id,
+          error: errorMessage,
+        });
       }
     }
 
