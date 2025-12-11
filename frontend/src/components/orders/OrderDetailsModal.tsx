@@ -649,7 +649,6 @@ export function OrderDetailsModal({
               onClick={() => handlePrintInvoice('thermal')}
               loading={printing}
               variant="light"
-              style={{ backgroundColor: primary }}
             >
               {t('orders.printThermal' as any, language) || 'Print (Thermal)'}
             </Button>
@@ -658,7 +657,6 @@ export function OrderDetailsModal({
               onClick={() => handlePrintInvoice('a4')}
               loading={printing}
               variant="light"
-              style={{ backgroundColor: primary }}
             >
               {t('orders.printA4' as any, language) || 'Print (A4)'}
             </Button>

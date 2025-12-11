@@ -263,15 +263,6 @@ export class InvoiceGenerator {
   </div>
   ` : ''}
 
-  ${showQrCode ? `
-  <div class="qr-code">
-    <!-- QR Code placeholder - can be generated using a QR code library -->
-    <div style="width: 60px; height: 60px; border: 1px solid #ccc; margin: 0 auto; display: flex; align-items: center; justify-content: center; font-size: 8px;">
-      QR Code
-    </div>
-  </div>
-  ` : ''}
-
   <div class="footer">
     ${footerText}
     ${termsAndConditions ? `<div style="margin-top: 5px; font-size: 8px;">${termsAndConditions}</div>` : ''}
@@ -556,15 +547,6 @@ export class InvoiceGenerator {
   <div class="notes">
     <div class="section-title">${isRTL ? 'ملاحظات خاصة' : 'SPECIAL INSTRUCTIONS'}</div>
     <div>${(order as any).specialInstructions}</div>
-  </div>
-  ` : ''}
-
-  ${showQrCode ? `
-  <div class="qr-code">
-    <!-- QR Code placeholder - can be generated using a QR code library -->
-    <div style="width: 100px; height: 100px; border: 1px solid #ccc; margin: 20px auto; display: flex; align-items: center; justify-content: center; font-size: 10px;">
-      QR Code
-    </div>
   </div>
   ` : ''}
 
