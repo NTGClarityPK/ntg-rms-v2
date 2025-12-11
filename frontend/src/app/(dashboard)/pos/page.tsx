@@ -187,8 +187,86 @@ export default function POSPage() {
     saveCart();
   }, [cartItems]);
 
+  // Helper function to check if two cart items are identical
+  const areItemsIdentical = (item1: any, item2: any): boolean => {
+    // Check foodItemId
+    if (item1.foodItemId !== item2.foodItemId) {
+      return false;
+    }
+
+    // Check variationId (both null/undefined or same value)
+    const variation1 = item1.variationId || null;
+    const variation2 = item2.variationId || null;
+    if (variation1 !== variation2) {
+      return false;
+    }
+
+    // Check specialInstructions (both empty/undefined or same value)
+    const instructions1 = (item1.specialInstructions || '').trim();
+    const instructions2 = (item2.specialInstructions || '').trim();
+    if (instructions1 !== instructions2) {
+      return false;
+    }
+
+    // Check add-ons
+    const addOns1 = item1.addOns || [];
+    const addOns2 = item2.addOns || [];
+
+    // If both have no add-ons, they match
+    if (addOns1.length === 0 && addOns2.length === 0) {
+      return true;
+    }
+
+    // If one has add-ons and the other doesn't, they don't match
+    if (addOns1.length !== addOns2.length) {
+      return false;
+    }
+
+    // Sort add-ons by addOnId for comparison
+    const sorted1 = [...addOns1].sort((a, b) => (a.addOnId || '').localeCompare(b.addOnId || ''));
+    const sorted2 = [...addOns2].sort((a, b) => (a.addOnId || '').localeCompare(b.addOnId || ''));
+
+    // Compare each add-on (same addOnId and quantity)
+    for (let i = 0; i < sorted1.length; i++) {
+      const addOn1 = sorted1[i];
+      const addOn2 = sorted2[i];
+      
+      if (addOn1.addOnId !== addOn2.addOnId) {
+        return false;
+      }
+      
+      // Compare quantities (default to 1 if not specified)
+      const qty1 = addOn1.quantity || 1;
+      const qty2 = addOn2.quantity || 1;
+      if (qty1 !== qty2) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
   const handleAddToCart = useCallback((item: any) => {
-    setCartItems((prev) => [...prev, item]);
+    setCartItems((prev) => {
+      // Find if an identical item already exists
+      const existingIndex = prev.findIndex((existingItem) => areItemsIdentical(existingItem, item));
+      
+      if (existingIndex !== -1) {
+        // Item already exists, increment quantity
+        const updatedItems = [...prev];
+        const existingItem = updatedItems[existingIndex];
+        const newQuantity = existingItem.quantity + item.quantity;
+        updatedItems[existingIndex] = {
+          ...existingItem,
+          quantity: newQuantity,
+          subtotal: existingItem.unitPrice * newQuantity,
+        };
+        return updatedItems;
+      } else {
+        // New item, add to cart
+        return [...prev, item];
+      }
+    });
   }, []);
 
   const handleRemoveFromCart = useCallback((index: number) => {
