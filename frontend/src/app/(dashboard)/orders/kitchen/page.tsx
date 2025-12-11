@@ -519,7 +519,7 @@ export default function KitchenDisplayPage() {
                           return (
                             <Grid.Col key={`pending-${colIndex}`} span={4} style={{ overflow: 'hidden' }}>
                               <Stack gap="md">
-                                {columnOrders.length === 0 ? (
+                                {columnOrders.length === 0 && colIndex === 0 ? (
                                   <Center py="xl">
                                     <Text c="dimmed">{t('orders.noPendingOrders', language)}</Text>
                                   </Center>
@@ -562,7 +562,7 @@ export default function KitchenDisplayPage() {
                           return (
                             <Grid.Col key={`preparing-${colIndex}`} span={4} style={{ overflow: 'hidden' }}>
                               <Stack gap="md">
-                                {columnOrders.length === 0 ? (
+                                {columnOrders.length === 0 && colIndex === 0 ? (
                                   <Center py="xl">
                                     <Text c="dimmed">{t('orders.noPreparingOrders', language)}</Text>
                                   </Center>
