@@ -103,6 +103,23 @@ export default function OrdersPage() {
 
       // Also load orders from IndexedDB (for offline/pending orders)
       if (user?.tenantId) {
+        // Fetch ALL orders from backend (without status filter) to get complete list
+        // This ensures we can exclude IndexedDB orders that exist in backend with any status
+        let allBackendOrders: Order[] = [];
+        try {
+          const allBackendParams = {
+            branchId: selectedBranch || undefined,
+            orderType: selectedOrderType as OrderType | undefined,
+            paymentStatus: selectedPaymentStatus as PaymentStatus | undefined,
+            // No status filter - get all orders
+          };
+          allBackendOrders = await ordersApi.getOrders(allBackendParams);
+        } catch (error: any) {
+          console.error('Failed to load all orders from backend for exclusion check:', error);
+          // If this fails, we'll just use the filtered backendOrders
+          allBackendOrders = backendOrders;
+        }
+
         const indexedDBOrders = await db.orders
           .where('tenantId')
           .equals(user.tenantId)
@@ -136,16 +153,18 @@ export default function OrdersPage() {
             .filter(Boolean) as string[]
         );
 
-        // Also check by order number (more reliable for matching)
-        const backendOrderNumbers = new Set(backendOrders.map(o => o.orderNumber));
-        const backendOrderIds = new Set(backendOrders.map(o => o.id));
+        // Use ALL backend orders (not just filtered ones) to check for existence
+        // This ensures we exclude IndexedDB orders that exist in backend with any status
+        const allBackendOrderNumbers = new Set(allBackendOrders.map(o => o.orderNumber));
+        const allBackendOrderIds = new Set(allBackendOrders.map(o => o.id));
 
         // Filter IndexedDB orders: only include those that:
-        // 1. Are NOT in backend (by ID or order number)
+        // 1. Are NOT in backend (by ID or order number) - checked against ALL backend orders
         // 2. Are NOT marked as synced in sync queue
         const pendingOrders = indexedDBOrders.filter((order) => {
-          // Exclude if already in backend
-          if (backendOrderIds.has(order.id) || backendOrderNumbers.has(order.orderNumber)) {
+          // Exclude if already in backend (check against all backend orders, not just filtered ones)
+          // This prevents stale IndexedDB orders from showing when their status changed in backend
+          if (allBackendOrderIds.has(order.id) || allBackendOrderNumbers.has(order.orderNumber)) {
             return false;
           }
           // Exclude if synced or syncing
