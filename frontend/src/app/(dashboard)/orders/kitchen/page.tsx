@@ -412,17 +412,10 @@ export default function KitchenDisplayPage() {
         overflowX: 'hidden',
       }}
     >
-      <Container size="xl" py="md" style={{ minHeight: '100%' }}>
-        <Stack gap="md">
-          {/* Header */}
-          <Paper p="md" withBorder style={{ backgroundColor: 'var(--mantine-color-white)' }}>
-            <Group justify="space-between" align="center">
-              <Group>
-                <IconChefHat size={32} color={primary} />
-                <Text size="xl" fw={700}>
-                  {t('orders.kitchenDisplay', language)}
-                </Text>
-              </Group>
+      <Container fluid py="md" style={{ minHeight: '100%', width: '100%', paddingLeft: 0, paddingRight: 0, position: 'relative' }}>
+        <Stack gap="md" style={{ width: '100%' }}>
+          {/* Sound toggle - positioned absolutely */}
+          <Box style={{ position: 'absolute', top: 10, right: 10, zIndex: 1001 }}>
               <Tooltip 
                 label={soundEnabled ? t('orders.disableSound', language) : t('orders.enableSound', language)}
                 withArrow
@@ -455,132 +448,145 @@ export default function KitchenDisplayPage() {
                   {soundEnabled ? <IconVolume size={20} /> : <IconVolumeOff size={20} />}
                 </ActionIcon>
               </Tooltip>
-            </Group>
-          </Paper>
+          </Box>
 
           {loading ? (
-            <Grid gutter="md">
-              <Grid.Col span={{ base: 12, md: 6 }}>
-                <Paper p="md" withBorder style={{ backgroundColor: 'var(--mantine-color-white)', height: 'calc(100vh - 200px)' }}>
+            <Grid gutter="md" style={{ width: '100%', margin: 0 }}>
+              {/* Pending Section Skeleton */}
+              <Grid.Col span={6}>
+                <Paper p="md" withBorder style={{ backgroundColor: 'var(--mantine-color-white)', height: 'calc(100vh - 100px)' }}>
                   <Stack gap="md">
                     <Skeleton height={32} width="40%" />
-                    <Stack gap="md">
-                      {[1,2].map((i) => (
-                        <Card key={i} withBorder p="md">
-                          <Stack gap="sm">
-                            <Group justify="space-between">
-                              <Skeleton height={24} width="50%" />
-                              <Skeleton height={24} width="20%" />
-                            </Group>
-                            <Skeleton height={16} width="60%" />
-                            <Skeleton height={60} />
-                            <Skeleton height={36} />
+                    <Grid gutter="md" style={{ margin: 0 }}>
+                      {[0, 1, 2].map((colIndex) => (
+                        <Grid.Col key={colIndex} span={4}>
+                          <Stack gap="md">
+                            {[1, 2].map((i) => (
+                              <Card key={i} withBorder p="md">
+                                <Stack gap="sm">
+                                  <Skeleton height={24} width="50%" />
+                                  <Skeleton height={60} />
+                                  <Skeleton height={36} />
+                                </Stack>
+                              </Card>
+                            ))}
                           </Stack>
-                        </Card>
+                        </Grid.Col>
                       ))}
-                    </Stack>
+                    </Grid>
                   </Stack>
                 </Paper>
               </Grid.Col>
-              <Grid.Col span={{ base: 12, md: 6 }}>
-                <Paper p="md" withBorder style={{ backgroundColor: 'var(--mantine-color-white)', height: 'calc(100vh - 200px)' }}>
+              {/* Preparing Section Skeleton */}
+              <Grid.Col span={6}>
+                <Paper p="md" withBorder style={{ backgroundColor: 'var(--mantine-color-white)', height: 'calc(100vh - 100px)' }}>
                   <Stack gap="md">
                     <Skeleton height={32} width="40%" />
-                    <Stack gap="md">
-                      {[1, 2].map((i) => (
-                        <Card key={i} withBorder p="md">
-                          <Stack gap="sm">
-                            <Group justify="space-between">
-                              <Skeleton height={24} width="50%" />
-                              <Skeleton height={24} width="20%" />
-                            </Group>
-                            <Skeleton height={16} width="60%" />
-                            <Skeleton height={60} />
-                            <Skeleton height={36} />
+                    <Grid gutter="md" style={{ margin: 0 }}>
+                      {[0, 1, 2].map((colIndex) => (
+                        <Grid.Col key={colIndex} span={4}>
+                          <Stack gap="md">
+                            {[1, 2].map((i) => (
+                              <Card key={i} withBorder p="md">
+                                <Stack gap="sm">
+                                  <Skeleton height={24} width="50%" />
+                                  <Skeleton height={60} />
+                                  <Skeleton height={36} />
+                                </Stack>
+                              </Card>
+                            ))}
                           </Stack>
-                        </Card>
+                        </Grid.Col>
                       ))}
-                    </Stack>
+                    </Grid>
                   </Stack>
                 </Paper>
               </Grid.Col>
             </Grid>
           ) : (
-            <Grid gutter="md">
-              {/* Pending Orders Column */}
-              <Grid.Col span={{ base: 12, md: 6 }}>
-                <Paper p="md" withBorder style={{ backgroundColor: 'var(--mantine-color-white)', height: 'calc(100vh - 200px)', display: 'flex', flexDirection: 'column' }}>
+            <Grid gutter="md" style={{ width: '100%', margin: 0 }}>
+              {/* Pending Section with 3 Columns */}
+              <Grid.Col span={6}>
+                <Paper p="md" withBorder style={{ backgroundColor: 'var(--mantine-color-white)', height: 'calc(100vh - 100px)', display: 'flex', flexDirection: 'column' }}>
                   <Stack gap="md" style={{ flex: 1, overflow: 'hidden' }}>
-                    <Group justify="space-between">
-                      <Text fw={700} size="lg">
-                        {t('orders.pending', language)} ({pendingOrders.length})
-                      </Text>
-                      <Badge color={getWarningColor()} size="lg">
-                        {pendingOrders.length}
-                      </Badge>
-                    </Group>
-                    <ScrollArea style={{ flex: 1 }}>
-                      <Stack gap="md">
-                        {pendingOrders.length === 0 ? (
-                          <Center py="xl">
-                            <Text c="dimmed">{t('orders.noPendingOrders', language)}</Text>
-                          </Center>
-                        ) : (
-                          pendingOrders.map((order) => (
-                            <OrderCard
-                              key={order.id}
-                              order={order}
-                              language={language}
-                              primary={primary}
-                              onMarkAsReady={() => handleStartPreparing(order)}
-                              onStartPreparing={() => handleStartPreparing(order)}
-                              processing={processingOrderId === order.id}
-                              getPriorityColor={getPriorityColor}
-                              getOrderAge={getOrderAge}
-                            />
-                          ))
-                        )}
-                      </Stack>
+                    <Text fw={700} size="lg">
+                      {t('orders.pending', language)} ({pendingOrders.length})
+                    </Text>
+                    <ScrollArea style={{ flex: 1, overflowX: 'hidden' }} type="scroll">
+                      <Grid gutter="md" style={{ margin: 0 }}>
+                        {[0, 1, 2].map((colIndex) => {
+                          const columnOrders = pendingOrders.filter((_, index) => index % 3 === colIndex);
+                          return (
+                            <Grid.Col key={`pending-${colIndex}`} span={4} style={{ overflow: 'hidden' }}>
+                              <Stack gap="md">
+                                {columnOrders.length === 0 ? (
+                                  <Center py="xl">
+                                    <Text c="dimmed">{t('orders.noPendingOrders', language)}</Text>
+                                  </Center>
+                                ) : (
+                                  columnOrders.map((order) => (
+                                    <OrderCard
+                                      key={order.id}
+                                      order={order}
+                                      language={language}
+                                      primary={primary}
+                                      onMarkAsReady={() => handleStartPreparing(order)}
+                                      onStartPreparing={() => handleStartPreparing(order)}
+                                      processing={processingOrderId === order.id}
+                                      getPriorityColor={getPriorityColor}
+                                      getOrderAge={getOrderAge}
+                                    />
+                                  ))
+                                )}
+                              </Stack>
+                            </Grid.Col>
+                          );
+                        })}
+                      </Grid>
                     </ScrollArea>
                   </Stack>
                 </Paper>
               </Grid.Col>
 
-              {/* Preparing Orders Column */}
-              <Grid.Col span={{ base: 12, md: 6 }}>
-                <Paper p="md" withBorder style={{ backgroundColor: 'var(--mantine-color-white)', height: 'calc(100vh - 200px)', display: 'flex', flexDirection: 'column' }}>
+              {/* Preparing Section with 3 Columns */}
+              <Grid.Col span={6}>
+                <Paper p="md" withBorder style={{ backgroundColor: 'var(--mantine-color-white)', height: 'calc(100vh - 100px)', display: 'flex', flexDirection: 'column' }}>
                   <Stack gap="md" style={{ flex: 1, overflow: 'hidden' }}>
-                    <Group justify="space-between">
-                      <Text fw={700} size="lg">
-                        {t('orders.preparing', language)} ({preparingOrders.length})
-                      </Text>
-                      <Badge color={getInfoColor()} size="lg">
-                        {preparingOrders.length}
-                      </Badge>
-                    </Group>
-                    <ScrollArea style={{ flex: 1 }}>
-                      <Stack gap="md">
-                        {preparingOrders.length === 0 ? (
-                          <Center py="xl">
-                            <Text c="dimmed">{t('orders.noPreparingOrders', language)}</Text>
-                          </Center>
-                        ) : (
-                          preparingOrders.map((order) => (
-                            <OrderCard
-                              key={order.id}
-                              order={order}
-                              language={language}
-                              primary={primary}
-                              onMarkAsReady={() => handleMarkAsReady(order)}
-                              onStartPreparing={() => handleStartPreparing(order)}
-                              processing={processingOrderId === order.id}
-                              getPriorityColor={getPriorityColor}
-                              getOrderAge={getOrderAge}
-                              showReadyButton
-                            />
-                          ))
-                        )}
-                      </Stack>
+                    <Text fw={700} size="lg">
+                      {t('orders.preparing', language)} ({preparingOrders.length})
+                    </Text>
+                    <ScrollArea style={{ flex: 1, overflowX: 'hidden' }} type="scroll">
+                      <Grid gutter="md" style={{ margin: 0 }}>
+                        {[0, 1, 2].map((colIndex) => {
+                          const columnOrders = preparingOrders.filter((_, index) => index % 3 === colIndex);
+                          return (
+                            <Grid.Col key={`preparing-${colIndex}`} span={4} style={{ overflow: 'hidden' }}>
+                              <Stack gap="md">
+                                {columnOrders.length === 0 ? (
+                                  <Center py="xl">
+                                    <Text c="dimmed">{t('orders.noPreparingOrders', language)}</Text>
+                                  </Center>
+                                ) : (
+                                  columnOrders.map((order) => (
+                                    <OrderCard
+                                      key={order.id}
+                                      order={order}
+                                      language={language}
+                                      primary={primary}
+                                      onMarkAsReady={() => handleMarkAsReady(order)}
+                                      onStartPreparing={() => handleStartPreparing(order)}
+                                      processing={processingOrderId === order.id}
+                                      getPriorityColor={getPriorityColor}
+                                      getOrderAge={getOrderAge}
+                                      showReadyButton
+                                    />
+                                  ))
+                                )}
+                              </Stack>
+                            </Grid.Col>
+                          );
+                        })}
+                      </Grid>
                     </ScrollArea>
                   </Stack>
                 </Paper>
@@ -626,49 +632,44 @@ function OrderCard({
       style={{
         borderLeft: `4px solid ${priorityColor}`,
         backgroundColor: 'var(--mantine-color-white)',
+        overflow: 'hidden',
+        width: '100%',
       }}
     >
       <Stack gap="sm">
         {/* Order Header */}
-        <Group justify="space-between" align="flex-start">
-          <Stack gap={4}>
-            <Group gap="xs">
-              <Text fw={700} size="lg">
-                {t('pos.orderNumber', language)}: {order.orderNumber}
-              </Text>
-              {order.tokenNumber && (
-                <Badge color={primary} variant="light">
-                  {t('pos.tokenNumber', language)}: {order.tokenNumber}
-                </Badge>
-              )}
-            </Group>
-            <Group gap="xs">
-              <IconClock size={14} />
-              <Text size="sm" c="dimmed">{orderAge}</Text>
-              {order.table && (
-                <Text size="sm" c="dimmed">
-                  {t('pos.tableNo', language)}: {order.table.table_number}
-                </Text>
-              )}
-            </Group>
-          </Stack>
-          <Badge color={getStatusColor(order.status)} size="lg">
-            {t(`orders.status.${order.status}`, language)}
-          </Badge>
+        <Group gap="xs" align="center">
+          {order.tokenNumber && (
+            <Badge color={primary} variant="light" size="lg">
+              Token: {order.tokenNumber}
+            </Badge>
+          )}
+          <IconClock size={14} />
+          <Text size="sm" c="dimmed">{orderAge}</Text>
+          {order.orderType && (
+            <Badge 
+              color={
+                order.orderType === 'delivery' ? getInfoColor()  :
+                order.orderType === 'takeaway' ? getWarningColor() :
+                getSuccessColor()
+              } 
+              variant="light" 
+              size="sm"
+            >
+              {t(`orders.orderType.${order.orderType}` as any, language)}
+            </Badge>
+          )}
         </Group>
 
         {/* Order Items */}
         <Box>
-          <Text fw={600} size="sm" mb="xs">
-            {t('pos.cartItems', language)}:
-          </Text>
           {order.items && order.items.length > 0 ? (
-            <Stack gap="xs">
+            <Stack gap={0}>
               {order.items.map((item) => (
-                <Paper key={item.id} p="xs" withBorder>
-                  <Group justify="space-between">
-                    <Stack gap={4} style={{ flex: 1 }}>
-                      <Text fw={500} size="sm">
+                <Paper key={item.id} >
+                  <Group justify="space-between" wrap="nowrap" style={{ padding: '2px 2px' }}>
+                    <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+                      <Text fw={500} size="md" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
                         {item.quantity}x{' '}
                         {item.foodItem
                           ? (language === 'ar' && item.foodItem.nameAr
