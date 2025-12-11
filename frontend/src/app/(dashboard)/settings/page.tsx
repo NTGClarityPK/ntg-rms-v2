@@ -53,7 +53,6 @@ export default function SettingsPage() {
   const generalForm = useForm<Settings['general']>({
     initialValues: {
       defaultLanguage: 'en',
-      defaultCurrency: 'IQD',
       dateFormat: 'YYYY-MM-DD',
       timeFormat: '24',
       firstDayOfWeek: 'sunday',
@@ -496,13 +495,6 @@ export default function SettingsPage() {
                         { value: 'ar', label: 'Arabic' },
                       ]}
                       {...generalForm.getInputProps('defaultLanguage')}
-                    />
-                  </Grid.Col>
-                  <Grid.Col span={{ base: 12, md: 6 }}>
-                    <TextInput
-                      disabled
-                      label={t('settings.defaultCurrency' as any, language) || 'Default Currency'}
-                      {...generalForm.getInputProps('defaultCurrency')}
                     />
                   </Grid.Col> */}
                   {/* <Grid.Col span={{ base: 12, md: 6 }}>

@@ -97,7 +97,6 @@ export default function RestaurantPage() {
       phone: '',
       logoUrl: '',
       primaryColor: currentThemeColor,
-      defaultCurrency: 'IQD',
       timezone: 'Asia/Baghdad',
       fiscalYearStart: '',
       vatNumber: '',
@@ -125,7 +124,6 @@ export default function RestaurantPage() {
           phone: localData.phone || '',
           logoUrl: localData.logoUrl || '',
           primaryColor: localData.primaryColor || getCurrentThemeColor(),
-          defaultCurrency: localData.defaultCurrency || 'IQD',
           timezone: localData.timezone || 'Asia/Baghdad',
           fiscalYearStart: (localData as any).fiscalYearStart || '',
           vatNumber: (localData as any).vatNumber || '',
@@ -158,7 +156,6 @@ export default function RestaurantPage() {
             phone: serverData.phone || '',
             logoUrl: serverData.logoUrl || '',
             primaryColor: serverData.primaryColor || getCurrentThemeColor(),
-            defaultCurrency: serverData.defaultCurrency || 'IQD',
             timezone: serverData.timezone || 'Asia/Baghdad',
             fiscalYearStart: serverData.fiscalYearStart || '',
             vatNumber: serverData.vatNumber || '',
@@ -267,9 +264,6 @@ export default function RestaurantPage() {
       // Prepare update data
       const updateData: UpdateRestaurantInfoDto = { ...values };
       
-      // Remove currency from update data - it cannot be changed after registration
-      delete updateData.defaultCurrency;
-      
       // Logo should already be uploaded to Supabase Storage and URL stored in form
       // Only include logoUrl if it's a URL (not base64)
       if (updateData.logoUrl && updateData.logoUrl.startsWith('data:')) {
@@ -290,7 +284,7 @@ export default function RestaurantPage() {
         phone: updateData.phone || existingTenant?.phone,
         logoUrl: updateData.logoUrl || existingTenant?.logoUrl,
         primaryColor: updateData.primaryColor || existingTenant?.primaryColor,
-        defaultCurrency: updateData.defaultCurrency || existingTenant?.defaultCurrency || 'IQD',
+        defaultCurrency: existingTenant?.defaultCurrency || 'IQD',
         timezone: updateData.timezone || existingTenant?.timezone || 'Asia/Baghdad',
         isActive: updateData.isActive ?? existingTenant?.isActive ?? true,
         createdAt: existingTenant?.createdAt || new Date().toISOString(),
@@ -458,22 +452,6 @@ export default function RestaurantPage() {
               {t('restaurant.businessSettings', language)}
             </Title>
             <Grid>
-              <Grid.Col span={{ base: 12, md: 6 }}>
-                <Select
-                  label={t('restaurant.defaultCurrency', language)}
-                  description={t('restaurant.currencyCannotChange', language)}
-                  data={[
-                    { value: 'IQD', label: language === 'ar' ? 'IQD - الدينار العراقي' : 'IQD - Iraqi Dinar' },
-                    { value: 'USD', label: language === 'ar' ? 'USD - الدولار الأمريكي' : 'USD - US Dollar' },
-                    { value: 'EUR', label: language === 'ar' ? 'EUR - اليورو' : 'EUR - Euro' },
-                    { value: 'GBP', label: language === 'ar' ? 'GBP - الجنيه الإسترليني' : 'GBP - British Pound' },
-                    { value: 'SAR', label: language === 'ar' ? 'SAR - الريال السعودي' : 'SAR - Saudi Riyal' },
-                    { value: 'AED', label: language === 'ar' ? 'AED - الدرهم الإماراتي' : 'AED - UAE Dirham' },
-                  ]}
-                  disabled
-                  {...form.getInputProps('defaultCurrency')}
-                />
-              </Grid.Col>
               <Grid.Col span={{ base: 12, md: 6 }}>
                 <Select
                   label={t('restaurant.timezone', language)}
