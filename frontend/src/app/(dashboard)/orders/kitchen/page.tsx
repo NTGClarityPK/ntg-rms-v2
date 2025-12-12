@@ -33,6 +33,8 @@ import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getSuccessColor, getErrorColor, getWarningColor, getInfoColor, getStatusColor } from '@/lib/utils/theme';
 import { supabase } from '@/lib/supabase/client';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { realtimeOrdersService, OrderChangeCallback } from '@/lib/sync/realtime-orders-service';
+import { onOrderUpdate, notifyOrderUpdate } from '@/lib/utils/order-events';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/ar';
@@ -51,9 +53,15 @@ export default function KitchenDisplayPage() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [processingOrderId, setProcessingOrderId] = useState<string | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const subscriptionRef = useRef<any>(null);
   const previousOrderIdsRef = useRef<Set<string>>(new Set());
   const audioResumedRef = useRef<boolean>(false);
+  const loadOrdersRef = useRef<typeof loadOrders>();
+  const soundEnabledRef = useRef<boolean>(soundEnabled);
+  
+  // Keep soundEnabled ref updated
+  useEffect(() => {
+    soundEnabledRef.current = soundEnabled;
+  }, [soundEnabled]);
 
   // Initialize audio for alerts
   useEffect(() => {
@@ -130,7 +138,7 @@ export default function KitchenDisplayPage() {
     } catch (error) {
       console.error('Failed to play sound:', error);
     }
-  }, [soundEnabled]);
+  }, [soundEnabled]); // Removed loadOrders dependency
 
   const playSoundInternal = (audioContext: AudioContext) => {
     try {
@@ -185,10 +193,13 @@ export default function KitchenDisplayPage() {
             return updated && (updated.status !== prev.status || updated.updatedAt !== prev.updatedAt);
           });
         
-        // Play sound for new orders detected via polling
+        // Play sound for new orders detected
         if (hasNewOrders && soundEnabled) {
-          console.log('🔔 New orders detected via polling:', newOrderIds);
-          playSound();
+          console.log('🔔 New orders detected:', newOrderIds);
+          // Use soundEnabled from closure, playSound will be called via ref if needed
+          if (audioContextRef.current && audioResumedRef.current) {
+            playSoundInternal(audioContextRef.current);
+          }
         }
         
         // Update previous order IDs ref
@@ -212,102 +223,98 @@ export default function KitchenDisplayPage() {
         setLoading(false);
       }
     }
-  }, [language, soundEnabled, playSound]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [language]); // Removed soundEnabled and playSound to prevent infinite loops - using refs instead
 
   // Set dayjs locale when language changes
   useEffect(() => {
     dayjs.locale(language === 'ar' ? 'ar' : 'en');
   }, [language]);
 
+  // Store loadOrders in ref for stable reference
+  useEffect(() => {
+    loadOrdersRef.current = loadOrders;
+  }, [loadOrders]);
+
   useEffect(() => {
     loadOrders();
   }, [loadOrders]);
 
   // Set up Supabase Realtime subscription for cross-browser updates
+  // Using centralized realtime service for better management
   useEffect(() => {
-    if (!user?.tenantId || !supabase) {
-      console.warn('Supabase Realtime: Missing tenantId or supabase client');
+    console.log('🔍 Kitchen Realtime useEffect triggered:', {
+      hasUser: !!user,
+      tenantId: user?.tenantId,
+      isClient: typeof window !== 'undefined',
+    });
+
+    if (!user?.tenantId) {
+      console.warn('⚠️ Realtime Orders: Missing tenantId', { user });
       return;
     }
 
-    console.log('Setting up Supabase Realtime subscription for kitchen...');
-    console.log('Tenant ID:', user.tenantId);
-    
-    const channel = supabase
-      .channel(`orders-realtime-kitchen-${user.tenantId}-${Date.now()}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-          filter: `tenant_id=eq.${user.tenantId}`,
-        },
-        (payload) => {
-          console.log('✅ Order change received in kitchen:', {
-            eventType: payload.eventType,
-            new: payload.new,
-            old: payload.old,
-            table: payload.table,
-            schema: payload.schema,
-          });
-          // Play sound for new orders
-          if (payload.eventType === 'INSERT' && soundEnabled) {
-            console.log('🔔 New order detected via Realtime:', payload.new?.id);
-            playSound();
-          }
-          // Reload orders silently in background (INSERT, UPDATE, DELETE)
-          console.log('🔄 Reloading orders due to change...');
-          loadOrders(true); // silent = true
-        }
-      )
-      .subscribe((status, err) => {
-        console.log('Supabase Realtime subscription status:', status);
-        if (err) {
-          console.error('❌ Supabase Realtime error:', err);
-        }
-        if (status === 'SUBSCRIBED') {
-          console.log('✅ Successfully subscribed to orders table changes');
-          console.log('📡 Listening for changes on orders table with tenant_id =', user.tenantId);
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('❌ Supabase Realtime channel error');
-        } else if (status === 'TIMED_OUT') {
-          console.error('❌ Supabase Realtime subscription timed out');
-        } else if (status === 'CLOSED') {
-          console.warn('⚠️ Supabase Realtime channel closed');
-        }
-      });
+    console.log('📡 Setting up Realtime subscription for kitchen display...');
+    console.log('📋 Tenant ID:', user.tenantId);
+    console.log('🔍 Realtime service:', realtimeOrdersService);
+    console.log('🔍 Supabase client check:', { 
+      hasSupabase: !!supabase,
+      supabaseType: typeof supabase,
+    });
 
-    subscriptionRef.current = channel;
+    // Subscribe to order changes using centralized service
+    // Pass supabase client directly to avoid async loading issues
+    const unsubscribe = realtimeOrdersService.subscribeToOrders(
+      user.tenantId,
+      (payload: Parameters<OrderChangeCallback>[0]) => {
+        const timestamp = new Date().toISOString();
+        console.log(`🎉 [${timestamp}] ===== ORDER CHANGE CALLBACK TRIGGERED IN KITCHEN =====`);
+        console.log('✅ Event Type:', payload.eventType);
+        console.log('✅ Order ID:', payload.new?.id || payload.old?.id);
+        console.log('✅ Full Payload:', payload);
+        console.log('✅ New Order Data:', payload.new);
+        console.log('✅ Old Order Data:', payload.old);
 
-    // Fallback: Poll for changes every 5 seconds if Realtime doesn't work
-    const pollInterval = setInterval(() => {
-      console.log('🔄 Polling for order changes (fallback)...');
-      loadOrders(true); // silent = true, no loading state
-    }, 5000);
+        // Play sound for new orders (INSERT events)
+        if (payload.eventType === 'INSERT' && soundEnabledRef.current) {
+          console.log('🔔 New order detected via Realtime - playing sound:', payload.new?.id);
+          playSound();
+        }
+
+        // Reload orders silently in background for all changes (INSERT, UPDATE, DELETE)
+        console.log('🔄 Reloading orders due to realtime change...');
+        if (loadOrdersRef.current) {
+          console.log('✅ Calling loadOrdersRef.current(true)...');
+          loadOrdersRef.current(true); // silent = true
+        } else {
+          console.error('❌ CRITICAL: loadOrdersRef.current is not available!');
+          console.error('This means the loadOrders function was not properly stored in the ref.');
+        }
+      },
+      supabase || undefined // Pass the supabase client directly if available
+    );
+
+    console.log('✅ Realtime subscription setup complete. Unsubscribe function:', typeof unsubscribe);
 
     return () => {
-      console.log('Cleaning up Supabase Realtime subscription...');
-      clearInterval(pollInterval);
-      if (subscriptionRef.current && supabase) {
-        supabase.removeChannel(subscriptionRef.current);
-      }
+      console.log('🧹 Cleaning up Realtime subscription for kitchen...');
+      unsubscribe();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.tenantId, soundEnabled, loadOrders, playSound]);
+  }, [user?.tenantId]); // Only depend on tenantId - callbacks use refs
 
   // Listen for order status changes from other screens
   useEffect(() => {
-    const { onOrderUpdate } = require('@/lib/utils/order-events');
-    
     const unsubscribeStatusChanged = onOrderUpdate('order-status-changed', () => {
-      loadOrders();
+      if (loadOrdersRef.current) {
+        loadOrdersRef.current(true); // silent reload
+      }
     });
 
     return () => {
       unsubscribeStatusChanged();
     };
-  }, [loadOrders]);
+  }, []); // Empty deps - only set up once, use ref for latest function
 
   const handleMarkAsReady = async (order: Order) => {
     setProcessingOrderId(order.id);
@@ -320,12 +327,13 @@ export default function KitchenDisplayPage() {
       });
       
       // Notify same-browser screens about the status change (for immediate UI update)
-      const { notifyOrderUpdate } = await import('@/lib/utils/order-events');
       notifyOrderUpdate('order-status-changed', order.id);
       
       // Note: Supabase Realtime will handle cross-browser updates automatically
       // We still call loadOrders() for immediate local update, but Supabase will also trigger it
-      loadOrders();
+      if (loadOrdersRef.current) {
+        loadOrdersRef.current();
+      }
     } catch (error: any) {
       notifications.show({
         title: t('common.error' as any, language),
@@ -348,12 +356,13 @@ export default function KitchenDisplayPage() {
       });
       
       // Notify same-browser screens about the status change (for immediate UI update)
-      const { notifyOrderUpdate } = await import('@/lib/utils/order-events');
       notifyOrderUpdate('order-status-changed', order.id);
       
       // Note: Supabase Realtime will handle cross-browser updates automatically
       // We still call loadOrders() for immediate local update, but Supabase will also trigger it
-      loadOrders();
+      if (loadOrdersRef.current) {
+        loadOrdersRef.current();
+      }
     } catch (error: any) {
       notifications.show({
         title: t('common.error' as any, language),

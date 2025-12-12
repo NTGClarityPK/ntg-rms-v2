@@ -450,11 +450,21 @@ class SyncService {
   /**
    * Refresh cached reports from backend
    * This is called periodically to ensure reports are up-to-date
+   * Only refreshes when on dashboard page to avoid unnecessary API calls
    */
   async refreshReports(): Promise<void> {
     if (!navigator.onLine) {
       console.log('📴 Offline, skipping report refresh...');
       return;
+    }
+
+    // Only refresh reports when on dashboard page
+    if (typeof window !== 'undefined') {
+      const currentPath = window.location.pathname;
+      if (currentPath !== '/dashboard' && currentPath !== '/') {
+        console.log('📊 Skipping report refresh (not on dashboard page)');
+        return;
+      }
     }
 
     try {
