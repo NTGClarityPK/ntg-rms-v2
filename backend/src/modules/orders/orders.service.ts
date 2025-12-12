@@ -768,7 +768,7 @@ export class OrdersService {
   async getOrders(
     tenantId: string,
     filters: {
-      status?: string;
+      status?: string | string[];
       branchId?: string;
       orderType?: string;
       paymentStatus?: string;
@@ -776,6 +776,7 @@ export class OrdersService {
       endDate?: string;
       limit?: number;
       offset?: number;
+      includeItems?: boolean;
     } = {},
   ) {
     const supabase = this.supabaseService.getServiceRoleClient();
@@ -793,8 +794,13 @@ export class OrdersService {
       .order('created_at', { ascending: false })
       .limit(defaultLimit); // Always set a limit to avoid PostgREST default limit issues
 
+    // Support multiple statuses (array) or single status (string)
     if (filters.status) {
-      query = query.eq('status', filters.status);
+      if (Array.isArray(filters.status) && filters.status.length > 0) {
+        query = query.in('status', filters.status);
+      } else if (typeof filters.status === 'string') {
+        query = query.eq('status', filters.status);
+      }
     }
 
     if (filters.branchId) {
@@ -884,13 +890,185 @@ export class OrdersService {
     const customerMap = new Map((customers.data || []).map((c: any) => [c.id, c]));
     const cashierMap = new Map((cashiers.data || []).map((u: any) => [u.id, u]));
 
+    // If includeItems is true, batch fetch all order items
+    let orderItemsMap = new Map<string, any[]>();
+    let foodItemMap = new Map<string, any>();
+    let variationMap = new Map<string, any>();
+    let addOnMap = new Map<string, any>();
+
+    if (filters.includeItems && orders && orders.length > 0) {
+      const orderIds = orders.map((o: any) => o.id);
+      
+      // Batch fetch all order items for all orders
+      const { data: allOrderItems, error: itemsError } = await supabase
+        .from('order_items')
+        .select('*')
+        .in('order_id', orderIds)
+        .order('created_at', { ascending: true });
+
+      if (itemsError) {
+        throw new InternalServerErrorException(`Failed to fetch order items: ${itemsError.message}`);
+      }
+
+      // Group items by order_id
+      if (allOrderItems) {
+        allOrderItems.forEach((item: any) => {
+          const orderId = item.order_id;
+          if (!orderItemsMap.has(orderId)) {
+            orderItemsMap.set(orderId, []);
+          }
+          orderItemsMap.get(orderId)!.push(item);
+        });
+      }
+
+      // Collect unique IDs for batch fetching related data
+      const foodItemIds = [...new Set(allOrderItems?.map((item: any) => item.food_item_id).filter(Boolean) || [])];
+      const variationIds = [...new Set(allOrderItems?.map((item: any) => item.variation_id).filter(Boolean) || [])];
+
+      // Batch fetch food items and variations
+      const [foodItemsResult, variationsResult] = await Promise.all([
+        foodItemIds.length > 0
+          ? supabase
+              .from('food_items')
+              .select('id, name_en, name_ar, image_url')
+              .in('id', foodItemIds)
+          : Promise.resolve({ data: [], error: null }),
+        variationIds.length > 0
+          ? supabase
+              .from('food_item_variations')
+              .select('id, variation_group, variation_name, price_adjustment')
+              .in('id', variationIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+
+      // Create lookup maps
+      if (foodItemsResult.data) {
+        foodItemsResult.data.forEach((fi: any) => {
+          foodItemMap.set(fi.id, fi);
+        });
+      }
+      if (variationsResult.data) {
+        variationsResult.data.forEach((v: any) => {
+          variationMap.set(v.id, v);
+        });
+      }
+
+      // Batch fetch all add-ons for all order items
+      const orderItemIds = allOrderItems?.map((item: any) => item.id).filter(Boolean) || [];
+      if (orderItemIds.length > 0) {
+        const { data: allAddOns } = await supabase
+          .from('order_item_add_ons')
+          .select('*')
+          .in('order_item_id', orderItemIds);
+
+        // Collect add-on IDs
+        const addOnIds = [...new Set(allAddOns?.map((a: any) => a.add_on_id).filter(Boolean) || [])];
+        
+        if (addOnIds.length > 0) {
+          const { data: addOnDetails } = await supabase
+            .from('add_ons')
+            .select('id, name_en, name_ar, price')
+            .in('id', addOnIds);
+
+          if (addOnDetails) {
+            addOnDetails.forEach((a: any) => {
+              addOnMap.set(a.id, a);
+            });
+          }
+        }
+
+        // Group add-ons by order_item_id
+        const addOnsByItemId = new Map<string, any[]>();
+        allAddOns?.forEach((addOn: any) => {
+          const itemId = addOn.order_item_id;
+          if (!addOnsByItemId.has(itemId)) {
+            addOnsByItemId.set(itemId, []);
+          }
+          addOnsByItemId.get(itemId)!.push(addOn);
+        });
+
+        // Attach add-ons to order items map
+        orderItemsMap.forEach((items, orderId) => {
+          items.forEach((item: any) => {
+            (item as any).addOns = addOnsByItemId.get(item.id) || [];
+          });
+        });
+      }
+    }
+
     // Get order items count for each order and enrich with related data
     const ordersWithItemCount = await Promise.all(
       (orders || []).map(async (order: any) => {
-        const { count } = await supabase
-          .from('order_items')
-          .select('*', { count: 'exact', head: true })
-          .eq('order_id', order.id);
+        // Get items count (if not including items) or use items from map
+        let itemsCount = 0;
+        let items: any[] = [];
+
+        if (filters.includeItems) {
+          const orderItems = orderItemsMap.get(order.id) || [];
+          itemsCount = orderItems.length;
+          
+          // Transform order items with related data
+          items = orderItems.map((item: any) => {
+            const foodItemData = item.food_item_id ? foodItemMap.get(item.food_item_id) : null;
+            const transformedFoodItem = foodItemData ? {
+              id: foodItemData.id,
+              nameEn: foodItemData.name_en || null,
+              nameAr: foodItemData.name_ar || null,
+              imageUrl: foodItemData.image_url || null,
+            } : null;
+
+            const variationData = item.variation_id ? variationMap.get(item.variation_id) : null;
+            const transformedVariation = variationData ? {
+              id: variationData.id,
+              variationGroup: variationData.variation_group || null,
+              variationName: variationData.variation_name || null,
+              priceAdjustment: Number(variationData.price_adjustment) || 0,
+            } : null;
+
+            const itemAddOns = (item.addOns || []).map((addOn: any) => {
+              const addOnData = addOn.add_on_id ? addOnMap.get(addOn.add_on_id) : null;
+              const transformedAddOn = addOnData ? {
+                id: addOnData.id,
+                nameEn: addOnData.name_en || null,
+                nameAr: addOnData.name_ar || null,
+                price: Number(addOnData.price) || 0,
+              } : null;
+
+              return {
+                id: addOn.id,
+                addOnId: addOn.add_on_id,
+                quantity: Number(addOn.quantity) || 0,
+                unitPrice: Number(addOn.unit_price) || 0,
+                addOn: transformedAddOn,
+              };
+            });
+
+            return {
+              id: item.id,
+              orderId: item.order_id,
+              foodItemId: item.food_item_id,
+              foodItem: transformedFoodItem,
+              variationId: item.variation_id || null,
+              variation: transformedVariation,
+              quantity: Number(item.quantity) || 0,
+              unitPrice: Number(item.unit_price) || 0,
+              discountAmount: Number(item.discount_amount) || 0,
+              taxAmount: Number(item.tax_amount) || 0,
+              subtotal: Number(item.subtotal) || 0,
+              specialInstructions: item.special_instructions || null,
+              addOns: itemAddOns,
+              createdAt: item.created_at,
+              updatedAt: item.updated_at,
+            };
+          });
+        } else {
+          // Only get count if not including items
+          const { count } = await supabase
+            .from('order_items')
+            .select('*', { count: 'exact', head: true })
+            .eq('order_id', order.id);
+          itemsCount = count || 0;
+        }
 
         // Transform snake_case to camelCase and ensure numeric fields are numbers
         return {
@@ -923,7 +1101,8 @@ export class OrdersService {
           orderDate: order.order_date || order.created_at,
           createdAt: order.created_at,
           updatedAt: order.updated_at,
-          itemsCount: count || 0,
+          itemsCount,
+          ...(filters.includeItems ? { items } : {}),
         };
       }),
     );

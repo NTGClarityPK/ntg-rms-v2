@@ -94,7 +94,7 @@ export interface Order {
 }
 
 export interface GetOrdersParams {
-  status?: OrderStatus;
+  status?: OrderStatus | OrderStatus[];
   branchId?: string;
   orderType?: OrderType;
   paymentStatus?: PaymentStatus;
@@ -102,6 +102,7 @@ export interface GetOrdersParams {
   endDate?: string;
   limit?: number;
   offset?: number;
+  includeItems?: boolean;
 }
 
 export interface UpdateOrderStatusDto {
@@ -172,7 +173,16 @@ export const ordersApi = {
   },
 
   async getOrders(params?: GetOrdersParams): Promise<Order[]> {
-    const response = await apiClient.get(API_ENDPOINTS.ORDERS, { params });
+    // Convert status array to comma-separated string for query parameter
+    const queryParams: any = { ...params };
+    if (params?.status && Array.isArray(params.status)) {
+      queryParams.status = params.status.join(',');
+    }
+    // Convert boolean to string for query parameter
+    if (params?.includeItems !== undefined) {
+      queryParams.includeItems = params.includeItems.toString();
+    }
+    const response = await apiClient.get(API_ENDPOINTS.ORDERS, { params: queryParams });
     return response.data;
   },
 

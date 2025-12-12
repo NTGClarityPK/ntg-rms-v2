@@ -159,37 +159,20 @@ export default function KitchenDisplayPage() {
       setLoading(true);
     }
     try {
-      const data = await ordersApi.getOrders({
-        status: 'pending',
+      // Fetch pending and preparing orders in a single call with items included
+      // This reduces API calls from 2 + N (where N = number of orders) to just 1
+      const allOrders = await ordersApi.getOrders({
+        status: ['pending', 'preparing'],
+        includeItems: true,
       });
-      // Also get preparing orders
-      const preparingData = await ordersApi.getOrders({
-        status: 'preparing',
-      });
-      const allOrders = [...data, ...preparingData];
-      
-      // Fetch full order details with items for each order
-      const ordersWithItems = await Promise.all(
-        allOrders.map(async (order) => {
-          try {
-            // Fetch full order details which includes items
-            const fullOrder = await ordersApi.getOrderById(order.id);
-            return fullOrder;
-          } catch (error) {
-            console.error(`Failed to load full details for order ${order.id}:`, error);
-            // Return order without items if fetch fails
-            return order;
-          }
-        })
-      );
       
       // Sort by order date (newest first)
-      ordersWithItems.sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
+      allOrders.sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
       
       // Only update if data actually changed (to prevent unnecessary re-renders)
       setOrders((prevOrders) => {
         const prevIds = new Set(prevOrders.map(o => o.id));
-        const newIds = new Set(ordersWithItems.map(o => o.id));
+        const newIds = new Set(allOrders.map(o => o.id));
         
         // Detect new orders (orders that exist in newIds but not in prevIds)
         const newOrderIds = [...newIds].filter(id => !prevIds.has(id));
@@ -198,7 +181,7 @@ export default function KitchenDisplayPage() {
         const idsChanged = prevIds.size !== newIds.size || 
           [...prevIds].some(id => !newIds.has(id)) ||
           prevOrders.some(prev => {
-            const updated = ordersWithItems.find(o => o.id === prev.id);
+            const updated = allOrders.find(o => o.id === prev.id);
             return updated && (updated.status !== prev.status || updated.updatedAt !== prev.updatedAt);
           });
         
@@ -212,7 +195,7 @@ export default function KitchenDisplayPage() {
         previousOrderIdsRef.current = newIds;
         
         if (idsChanged || prevOrders.length === 0) {
-          return ordersWithItems;
+          return allOrders;
         }
         return prevOrders;
       });

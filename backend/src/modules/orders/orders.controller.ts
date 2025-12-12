@@ -28,7 +28,7 @@ export class OrdersController {
 
   @Get()
   @ApiOperation({ summary: 'Get all orders with filters' })
-  @ApiQuery({ name: 'status', required: false, enum: ['pending', 'preparing', 'ready', 'served', 'completed', 'cancelled'] })
+  @ApiQuery({ name: 'status', required: false, description: 'Order status(es). Can be comma-separated for multiple values: pending,preparing' })
   @ApiQuery({ name: 'branchId', required: false, type: String })
   @ApiQuery({ name: 'orderType', required: false, enum: ['dine_in', 'takeaway', 'delivery'] })
   @ApiQuery({ name: 'paymentStatus', required: false, enum: ['unpaid', 'paid', 'partial'] })
@@ -36,6 +36,7 @@ export class OrdersController {
   @ApiQuery({ name: 'endDate', required: false, type: String })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'offset', required: false, type: Number })
+  @ApiQuery({ name: 'includeItems', required: false, type: Boolean, description: 'Include order items in response' })
   getOrders(
     @CurrentUser() user: any,
     @Query('status') status?: string,
@@ -46,9 +47,13 @@ export class OrdersController {
     @Query('endDate') endDate?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
+    @Query('includeItems') includeItems?: string,
   ) {
+    // Parse status: support comma-separated values like "pending,preparing"
+    const statusArray = status?.includes(',') ? status.split(',').map(s => s.trim()) : status ? [status] : undefined;
+    
     return this.ordersService.getOrders(user.tenantId, {
-      status,
+      status: statusArray,
       branchId,
       orderType,
       paymentStatus,
@@ -56,6 +61,7 @@ export class OrdersController {
       endDate,
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined,
+      includeItems: includeItems === 'true' || includeItems === '1',
     });
   }
 
