@@ -33,7 +33,7 @@ import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getSuccessColor, getErrorColor, getWarningColor, getInfoColor, getStatusColor } from '@/lib/utils/theme';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { onOrderUpdate, notifyOrderUpdate } from '@/lib/utils/order-events';
-import { useKitchenPolling } from '@/lib/hooks/use-kitchen-polling';
+import { useKitchenSse, OrderUpdateEvent } from '@/lib/hooks/use-kitchen-sse';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/ar';
@@ -240,19 +240,53 @@ export default function KitchenDisplayPage() {
     loadOrders();
   }, [loadOrders]);
 
-  // Smart polling for kitchen display updates
-  // Polls every 3 seconds when page is visible, 10 seconds when hidden
-  useKitchenPolling({
-    onPoll: async () => {
+  // Server-Sent Events (SSE) for real-time kitchen display updates
+  // Receives instant updates when orders are created or status changes
+  // Falls back to polling if SSE fails
+  const { isConnected } = useKitchenSse({
+    onOrderUpdate: (event: OrderUpdateEvent) => {
+      console.log('📨 Order update received via SSE:', event.type, event.orderId);
+      
+      // Play sound for new orders
+      if (event.type === 'ORDER_CREATED' && soundEnabledRef.current) {
+        console.log('🔔 New order detected via SSE - playing sound:', event.orderId);
+        if (audioContextRef.current && audioResumedRef.current) {
+          playSoundInternal(audioContextRef.current);
+        }
+      }
+      
+      // Reload orders to get latest data
       if (loadOrdersRef.current) {
-        await loadOrdersRef.current(true); // silent = true to avoid loading spinner
+        loadOrdersRef.current(true); // silent = true to avoid loading spinner
       }
     },
-    activeInterval: 3000, // 3 seconds when page is visible
-    idleInterval: 10000, // 10 seconds when page is hidden
+    onConnect: () => {
+      console.log('✅ SSE connected - receiving real-time order updates');
+    },
+    onError: (error) => {
+      console.error('❌ SSE connection error:', error);
+      // Fallback: reload orders manually on error
+      if (loadOrdersRef.current) {
+        loadOrdersRef.current(true);
+      }
+    },
     enabled: true,
-    initialDelay: 1000, // Wait 1 second before first poll
   });
+
+  // Fallback polling if SSE is not connected (poll every 5 seconds)
+  // This ensures updates even if SSE fails
+  useEffect(() => {
+    if (!isConnected) {
+      console.log('⚠️ SSE not connected, using polling fallback');
+      const pollInterval = setInterval(() => {
+        if (loadOrdersRef.current && navigator.onLine) {
+          loadOrdersRef.current(true); // silent poll
+        }
+      }, 5000); // Poll every 5 seconds as fallback
+
+      return () => clearInterval(pollInterval);
+    }
+  }, [isConnected]);
 
   // Listen for order status changes from other screens
   useEffect(() => {

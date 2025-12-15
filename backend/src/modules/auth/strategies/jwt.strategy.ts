@@ -15,7 +15,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new Error('JWT_SECRET is not defined in environment variables');
     }
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        // First try to get token from Authorization header (standard)
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+        // Fallback to query parameter for SSE (since SSE doesn't support custom headers)
+        (request: any) => {
+          return request?.query?.token || null;
+        },
+      ]),
       ignoreExpiration: false,
       secretOrKey: secret,
     });

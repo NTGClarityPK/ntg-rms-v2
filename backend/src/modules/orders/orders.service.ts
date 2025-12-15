@@ -16,6 +16,7 @@ import { InventoryService } from '../inventory/inventory.service';
 import { DeliveryService } from '../delivery/delivery.service';
 import { TaxesService } from '../taxes/taxes.service';
 import { SettingsService } from '../settings/settings.service';
+import { OrdersSseService } from './orders-sse.service';
 
 @Injectable()
 export class OrdersService {
@@ -25,6 +26,7 @@ export class OrdersService {
     private inventoryService: InventoryService,
     private taxesService: TaxesService,
     private settingsService: SettingsService,
+    private ordersSseService: OrdersSseService,
     @Inject(forwardRef(() => DeliveryService))
     private deliveryService: DeliveryService,
   ) {}
@@ -741,19 +743,30 @@ export class OrdersService {
 
       // Try to get full order details for response
       // If getOrderById fails (e.g., due to RLS or timing), return the basic order
+      let fullOrder;
       try {
-        const fullOrder = await this.getOrderById(tenantId, order.id);
-        return fullOrder;
+        fullOrder = await this.getOrderById(tenantId, order.id);
       } catch (error) {
-        // If getOrderById fails, return the basic order data
-        console.warn(`Failed to fetch full order details for ${order.id}, returning basic order:`, error instanceof Error ? error.message : 'Unknown error');
-        return {
+        // If getOrderById fails, create basic order object
+        console.warn(`Failed to fetch full order details for ${order.id}, using basic order:`, error instanceof Error ? error.message : 'Unknown error');
+        fullOrder = {
           ...order,
           items: orderItems,
           payments: [],
           timeline: [{ event: 'Order Placed', timestamp: order.placed_at || order.created_at }],
         };
       }
+      
+      // Emit SSE event for new order (always emit, even if getOrderById failed)
+      console.log(`📡 Emitting ORDER_CREATED event for order ${order.id}, tenant ${tenantId}`);
+      this.ordersSseService.emitOrderUpdate({
+        type: 'ORDER_CREATED',
+        tenantId,
+        orderId: order.id,
+        order: fullOrder,
+      });
+      
+      return fullOrder;
     } catch (error) {
       if (error instanceof BadRequestException || error instanceof NotFoundException) {
         throw error;
@@ -1777,7 +1790,7 @@ export class OrdersService {
     }
 
     // Update order
-    const { data: updatedOrder, error } = await supabase
+    const { data: supabaseUpdatedOrder, error } = await supabase
       .from('orders')
       .update(updateData)
       .eq('id', orderId)
@@ -1820,7 +1833,18 @@ export class OrdersService {
       .update({ updated_at: new Date().toISOString() })
       .eq('id', orderId);
 
-    return this.getOrderById(tenantId, orderId);
+    // Get updated order for SSE event
+    const updatedOrder = await this.getOrderById(tenantId, orderId);
+    
+    // Emit SSE event for order status change
+    this.ordersSseService.emitOrderUpdate({
+      type: 'ORDER_STATUS_CHANGED',
+      tenantId,
+      orderId,
+      order: updatedOrder,
+    });
+
+    return updatedOrder;
   }
 
   /**
