@@ -171,7 +171,100 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
         color: ${config.typography.navbarSectionHeaderColor} !important;
       }
       
-      /* Button styles are handled by component-level styling in createDynamicTheme.ts */
+      /* Button Styles - Override ALL button styles including inline styles to use themeConfig */
+      .mantine-Button-root,
+      button.mantine-Button-root,
+      .mantine-Button-root[style],
+      button[class*="mantine-Button-root"] {
+        background-color: ${config.components.button.backgroundColor} !important;
+        color: ${config.components.button.textColor} !important;
+        font-family: ${config.typography.fontFamily.primary} !important;
+        font-weight: ${config.typography.fontWeight.medium} !important;
+        border: none !important;
+      }
+      
+      /* Button Hover */
+      .mantine-Button-root:hover:not(:disabled):not([data-disabled]),
+      button.mantine-Button-root:hover:not(:disabled):not([data-disabled]) {
+        background-color: ${config.components.button.hoverColor} !important;
+        color: ${config.components.button.textColor} !important;
+      }
+      
+      /* Button Active State */
+      .mantine-Button-root:active:not(:disabled):not([data-disabled]) {
+        background-color: ${config.components.button.hoverColor} !important;
+      }
+      
+      /* Button Disabled */
+      .mantine-Button-root:disabled,
+      button.mantine-Button-root:disabled,
+      .mantine-Button-root[data-disabled] {
+        opacity: 0.6 !important;
+        background-color: ${config.components.button.backgroundColor} !important;
+      }
+      
+      /* Override inline styles on buttons */
+      .mantine-Button-root[style*="background"],
+      button[style*="background"][class*="mantine-Button"],
+      .mantine-Button-root[style*="color"],
+      button[style*="color"][class*="mantine-Button"] {
+        background-color: ${config.components.button.backgroundColor} !important;
+        color: ${config.components.button.textColor} !important;
+      }
+      
+      /* Override inline hover styles */
+      .mantine-Button-root[style*="background"]:hover:not(:disabled):not([data-disabled]),
+      button[style*="background"][class*="mantine-Button"]:hover:not(:disabled):not([data-disabled]),
+      .mantine-Button-root[style*="color"]:hover:not(:disabled):not([data-disabled]),
+      button[style*="color"][class*="mantine-Button"]:hover:not(:disabled):not([data-disabled]) {
+        background-color: ${config.components.button.hoverColor} !important;
+        color: ${config.components.button.textColor} !important;
+      }
+      
+      /* ActionIcon Styles - Small action buttons (edit, delete, etc.) - Use button controls from themeConfig */
+      .mantine-ActionIcon-root,
+      button.mantine-ActionIcon-root,
+      .mantine-ActionIcon-root[style],
+      [class*="mantine-ActionIcon-root"] {
+        background-color: ${config.components.button.backgroundColor} !important;
+        color: ${config.components.button.textColor} !important;
+        font-family: ${config.typography.fontFamily.primary} !important;
+        border: none !important;
+      }
+      
+      /* ActionIcon Hover */
+      .mantine-ActionIcon-root:hover:not(:disabled):not([data-disabled]),
+      button.mantine-ActionIcon-root:hover:not(:disabled):not([data-disabled]),
+      [class*="mantine-ActionIcon-root"]:hover:not(:disabled):not([data-disabled]) {
+        background-color: ${config.components.button.hoverColor} !important;
+        color: ${config.components.button.textColor} !important;
+      }
+      
+      /* ActionIcon Active State */
+      .mantine-ActionIcon-root:active:not(:disabled):not([data-disabled]) {
+        background-color: ${config.components.button.hoverColor} !important;
+      }
+      
+      /* ActionIcon Disabled */
+      .mantine-ActionIcon-root:disabled,
+      .mantine-ActionIcon-root[data-disabled] {
+        opacity: 0.6 !important;
+        background-color: ${config.components.button.backgroundColor} !important;
+      }
+      
+      /* Override inline styles on ActionIcon */
+      .mantine-ActionIcon-root[style*="background"],
+      .mantine-ActionIcon-root[style*="color"] {
+        background-color: ${config.components.button.backgroundColor} !important;
+        color: ${config.components.button.textColor} !important;
+      }
+      
+      /* Override ActionIcon inline hover styles */
+      .mantine-ActionIcon-root[style*="background"]:hover:not(:disabled):not([data-disabled]),
+      .mantine-ActionIcon-root[style*="color"]:hover:not(:disabled):not([data-disabled]) {
+        background-color: ${config.components.button.hoverColor} !important;
+        color: ${config.components.button.textColor} !important;
+      }
       
       /* Table Header Hover */
       .mantine-Table-thead .mantine-Table-th:hover {

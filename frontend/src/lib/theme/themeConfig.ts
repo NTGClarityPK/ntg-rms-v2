@@ -141,8 +141,8 @@ export function generateThemeConfig(
         textColor: themeColors.colorTextMedium,
         hoverBackground: themeColors.colorDarkHover, // Navbar menu hover background
         hoverTextColor: themeColors.colorTextDark, // Navbar menu hover text
-        activeBackground: themeColors.primary, // Navbar menu selected/active background
-        activeTextColor: themeColors.colorCard, // Navbar menu selected/active text color - customize this
+        activeBackground: themeColors.colorDark, // Navbar menu selected/active background
+        activeTextColor: themeColors.colorTextDark, // Navbar menu selected/active text color - customize this
       },
       header: {
         backgroundColor: themeColors.colorMedium, // Change this to customize header
@@ -157,8 +157,8 @@ export function generateThemeConfig(
         borderColor: themeColors.border,
       },
       button: {
-        backgroundColor: themeColors.colorMedium,
-        textColor: themeColors.colorTextMedium,
+        backgroundColor: themeColors.primary,
+        textColor: themeColors.colorCard,
         hoverColor: themeColors.colorDarkHover,
       },
       table: {
@@ -176,11 +176,11 @@ export function generateThemeConfig(
         textColor: themeColors.colorTextMedium,
       },
       tabs: {
-        backgroundColor: themeColors.colorMedium,
+        backgroundColor: themeColors.colorLight,
         borderColor: themeColors.border,
         textColor: themeColors.colorTextMedium,
-        selectedTabFontColor: themeColors.colorCard, // Selected tab font color - customize this
-        selectedTabBackgroundColor: themeColors.primary, // Selected tab background
+        selectedTabFontColor: themeColors.colorTextDark, // Selected tab font color - customize this
+        selectedTabBackgroundColor: themeColors.colorDark, // Selected tab background
         hoverTabFontColor: themeColors.colorTextDark, // Tab hover font color
         hoverTabBackgroundColor: themeColors.colorDark, // Tab hover background
       },
