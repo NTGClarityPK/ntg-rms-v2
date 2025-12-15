@@ -21,6 +21,22 @@ export default function DashboardLayout({
   const { isAuthenticated, user, setUser } = useAuthStore();
   const router = useRouter();
   const [isInitializing, setIsInitializing] = useState(true);
+  
+  // Navbar collapsed state (persisted to localStorage)
+  const [navbarCollapsed, setNavbarCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('navbar-collapsed');
+      return saved === 'true';
+    }
+    return false; // Default to expanded
+  });
+
+  useEffect(() => {
+    // Save collapsed state to localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('navbar-collapsed', String(navbarCollapsed));
+    }
+  }, [navbarCollapsed]);
 
   useEffect(() => {
     // Initialize sync service
@@ -98,19 +114,26 @@ export default function DashboardLayout({
     return null;
   }
 
+  // Calculate navbar width based on collapsed state
+  const navbarWidth = navbarCollapsed ? 70 : 250;
+
   return (
     <AppShell
       header={{ height: 60 }}
       navbar={{
-        width: 250,
+        width: navbarWidth,
         breakpoint: 'sm',
         collapsed: { mobile: !mobileOpened, desktop: !desktopOpened },
       }}
       padding="md"
     >
       <Header mobileOpened={mobileOpened} toggleMobile={toggleMobile} />
-      <AppShell.Navbar p="md">
-        <Sidebar onMobileClose={() => mobileOpened && toggleMobile()} />
+      <AppShell.Navbar p={navbarCollapsed ? "xs" : "md"}>
+        <Sidebar 
+          onMobileClose={() => mobileOpened && toggleMobile()} 
+          collapsed={navbarCollapsed}
+          onCollapseChange={setNavbarCollapsed}
+        />
       </AppShell.Navbar>
 
       <AppShell.Main>{children}</AppShell.Main>

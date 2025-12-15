@@ -89,25 +89,47 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
         color: ${config.components.header.textColor} !important;
       }
       
-      /* Main Content / Page Background */
-      .mantine-AppShell-main {
-        background-color: ${config.components.page.backgroundColor} !important;
-      }
-      
       /* NavLink */
       .mantine-NavLink-root {
         color: ${config.components.navbar.textColor} !important;
         font-family: ${config.typography.fontFamily.primary} !important;
+        border-radius: 8px !important;
+        transition: all 0.2s ease !important;
       }
       
       .mantine-NavLink-root:hover {
         background-color: ${config.components.navbar.hoverBackground} !important;
         color: ${config.components.navbar.hoverTextColor} !important;
+        border-radius: 8px !important;
       }
       
       .mantine-NavLink-root[data-active] {
         background-color: ${config.components.navbar.activeBackground} !important;
         color: ${config.components.navbar.activeTextColor} !important;
+        border-radius: 8px !important;
+      }
+      
+      /* Collapsed Navbar - Icons only */
+      .mantine-AppShell-navbar[style*="width: 70"] .mantine-NavLink-root,
+      .mantine-AppShell-navbar[style*="width: 70px"] .mantine-NavLink-root {
+        justify-content: center !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+      }
+      
+      .mantine-AppShell-navbar[style*="width: 70"] .mantine-NavLink-root .mantine-NavLink-body,
+      .mantine-AppShell-navbar[style*="width: 70px"] .mantine-NavLink-root .mantine-NavLink-body {
+        justify-content: center !important;
+      }
+      
+      .mantine-AppShell-navbar[style*="width: 70"] .mantine-NavLink-label,
+      .mantine-AppShell-navbar[style*="width: 70px"] .mantine-NavLink-label {
+        display: none !important;
+      }
+      
+      .mantine-AppShell-navbar[style*="width: 70"] .mantine-NavLink-root .mantine-NavLink-leftSection,
+      .mantine-AppShell-navbar[style*="width: 70px"] .mantine-NavLink-root .mantine-NavLink-leftSection {
+        margin-right: 0 !important;
       }
       
       /* Input Components */
@@ -350,21 +372,37 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
         color: inherit !important;
       }
       
-      /* Order Type Selector SegmentedControl - Style like tabs */
+      /* Order Type Selector SegmentedControl - Style like tabs with rounded corners */
+      .order-type-selector {
+        border-radius: 8px !important;
+        overflow: hidden !important;
+        border: none !important;
+      }
+      
+      .order-type-selector .mantine-SegmentedControl-input {
+        border: none !important;
+      }
+      
       .order-type-selector .mantine-SegmentedControl-control {
         background-color: ${config.components.tabs.backgroundColor} !important;
         color: ${config.components.tabs.textColor} !important;
         border: none !important;
+        border-radius: 8px !important;
+        transition: all 0.2s ease !important;
       }
       
       .order-type-selector .mantine-SegmentedControl-control[data-active] {
         background-color: ${config.components.tabs.selectedTabBackgroundColor} !important;
         color: ${config.components.tabs.selectedTabFontColor} !important;
+        border-radius: 8px !important;
+        border: none !important;
       }
       
       .order-type-selector .mantine-SegmentedControl-control:hover:not([data-active]) {
         background-color: ${config.components.tabs.hoverTabBackgroundColor} !important;
         color: ${config.components.tabs.hoverTabFontColor} !important;
+        border-radius: 8px !important;
+        border: none !important;
       }
       
       .order-type-selector .mantine-SegmentedControl-label {
@@ -384,17 +422,21 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       .mantine-Tabs-tab {
         color: ${config.components.tabs.textColor} !important;
         font-family: ${config.typography.fontFamily.primary} !important;
+        border-radius: 8px 8px 0 0 !important; /* Rounded top corners */
+        transition: all 0.2s ease !important;
       }
       
       .mantine-Tabs-tab:hover:not([data-disabled]) {
         background-color: ${config.components.tabs.hoverTabBackgroundColor} !important;
         color: ${config.components.tabs.hoverTabFontColor} !important;
+        border-radius: 8px 8px 0 0 !important;
       }
       
       .mantine-Tabs-tab[data-active] {
         background-color: ${config.components.tabs.selectedTabBackgroundColor} !important;
         color: ${config.components.tabs.selectedTabFontColor} !important;
         border-bottom-color: ${config.components.tabs.selectedTabFontColor} !important;
+        border-radius: 8px 8px 0 0 !important;
       }
       
       /* Ensure nested elements also get the correct color */
