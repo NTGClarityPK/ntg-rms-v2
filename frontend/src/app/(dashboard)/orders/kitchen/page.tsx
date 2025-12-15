@@ -31,10 +31,9 @@ import { ordersApi, Order, OrderStatus } from '@/lib/api/orders';
 import { notifications } from '@mantine/notifications';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getSuccessColor, getErrorColor, getWarningColor, getInfoColor, getStatusColor } from '@/lib/utils/theme';
-import { supabase } from '@/lib/supabase/client';
 import { useAuthStore } from '@/lib/store/auth-store';
-import { realtimeOrdersService, OrderChangeCallback } from '@/lib/sync/realtime-orders-service';
 import { onOrderUpdate, notifyOrderUpdate } from '@/lib/utils/order-events';
+import { useKitchenPolling } from '@/lib/hooks/use-kitchen-polling';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/ar';
@@ -236,72 +235,24 @@ export default function KitchenDisplayPage() {
     loadOrdersRef.current = loadOrders;
   }, [loadOrders]);
 
+  // Initial load on mount
   useEffect(() => {
     loadOrders();
   }, [loadOrders]);
 
-  // Set up Supabase Realtime subscription for cross-browser updates
-  // Using centralized realtime service for better management
-  useEffect(() => {
-    console.log('🔍 Kitchen Realtime useEffect triggered:', {
-      hasUser: !!user,
-      tenantId: user?.tenantId,
-      isClient: typeof window !== 'undefined',
-    });
-
-    if (!user?.tenantId) {
-      console.warn('⚠️ Realtime Orders: Missing tenantId', { user });
-      return;
-    }
-
-    console.log('📡 Setting up Realtime subscription for kitchen display...');
-    console.log('📋 Tenant ID:', user.tenantId);
-    console.log('🔍 Realtime service:', realtimeOrdersService);
-    console.log('🔍 Supabase client check:', { 
-      hasSupabase: !!supabase,
-      supabaseType: typeof supabase,
-    });
-
-    // Subscribe to order changes using centralized service
-    // Pass supabase client directly to avoid async loading issues
-    const unsubscribe = realtimeOrdersService.subscribeToOrders(
-      user.tenantId,
-      (payload: Parameters<OrderChangeCallback>[0]) => {
-        const timestamp = new Date().toISOString();
-        console.log(`🎉 [${timestamp}] ===== ORDER CHANGE CALLBACK TRIGGERED IN KITCHEN =====`);
-        console.log('✅ Event Type:', payload.eventType);
-        console.log('✅ Order ID:', payload.new?.id || payload.old?.id);
-        console.log('✅ Full Payload:', payload);
-        console.log('✅ New Order Data:', payload.new);
-        console.log('✅ Old Order Data:', payload.old);
-
-        // Play sound for new orders (INSERT events)
-        if (payload.eventType === 'INSERT' && soundEnabledRef.current) {
-          console.log('🔔 New order detected via Realtime - playing sound:', payload.new?.id);
-          playSound();
-        }
-
-        // Reload orders silently in background for all changes (INSERT, UPDATE, DELETE)
-        console.log('🔄 Reloading orders due to realtime change...');
-        if (loadOrdersRef.current) {
-          console.log('✅ Calling loadOrdersRef.current(true)...');
-          loadOrdersRef.current(true); // silent = true
-        } else {
-          console.error('❌ CRITICAL: loadOrdersRef.current is not available!');
-          console.error('This means the loadOrders function was not properly stored in the ref.');
-        }
-      },
-      supabase || undefined // Pass the supabase client directly if available
-    );
-
-    console.log('✅ Realtime subscription setup complete. Unsubscribe function:', typeof unsubscribe);
-
-    return () => {
-      console.log('🧹 Cleaning up Realtime subscription for kitchen...');
-      unsubscribe();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.tenantId]); // Only depend on tenantId - callbacks use refs
+  // Smart polling for kitchen display updates
+  // Polls every 3 seconds when page is visible, 10 seconds when hidden
+  useKitchenPolling({
+    onPoll: async () => {
+      if (loadOrdersRef.current) {
+        await loadOrdersRef.current(true); // silent = true to avoid loading spinner
+      }
+    },
+    activeInterval: 3000, // 3 seconds when page is visible
+    idleInterval: 10000, // 10 seconds when page is hidden
+    enabled: true,
+    initialDelay: 1000, // Wait 1 second before first poll
+  });
 
   // Listen for order status changes from other screens
   useEffect(() => {
@@ -329,8 +280,8 @@ export default function KitchenDisplayPage() {
       // Notify same-browser screens about the status change (for immediate UI update)
       notifyOrderUpdate('order-status-changed', order.id);
       
-      // Note: Supabase Realtime will handle cross-browser updates automatically
-      // We still call loadOrders() for immediate local update, but Supabase will also trigger it
+      // Reload orders for immediate local update
+      // Smart polling will also pick up changes automatically
       if (loadOrdersRef.current) {
         loadOrdersRef.current();
       }
@@ -358,8 +309,8 @@ export default function KitchenDisplayPage() {
       // Notify same-browser screens about the status change (for immediate UI update)
       notifyOrderUpdate('order-status-changed', order.id);
       
-      // Note: Supabase Realtime will handle cross-browser updates automatically
-      // We still call loadOrders() for immediate local update, but Supabase will also trigger it
+      // Reload orders for immediate local update
+      // Smart polling will also pick up changes automatically
       if (loadOrdersRef.current) {
         loadOrdersRef.current();
       }
