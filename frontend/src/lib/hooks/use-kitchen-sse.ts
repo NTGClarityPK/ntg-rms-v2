@@ -54,6 +54,7 @@ export function useKitchenSse({
   const reconnectAttemptsRef = useRef<number>(0);
   const isConnectingRef = useRef<boolean>(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const onOrderUpdateRef = useRef(onOrderUpdate);
   const onConnectRef = useRef(onConnect);
   const onErrorRef = useRef(onError);
@@ -77,6 +78,7 @@ export function useKitchenSse({
       reconnectTimeoutRef.current = null;
     }
     setIsConnected(false);
+    setIsConnecting(false);
     isConnectingRef.current = false;
   }, []);
 
@@ -92,6 +94,7 @@ export function useKitchenSse({
     }
 
     isConnectingRef.current = true;
+    setIsConnecting(true);
     reconnectAttemptsRef.current = 0;
 
     try {
@@ -107,12 +110,44 @@ export function useKitchenSse({
       // Note: SSE doesn't support custom headers, so we use query param
       const sseUrl = `${API_BASE_URL}/orders/kitchen/stream?token=${encodeURIComponent(token)}`;
       
-      console.log('📡 Connecting to SSE stream...');
+      console.log('📡 Connecting to SSE stream...', sseUrl);
       const eventSource = new EventSource(sseUrl);
 
+      // Add connection timeout (10 seconds)
+      let connectionTimeout: NodeJS.Timeout | null = setTimeout(() => {
+        if (eventSource.readyState !== EventSource.OPEN) {
+          console.error('❌ SSE connection timeout - connection not established within 10 seconds');
+          eventSource.close();
+          setIsConnecting(false);
+          isConnectingRef.current = false;
+          
+          // Try to reconnect
+          reconnectAttemptsRef.current += 1;
+          const maxReconnectAttempts = 5;
+          if (reconnectAttemptsRef.current < maxReconnectAttempts) {
+            const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000);
+            console.log(`⏳ Retrying connection in ${delay}ms (attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})...`);
+            reconnectTimeoutRef.current = setTimeout(() => {
+              connect();
+            }, delay);
+          } else {
+            console.error('❌ Max reconnect attempts reached after timeout');
+            if (onErrorRef.current) {
+              onErrorRef.current(new Event('timeout'));
+            }
+          }
+        }
+        connectionTimeout = null;
+      }, 10000); // 10 second timeout
+
       eventSource.onopen = () => {
+        if (connectionTimeout) {
+          clearTimeout(connectionTimeout);
+          connectionTimeout = null;
+        }
         console.log('✅ SSE connection opened');
         setIsConnected(true);
+        setIsConnecting(false);
         isConnectingRef.current = false;
         reconnectAttemptsRef.current = 0;
         if (onConnectRef.current) {
@@ -145,13 +180,23 @@ export function useKitchenSse({
       };
 
       eventSource.onerror = (error) => {
+        if (connectionTimeout) {
+          clearTimeout(connectionTimeout);
+          connectionTimeout = null;
+        }
         const readyState = eventSource.readyState;
         console.log(`⚠️ SSE connection state changed. ReadyState: ${readyState} (0=CONNECTING, 1=OPEN, 2=CLOSED)`);
+        console.log('⚠️ EventSource error details:', {
+          readyState,
+          url: eventSource.url,
+          withCredentials: (eventSource as any).withCredentials,
+        });
         
         // Only treat as error if connection is actually closed
         if (readyState === EventSource.CLOSED) {
           console.error('❌ SSE connection closed');
           setIsConnected(false);
+          setIsConnecting(false);
           isConnectingRef.current = false;
 
           // Close the connection
@@ -179,12 +224,18 @@ export function useKitchenSse({
         } else if (readyState === EventSource.CONNECTING) {
           // Connection is reconnecting, this is normal
           console.log('🔄 SSE reconnecting...');
+          setIsConnecting(true);
+        } else if (readyState === EventSource.CONNECTING && !isConnectingRef.current) {
+          // Stuck in CONNECTING state - might be CORS or network issue
+          console.warn('⚠️ SSE stuck in CONNECTING state - possible CORS or network issue');
+          setIsConnecting(true);
         }
       };
 
       eventSourceRef.current = eventSource;
     } catch (error) {
       console.error('❌ Failed to create SSE connection:', error);
+      setIsConnecting(false);
       isConnectingRef.current = false;
       if (onErrorRef.current) {
         onErrorRef.current(error as Event);
@@ -214,6 +265,7 @@ export function useKitchenSse({
 
   return {
     isConnected,
+    isConnecting,
     reconnect: connect,
     disconnect: cleanup,
   };

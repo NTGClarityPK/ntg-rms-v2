@@ -243,7 +243,7 @@ export default function KitchenDisplayPage() {
   // Server-Sent Events (SSE) for real-time kitchen display updates
   // Receives instant updates when orders are created or status changes
   // Falls back to polling if SSE fails
-  const { isConnected } = useKitchenSse({
+  const { isConnected, isConnecting } = useKitchenSse({
     onOrderUpdate: (event: OrderUpdateEvent) => {
       console.log('📨 Order update received via SSE:', event.type, event.orderId);
       
@@ -273,20 +273,47 @@ export default function KitchenDisplayPage() {
     enabled: true,
   });
 
-  // Fallback polling if SSE is not connected (poll every 5 seconds)
-  // This ensures updates even if SSE fails
+  // Fallback polling if SSE is not connected AND not connecting (poll every 5 seconds)
+  // Wait 3 seconds before starting fallback to give SSE time to connect
+  // This ensures updates even if SSE fails, but doesn't interfere with SSE connection attempts
+  const sseConnectedRef = useRef(isConnected);
+  const sseConnectingRef = useRef(isConnecting);
+  
   useEffect(() => {
-    if (!isConnected) {
-      console.log('⚠️ SSE not connected, using polling fallback');
-      const pollInterval = setInterval(() => {
-        if (loadOrdersRef.current && navigator.onLine) {
-          loadOrdersRef.current(true); // silent poll
-        }
-      }, 5000); // Poll every 5 seconds as fallback
+    sseConnectedRef.current = isConnected;
+    sseConnectingRef.current = isConnecting;
+  }, [isConnected, isConnecting]);
 
-      return () => clearInterval(pollInterval);
+  useEffect(() => {
+    // Don't start polling if SSE is connected or actively connecting
+    if (isConnected || isConnecting) {
+      return;
     }
-  }, [isConnected]);
+
+    let pollInterval: NodeJS.Timeout | null = null;
+
+    // Wait 3 seconds before starting fallback polling
+    // This gives SSE time to establish connection on page load
+    const fallbackDelay = setTimeout(() => {
+      // Double-check SSE is still not connected after delay (use refs for current state)
+      if (!sseConnectedRef.current && !sseConnectingRef.current) {
+        console.log('⚠️ SSE not connected after delay, using polling fallback');
+        pollInterval = setInterval(() => {
+          // Only poll if SSE is still not connected (check refs for current state)
+          if (!sseConnectedRef.current && !sseConnectingRef.current && loadOrdersRef.current && navigator.onLine) {
+            loadOrdersRef.current(true); // silent poll
+          }
+        }, 5000); // Poll every 5 seconds as fallback
+      }
+    }, 3000); // Wait 3 seconds before starting fallback
+
+    return () => {
+      clearTimeout(fallbackDelay);
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+    };
+  }, [isConnected, isConnecting]);
 
   // Listen for order status changes from other screens
   useEffect(() => {

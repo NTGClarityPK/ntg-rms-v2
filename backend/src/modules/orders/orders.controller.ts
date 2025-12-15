@@ -81,29 +81,43 @@ export class OrdersController {
   @ApiOperation({ summary: 'Server-Sent Events stream for kitchen display order updates' })
   streamKitchenOrders(@CurrentUser() user: any, @Res({ passthrough: false }) res: Response): void {
     console.log(`📡 SSE connection opened for tenant ${user.tenantId}`);
+    console.log(`📡 Request origin: ${res.req.headers.origin}`);
+    console.log(`📡 Request headers:`, JSON.stringify(res.req.headers, null, 2));
+    
+    // CORS headers for SSE (EventSource requires these) - set FIRST
+    const origin = res.req.headers.origin || '*';
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET');
+    res.setHeader('Access-Control-Allow-Headers', 'Cache-Control');
     
     // Set SSE headers BEFORE any writes
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
-    res.setHeader('Access-Control-Allow-Origin', '*'); // Allow CORS for SSE
     
-    // Don't end the response - keep it open for streaming
+    // Set status and flush headers immediately
     res.status(200);
+    
+    // Flush headers immediately so browser recognizes the connection
+    if (typeof (res as any).flushHeaders === 'function') {
+      (res as any).flushHeaders();
+      console.log('✅ Headers flushed');
+    }
     
     // Send initial connection message
     try {
-      res.write(': connected\n\n');
+      const initialData = ': connected\n\ndata: {"type":"CONNECTION_TEST","tenantId":"' + user.tenantId + '","orderId":"test","message":"SSE connection established"}\n\n';
+      const written = res.write(initialData);
+      console.log(`✅ Initial data written: ${written}, writable: ${!res.writableEnded}`);
       
-      // Send a test message to verify connection works
-      const testMessage = JSON.stringify({
-        type: 'CONNECTION_TEST',
-        tenantId: user.tenantId,
-        orderId: 'test',
-        message: 'SSE connection established',
-      });
-      res.write(`data: ${testMessage}\n\n`);
+      // Flush the response to ensure headers and initial data are sent immediately
+      if (typeof res.flush === 'function') {
+        res.flush();
+        console.log('✅ Response flushed');
+      }
+      
       console.log(`✅ SSE headers set and initial message sent for tenant ${user.tenantId}`);
     } catch (error) {
       console.error('❌ Error writing initial SSE message:', error);
