@@ -13,6 +13,7 @@ import {
   Text,
   Badge,
   ActionIcon,
+  Title,
   Menu,
   Paper,
   Box,
@@ -251,9 +252,9 @@ export default function DeliveryPage() {
       <Stack gap="md">
         {/* Header */}
         <Group justify="space-between" align="center">
-          <Text size="xl" fw={700}>
+          <Title order={1}>
             {t('delivery.title' as any, language) || 'Delivery Management'}
-          </Text>
+          </Title>
           <Group>
             <Button
               leftSection={<IconRefresh size={16} />}

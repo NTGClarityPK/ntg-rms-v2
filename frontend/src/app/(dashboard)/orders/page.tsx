@@ -13,6 +13,7 @@ import {
   Text,
   Badge,
   ActionIcon,
+  Title,
   Menu,
   Paper,
   Box,
@@ -401,9 +402,9 @@ export default function OrdersPage() {
       <Stack gap="md">
         {/* Header */}
         <Group justify="space-between" align="center">
-          <Text size="xl" fw={700}>
+          <Title order={1}>
             {t('orders.title', language)}
-          </Text>
+          </Title>
           <Group>
             <Button
               leftSection={<IconChefHat size={16} />}

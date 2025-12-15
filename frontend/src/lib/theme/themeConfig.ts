@@ -104,6 +104,13 @@ export interface ThemeConfig {
     pageHeaderColor: string; // Page headers (Title components)
     navbarSectionHeaderColor: string; // Navbar section headers (Navigation, Management, etc.)
     pageSectionHeaderColor: string; // Page section headers (uppercase Text components)
+    // Title font sizes (based on order prop)
+    titleSize: {
+      h1: string; // Page titles (order={1})
+      h2: string; // Section titles (order={2})
+      h3: string; // Subsection titles (order={3})
+      h4: string; // Minor section titles (order={4})
+    };
   };
   
   // Spacing & Layout
@@ -206,9 +213,16 @@ export function generateThemeConfig(
         bold: 700,
       },
       // Header text colors
-      pageHeaderColor: themeColors.colorTextDark, // Page headers (Title)
+      pageHeaderColor: themeColors.primary, // Page headers (Title)
       navbarSectionHeaderColor: themeColors.colorTextDark, // Navbar section headers
-      pageSectionHeaderColor: themeColors.primary, // Page section headers
+      pageSectionHeaderColor: themeColors.colorTextLight, // Page section headers
+      // Title font sizes (based on order prop)
+      titleSize: {
+        h1: '2rem', // Page titles (order={1}) - 32px
+        h2: '1.5rem', // Section titles (order={2}) - 24px
+        h3: '1.25rem', // Subsection titles (order={3}) - 20px
+        h4: '1.125rem', // Minor section titles (order={4}) - 18px
+      },
     },
     
     spacing: {

@@ -422,7 +422,7 @@ export default function RestaurantPage() {
 
   return (
     <Container size="xl" py="xl">
-      <Title order={2} mb="xl">
+      <Title order={1} mb="xl">
         {t('navigation.restaurant', language)} - {t('restaurant.businessInformation', language)}
       </Title>
 

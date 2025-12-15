@@ -154,7 +154,7 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
         font-family: ${config.typography.fontFamily.primary} !important;
       }
       
-      /* Page Headers (Title components) */
+      /* Page Headers (Title components) - Base styles */
       .mantine-Title-root,
       h1.mantine-Title-root,
       h2.mantine-Title-root,
@@ -162,11 +162,51 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       h4.mantine-Title-root,
       h5.mantine-Title-root,
       h6.mantine-Title-root {
-        color: ${config.typography.pageHeaderColor} !important;
         font-family: ${config.typography.fontFamily.heading} !important;
+        font-weight: ${config.typography.fontWeight.bold} !important;
       }
       
-      /* Navbar Section Headers (uppercase Text in sidebar) - Target by size and uppercase */
+      /* Page titles (order={1} or h1) - Use pageHeaderColor */
+      .mantine-Title-root[data-order="1"],
+      h1.mantine-Title-root {
+        color: ${config.typography.pageHeaderColor} !important;
+        font-size: ${config.typography.titleSize.h1} !important;
+      }
+      
+      /* Section titles (order={2} or h2) - Use pageSectionHeaderColor */
+      .mantine-Title-root[data-order="2"],
+      h2.mantine-Title-root {
+        color: ${config.typography.pageSectionHeaderColor} !important;
+        font-size: ${config.typography.titleSize.h2} !important;
+      }
+      
+      /* Subsection titles (order={3} or h3) - Use pageSectionHeaderColor */
+      .mantine-Title-root[data-order="3"],
+      h3.mantine-Title-root {
+        color: ${config.typography.pageSectionHeaderColor} !important;
+        font-size: ${config.typography.titleSize.h3} !important;
+      }
+      
+      /* Minor section titles (order={4} or h4) - Use pageSectionHeaderColor */
+      .mantine-Title-root[data-order="4"],
+      h4.mantine-Title-root {
+        color: ${config.typography.pageSectionHeaderColor} !important;
+        font-size: ${config.typography.titleSize.h4} !important;
+      }
+      
+      /* Text components used as page titles (fallback styling) */
+      .mantine-Text-root[size="xl"][fw="700"],
+      .mantine-Text-root[size="xl"][style*="font-weight: 700"],
+      .mantine-Text-root[size="xl"][style*="font-weight:700"] {
+        color: ${config.typography.pageHeaderColor} !important;
+        font-family: ${config.typography.fontFamily.heading} !important;
+        font-size: ${config.typography.titleSize.h1} !important;
+        font-weight: ${config.typography.fontWeight.bold} !important;
+      }
+      
+      /* Navbar Section Headers (uppercase Text in sidebar) - Override inline color from c="dimmed" */
+      .mantine-AppShell-navbar .mantine-Text-root[size="xs"][tt="uppercase"],
+      .mantine-AppShell-navbar .mantine-Text-root[size="xs"][style*="text-transform: uppercase"],
       .mantine-AppShell-navbar .mantine-Text-root[size="xs"] {
         color: ${config.typography.navbarSectionHeaderColor} !important;
       }
@@ -391,21 +431,52 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
     const config = themeConfig;
     
     const applyHeaderStyles = () => {
-      // Page Headers (Title components) - all orders
+      // Page Headers (Title components) - Apply colors and sizes based on order
       document.querySelectorAll('.mantine-Title-root, h1.mantine-Title-root, h2.mantine-Title-root, h3.mantine-Title-root, h4.mantine-Title-root').forEach((title) => {
         const el = title as HTMLElement;
-        el.style.color = config.typography.pageHeaderColor;
+        const tagName = el.tagName.toLowerCase();
+        const order = el.getAttribute('data-order') || el.getAttribute('order');
+        
         el.style.fontFamily = config.typography.fontFamily.heading;
+        el.style.fontWeight = String(config.typography.fontWeight.bold);
+        
+        // Apply colors and sizes based on order/tag
+        if (order === '1' || tagName === 'h1') {
+          el.style.color = config.typography.pageHeaderColor;
+          el.style.fontSize = config.typography.titleSize.h1;
+        } else if (order === '2' || tagName === 'h2') {
+          el.style.color = config.typography.pageSectionHeaderColor;
+          el.style.fontSize = config.typography.titleSize.h2;
+        } else if (order === '3' || tagName === 'h3') {
+          el.style.color = config.typography.pageSectionHeaderColor;
+          el.style.fontSize = config.typography.titleSize.h3;
+        } else if (order === '4' || tagName === 'h4') {
+          el.style.color = config.typography.pageSectionHeaderColor;
+          el.style.fontSize = config.typography.titleSize.h4;
+        }
       });
       
-      // Navbar Section Headers (Text with size="xs" in sidebar)
+      // Text components used as page titles (fallback)
+      document.querySelectorAll('.mantine-Text-root[size="xl"]').forEach((text) => {
+        const el = text as HTMLElement;
+        const fontWeight = window.getComputedStyle(el).fontWeight;
+        if (fontWeight === '700' || fontWeight === 'bold' || el.style.fontWeight === '700') {
+          el.style.color = config.typography.pageHeaderColor;
+          el.style.fontFamily = config.typography.fontFamily.heading;
+          el.style.fontSize = config.typography.titleSize.h1;
+          el.style.fontWeight = String(config.typography.fontWeight.bold);
+        }
+      });
+      
+      // Navbar Section Headers (Text with size="xs" in sidebar) - Override inline color from c="dimmed"
       document.querySelectorAll('.mantine-AppShell-navbar .mantine-Text-root[size="xs"]').forEach((text) => {
         const el = text as HTMLElement;
         // Check if it's uppercase (section header) by checking computed style or text content
         const computedStyle = window.getComputedStyle(el);
         const isUppercase = computedStyle.textTransform === 'uppercase' || 
                            el.textContent === el.textContent?.toUpperCase() ||
-                           el.getAttribute('style')?.includes('text-transform: uppercase');
+                           el.getAttribute('style')?.includes('text-transform: uppercase') ||
+                           el.getAttribute('tt') === 'uppercase';
         if (isUppercase || el.style.fontWeight === '700' || computedStyle.fontWeight === '700') {
           el.style.color = config.typography.navbarSectionHeaderColor;
         }

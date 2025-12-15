@@ -357,7 +357,7 @@ export default function BranchesPage() {
   return (
     <Container size="xl" py="xl">
       <Group justify="space-between" mb="xl">
-        <Title order={2}>Branch Management</Title>
+        <Title order={1}>Branch Management</Title>
         <Button leftSection={<IconPlus size={16} />} onClick={() => handleOpenModal()}>
           Add Branch
         </Button>

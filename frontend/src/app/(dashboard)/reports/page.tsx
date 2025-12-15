@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Container, Tabs, Stack, Skeleton, Paper, Text } from '@mantine/core';
+import { Container, Tabs, Stack, Skeleton, Paper, Text, Title } from '@mantine/core';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import SalesReportPage from '@/components/reports/SalesReportPage';
@@ -19,9 +19,9 @@ export default function ReportsPage() {
   return (
     <Container size="xl" py="md">
       <Stack gap="md">
-        <Text size="xl" fw={700}>
+        <Title order={1}>
           {t('reports.title' as any, language) || 'Reports & Analytics'}
-        </Text>
+        </Title>
 
         <Tabs value={activeTab} onChange={setActiveTab} data-active-tab={activeTab}>
           <Tabs.List>
