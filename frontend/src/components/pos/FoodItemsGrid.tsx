@@ -16,7 +16,7 @@ import {
   SegmentedControl,
   Skeleton,
 } from '@mantine/core';
-import { IconSearch, IconShoppingCart } from '@tabler/icons-react';
+import { IconSearch, IconShoppingCart, IconCheck } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { db } from '@/lib/indexeddb/database';
@@ -133,26 +133,22 @@ export function FoodItemsGrid({
 
           {/* Categories */}
           <ScrollArea>
-            <Group gap="xs">
+            <Group gap="xs" className="filter-button-group">
               <Button
-                variant={selectedCategoryId === null ? 'filled' : 'light'}
                 size="sm"
                 onClick={() => onCategoryChange(null)}
-                style={{
-                  backgroundColor: selectedCategoryId === null ? primaryShade : undefined,
-                }}
+                data-selected={selectedCategoryId === null ? "true" : "false"}
+                leftSection={selectedCategoryId === null ? <IconCheck size={14} /> : undefined}
               >
                 {t('pos.allCategories', language)}
               </Button>
               {categories.map((category) => (
                 <Button
                   key={category.id}
-                  variant={selectedCategoryId === category.id ? 'filled' : 'light'}
                   size="sm"
                   onClick={() => onCategoryChange(category.id)}
-                  style={{
-                    backgroundColor: selectedCategoryId === category.id ? primaryShade : undefined,
-                  }}
+                  data-selected={selectedCategoryId === category.id ? "true" : "false"}
+                  leftSection={selectedCategoryId === category.id ? <IconCheck size={14} /> : undefined}
                 >
                   {language === 'ar' && category.nameAr ? category.nameAr : category.nameEn}
                 </Button>

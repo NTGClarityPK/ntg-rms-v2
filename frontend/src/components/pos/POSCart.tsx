@@ -1205,6 +1205,7 @@ export function POSCart({
               {t('pos.orderType', language)}
             </Text>
             <SegmentedControl
+              className="order-type-selector"
               fullWidth
               value={orderType}
               onChange={(value) => onOrderTypeChange(value as 'dine_in' | 'takeaway' | 'delivery')}
@@ -1213,9 +1214,6 @@ export function POSCart({
                 { label: t('pos.takeaway', language), value: 'takeaway' },
                 ...(enableDeliveryManagement ? [{ label: t('pos.delivery', language), value: 'delivery' }] : []),
               ]}
-              style={{
-                '--sc-color': primaryShade,
-              } as any}
             />
           </Box>
 

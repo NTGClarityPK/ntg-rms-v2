@@ -143,7 +143,7 @@ export function generateThemeConfig(
         hoverTextColor: themeColors.colorTextDark, // Navbar menu hover text
         activeBackground: themeColors.colorDark, // Navbar menu selected/active background
         activeTextColor: themeColors.colorTextDark, // Navbar menu selected/active text color - customize this
-      },
+        },
       header: {
         backgroundColor: themeColors.colorMedium, // Change this to customize header
         borderColor: 'transparent',
@@ -176,7 +176,7 @@ export function generateThemeConfig(
         textColor: themeColors.colorTextMedium,
       },
       tabs: {
-        backgroundColor: themeColors.colorLight,
+        backgroundColor: themeColors.colorMedium,
         borderColor: themeColors.border,
         textColor: themeColors.colorTextMedium,
         selectedTabFontColor: themeColors.colorTextDark, // Selected tab font color - customize this
@@ -208,7 +208,7 @@ export function generateThemeConfig(
       // Header text colors
       pageHeaderColor: themeColors.colorTextDark, // Page headers (Title)
       navbarSectionHeaderColor: themeColors.colorTextDark, // Navbar section headers
-      pageSectionHeaderColor: themeColors.colorTextLight, // Page section headers
+      pageSectionHeaderColor: themeColors.primary, // Page section headers
     },
     
     spacing: {

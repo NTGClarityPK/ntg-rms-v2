@@ -310,6 +310,27 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
         color: inherit !important;
       }
       
+      /* Order Type Selector SegmentedControl - Style like tabs */
+      .order-type-selector .mantine-SegmentedControl-control {
+        background-color: ${config.components.tabs.backgroundColor} !important;
+        color: ${config.components.tabs.textColor} !important;
+        border: none !important;
+      }
+      
+      .order-type-selector .mantine-SegmentedControl-control[data-active] {
+        background-color: ${config.components.tabs.selectedTabBackgroundColor} !important;
+        color: ${config.components.tabs.selectedTabFontColor} !important;
+      }
+      
+      .order-type-selector .mantine-SegmentedControl-control:hover:not([data-active]) {
+        background-color: ${config.components.tabs.hoverTabBackgroundColor} !important;
+        color: ${config.components.tabs.hoverTabFontColor} !important;
+      }
+      
+      .order-type-selector .mantine-SegmentedControl-label {
+        color: inherit !important;
+      }
+      
       /* Mantine Tabs - Style using themeConfig tabs */
       .mantine-Tabs-root {
         background-color: ${config.components.tabs.backgroundColor} !important;
@@ -339,6 +360,26 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       /* Ensure nested elements also get the correct color */
       .mantine-Tabs-tab[data-active] * {
         color: ${config.components.tabs.selectedTabFontColor} !important;
+      }
+      
+      /* Filter Button Groups - Special styling for filter buttons (POS categories, Report date ranges) */
+      /* Selected filter buttons with checkmark */
+      .filter-button-group .mantine-Button-root[data-selected="true"],
+      .filter-button-group .mantine-Button-root.filter-button-selected {
+        background-color: ${config.components.tabs.selectedTabBackgroundColor} !important;
+        color: ${config.components.tabs.selectedTabFontColor} !important;
+      }
+      
+      /* Unselected filter buttons */
+      .filter-button-group .mantine-Button-root:not([data-selected="true"]):not(.filter-button-selected) {
+        background-color: ${config.components.tabs.backgroundColor} !important;
+        color: ${config.components.tabs.textColor} !important;
+      }
+      
+      /* Filter button hover */
+      .filter-button-group .mantine-Button-root:hover:not([data-selected="true"]):not(.filter-button-selected):not(:disabled) {
+        background-color: ${config.components.tabs.hoverTabBackgroundColor} !important;
+        color: ${config.components.tabs.hoverTabFontColor} !important;
       }
     `;
   }, [themeConfig]);
