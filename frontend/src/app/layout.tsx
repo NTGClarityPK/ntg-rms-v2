@@ -1,6 +1,19 @@
 import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
 import { Providers } from '@/components/providers/Providers';
 import '@/styles/globals.css';
+
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-geist-sans',
+  display: 'swap',
+});
+
+const geistMono = Inter({
+  subsets: ['latin'],
+  variable: '--font-geist-mono',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'RMS - Restaurant Management System',
@@ -14,7 +27,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>
+      <body className={`${inter.variable} ${geistMono.variable}`}>
         <Providers>{children}</Providers>
       </body>
     </html>
