@@ -288,6 +288,11 @@ export default function OrdersPage() {
     console.log('Setting up Supabase Realtime subscription for orders list...');
     console.log('Tenant ID:', user.tenantId);
     
+    // Declare variables for subscription status tracking and polling
+    let pollInterval: NodeJS.Timeout | null = null;
+    let pollTimeout: NodeJS.Timeout | null = null;
+    let subscriptionStatus: string | null = null;
+    
     const channel = supabase
       .channel(`orders-realtime-list-${user.tenantId}-${Date.now()}`)
       .on(
@@ -313,6 +318,8 @@ export default function OrdersPage() {
         }
       )
       .subscribe((status, err) => {
+        // Track subscription status for fallback polling check
+        subscriptionStatus = status;
         console.log('Supabase Realtime subscription status:', status);
         if (err) {
           console.error('❌ Supabase Realtime error:', err);
@@ -331,22 +338,18 @@ export default function OrdersPage() {
 
     // FIXED: Conditional polling - only poll if Realtime subscription fails
     // This prevents unnecessary API calls when Realtime is working properly
-    let pollInterval: NodeJS.Timeout | null = null;
-    let pollTimeout: NodeJS.Timeout | null = null;
-    
     // Check subscription status after 10 seconds
     // If still not subscribed, start polling as fallback
     pollTimeout = setTimeout(() => {
-      channel.subscribe((currentStatus) => {
-        // Only start polling if subscription definitely failed
-        if (currentStatus !== 'SUBSCRIBED' && currentStatus !== 'SUBSCRIBING') {
-          console.warn('⚠️ Realtime subscription failed, starting fallback polling (30s interval)');
-          pollInterval = setInterval(() => {
-            console.log('🔄 Polling for order changes (fallback)...');
-            loadOrdersRef.current?.(true); // silent = true, no loading state
-          }, 30000); // Increased from 5s to 30s to reduce load
-        }
-      });
+      // Only start polling if subscription definitely failed
+      // Check the stored status (can be null, 'SUBSCRIBED', 'SUBSCRIBING', or error states)
+      if (subscriptionStatus !== 'SUBSCRIBED' && subscriptionStatus !== 'SUBSCRIBING') {
+        console.warn('⚠️ Realtime subscription failed, starting fallback polling (30s interval)');
+        pollInterval = setInterval(() => {
+          console.log('🔄 Polling for order changes (fallback)...');
+          loadOrdersRef.current?.(true); // silent = true, no loading state
+        }, 30000); // Increased from 5s to 30s to reduce load
+      }
     }, 10000); // Wait 10 seconds before checking
 
     return () => {
