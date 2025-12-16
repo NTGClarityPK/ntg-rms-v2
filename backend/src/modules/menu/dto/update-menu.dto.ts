@@ -5,22 +5,20 @@ export class UpdateMenuDto {
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
-  nameEn?: string;
+  name?: string;
 
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
-  nameAr?: string;
 
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
-  descriptionEn?: string;
+  description?: string;
 
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
-  descriptionAr?: string;
 
   @ApiProperty({ required: false, type: [String] })
   @IsArray()

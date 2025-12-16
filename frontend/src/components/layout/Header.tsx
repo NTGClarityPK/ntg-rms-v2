@@ -39,9 +39,7 @@ export function Header({ mobileOpened, toggleMobile }: HeaderProps = {}) {
   
   // Use restaurant name/logo or defaults
   // Show Arabic name if language is Arabic and nameAr exists, otherwise show English
-  const restaurantName = language === 'ar' && restaurant?.nameAr 
-    ? restaurant.nameAr 
-    : (restaurant?.nameEn || 'RMS');
+  const restaurantName = restaurant?.name || 'RMS';
   const restaurantLogo = restaurant?.logoUrl;
 
   const handleLogout = () => {

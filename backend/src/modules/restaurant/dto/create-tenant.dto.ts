@@ -4,12 +4,11 @@ import { IsString, IsEmail, IsOptional, IsBoolean } from 'class-validator';
 export class CreateTenantDto {
   @ApiProperty()
   @IsString()
-  nameEn: string;
+  name: string;
 
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
-  nameAr?: string;
 
   @ApiProperty()
   @IsString()

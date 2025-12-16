@@ -108,8 +108,6 @@ export interface InventoryReport {
   ingredients: Array<{
     id: string;
     name: string;
-    nameEn?: string;
-    nameAr?: string;
     category: string;
     unit: string;
     currentStock: number;
@@ -124,8 +122,6 @@ export interface InventoryReport {
   lowStockItems: Array<{
     id: string;
     name: string;
-    nameEn?: string;
-    nameAr?: string;
     currentStock: number;
     minimumThreshold: number;
     stockStatus: 'low';
@@ -194,8 +190,6 @@ export interface TopItemsReport {
   items: Array<{
     id: string;
     name: string;
-    nameEn?: string;
-    nameAr?: string;
     quantity: number;
     revenue: number;
     orderCount: number;

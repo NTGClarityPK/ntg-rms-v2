@@ -51,10 +51,8 @@ export class MenuService {
     categories.forEach((cat) => {
       const category = {
         id: cat.id,
-        nameEn: cat.name_en,
-        nameAr: cat.name_ar,
-        descriptionEn: cat.description_en,
-        descriptionAr: cat.description_ar,
+        name: cat.name,
+        description: cat.description,
         imageUrl: cat.image_url,
         categoryType: cat.category_type,
         parentId: cat.parent_id,
@@ -108,10 +106,8 @@ export class MenuService {
 
     return {
       id: category.id,
-      nameEn: category.name_en,
-      nameAr: category.name_ar,
-      descriptionEn: category.description_en,
-      descriptionAr: category.description_ar,
+      name: category.name,
+      description: category.description,
       imageUrl: category.image_url,
       categoryType: category.category_type,
       parentId: category.parent_id,
@@ -121,10 +117,8 @@ export class MenuService {
       updatedAt: category.updated_at,
       subcategories: subcategories?.map((sub) => ({
         id: sub.id,
-        nameEn: sub.name_en,
-        nameAr: sub.name_ar,
-        descriptionEn: sub.description_en,
-        descriptionAr: sub.description_ar,
+        name: sub.name,
+        description: sub.description,
         imageUrl: sub.image_url,
         categoryType: sub.category_type,
         displayOrder: sub.display_order,
@@ -155,10 +149,8 @@ export class MenuService {
       .from('categories')
       .insert({
         tenant_id: tenantId,
-        name_en: createDto.nameEn,
-        name_ar: createDto.nameAr || null,
-        description_en: createDto.descriptionEn || null,
-        description_ar: createDto.descriptionAr || null,
+        name: createDto.name,
+        description: createDto.description || null,
         image_url: createDto.imageUrl || null,
         category_type: createDto.categoryType || 'food',
         parent_id: createDto.parentId || null,
@@ -174,10 +166,8 @@ export class MenuService {
 
     return {
       id: category.id,
-      nameEn: category.name_en,
-      nameAr: category.name_ar,
-      descriptionEn: category.description_en,
-      descriptionAr: category.description_ar,
+      name: category.name,
+      description: category.description,
       imageUrl: category.image_url,
       categoryType: category.category_type,
       parentId: category.parent_id,
@@ -225,10 +215,8 @@ export class MenuService {
     }
 
     const updateData: any = {};
-    if (updateDto.nameEn !== undefined) updateData.name_en = updateDto.nameEn;
-    if (updateDto.nameAr !== undefined) updateData.name_ar = updateDto.nameAr;
-    if (updateDto.descriptionEn !== undefined) updateData.description_en = updateDto.descriptionEn;
-    if (updateDto.descriptionAr !== undefined) updateData.description_ar = updateDto.descriptionAr;
+    if (updateDto.name !== undefined) updateData.name = updateDto.name;
+    if (updateDto.description !== undefined) updateData.description = updateDto.description;
     if (updateDto.imageUrl !== undefined) updateData.image_url = updateDto.imageUrl;
     if (updateDto.categoryType !== undefined) updateData.category_type = updateDto.categoryType;
     if (updateDto.parentId !== undefined) updateData.parent_id = updateDto.parentId;
@@ -250,10 +238,8 @@ export class MenuService {
 
     return {
       id: category.id,
-      nameEn: category.name_en,
-      nameAr: category.name_ar,
-      descriptionEn: category.description_en,
-      descriptionAr: category.description_ar,
+      name: category.name,
+      description: category.description,
       imageUrl: category.image_url,
       categoryType: category.category_type,
       parentId: category.parent_id,
@@ -372,10 +358,8 @@ export class MenuService {
 
         return {
           id: item.id,
-          nameEn: item.name_en,
-          nameAr: item.name_ar,
-          descriptionEn: item.description_en,
-          descriptionAr: item.description_ar,
+          name: item.name,
+          description: item.description,
           imageUrl: item.image_url,
           categoryId: item.category_id,
           basePrice: parseFloat(item.base_price),
@@ -456,10 +440,8 @@ export class MenuService {
 
     return {
       id: foodItem.id,
-      nameEn: foodItem.name_en,
-      nameAr: foodItem.name_ar,
-      descriptionEn: foodItem.description_en,
-      descriptionAr: foodItem.description_ar,
+      name: foodItem.name,
+      description: foodItem.description,
       imageUrl: foodItem.image_url,
       categoryId: foodItem.category_id,
       basePrice: parseFloat(foodItem.base_price),
@@ -516,10 +498,8 @@ export class MenuService {
       .insert({
         tenant_id: tenantId,
         category_id: createDto.categoryId,
-        name_en: createDto.nameEn,
-        name_ar: createDto.nameAr || null,
-        description_en: createDto.descriptionEn || null,
-        description_ar: createDto.descriptionAr || null,
+        name: createDto.name,
+        description: createDto.description || null,
         image_url: createDto.imageUrl || null,
         base_price: createDto.basePrice,
         stock_type: createDto.stockType || 'unlimited',
@@ -653,10 +633,8 @@ export class MenuService {
 
     // Update food item
     const updateData: any = {};
-    if (updateDto.nameEn !== undefined) updateData.name_en = updateDto.nameEn;
-    if (updateDto.nameAr !== undefined) updateData.name_ar = updateDto.nameAr;
-    if (updateDto.descriptionEn !== undefined) updateData.description_en = updateDto.descriptionEn;
-    if (updateDto.descriptionAr !== undefined) updateData.description_ar = updateDto.descriptionAr;
+    if (updateDto.name !== undefined) updateData.name = updateDto.name;
+    if (updateDto.description !== undefined) updateData.description = updateDto.description;
     if (updateDto.imageUrl !== undefined) updateData.image_url = updateDto.imageUrl;
     if (updateDto.categoryId !== undefined) updateData.category_id = updateDto.categoryId;
     if (updateDto.basePrice !== undefined) updateData.base_price = updateDto.basePrice;
@@ -862,8 +840,7 @@ export class MenuService {
 
         return {
           id: group.id,
-          nameEn: group.name_en,
-          nameAr: group.name_ar,
+          name: group.name,
           selectionType: group.selection_type,
           isRequired: group.is_required,
           minSelections: group.min_selections,
@@ -874,8 +851,7 @@ export class MenuService {
           updatedAt: group.updated_at,
           addOns: addOns?.map((addOn) => ({
             id: addOn.id,
-            nameEn: addOn.name_en,
-            nameAr: addOn.name_ar,
+            name: addOn.name,
             price: parseFloat(addOn.price),
             isActive: addOn.is_active,
             displayOrder: addOn.display_order,
@@ -911,8 +887,7 @@ export class MenuService {
 
     return {
       id: addOnGroup.id,
-      nameEn: addOnGroup.name_en,
-      nameAr: addOnGroup.name_ar,
+      name: addOnGroup.name,
       selectionType: addOnGroup.selection_type,
       isRequired: addOnGroup.is_required,
       minSelections: addOnGroup.min_selections,
@@ -923,8 +898,7 @@ export class MenuService {
       updatedAt: addOnGroup.updated_at,
       addOns: addOns?.map((addOn) => ({
         id: addOn.id,
-        nameEn: addOn.name_en,
-        nameAr: addOn.name_ar,
+        name: addOn.name,
         price: parseFloat(addOn.price),
         isActive: addOn.is_active,
         displayOrder: addOn.display_order,
@@ -949,8 +923,7 @@ export class MenuService {
       .from('add_on_groups')
       .insert({
         tenant_id: tenantId,
-        name_en: createDto.nameEn,
-        name_ar: createDto.nameAr || null,
+        name: createDto.name,
         selection_type: createDto.selectionType || 'multiple',
         is_required: createDto.isRequired || false,
         min_selections: minSelections,
@@ -967,8 +940,7 @@ export class MenuService {
 
     return {
       id: addOnGroup.id,
-      nameEn: addOnGroup.name_en,
-      nameAr: addOnGroup.name_ar,
+      name: addOnGroup.name,
       selectionType: addOnGroup.selection_type,
       isRequired: addOnGroup.is_required,
       minSelections: addOnGroup.min_selections,
@@ -1005,8 +977,7 @@ export class MenuService {
       .single();
 
     const updateData: any = {};
-    if (updateDto.nameEn !== undefined) updateData.name_en = updateDto.nameEn;
-    if (updateDto.nameAr !== undefined) updateData.name_ar = updateDto.nameAr;
+    if (updateDto.name !== undefined) updateData.name = updateDto.name;
     
     const selectionType = updateDto.selectionType !== undefined ? updateDto.selectionType : current?.selection_type;
     const isRequired = updateDto.isRequired !== undefined ? updateDto.isRequired : current?.is_required;
@@ -1132,8 +1103,7 @@ export class MenuService {
     return addOns.map((addOn) => ({
       id: addOn.id,
       addOnGroupId: addOn.add_on_group_id,
-      nameEn: addOn.name_en,
-      nameAr: addOn.name_ar,
+      name: addOn.name,
       price: parseFloat(addOn.price),
       isActive: addOn.is_active,
       displayOrder: addOn.display_order,
@@ -1173,8 +1143,7 @@ export class MenuService {
     return {
       id: addOn.id,
       addOnGroupId: addOn.add_on_group_id,
-      nameEn: addOn.name_en,
-      nameAr: addOn.name_ar,
+      name: addOn.name,
       price: parseFloat(addOn.price),
       isActive: addOn.is_active,
       displayOrder: addOn.display_order,
@@ -1203,8 +1172,7 @@ export class MenuService {
       .from('add_ons')
       .insert({
         add_on_group_id: createDto.addOnGroupId,
-        name_en: createDto.nameEn,
-        name_ar: createDto.nameAr || null,
+        name: createDto.name,
         price: createDto.price || 0,
         is_active: createDto.isActive !== undefined ? createDto.isActive : true,
         display_order: createDto.displayOrder || 0,
@@ -1219,8 +1187,7 @@ export class MenuService {
     return {
       id: addOn.id,
       addOnGroupId: addOn.add_on_group_id,
-      nameEn: addOn.name_en,
-      nameAr: addOn.name_ar,
+      name: addOn.name,
       price: parseFloat(addOn.price),
       isActive: addOn.is_active,
       displayOrder: addOn.display_order,
@@ -1259,8 +1226,7 @@ export class MenuService {
     }
 
     const updateData: any = {};
-    if (updateDto.nameEn !== undefined) updateData.name_en = updateDto.nameEn;
-    if (updateDto.nameAr !== undefined) updateData.name_ar = updateDto.nameAr;
+    if (updateDto.name !== undefined) updateData.name = updateDto.name;
     if (updateDto.price !== undefined) updateData.price = updateDto.price;
     if (updateDto.isActive !== undefined) updateData.is_active = updateDto.isActive;
     if (updateDto.displayOrder !== undefined) updateData.display_order = updateDto.displayOrder;
@@ -1281,8 +1247,7 @@ export class MenuService {
     return {
       id: addOn.id,
       addOnGroupId: addOn.add_on_group_id,
-      nameEn: addOn.name_en,
-      nameAr: addOn.name_ar,
+      name: addOn.name,
       price: parseFloat(addOn.price),
       isActive: addOn.is_active,
       displayOrder: addOn.display_order,
@@ -1391,8 +1356,7 @@ export class MenuService {
       
       return {
         menuType,
-        nameEn: menuType.charAt(0).toUpperCase() + menuType.slice(1).replace('_', ' '),
-        nameAr: null, // Can be added to translations
+        name: menuType.charAt(0).toUpperCase() + menuType.slice(1).replace('_', ' '),
         isActive: activeItemsInMenu.length > 0,
         itemCount: activeItemsInMenu.length,
       };

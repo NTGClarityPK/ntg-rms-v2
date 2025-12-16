@@ -676,9 +676,7 @@ function OrderCard({
                       <Text fw={500} size="md" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
                         {item.quantity}x{' '}
                         {item.foodItem
-                          ? (language === 'ar' && item.foodItem.nameAr
-                              ? item.foodItem.nameAr
-                              : item.foodItem.nameEn || t('pos.item', language))
+                          ? (item.foodItem.name || t('pos.item', language))
                           : t('pos.item', language) + ` #${item.foodItemId || item.id}`}
                       </Text>
                       {item.variation && item.variation.variationName && (
@@ -693,9 +691,7 @@ function OrderCard({
                             .filter(addOn => addOn.addOn)
                             .map(
                               (addOn) =>
-                                (language === 'ar' && addOn.addOn?.nameAr
-                                  ? addOn.addOn.nameAr
-                                  : addOn.addOn?.nameEn) || ''
+                                addOn.addOn?.name || ''
                             )
                             .filter(Boolean)
                             .join(', ') || '-'}

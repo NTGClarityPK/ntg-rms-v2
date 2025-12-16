@@ -3,8 +3,7 @@ import { API_ENDPOINTS } from '../constants/api';
 
 export interface RestaurantInfo {
   id: string;
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   subdomain: string;
   email: string;
   phone?: string;
@@ -20,8 +19,7 @@ export interface RestaurantInfo {
 }
 
 export interface UpdateRestaurantInfoDto {
-  nameEn?: string;
-  nameAr?: string;
+  name?: string;
   email?: string;
   phone?: string;
   logoUrl?: string;
@@ -36,11 +34,9 @@ export interface UpdateRestaurantInfoDto {
 export interface Branch {
   id: string;
   tenantId: string;
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   code: string;
-  addressEn?: string;
-  addressAr?: string;
+  address?: string;
   city?: string;
   state?: string;
   country?: string;
@@ -51,8 +47,7 @@ export interface Branch {
   managerId?: string;
   manager?: {
     id: string;
-    nameEn: string;
-    nameAr?: string;
+    name: string;
     email: string;
   };
   isActive: boolean;
@@ -61,11 +56,9 @@ export interface Branch {
 }
 
 export interface CreateBranchDto {
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   code: string;
-  addressEn?: string;
-  addressAr?: string;
+  address?: string;
   city?: string;
   state?: string;
   country?: string;
@@ -77,11 +70,9 @@ export interface CreateBranchDto {
 }
 
 export interface UpdateBranchDto {
-  nameEn?: string;
-  nameAr?: string;
+  name?: string;
   code?: string;
-  addressEn?: string;
-  addressAr?: string;
+  address?: string;
   city?: string;
   state?: string;
   country?: string;
@@ -98,8 +89,7 @@ export interface Counter {
   branchId: string;
   branch?: {
     id: string;
-    nameEn: string;
-    nameAr?: string;
+    name: string;
     code: string;
   };
   name: string;
@@ -126,8 +116,7 @@ export interface Table {
   branchId: string;
   branch?: {
     id: string;
-    nameEn: string;
-    nameAr?: string;
+    name: string;
     code: string;
   };
   tableNumber: string;

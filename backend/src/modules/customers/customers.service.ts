@@ -27,7 +27,7 @@ export class CustomersService {
 
     if (filters?.search) {
       query = query.or(
-        `name_en.ilike.%${filters.search}%,name_ar.ilike.%${filters.search}%,phone.ilike.%${filters.search}%`,
+        `name.ilike.%${filters.search}%,phone.ilike.%${filters.search}%`,
       );
     }
 
@@ -54,8 +54,7 @@ export class CustomersService {
       return {
         id: customer.id,
         tenantId: customer.tenant_id,
-        nameEn: customer.name_en,
-        nameAr: customer.name_ar,
+        name: customer.name,
         phone: customer.phone,
         email: customer.email,
         dateOfBirth: customer.date_of_birth,
@@ -186,8 +185,7 @@ export class CustomersService {
     return {
       id: customer.id,
       tenantId: customer.tenant_id,
-      nameEn: customer.name_en,
-      nameAr: customer.name_ar,
+      name: customer.name,
       phone: customer.phone,
       email: customer.email,
       dateOfBirth: customer.date_of_birth,
@@ -204,8 +202,7 @@ export class CustomersService {
         id: addr.id,
         customerId: addr.customer_id,
         addressLabel: addr.address_label,
-        addressEn: addr.address_en,
-        addressAr: addr.address_ar,
+        address: addr.address,
         city: addr.city,
         state: addr.state,
         country: addr.country,
@@ -252,8 +249,7 @@ export class CustomersService {
       .from('customers')
       .insert({
         tenant_id: tenantId,
-        name_en: createDto.nameEn,
-        name_ar: createDto.nameAr || createDto.nameEn,
+        name: createDto.name,
         phone: createDto.phone,
         email: createDto.email,
         date_of_birth: createDto.dateOfBirth,
@@ -272,8 +268,7 @@ export class CustomersService {
       await supabase.from('customer_addresses').insert({
         customer_id: customer.id,
         address_label: createDto.address.label || 'home',
-        address_en: createDto.address.addressEn,
-        address_ar: createDto.address.addressAr,
+        address: createDto.address.address,
         city: createDto.address.city,
         state: createDto.address.state,
         country: createDto.address.country || 'Iraq',
@@ -287,8 +282,7 @@ export class CustomersService {
     return {
       id: customer.id,
       tenantId: customer.tenant_id,
-      nameEn: customer.name_en,
-      nameAr: customer.name_ar,
+      name: customer.name,
       phone: customer.phone,
       email: customer.email,
       dateOfBirth: customer.date_of_birth,
@@ -344,8 +338,7 @@ export class CustomersService {
       updated_at: new Date().toISOString(),
     };
 
-    if (updateDto.nameEn !== undefined) updateData.name_en = updateDto.nameEn;
-    if (updateDto.nameAr !== undefined) updateData.name_ar = updateDto.nameAr;
+    if (updateDto.name !== undefined) updateData.name = updateDto.name;
     if (updateDto.phone !== undefined) updateData.phone = updateDto.phone;
     if (updateDto.email !== undefined) updateData.email = updateDto.email;
     if (updateDto.dateOfBirth !== undefined) updateData.date_of_birth = updateDto.dateOfBirth;
@@ -371,8 +364,7 @@ export class CustomersService {
     return {
       id: customer.id,
       tenantId: customer.tenant_id,
-      nameEn: customer.name_en,
-      nameAr: customer.name_ar,
+      name: customer.name,
       phone: customer.phone,
       email: customer.email,
       dateOfBirth: customer.date_of_birth,
@@ -393,8 +385,7 @@ export class CustomersService {
    */
   async createCustomerAddress(tenantId: string, customerId: string, addressDto: {
     label?: string;
-    addressEn: string;
-    addressAr?: string;
+    address: string;
     city?: string;
     state?: string;
     country?: string;
@@ -422,8 +413,7 @@ export class CustomersService {
       .insert({
         customer_id: customerId,
         address_label: addressDto.label || 'home',
-        address_en: addressDto.addressEn,
-        address_ar: addressDto.addressAr || null,
+        address: addressDto.address,
         city: addressDto.city || null,
         state: addressDto.state || null,
         country: addressDto.country || 'Iraq',
@@ -443,8 +433,7 @@ export class CustomersService {
       id: address.id,
       customerId: address.customer_id,
       addressLabel: address.address_label,
-      addressEn: address.address_en,
-      addressAr: address.address_ar,
+      address: address.address,
       city: address.city,
       state: address.state,
       country: address.country,

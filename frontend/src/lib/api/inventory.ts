@@ -4,8 +4,7 @@ import apiClient from './client';
 export interface Ingredient {
   id: string;
   tenantId: string;
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   category?: string;
   unitOfMeasurement: string;
   currentStock: number;
@@ -37,8 +36,7 @@ export interface StockTransaction {
   ingredient?: Ingredient;
   branch?: {
     id: string;
-    nameEn: string;
-    nameAr?: string;
+    name: string;
   };
 }
 
@@ -50,15 +48,13 @@ export interface Recipe {
   unit: string;
   foodItem?: {
     id: string;
-    nameEn: string;
-    nameAr?: string;
+    name: string;
   };
   ingredient?: Ingredient;
 }
 
 export interface CreateIngredientDto {
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   category?: string;
   unitOfMeasurement: string;
   currentStock?: number;
@@ -69,8 +65,7 @@ export interface CreateIngredientDto {
 }
 
 export interface UpdateIngredientDto {
-  nameEn?: string;
-  nameAr?: string;
+  name?: string;
   category?: string;
   unitOfMeasurement?: string;
   currentStock?: number;

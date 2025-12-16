@@ -13,12 +13,7 @@ export class SignupDto {
 
   @ApiProperty({ example: 'John Doe' })
   @IsString()
-  nameEn: string;
-
-  @ApiProperty({ example: 'جون دو', required: false })
-  @IsString()
-  @IsOptional()
-  nameAr?: string;
+  name: string;
 
   @ApiProperty({ example: '+9647501234567', required: false })
   @IsString()

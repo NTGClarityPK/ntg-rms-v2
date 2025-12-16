@@ -113,7 +113,7 @@ export default function DashboardPage() {
       <Paper p="md" withBorder>
         <Stack gap="sm">
           <Text size="lg" fw={600}>
-            {t('dashboard.welcomeMessage' as any, language)?.replace('{name}', user?.nameEn || user?.email || 'User') || `Welcome, ${user?.nameEn || user?.email || 'User'}`}
+            {t('dashboard.welcomeMessage' as any, language)?.replace('{name}', user?.name || user?.email || 'User') || `Welcome, ${user?.name || user?.email || 'User'}`}
           </Text>
           <Text c="dimmed">
             {t('common.role' as any, language) || 'Role'}: {formatRole(user?.role)}
@@ -192,7 +192,7 @@ export default function DashboardPage() {
                   {dashboardData.lowStockAlerts.slice(0, 5).map((alert) => (
                     <Card key={alert.id} p="sm" withBorder>
                       <Text fw={500} size="sm">
-                        {language === 'ar' && alert.nameAr ? alert.nameAr : alert.nameEn}
+                        {(alert as any).name || (alert as any).nameEn || (alert as any).nameAr || 'Unknown'}
                       </Text>
                       <Group gap="xs" mt="xs">
                         <Badge color="red" variant="light">
@@ -227,7 +227,7 @@ export default function DashboardPage() {
                     <BarChart data={dashboardData.popularItems.slice(0, 10)}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis 
-                        dataKey={language === 'ar' ? 'nameAr' : 'nameEn'}
+                        dataKey="name"
                         angle={-45}
                         textAnchor="end"
                         height={100}

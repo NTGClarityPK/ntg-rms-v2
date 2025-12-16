@@ -69,7 +69,7 @@ export function EmployeesPage() {
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [branches, setBranches] = useState<Array<{ id: string; nameEn: string; nameAr?: string }>>([]);
+  const [branches, setBranches] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [opened, setOpened] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
@@ -81,8 +81,7 @@ export function EmployeesPage() {
   const form = useForm({
     initialValues: {
       email: '',
-      nameEn: '',
-      nameAr: '',
+      name: '',
       role: '',
       phone: '',
       employeeId: '',
@@ -98,7 +97,7 @@ export function EmployeesPage() {
     },
     validate: {
       email: (value) => (!value ? (t('common.email' as any, language) || 'Email') + ' is required' : null),
-      nameEn: (value) => (!value ? t('employees.nameEn', language) + ' is required' : null),
+      name: (value) => (!value ? t('employees.name', language) || 'Name is required' : null),
       role: (value) => (!value ? t('employees.roleLabel', language) + ' is required' : null),
       password: (value, values) =>
         values.createAuthAccount && !value ? (t('common.password' as any, language) || 'Password') + ' is required' : null,
@@ -110,7 +109,7 @@ export function EmployeesPage() {
 
     try {
       const serverBranches = await restaurantApi.getBranches();
-      setBranches(serverBranches);
+      setBranches(serverBranches.map(b => ({ id: b.id, name: b.name })));
     } catch (err: any) {
       console.error('Failed to load branches:', err);
     }
@@ -138,8 +137,7 @@ export function EmployeesPage() {
             tenantId: user.tenantId,
             supabaseAuthId: emp.supabaseAuthId,
             email: emp.email,
-            nameEn: emp.nameEn,
-            nameAr: emp.nameAr,
+            name: emp.name || (emp as any).nameEn || (emp as any).nameAr || '',
             phone: emp.phone,
             role: emp.role,
             employeeId: emp.employeeId,
@@ -158,27 +156,27 @@ export function EmployeesPage() {
           }));
 
           if (employeesToStore.length > 0) {
-            await db.employees.bulkPut(employeesToStore);
+            await db.employees.bulkPut(employeesToStore as any);
           }
         } catch (err: any) {
           console.error('Failed to load employees from server:', err);
           // Fall back to IndexedDB
           const localEmployees = await db.employees.where('tenantId').equals(user.tenantId).toArray();
-          setEmployees(localEmployees as Employee[]);
+          setEmployees(localEmployees as unknown as Employee[]);
         }
       } else {
         // Load from IndexedDB when offline
         const localEmployees = await db.employees.where('tenantId').equals(user.tenantId).toArray();
-        setEmployees(localEmployees as Employee[]);
+        setEmployees(localEmployees as unknown as Employee[]);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to load employees');
-        notifications.show({
-          title: t('common.error' as any, language) || 'Error',
-          message: err.message || 'Failed to load employees',
-          color: notificationColors.error,
-          icon: <IconAlertCircle size={16} />,
-        });
+      notifications.show({
+        title: t('common.error' as any, language) || 'Error',
+        message: err.message || 'Failed to load employees',
+        color: notificationColors.error,
+        icon: <IconAlertCircle size={16} />,
+      });
     } finally {
       setLoading(false);
     }
@@ -197,8 +195,7 @@ export function EmployeesPage() {
       setEditingEmployee(employee);
       form.setValues({
         email: employee.email,
-        nameEn: employee.nameEn,
-        nameAr: employee.nameAr || '',
+        name: employee.name || '',
         role: employee.role,
         phone: employee.phone || '',
         employeeId: employee.employeeId || '',
@@ -234,8 +231,7 @@ export function EmployeesPage() {
       if (editingEmployee) {
         // Update
         const updateDto: UpdateEmployeeDto = {
-          nameEn: values.nameEn,
-          nameAr: values.nameAr || undefined,
+          name: values.name,
           email: values.email,
           phone: values.phone || undefined,
           role: values.role,
@@ -259,8 +255,7 @@ export function EmployeesPage() {
             tenantId: user.tenantId,
             supabaseAuthId: updated.supabaseAuthId,
             email: updated.email,
-            nameEn: updated.nameEn,
-            nameAr: updated.nameAr,
+            name: updated.name,
             phone: updated.phone,
             role: updated.role,
             employeeId: updated.employeeId,
@@ -276,7 +271,7 @@ export function EmployeesPage() {
             updatedAt: updated.updatedAt,
             lastSynced: new Date().toISOString(),
             syncStatus: 'synced',
-          });
+          } as any);
         } else {
           // Queue for sync
           await db.employees.put({
@@ -298,8 +293,7 @@ export function EmployeesPage() {
         // Create
         const createDto: CreateEmployeeDto = {
           email: values.email,
-          nameEn: values.nameEn,
-          nameAr: values.nameAr || undefined,
+          name: values.name,
           role: values.role,
           phone: values.phone || undefined,
           employeeId: values.employeeId || undefined,
@@ -324,8 +318,7 @@ export function EmployeesPage() {
             tenantId: user.tenantId,
             supabaseAuthId: created.supabaseAuthId,
             email: created.email,
-            nameEn: created.nameEn,
-            nameAr: created.nameAr,
+            name: created.name,
             phone: created.phone,
             role: created.role,
             employeeId: created.employeeId,
@@ -341,7 +334,7 @@ export function EmployeesPage() {
             updatedAt: created.updatedAt,
             lastSynced: new Date().toISOString(),
             syncStatus: 'synced',
-          });
+          } as any);
         } else {
           // Queue for sync
           const tempId = `employee-${Date.now()}`;
@@ -382,7 +375,7 @@ export function EmployeesPage() {
       title: t('employees.deleteConfirm', language),
       children: (
         <Text size="sm">
-          {t('employees.deleteConfirmMessage', language)} {employee.nameEn}?
+          {t('employees.deleteConfirmMessage', language)} {employee.name}?
         </Text>
       ),
       labels: { confirm: t('common.delete' as any, language) || 'Delete', cancel: t('common.cancel' as any, language) || 'Cancel' },
@@ -429,8 +422,7 @@ export function EmployeesPage() {
   const filteredEmployees = employees.filter((emp) => {
     const matchesSearch =
       !searchQuery ||
-      emp.nameEn?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      emp.nameAr?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      emp.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       emp.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       emp.phone?.includes(searchQuery) ||
       emp.employeeId?.toLowerCase().includes(searchQuery.toLowerCase());
@@ -552,7 +544,7 @@ export function EmployeesPage() {
                   <Table.Tr key={employee.id}>
                     <Table.Td>
                       <Text fw={500}>
-                        {language === 'ar' && employee.nameAr ? employee.nameAr : employee.nameEn}
+                        {employee.name}
                       </Text>
                       {employee.employeeId && (
                         <Text size="xs" c="dimmed">
@@ -608,13 +600,10 @@ export function EmployeesPage() {
             <Grid>
               <Grid.Col span={{ base: 12, md: 6 }}>
                 <TextInput
-                  label={t('employees.nameEn', language)}
+                  label={t('employees.name', language) || 'Name'}
                   required
-                  {...form.getInputProps('nameEn')}
+                  {...form.getInputProps('name')}
                 />
-              </Grid.Col>
-              <Grid.Col span={{ base: 12, md: 6 }}>
-                <TextInput label={t('employees.nameAr', language)} {...form.getInputProps('nameAr')} />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 6 }}>
                 <TextInput label={t('common.email' as any, language)} required {...form.getInputProps('email')} />
@@ -676,7 +665,7 @@ export function EmployeesPage() {
                   label={t('employees.assignedBranches', language)}
                   data={branches.map((b) => ({
                     value: b.id,
-                    label: language === 'ar' && b.nameAr ? b.nameAr : b.nameEn,
+                    label: b.name,
                   }))}
                   {...form.getInputProps('branchIds')}
                 />

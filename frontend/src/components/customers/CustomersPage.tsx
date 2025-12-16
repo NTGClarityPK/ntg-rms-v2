@@ -74,8 +74,7 @@ export function CustomersPage() {
 
   const form = useForm({
     initialValues: {
-      nameEn: '',
-      nameAr: '',
+      name: '',
       phone: '',
       email: '',
       dateOfBirth: null as Date | null,
@@ -83,15 +82,14 @@ export function CustomersPage() {
       notes: '',
       address: {
         label: 'home',
-        addressEn: '',
-        addressAr: '',
+        address: '',
         city: '',
         state: '',
         country: 'Iraq',
       },
     },
     validate: {
-      nameEn: (value) => (!value ? t('customers.nameEn', language) + ' is required' : null),
+      name: (value) => (!value ? (t('customers.name', language) || 'Name') + ' is required' : null),
       phone: (value) => (!value ? (t('common.phone' as any, language) || 'Phone') + ' is required' : null),
     },
   });
@@ -115,8 +113,7 @@ export function CustomersPage() {
           const customersToStore = serverCustomers.map((cust) => ({
             id: cust.id,
             tenantId: user.tenantId,
-            nameEn: cust.nameEn,
-            nameAr: cust.nameAr,
+            name: cust.name || '',
             phone: cust.phone,
             email: cust.email,
             dateOfBirth: cust.dateOfBirth,
@@ -134,18 +131,18 @@ export function CustomersPage() {
           }));
 
           if (customersToStore.length > 0) {
-            await db.customers.bulkPut(customersToStore);
+            await db.customers.bulkPut(customersToStore as any);
           }
         } catch (err: any) {
           console.error('Failed to load customers from server:', err);
           // Fall back to IndexedDB
           const localCustomers = await db.customers.where('tenantId').equals(user.tenantId).toArray();
-          setCustomers(localCustomers as Customer[]);
+          setCustomers(localCustomers as unknown as Customer[]);
         }
       } else {
         // Load from IndexedDB when offline
         const localCustomers = await db.customers.where('tenantId').equals(user.tenantId).toArray();
-        setCustomers(localCustomers as Customer[]);
+        setCustomers(localCustomers as unknown as Customer[]);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to load customers');
@@ -184,8 +181,7 @@ export function CustomersPage() {
                             customerWithAddresses.addresses?.[0];
       
       form.setValues({
-        nameEn: customerWithAddresses.nameEn,
-        nameAr: customerWithAddresses.nameAr || '',
+        name: customerWithAddresses.name || '',
         phone: customerWithAddresses.phone,
         email: customerWithAddresses.email || '',
         dateOfBirth: customerWithAddresses.dateOfBirth ? new Date(customerWithAddresses.dateOfBirth) : null,
@@ -193,15 +189,13 @@ export function CustomersPage() {
         notes: customerWithAddresses.notes || '',
         address: defaultAddress ? {
           label: defaultAddress.addressLabel || 'home',
-          addressEn: defaultAddress.addressEn || '',
-          addressAr: defaultAddress.addressAr || '',
+          address: defaultAddress.address || '',
           city: defaultAddress.city || '',
           state: defaultAddress.state || '',
           country: defaultAddress.country || 'Iraq',
         } : {
           label: 'home',
-          addressEn: '',
-          addressAr: '',
+          address: '',
           city: '',
           state: '',
           country: 'Iraq',
@@ -257,8 +251,7 @@ export function CustomersPage() {
       if (editingCustomer) {
         // Update
         const updateDto: UpdateCustomerDto = {
-          nameEn: values.nameEn,
-          nameAr: values.nameAr || undefined,
+          name: values.name,
           phone: values.phone,
           email: values.email || undefined,
           dateOfBirth: values.dateOfBirth ? values.dateOfBirth.toISOString().split('T')[0] : undefined,
@@ -274,8 +267,7 @@ export function CustomersPage() {
           await db.customers.put({
             id: updated.id,
             tenantId: user.tenantId,
-            nameEn: updated.nameEn,
-            nameAr: updated.nameAr,
+            name: updated.name || '',
             phone: updated.phone,
             email: updated.email,
             dateOfBirth: updated.dateOfBirth,
@@ -290,7 +282,7 @@ export function CustomersPage() {
             updatedAt: updated.updatedAt,
             lastSynced: new Date().toISOString(),
             syncStatus: 'synced',
-          });
+          } as any);
         } else {
           // Queue for sync
           await db.customers.put({
@@ -311,18 +303,16 @@ export function CustomersPage() {
       } else {
         // Create
         const createDto: CreateCustomerDto = {
-          nameEn: values.nameEn,
-          nameAr: values.nameAr || undefined,
+          name: values.name,
           phone: values.phone,
           email: values.email || undefined,
           dateOfBirth: values.dateOfBirth ? values.dateOfBirth.toISOString().split('T')[0] : undefined,
           preferredLanguage: values.preferredLanguage,
           notes: values.notes || undefined,
-          address: values.address.addressEn
+          address: values.address.address
             ? {
                 label: values.address.label,
-                addressEn: values.address.addressEn,
-                addressAr: values.address.addressAr || undefined,
+                address: values.address.address,
                 city: values.address.city || undefined,
                 state: values.address.state || undefined,
                 country: values.address.country,
@@ -338,8 +328,7 @@ export function CustomersPage() {
           await db.customers.put({
             id: created.id,
             tenantId: user.tenantId,
-            nameEn: created.nameEn,
-            nameAr: created.nameAr,
+            name: created.name || '',
             phone: created.phone,
             email: created.email,
             dateOfBirth: created.dateOfBirth,
@@ -354,7 +343,7 @@ export function CustomersPage() {
             updatedAt: created.updatedAt,
             lastSynced: new Date().toISOString(),
             syncStatus: 'synced',
-          });
+          } as any);
         } else {
           // Queue for sync
           const tempId = `customer-${Date.now()}`;
@@ -397,8 +386,7 @@ export function CustomersPage() {
   const filteredCustomers = customers.filter((cust) => {
     const matchesSearch =
       !searchQuery ||
-      cust.nameEn?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      cust.nameAr?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      cust.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       cust.phone?.includes(searchQuery) ||
       cust.email?.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
@@ -489,7 +477,7 @@ export function CustomersPage() {
                     <Table.Tr key={customer.id}>
                       <Table.Td>
                         <Text fw={500}>
-                          {language === 'ar' && customer.nameAr ? customer.nameAr : customer.nameEn}
+                          {customer.name || ''}
                         </Text>
                         {customer.email && (
                           <Text size="xs" c="dimmed">
@@ -554,10 +542,7 @@ export function CustomersPage() {
           <Stack gap="md">
             <Grid>
               <Grid.Col span={{ base: 12, md: 6 }}>
-                <TextInput label={t('customers.nameEn', language)} required {...form.getInputProps('nameEn')} />
-              </Grid.Col>
-              <Grid.Col span={{ base: 12, md: 6 }}>
-                <TextInput label={t('customers.nameAr', language)} {...form.getInputProps('nameAr')} />
+                <TextInput label={t('customers.name', language) || 'Name'} required {...form.getInputProps('name')} />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 6 }}>
                 <TextInput label={t('common.phone' as any, language)} required {...form.getInputProps('phone')} />
@@ -590,12 +575,9 @@ export function CustomersPage() {
               </Grid.Col>
               <Grid.Col span={12}>
                 <TextInput
-                  label={t('customers.addressEn', language)}
-                  {...form.getInputProps('address.addressEn')}
+                  label={t('customers.address', language) || 'Address'}
+                  {...form.getInputProps('address.address')}
                 />
-              </Grid.Col>
-              <Grid.Col span={12}>
-                <TextInput label={t('customers.addressAr', language)} {...form.getInputProps('address.addressAr')} />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 6 }}>
                 <TextInput label={t('customers.city', language)} {...form.getInputProps('address.city')} />
@@ -645,7 +627,7 @@ export function CustomersPage() {
                         {t('customers.name', language)}
                       </Text>
                       <Text fw={500}>
-                        {language === 'ar' && selectedCustomer.nameAr ? selectedCustomer.nameAr : selectedCustomer.nameEn}
+                        {selectedCustomer.name || ''}
                       </Text>
                     </Card>
                   </Grid.Col>
@@ -939,7 +921,7 @@ export function CustomersPage() {
                         </Text>
                       </Group>
                       <Text size="sm">
-                        {language === 'ar' && address.addressAr ? address.addressAr : address.addressEn}
+                        {address.address}
                       </Text>
                       {(address.city || address.state || address.country) && (
                         <Text size="xs" c="dimmed" mt="xs">

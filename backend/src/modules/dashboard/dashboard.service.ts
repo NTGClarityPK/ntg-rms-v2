@@ -118,7 +118,7 @@ export class DashboardService {
     // Low Stock Alerts
     let stockQuery = supabase
       .from('ingredients')
-      .select('id, name_en, name_ar, current_stock, minimum_threshold')
+      .select('id, name, current_stock, minimum_threshold')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null);
 
@@ -140,8 +140,7 @@ export class DashboardService {
       })
       .map((ing) => ({
         id: ing.id,
-        nameEn: ing.name_en,
-        nameAr: ing.name_ar,
+        name: ing.name,
         currentStock: Number(ing.current_stock || 0),
         minimumThreshold: Number(ing.minimum_threshold || 0),
       }));
@@ -150,7 +149,7 @@ export class DashboardService {
     const orderIds = todayOrdersData.map((o) => o.id);
     let popularItemsQuery = supabase
       .from('order_items')
-      .select('food_item_id, quantity, food_item:food_items(id, name_en, name_ar)')
+      .select('food_item_id, quantity, food_item:food_items(id, name)')
       .in('order_id', orderIds.length > 0 ? orderIds : ['00000000-0000-0000-0000-000000000000'])
       .limit(1000);
 
@@ -167,15 +166,14 @@ export class DashboardService {
         if (!acc[itemId]) {
           acc[itemId] = {
             id: itemId,
-            nameEn: foodItem.name_en,
-            nameAr: foodItem.name_ar,
+            name: foodItem.name,
             quantity: 0,
           };
         }
         acc[itemId].quantity += Number(item.quantity || 0);
       }
       return acc;
-    }, {} as Record<string, { id: string; nameEn: string; nameAr: string; quantity: number }>);
+    }, {} as Record<string, { id: string; name: string; quantity: number }>);
 
     const popularItems = Object.values(itemCounts)
       .sort((a, b) => b.quantity - a.quantity)

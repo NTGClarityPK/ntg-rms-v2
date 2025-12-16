@@ -28,11 +28,11 @@ export default function InventoryReportPage() {
   const loadBranches = useCallback(async () => {
     try {
       const data = await restaurantApi.getBranches();
-      setBranches(data.map((b) => ({ value: b.id, label: language === 'ar' && b.nameAr ? b.nameAr : b.nameEn })));
+      setBranches(data.map((b) => ({ value: b.id, label: b.name })));
     } catch (error) {
       console.error('Failed to load branches:', error);
     }
-  }, [language]);
+  }, []);
 
   const loadReport = useCallback(async (reportFilters?: ReportQueryParams, silent = false) => {
     const filtersToUse = reportFilters || filters;
@@ -103,7 +103,7 @@ export default function InventoryReportPage() {
   }, [] as typeof report.ingredients);
 
   const stockData = uniqueIngredients.slice(0, 10).map((ing) => ({ 
-    name: language === 'ar' && ing.nameAr ? ing.nameAr : (ing.nameEn || ing.name), 
+    name: ing.name, 
     stock: ing.currentStock || 0, 
     threshold: ing.minimumThreshold || 0 
   }));

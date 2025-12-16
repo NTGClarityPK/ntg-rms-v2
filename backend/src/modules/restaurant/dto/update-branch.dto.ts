@@ -5,12 +5,7 @@ export class UpdateBranchDto {
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
-  nameEn?: string;
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  nameAr?: string;
+  name?: string;
 
   @ApiProperty({ required: false })
   @IsString()
@@ -20,12 +15,7 @@ export class UpdateBranchDto {
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
-  addressEn?: string;
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  addressAr?: string;
+  address?: string;
 
   @ApiProperty({ required: false })
   @IsString()

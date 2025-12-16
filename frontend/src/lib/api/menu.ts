@@ -2,10 +2,8 @@ import apiClient from './client';
 
 export interface Category {
   id: string;
-  nameEn: string;
-  nameAr?: string;
-  descriptionEn?: string;
-  descriptionAr?: string;
+  name: string;
+  description?: string;
   imageUrl?: string;
   categoryType: string;
   parentId?: string;
@@ -37,10 +35,8 @@ export interface FoodItemDiscount {
 
 export interface FoodItem {
   id: string;
-  nameEn: string;
-  nameAr?: string;
-  descriptionEn?: string;
-  descriptionAr?: string;
+  name: string;
+  description?: string;
   imageUrl?: string;
   categoryId?: string;
   basePrice: number;
@@ -63,8 +59,7 @@ export interface FoodItem {
 export interface AddOn {
   id: string;
   addOnGroupId: string;
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   price: number;
   isActive: boolean;
   displayOrder: number;
@@ -74,8 +69,7 @@ export interface AddOn {
 
 export interface AddOnGroup {
   id: string;
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   selectionType: 'single' | 'multiple';
   isRequired: boolean;
   minSelections: number;

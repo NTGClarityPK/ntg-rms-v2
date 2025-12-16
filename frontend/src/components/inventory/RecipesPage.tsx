@@ -89,10 +89,8 @@ export function RecipesPage() {
 
       setFoodItems(localFoodItems.map((item) => ({
         id: item.id,
-        nameEn: item.nameEn,
-        nameAr: item.nameAr,
-        descriptionEn: item.descriptionEn,
-        descriptionAr: item.descriptionAr,
+        name: (item as any).name || (item as any).nameEn || (item as any).nameAr || '',
+        description: (item as any).description || (item as any).descriptionEn || (item as any).descriptionAr || undefined,
         imageUrl: item.imageUrl,
         categoryId: item.categoryId,
         basePrice: item.basePrice,
@@ -137,7 +135,7 @@ export function RecipesPage() {
       const byName = new Map<string, typeof localIngredients[0]>();
       
       for (const ing of Array.from(byId.values())) {
-        const key = ing.nameEn?.toLowerCase().trim() || '';
+        const key = ((ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '').toLowerCase().trim();
         if (key) {
           const existing = byName.get(key);
           if (!existing || new Date(ing.updatedAt || ing.createdAt || '') > new Date(existing.updatedAt || existing.createdAt || '')) {
@@ -153,8 +151,7 @@ export function RecipesPage() {
       setIngredients(uniqueIngredients.map((ing) => ({
         id: ing.id,
         tenantId: ing.tenantId,
-        nameEn: ing.nameEn,
-        nameAr: ing.nameAr,
+        name: (ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '',
         category: ing.category,
         unitOfMeasurement: ing.unitOfMeasurement,
         currentStock: ing.currentStock,
@@ -176,7 +173,7 @@ export function RecipesPage() {
           const serverByName = new Map<string, Ingredient>();
           
           for (const ing of Array.from(serverById.values())) {
-            const key = ing.nameEn?.toLowerCase().trim() || '';
+            const key = ing.name?.toLowerCase().trim() || '';
             if (key) {
               const existing = serverByName.get(key);
               if (!existing || new Date(ing.updatedAt) > new Date(existing.updatedAt)) {
@@ -195,8 +192,7 @@ export function RecipesPage() {
           const ingredientsToStore = uniqueServerIngredients.map(ing => ({
             id: ing.id,
             tenantId: user.tenantId,
-            nameEn: ing.nameEn,
-            nameAr: ing.nameAr,
+            name: ing.name,
             category: ing.category,
             unitOfMeasurement: ing.unitOfMeasurement,
             currentStock: ing.currentStock,
@@ -211,7 +207,7 @@ export function RecipesPage() {
           }));
           
           if (ingredientsToStore.length > 0) {
-            await db.ingredients.bulkPut(ingredientsToStore);
+            await db.ingredients.bulkPut(ingredientsToStore as any);
           }
         } catch (err: any) {
           console.warn('Failed to sync ingredients from server:', err);
@@ -291,12 +287,12 @@ export function RecipesPage() {
     const uniqueIngredients = Array.from(byId.values());
     
     return uniqueIngredients
-      .filter((ing) => ing.nameEn)
+      .filter((ing) => ing.name)
       .map((ing) => ({
         value: ing.id,
-        label: (language === 'ar' && ing.nameAr ? ing.nameAr : ing.nameEn) || '',
+        label: ing.name || '',
       }));
-  }, [ingredients, language]);
+  }, [ingredients]);
 
   const handleOpenModal = (foodItem?: FoodItem) => {
     if (foodItem) {
@@ -432,7 +428,7 @@ export function RecipesPage() {
       title: t('common.delete' as any, language) || 'Delete',
       children: (
         <Text size="sm">
-          {t('inventory.deleteRecipe', language) || 'Delete recipe'} for {language === 'ar' && foodItem.nameAr ? foodItem.nameAr : foodItem.nameEn}?
+          {t('inventory.deleteRecipe', language) || 'Delete recipe'} for {foodItem.name}?
         </Text>
       ),
       labels: { confirm: t('common.delete' as any, language) || 'Delete', cancel: t('common.cancel' as any, language) || 'Cancel' },
@@ -477,8 +473,7 @@ export function RecipesPage() {
   // Filter food items
   const filteredFoodItems = foodItems.filter((item) => {
     const matchesSearch =
-      item.nameEn?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (item.nameAr && item.nameAr.toLowerCase().includes(searchQuery.toLowerCase()));
+      item.name?.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
   });
 
@@ -562,7 +557,7 @@ export function RecipesPage() {
                   <Table.Tr key={item.id}>
                     <Table.Td>
                       <Text fw={500}>
-                        {language === 'ar' && item.nameAr ? item.nameAr : item.nameEn}
+                        {item.name}
                       </Text>
                     </Table.Td>
                     <Table.Td>
@@ -574,9 +569,7 @@ export function RecipesPage() {
                               <Group key={rec.id} gap="xs">
                                 <Text size="sm">
                                   {ingredient
-                                    ? language === 'ar' && ingredient.nameAr
-                                      ? ingredient.nameAr
-                                      : ingredient.nameEn
+                                    ? ingredient.name
                                     : 'Unknown'}
                                 </Text>
                                 <Badge variant="light" color={primaryColor} size="sm">
@@ -633,7 +626,7 @@ export function RecipesPage() {
         onClose={handleCloseModal}
         title={
           selectedFoodItem
-            ? `${t('inventory.linkIngredients', language)} - ${language === 'ar' && selectedFoodItem.nameAr ? selectedFoodItem.nameAr : selectedFoodItem.nameEn}`
+            ? `${t('inventory.linkIngredients', language)} - ${selectedFoodItem.name}`
             : t('inventory.linkIngredients', language)
         }
         size="lg"
@@ -646,10 +639,10 @@ export function RecipesPage() {
                 placeholder={t('inventory.selectFoodItem', language)}
                 required
                 data={foodItems
-                  .filter((item) => item.nameEn)
+                  .filter((item) => item.name)
                   .map((item) => ({
                     value: item.id,
-                    label: (language === 'ar' && item.nameAr ? item.nameAr : item.nameEn) || '',
+                    label: item.name || '',
                   }))}
                 searchable
                 {...form.getInputProps('foodItemId')}
@@ -657,7 +650,7 @@ export function RecipesPage() {
             )}
             {selectedFoodItem && (
               <Text size="sm" c="dimmed">
-                {t('inventory.foodItem', language)}: {language === 'ar' && selectedFoodItem.nameAr ? selectedFoodItem.nameAr : selectedFoodItem.nameEn}
+                {t('inventory.foodItem', language)}: {selectedFoodItem.name}
               </Text>
             )}
 

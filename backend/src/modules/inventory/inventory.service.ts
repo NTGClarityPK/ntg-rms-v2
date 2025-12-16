@@ -35,7 +35,7 @@ export class InventoryService {
       .select('*')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
-      .order('name_en', { ascending: true });
+      .order('name', { ascending: true });
 
     if (filters?.category) {
       query = query.eq('category', filters.category);
@@ -55,8 +55,7 @@ export class InventoryService {
     return (data || []).map((ing: any) => ({
       id: ing.id,
       tenantId: ing.tenant_id,
-      nameEn: ing.name_en,
-      nameAr: ing.name_ar,
+      name: ing.name,
       category: ing.category,
       unitOfMeasurement: ing.unit_of_measurement,
       currentStock: Number(ing.current_stock) || 0,
@@ -95,8 +94,7 @@ export class InventoryService {
     return {
       id: data.id,
       tenantId: data.tenant_id,
-      nameEn: data.name_en,
-      nameAr: data.name_ar,
+      name: data.name,
       category: data.category,
       unitOfMeasurement: data.unit_of_measurement,
       currentStock: Number(data.current_stock) || 0,
@@ -120,8 +118,7 @@ export class InventoryService {
       .from('ingredients')
       .insert({
         tenant_id: tenantId,
-        name_en: createDto.nameEn,
-        name_ar: createDto.nameAr || null,
+        name: createDto.name,
         category: createDto.category || null,
         unit_of_measurement: createDto.unitOfMeasurement,
         current_stock: createDto.currentStock || 0,
@@ -141,8 +138,7 @@ export class InventoryService {
     return {
       id: data.id,
       tenantId: data.tenant_id,
-      nameEn: data.name_en,
-      nameAr: data.name_ar,
+      name: data.name,
       category: data.category,
       unitOfMeasurement: data.unit_of_measurement,
       currentStock: Number(data.current_stock) || 0,
@@ -170,8 +166,7 @@ export class InventoryService {
     await this.getIngredientById(tenantId, ingredientId);
 
     const updateData: any = {};
-    if (updateDto.nameEn !== undefined) updateData.name_en = updateDto.nameEn;
-    if (updateDto.nameAr !== undefined) updateData.name_ar = updateDto.nameAr;
+    if (updateDto.name !== undefined) updateData.name = updateDto.name;
     if (updateDto.category !== undefined) updateData.category = updateDto.category;
     if (updateDto.unitOfMeasurement !== undefined)
       updateData.unit_of_measurement = updateDto.unitOfMeasurement;
@@ -199,8 +194,7 @@ export class InventoryService {
     return {
       id: data.id,
       tenantId: data.tenant_id,
-      nameEn: data.name_en,
-      nameAr: data.name_ar,
+      name: data.name,
       category: data.category,
       unitOfMeasurement: data.unit_of_measurement,
       currentStock: Number(data.current_stock) || 0,
@@ -367,7 +361,7 @@ export class InventoryService {
       })
       .select(`
         *,
-        ingredient:ingredients(id, name_en, name_ar, unit_of_measurement)
+        ingredient:ingredients(id, name, unit_of_measurement)
       `)
       .single();
 
@@ -411,8 +405,7 @@ export class InventoryService {
       ingredient: transaction.ingredient
         ? {
             id: transaction.ingredient.id,
-            nameEn: transaction.ingredient.name_en,
-            nameAr: transaction.ingredient.name_ar,
+            name: transaction.ingredient.name,
             unitOfMeasurement: transaction.ingredient.unit_of_measurement,
           }
         : undefined,
@@ -617,9 +610,9 @@ export class InventoryService {
       .select(
         `
         *,
-        ingredient:ingredients(id, name_en, name_ar, unit_of_measurement),
-        branch:branches(id, name_en, name_ar),
-        created_by_user:users!stock_transactions_created_by_fkey(id, name_en, name_ar)
+        ingredient:ingredients(id, name, unit_of_measurement),
+        branch:branches(id, name),
+        created_by_user:users!stock_transactions_created_by_fkey(id, name)
       `,
       )
       .eq('tenant_id', tenantId)
@@ -669,16 +662,14 @@ export class InventoryService {
       ingredient: tx.ingredient
         ? {
             id: tx.ingredient.id,
-            nameEn: tx.ingredient.name_en,
-            nameAr: tx.ingredient.name_ar,
+            name: tx.ingredient.name,
             unitOfMeasurement: tx.ingredient.unit_of_measurement,
           }
         : undefined,
       branch: tx.branch
         ? {
             id: tx.branch.id,
-            nameEn: tx.branch.name_en,
-            nameAr: tx.branch.name_ar,
+            name: tx.branch.name,
           }
         : undefined,
     }));
@@ -699,8 +690,8 @@ export class InventoryService {
       .select(
         `
         *,
-        food_item:food_items(id, name_en, name_ar),
-        ingredient:ingredients(id, name_en, name_ar, unit_of_measurement, current_stock)
+        food_item:food_items(id, name),
+        ingredient:ingredients(id, name, unit_of_measurement, current_stock)
       `,
       )
       .order('created_at', { ascending: false });
@@ -739,15 +730,13 @@ export class InventoryService {
       foodItem: recipe.food_item
         ? {
             id: recipe.food_item.id,
-            nameEn: recipe.food_item.name_en,
-            nameAr: recipe.food_item.name_ar,
+            name: recipe.food_item.name,
           }
         : undefined,
       ingredient: recipe.ingredient
         ? {
             id: recipe.ingredient.id,
-            nameEn: recipe.ingredient.name_en,
-            nameAr: recipe.ingredient.name_ar,
+            name: recipe.ingredient.name,
             unitOfMeasurement: recipe.ingredient.unit_of_measurement,
             currentStock: Number(recipe.ingredient.current_stock) || 0,
           }
@@ -779,7 +768,7 @@ export class InventoryService {
       .select(
         `
         *,
-        ingredient:ingredients(id, name_en, name_ar, unit_of_measurement, current_stock, minimum_threshold)
+        ingredient:ingredients(id, name, unit_of_measurement, current_stock, minimum_threshold)
       `,
       )
       .eq('food_item_id', foodItemId);
@@ -798,8 +787,7 @@ export class InventoryService {
       ingredient: recipe.ingredient
         ? {
             id: recipe.ingredient.id,
-            nameEn: recipe.ingredient.name_en,
-            nameAr: recipe.ingredient.name_ar,
+            name: recipe.ingredient.name,
             unitOfMeasurement: recipe.ingredient.unit_of_measurement,
             currentStock: Number(recipe.ingredient.current_stock) || 0,
             minimumThreshold: Number(recipe.ingredient.minimum_threshold) || 0,
@@ -866,7 +854,7 @@ export class InventoryService {
       .select(
         `
         *,
-        ingredient:ingredients(id, name_en, name_ar, unit_of_measurement)
+        ingredient:ingredients(id, name, unit_of_measurement)
       `,
       );
 
@@ -884,8 +872,7 @@ export class InventoryService {
       ingredient: recipe.ingredient
         ? {
             id: recipe.ingredient.id,
-            nameEn: recipe.ingredient.name_en,
-            nameAr: recipe.ingredient.name_ar,
+            name: recipe.ingredient.name,
             unitOfMeasurement: recipe.ingredient.unit_of_measurement,
           }
         : undefined,
@@ -958,7 +945,7 @@ export class InventoryService {
 
         if (availableStock < totalQuantityNeeded) {
           insufficientItems.push({
-            ingredientName: ingredient.nameEn || ingredient.nameAr || 'Unknown',
+            ingredientName: ingredient.name || 'Unknown',
             available: availableStock,
             required: totalQuantityNeeded,
           });
@@ -1008,7 +995,7 @@ export class InventoryService {
         // Double-check stock availability before deducting (should have been validated earlier)
         if (Number(ingredient.currentStock) < totalQuantityNeeded) {
           throw new BadRequestException(
-            `Insufficient stock for ingredient ${ingredient.nameEn || ingredient.nameAr || 'Unknown'}. Available: ${ingredient.currentStock}, Required: ${totalQuantityNeeded}`,
+            `Insufficient stock for ingredient ${ingredient.name || 'Unknown'}. Available: ${ingredient.currentStock}, Required: ${totalQuantityNeeded}`,
           );
         }
 
@@ -1025,7 +1012,7 @@ export class InventoryService {
         const result = await this.deductStock(tenantId, userId, deductDto);
         deductions.push({
           ingredientId: recipe.ingredient_id,
-          ingredientName: ingredient.nameEn || ingredient.nameAr || 'Unknown',
+          ingredientName: ingredient.name || 'Unknown',
           quantity: totalQuantityNeeded,
           result,
         });
@@ -1053,7 +1040,7 @@ export class InventoryService {
       .select('*')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
-      .order('name_en', { ascending: true });
+      .order('name', { ascending: true });
 
     if (filters?.category) {
       query = query.eq('category', filters.category);
@@ -1084,8 +1071,7 @@ export class InventoryService {
       return {
         id: ingredient.id,
         tenantId: ingredient.tenant_id,
-        nameEn: ingredient.name_en,
-        nameAr: ingredient.name_ar,
+        name: ingredient.name,
         category: ingredient.category,
         unitOfMeasurement: ingredient.unit_of_measurement,
         currentStock,
@@ -1136,8 +1122,7 @@ export class InventoryService {
       return {
         id: ingredient.id,
         tenantId: ingredient.tenant_id,
-        nameEn: ingredient.name_en,
-        nameAr: ingredient.name_ar,
+        name: ingredient.name,
         category: ingredient.category,
         unitOfMeasurement: ingredient.unit_of_measurement,
         currentStock,

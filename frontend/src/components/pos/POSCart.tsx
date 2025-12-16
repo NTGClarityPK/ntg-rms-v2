@@ -148,8 +148,7 @@ export function POSCart({
   const [placedOrderItems, setPlacedOrderItems] = useState<CartItem[]>([]);
   // Address handling for delivery orders
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
-  const [newAddressEn, setNewAddressEn] = useState<string>('');
-  const [newAddressAr, setNewAddressAr] = useState<string>('');
+  const [newAddress, setNewAddress] = useState<string>('');
   const [newAddressCity, setNewAddressCity] = useState<string>('');
   const [newAddressState, setNewAddressState] = useState<string>('');
   const [newAddressCountry, setNewAddressCountry] = useState<string>('');
@@ -189,8 +188,7 @@ export function POSCart({
       if (!selectedCustomerId) {
         setSelectedCustomerData(null);
         setSelectedAddressId(null);
-        setNewAddressEn('');
-        setNewAddressAr('');
+        setNewAddress('');
         setNewAddressCity('');
         setNewAddressState('');
         return;
@@ -219,8 +217,7 @@ export function POSCart({
                 const defaultAddress = latestCustomer.addresses.find((addr) => addr.isDefault) || latestCustomer.addresses[0];
                 if (defaultAddress) {
                   // Prefill address input fields with existing address
-                  setNewAddressEn(defaultAddress.addressEn || '');
-                  setNewAddressAr(defaultAddress.addressAr || '');
+                  setNewAddress(defaultAddress.address || '');
                   setNewAddressCity(defaultAddress.city || '');
                   setNewAddressState(defaultAddress.state || '');
                   setNewAddressCountry(defaultAddress.country || '');
@@ -229,8 +226,7 @@ export function POSCart({
                 }
               } else if (orderType === 'delivery') {
                 // No addresses - clear fields
-                setNewAddressEn('');
-                setNewAddressAr('');
+                setNewAddress('');
                 setNewAddressCity('');
                 setNewAddressState('');
                 setSelectedAddressId(null);
@@ -246,8 +242,7 @@ export function POSCart({
             if ((customer as any).addresses && (customer as any).addresses.length > 0) {
               const defaultAddress = (customer as any).addresses.find((addr: any) => addr.isDefault) || (customer as any).addresses[0];
               if (defaultAddress) {
-                setNewAddressEn(defaultAddress.addressEn || '');
-                setNewAddressAr(defaultAddress.addressAr || '');
+                setNewAddress(defaultAddress.address || '');
                 setNewAddressCity(defaultAddress.city || '');
                 setNewAddressState(defaultAddress.state || '');
                 setNewAddressCountry(defaultAddress.country || '');
@@ -272,8 +267,7 @@ export function POSCart({
   useEffect(() => {
     if (orderType !== 'delivery') {
       setSelectedAddressId(null);
-      setNewAddressEn('');
-      setNewAddressAr('');
+      setNewAddress('');
       setNewAddressCity('');
       setNewAddressState('');
     }
@@ -309,7 +303,7 @@ export function POSCart({
         .where('tenantId')
         .equals(tenantId)
         .filter((customer) => !customer.deletedAt)
-        .sortBy('nameEn');
+        .sortBy('name');
 
       setCustomers(allCustomers);
     } catch (error) {
@@ -340,8 +334,7 @@ export function POSCart({
       if (navigator.onLine) {
         try {
           const createdCustomer = await customersApi.createCustomer({
-            nameEn: newCustomerName,
-            nameAr: newCustomerName,
+            name: newCustomerName,
             phone: newCustomerPhone,
             email: newCustomerEmail || undefined,
           });
@@ -390,8 +383,7 @@ export function POSCart({
         const newCustomer = {
           id: customerId,
           tenantId,
-          nameEn: newCustomerName,
-          nameAr: newCustomerName,
+          name: newCustomerName,
           phone: newCustomerPhone,
           email: newCustomerEmail || undefined,
           totalOrders: 0,
@@ -403,7 +395,7 @@ export function POSCart({
           syncStatus: 'pending' as const,
         };
 
-        await db.customers.add(newCustomer);
+        await db.customers.add(newCustomer as any);
         
         // Queue for sync
         await syncService.queueChange('customers', 'CREATE', customerId, newCustomer);
@@ -624,12 +616,12 @@ export function POSCart({
     if (orderType === 'delivery') {
       if (selectedCustomerId) {
         // Customer selected - must have address selected or new address entered
-        if (!selectedAddressId && !newAddressEn.trim()) {
+        if (!selectedAddressId && !newAddress.trim()) {
           return t('delivery.addressRequired' as any, language) || 'Customer address is required for delivery orders';
         }
       } else {
         // Walk-in customer - must have address entered
-        if (!newAddressEn.trim()) {
+        if (!newAddress.trim()) {
           return t('delivery.addressRequired' as any, language) || 'Delivery address is required for delivery orders';
         }
       }
@@ -672,25 +664,23 @@ export function POSCart({
         if (selectedAddressId && selectedCustomerId && selectedCustomerData?.addresses) {
           const existingAddress = selectedCustomerData.addresses.find((addr: any) => addr.id === selectedAddressId);
           if (existingAddress && 
-              existingAddress.addressEn === newAddressEn.trim() &&
-              (existingAddress.addressAr || '') === (newAddressAr.trim() || '') &&
+              existingAddress.address === newAddress.trim() &&
               (existingAddress.city || '') === (newAddressCity.trim() || '') &&
               (existingAddress.state || '') === (newAddressState.trim() || '')) {
             // Address hasn't changed, use existing address ID
             finalAddressId = selectedAddressId;
-          } else if (newAddressEn.trim() && selectedCustomerId) {
+          } else if (newAddress.trim() && selectedCustomerId) {
             // Address was modified or is new - create/update address
             // Create new address for existing customer
             try {
-              const newAddress = await customersApi.createCustomerAddress(selectedCustomerId, {
-                addressEn: newAddressEn.trim(),
-                addressAr: newAddressAr.trim() || undefined,
+              const createdAddress = await customersApi.createCustomerAddress(selectedCustomerId, {
+                address: newAddress.trim(),
                 city: newAddressCity.trim() || undefined,
                 state: newAddressState.trim() || undefined,
                 country: newAddressCountry || undefined,
               });
               
-              finalAddressId = newAddress.id;
+              finalAddressId = createdAddress.id;
               
               // Refresh customer data to include new address
               const updatedCustomer = await customersApi.getCustomerById(selectedCustomerId);
@@ -705,18 +695,17 @@ export function POSCart({
               return;
             }
           }
-        } else if (newAddressEn.trim() && selectedCustomerId) {
+        } else if (newAddress.trim() && selectedCustomerId) {
           // Create new address for existing customer
           try {
-            const newAddress = await customersApi.createCustomerAddress(selectedCustomerId, {
-              addressEn: newAddressEn.trim(),
-              addressAr: newAddressAr.trim() || undefined,
+            const createdAddress = await customersApi.createCustomerAddress(selectedCustomerId, {
+              address: newAddress.trim(),
               city: newAddressCity.trim() || undefined,
               state: newAddressState.trim() || undefined,
               country: newAddressCountry || undefined,
             });
             
-            finalAddressId = newAddress.id;
+            finalAddressId = createdAddress.id;
             
             // Refresh customer data to include new address
             const updatedCustomer = await customersApi.getCustomerById(selectedCustomerId);
@@ -730,7 +719,7 @@ export function POSCart({
             setIsPlacingOrder(false);
             return;
           }
-        } else if (newAddressEn.trim() && !selectedCustomerId) {
+        } else if (newAddress.trim() && !selectedCustomerId) {
           // Walk-in customer with address - allow order to proceed
           // The address will be stored in the delivery record, not as a customer address
           // finalAddressId remains undefined for walk-in customers
@@ -768,8 +757,7 @@ export function POSCart({
           : (paymentMethod || 'cash') as 'cash' | 'card',
         customerAddressId: finalAddressId,
         // For walk-in customers, send address fields directly
-        deliveryAddressEn: orderType === 'delivery' && !finalAddressId ? newAddressEn : undefined,
-        deliveryAddressAr: orderType === 'delivery' && !finalAddressId ? newAddressAr : undefined,
+        deliveryAddress: orderType === 'delivery' && !finalAddressId ? newAddress : undefined,
         deliveryAddressCity: orderType === 'delivery' && !finalAddressId ? newAddressCity : undefined,
         deliveryAddressState: orderType === 'delivery' && !finalAddressId ? newAddressState : undefined,
         deliveryAddressCountry: orderType === 'delivery' && !finalAddressId ? newAddressCountry : undefined,
@@ -792,8 +780,7 @@ export function POSCart({
               couponCode: createOrderDto.couponCode,
               specialInstructions: createOrderDto.specialInstructions,
               customerAddressId: createOrderDto.customerAddressId,
-              deliveryAddressEn: createOrderDto.deliveryAddressEn,
-              deliveryAddressAr: createOrderDto.deliveryAddressAr,
+              deliveryAddress: createOrderDto.deliveryAddress,
               deliveryAddressCity: createOrderDto.deliveryAddressCity,
               deliveryAddressState: createOrderDto.deliveryAddressState,
               deliveryAddressCountry: createOrderDto.deliveryAddressCountry,
@@ -921,12 +908,10 @@ export function POSCart({
                   ...orderWithDetails,
                   items: orderWithDetails.items?.map((item: any) => ({
                     ...item,
-                    foodItemNameEn: item.foodItem?.nameEn || '',
-                    foodItemNameAr: item.foodItem?.nameAr || '',
+                    foodItemName: item.foodItem?.name || '',
                     variationName: item.variation?.variationName || '',
                     addOns: item.addOns?.map((a: any) => ({
-                      addOnNameEn: a.addOn?.nameEn || '',
-                      addOnNameAr: a.addOn?.nameAr || '',
+                      addOnName: a.addOn?.name || '',
                     })) || [],
                   })) || [],
                 } as any,
@@ -945,9 +930,7 @@ export function POSCart({
                   showQrCode: settings?.invoice?.showQrCode,
                 },
                 customerName: orderWithDetails.customer
-                  ? (language === 'ar' && orderWithDetails.customer.nameAr
-                      ? orderWithDetails.customer.nameAr
-                      : orderWithDetails.customer.nameEn || '')
+                  ? (orderWithDetails.customer.name || '')
                   : undefined,
                 customerPhone: orderWithDetails.customer?.phone,
                 customerAddress: undefined,
@@ -1138,7 +1121,7 @@ export function POSCart({
             <tbody>
               ${placedOrderItems.map(item => `
                 <tr>
-                  <td>${language === 'ar' && item.foodItemNameAr ? item.foodItemNameAr : item.foodItemNameEn}</td>
+                  <td>${(item as any).foodItemName || (item as any).foodItemNameEn || (item as any).foodItemNameAr || ''}</td>
                   <td>${item.quantity}</td>
                   <td>${item.unitPrice.toFixed(2)} ${currency}</td>
                   <td>${item.subtotal.toFixed(2)} ${currency}</td>
@@ -1231,7 +1214,7 @@ export function POSCart({
                   { value: 'walk-in', label: t('pos.walkInCustomer', language) },
                   ...customers.map((c) => ({
                     value: c.id,
-                    label: `${c.nameEn} (${c.phone})`,
+                    label: `${c.name} (${c.phone})`,
                   })),
                 ]}
                 value={selectedCustomerId || 'walk-in'}
@@ -1263,24 +1246,15 @@ export function POSCart({
               </Text>
               <Stack gap="xs">
                 <TextInput
-                  label={t('customers.addressEn' as any, language) || 'Address (English)'}
-                  placeholder={t('customers.addressEn' as any, language) || 'Enter delivery address'}
-                  value={newAddressEn}
+                  label={t('customers.address' as any, language) || 'Address'}
+                  placeholder={t('customers.address' as any, language) || 'Enter delivery address'}
+                  value={newAddress}
                   onChange={(e) => {
-                    setNewAddressEn(e.target.value);
+                    setNewAddress(e.target.value);
                     // Clear selected address ID if user modifies the address
                     setSelectedAddressId(null);
                   }}
                   required
-                />
-                <TextInput
-                  label={t('customers.addressAr' as any, language) || 'Address (Arabic)'}
-                  placeholder={t('customers.addressAr' as any, language) || 'Enter delivery address in Arabic'}
-                  value={newAddressAr}
-                  onChange={(e) => {
-                    setNewAddressAr(e.target.value);
-                    setSelectedAddressId(null);
-                  }}
                 />
                 <Group grow>
                   <TextInput
@@ -1450,9 +1424,7 @@ export function POSCart({
                     <Stack gap="xs">
                       <Group justify="space-between">
                         <Text fw={500} size="sm" lineClamp={1}>
-                          {language === 'ar' && item.foodItemNameAr
-                            ? item.foodItemNameAr
-                            : item.foodItemNameEn}
+                          {(item as any).foodItemName || (item as any).foodItemNameEn || (item as any).foodItemNameAr || ''}
                         </Text>
                         <ActionIcon
                           color={getErrorColor()}
@@ -1473,7 +1445,7 @@ export function POSCart({
                       {item.addOns && item.addOns.length > 0 && (
                         <Text size="xs" c="dimmed">
                           {t('pos.addOns', language)}:{' '}
-                          {item.addOns.map((a) => language === 'ar' && a.addOnNameAr ? a.addOnNameAr : a.addOnNameEn).join(', ')}
+                          {item.addOns.map((a) => (a as any).addOnName || (a as any).addOnNameEn || (a as any).addOnNameAr || '').join(', ')}
                         </Text>
                       )}
 

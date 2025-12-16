@@ -6,8 +6,7 @@ export interface Employee {
   tenantId: string;
   supabaseAuthId?: string;
   email: string;
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   phone?: string;
   role: string;
   employeeId?: string;
@@ -23,16 +22,14 @@ export interface Employee {
   updatedAt: string;
   branches?: Array<{
     id: string;
-    nameEn: string;
-    nameAr?: string;
+    name: string;
     code: string;
   }>;
 }
 
 export interface CreateEmployeeDto {
   email: string;
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   role: string;
   phone?: string;
   employeeId?: string;
@@ -49,8 +46,7 @@ export interface CreateEmployeeDto {
 }
 
 export interface UpdateEmployeeDto {
-  nameEn?: string;
-  nameAr?: string;
+  name?: string;
   email?: string;
   phone?: string;
   role?: string;

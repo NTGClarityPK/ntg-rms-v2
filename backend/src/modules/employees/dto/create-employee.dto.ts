@@ -8,12 +8,7 @@ export class CreateEmployeeDto {
 
   @ApiProperty()
   @IsString()
-  nameEn: string;
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  nameAr?: string;
+  name: string;
 
   @ApiProperty()
   @IsString()

@@ -239,7 +239,7 @@ export function MenusPage() {
             label={t('menu.foodItems', language)}
             data={foodItems.map((item) => ({
               value: item.id,
-              label: language === 'ar' && item.nameAr ? item.nameAr : item.nameEn,
+              label: item.name || '',
             }))}
             value={selectedItemIds}
             onChange={(value) => setSelectedItemIds(value)}
