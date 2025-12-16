@@ -140,7 +140,9 @@
     "delivery": "Delivery",
     "reports": "Reports",
     "settings": "Settings",
-    "restaurantManagement": "Restaurant Management"
+    "restaurantManagement": "Restaurant Management",
+    "expand": "Expand",
+    "collapse": "Collapse"
   },
   "restaurant": {
     "businessInformation": "Business Information",

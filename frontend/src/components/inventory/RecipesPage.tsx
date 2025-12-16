@@ -292,10 +292,13 @@ export function RecipesPage() {
     
     return uniqueIngredients
       .filter((ing) => ing.nameEn)
-      .map((ing) => ({
-        value: ing.id,
-        label: (language === 'ar' && ing.nameAr ? ing.nameAr : ing.nameEn) || '',
-      }));
+      .map((ing) => {
+        const label = language === 'ar' && ing.nameAr ? ing.nameAr : (ing.nameEn || '');
+        return {
+          value: ing.id,
+          label: String(label || ''), // Ensure label is always a string
+        };
+      });
   }, [ingredients, language]);
 
   const handleOpenModal = (foodItem?: FoodItem) => {
@@ -647,10 +650,13 @@ export function RecipesPage() {
                 required
                 data={foodItems
                   .filter((item) => item.nameEn)
-                  .map((item) => ({
-                    value: item.id,
-                    label: (language === 'ar' && item.nameAr ? item.nameAr : item.nameEn) || '',
-                  }))}
+                  .map((item) => {
+                    const label = language === 'ar' && item.nameAr ? item.nameAr : (item.nameEn || '');
+                    return {
+                      value: item.id,
+                      label: String(label || ''), // Ensure label is always a string
+                    };
+                  })}
                 searchable
                 {...form.getInputProps('foodItemId')}
               />

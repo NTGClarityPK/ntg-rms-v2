@@ -87,10 +87,13 @@ export function StockManagementPage() {
     
     return uniqueIngredients
       .filter((ing) => ing.nameEn)
-      .map((ing) => ({
-        value: ing.id,
-        label: (language === 'ar' && ing.nameAr ? ing.nameAr : ing.nameEn) || '',
-      }));
+      .map((ing) => {
+        const label = language === 'ar' && ing.nameAr ? ing.nameAr : (ing.nameEn || '');
+        return {
+          value: ing.id,
+          label: String(label || ''), // Ensure label is always a string
+        };
+      });
   }, [ingredients, language]);
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -1034,10 +1037,13 @@ export function StockManagementPage() {
             {branches.length > 0 && (
               <Select
                 label={t('restaurant.branch', language) || 'Branch'}
-                data={branches.map((b) => ({
-                  value: b.id,
-                  label: language === 'ar' && b.nameAr ? b.nameAr : b.nameEn,
-                }))}
+                data={branches.map((b) => {
+                  const label = language === 'ar' && b.nameAr ? b.nameAr : (b.nameEn || '');
+                  return {
+                    value: b.id,
+                    label: String(label || ''),
+                  };
+                })}
                 {...addStockForm.getInputProps('branchId')}
               />
             )}

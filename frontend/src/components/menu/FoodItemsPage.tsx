@@ -731,14 +731,14 @@ export function FoodItemsPage() {
   };
 
   const labelOptions = [
-    { value: 'spicy', label: t('menu.spicy', language) },
-    { value: 'vegetarian', label: t('menu.vegetarian', language) },
-    { value: 'vegan', label: t('menu.vegan', language) },
-    { value: 'gluten_free', label: t('menu.glutenFree', language) },
-    { value: 'halal', label: t('menu.halal', language) },
-    { value: 'new', label: t('menu.new', language) },
-    { value: 'popular', label: t('menu.popular', language) },
-    { value: 'chefs_special', label: t('menu.chefsSpecial', language) },
+    { value: 'spicy', label: String(t('menu.spicy', language) || 'Spicy') },
+    { value: 'vegetarian', label: String(t('menu.vegetarian', language) || 'Vegetarian') },
+    { value: 'vegan', label: String(t('menu.vegan', language) || 'Vegan') },
+    { value: 'gluten_free', label: String(t('menu.glutenFree', language) || 'Gluten Free') },
+    { value: 'halal', label: String(t('menu.halal', language) || 'Halal') },
+    { value: 'new', label: String(t('menu.new', language) || 'New') },
+    { value: 'popular', label: String(t('menu.popular', language) || 'Popular') },
+    { value: 'chefs_special', label: String(t('menu.chefsSpecial', language) || 'Chef\'s Special') },
   ];
 
 
@@ -1222,10 +1222,13 @@ export function FoodItemsPage() {
                       ? t('menu.noAddOnGroupsAvailable', language)
                       : t('menu.selectAddOnGroups', language)
                   }
-                  data={addOnGroups.map((group) => ({
-                    value: group.id,
-                    label: language === 'ar' && group.nameAr ? group.nameAr : group.nameEn,
-                  }))}
+                  data={addOnGroups.map((group) => {
+                    const label = language === 'ar' && group.nameAr ? group.nameAr : (group.nameEn || '');
+                    return {
+                      value: group.id,
+                      label: String(label || ''),
+                    };
+                  })}
                   disabled={addOnGroups.length === 0}
                   {...form.getInputProps('addOnGroupIds')}
                 />

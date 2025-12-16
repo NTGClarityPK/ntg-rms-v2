@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useForm } from '@mantine/form';
 import {
-  Container,
   Paper,
   Title,
   TextInput,
@@ -399,7 +398,7 @@ export default function RestaurantPage() {
 
   if (loading) {
     return (
-      <Container size="xl" py="xl">
+      <div style={{ paddingLeft: 'var(--mantine-spacing-md)', paddingRight: 'var(--mantine-spacing-md)', paddingTop: 'var(--mantine-spacing-xl)', paddingBottom: 'var(--mantine-spacing-xl)' }}>
         <Skeleton height={36} width={250} mb="xl" />
         <Tabs defaultValue="basic">
           <Tabs.List mb="xl">
@@ -416,15 +415,21 @@ export default function RestaurantPage() {
             </Stack>
           </Tabs.Panel>
         </Tabs>
-      </Container>
+      </div>
     );
   }
 
   return (
-    <Container size="xl" py="xl">
-      <Title order={1} mb="xl">
-        {t('navigation.restaurant', language)} - {t('restaurant.businessInformation', language)}
-      </Title>
+    <>
+      <div className="page-title-bar">
+        <Title order={1} style={{ margin: 0, textAlign: 'left' }}>
+          {t('navigation.restaurant', language)} - {t('restaurant.businessInformation', language)}
+        </Title>
+      </div>
+
+      <div className="page-sub-title-bar"></div>
+
+      <div style={{ marginTop: '60px', paddingLeft: 'var(--mantine-spacing-md)', paddingRight: 'var(--mantine-spacing-md)', paddingTop: 'var(--mantine-spacing-sm)', paddingBottom: 'var(--mantine-spacing-xl)' }}>
 
       {error && (
         <Alert 
@@ -496,10 +501,15 @@ export default function RestaurantPage() {
               <Grid.Col span={{ base: 12, md: 6 }}>
                 <Select
                   label={t('restaurant.timezone', language)}
-                  data={TIMEZONES.map(tz => ({
-                    value: tz.value,
-                    label: language === 'ar' ? tz.label.replace('Asia/Baghdad', 'آسيا/بغداد').replace('Iraq', 'العراق') : tz.label
-                  }))}
+                  data={TIMEZONES.map(tz => {
+                    const label = language === 'ar' 
+                      ? (tz.label || '').replace('Asia/Baghdad', 'آسيا/بغداد').replace('Iraq', 'العراق')
+                      : (tz.label || '');
+                    return {
+                      value: tz.value,
+                      label: String(label),
+                    };
+                  })}
                   searchable
                   {...form.getInputProps('timezone')}
                 />
@@ -636,6 +646,7 @@ export default function RestaurantPage() {
           </Button>
         </Group>
       </form>
-    </Container>
+      </div>
+    </>
   );
 }

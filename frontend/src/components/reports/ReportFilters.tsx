@@ -292,8 +292,11 @@ export function ReportFilters({
           <Select
             label={t('reports.filterByBranch' as any, language)}
             data={[
-              { value: '', label: t('reports.allBranches' as any, language) },
-              ...branches,
+              { value: '', label: String(t('reports.allBranches' as any, language) || 'All Branches') },
+              ...branches.map((b) => ({
+                value: b.value || b.id || '',
+                label: String(b.label || b.nameEn || b.nameAr || ''),
+              })),
             ]}
             value={selectedBranch}
             onChange={handleBranchChange}
@@ -304,10 +307,10 @@ export function ReportFilters({
             <Select
               label={t('reports.groupBy' as any, language)}
               data={[
-                { value: 'day', label: t('reports.day' as any, language) },
-                { value: 'week', label: t('reports.week' as any, language) },
-                { value: 'month', label: t('reports.month' as any, language) },
-                { value: 'year', label: t('reports.year' as any, language) },
+                { value: 'day', label: String(t('reports.day' as any, language) || 'Day') },
+                { value: 'week', label: String(t('reports.week' as any, language) || 'Week') },
+                { value: 'month', label: String(t('reports.month' as any, language) || 'Month') },
+                { value: 'year', label: String(t('reports.year' as any, language) || 'Year') },
               ]}
               value={groupBy}
               onChange={handleGroupByChange}

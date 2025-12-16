@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Box,
@@ -35,11 +35,16 @@ function LoginForm() {
   const infoColor = useInfoColor();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const errorProcessedRef = useRef(false);
 
-  // Check for error in URL params (from OAuth callback)
+  // Check for error in URL params (from OAuth callback) - only process once on mount
   useEffect(() => {
+    // Only process if we haven't already processed an error
+    if (errorProcessedRef.current) return;
+    
     const errorParam = searchParams.get('error');
     if (errorParam) {
+      errorProcessedRef.current = true;
       const errorMessages: Record<string, Record<string, string>> = {
         google_auth_failed: {
           en: 'Google authentication failed. Please try again.',
@@ -54,13 +59,17 @@ function LoginForm() {
           ar: 'المصادقة غير مكتملة. يرجى المحاولة مرة أخرى.',
         },
       };
-      const errorMsg = errorMessages[errorParam]?.[language] || 
-        (language === 'ar' ? 'حدث خطأ أثناء المصادقة.' : 'An error occurred during authentication.');
+      const currentLanguage = language;
+      const errorMsg = errorMessages[errorParam]?.[currentLanguage] || 
+        (currentLanguage === 'ar' ? 'حدث خطأ أثناء المصادقة.' : 'An error occurred during authentication.');
       setError(errorMsg);
-      // Clear error from URL
-      router.replace('/login');
+      // Clear error from URL by replacing with clean URL immediately
+      if (typeof window !== 'undefined') {
+        window.history.replaceState({}, '', '/login');
+      }
     }
-  }, [searchParams, router, language]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency array - only run once on mount to avoid infinite loop
 
   const form = useForm({
     initialValues: {
@@ -68,8 +77,8 @@ function LoginForm() {
       password: '',
     },
     validate: {
-      email: (value) => (/^\S+@\S+$/.test(value) ? null : (language === 'ar' ? 'البريد الإلكتروني غير صحيح' : 'Invalid email')),
-      password: (value) => (value.length < 6 ? (language === 'ar' ? 'يجب أن تكون كلمة المرور 6 أحرف على الأقل' : 'Password must be at least 6 characters') : null),
+      email: (value: string) => (/^\S+@\S+$/.test(value) ? null : (language === 'ar' ? 'البريد الإلكتروني غير صحيح' : 'Invalid email')),
+      password: (value: string) => (value.length < 6 ? (language === 'ar' ? 'يجب أن تكون كلمة المرور 6 أحرف على الأقل' : 'Password must be at least 6 characters') : null),
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
   });

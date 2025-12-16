@@ -127,7 +127,9 @@
     "delivery": "التوصيل",
     "reports": "التقارير",
     "settings": "الإعدادات",
-    "restaurantManagement": "إدارة المطعم"
+    "restaurantManagement": "إدارة المطعم",
+    "expand": "توسيع",
+    "collapse": "طي"
   },
   "restaurant": {
     "businessInformation": "معلومات العمل",

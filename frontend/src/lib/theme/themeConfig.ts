@@ -78,6 +78,12 @@ export interface ThemeConfig {
       hoverTabFontColor: string;
       hoverTabBackgroundColor: string;
     };
+    titleBar: {
+      backgroundColor: string;
+    };
+    subTitleBar: {
+      backgroundColor: string;
+    };
   };
   
   // Typography Settings
@@ -190,6 +196,12 @@ export function generateThemeConfig(
         selectedTabBackgroundColor: themeColors.colorDark, // Selected tab background
         hoverTabFontColor: themeColors.colorTextDark, // Tab hover font color
         hoverTabBackgroundColor: themeColors.colorDark, // Tab hover background
+      },
+      titleBar: {
+        backgroundColor: themeColors.colorLight, // Title bar background color - customize this
+      },
+      subTitleBar: {
+        backgroundColor: themeColors.colorMedium, // Sub title bar background color - customize this
       },
     },
     

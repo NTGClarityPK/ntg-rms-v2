@@ -35,6 +35,8 @@ export default function DashboardLayout({
     // Save collapsed state to localStorage
     if (typeof window !== 'undefined') {
       localStorage.setItem('navbar-collapsed', String(navbarCollapsed));
+      // Set data attribute on body for CSS targeting
+      document.body.setAttribute('data-navbar-collapsed', String(navbarCollapsed));
     }
   }, [navbarCollapsed]);
 

@@ -460,11 +460,14 @@ export function IngredientsPage() {
             <Select
               placeholder={t('inventory.filterByCategory', language)}
               data={[
-                { value: '', label: t('inventory.allCategories', language) },
-                ...CATEGORIES.map(cat => ({
-                  value: cat.value,
-                  label: t(`inventory.${cat.value}` as any, language) || cat.label
-                }))
+                { value: '', label: String(t('inventory.allCategories', language) || 'All Categories') },
+                ...CATEGORIES.map(cat => {
+                  const label = t(`inventory.${cat.value}` as any, language) || cat.label || '';
+                  return {
+                    value: cat.value,
+                    label: String(label),
+                  };
+                })
               ]}
               value={categoryFilter || ''}
               onChange={(value) => setCategoryFilter(value || null)}
@@ -612,20 +615,26 @@ export function IngredientsPage() {
             <Select
               label={t('inventory.category', language)}
               placeholder={t('inventory.category', language)}
-              data={CATEGORIES.map(cat => ({
-                value: cat.value,
-                label: t(`inventory.${cat.value}` as any, language) || cat.label
-              }))}
+              data={CATEGORIES.map(cat => {
+                const label = t(`inventory.${cat.value}` as any, language) || cat.label || '';
+                return {
+                  value: cat.value,
+                  label: String(label),
+                };
+              })}
               {...form.getInputProps('category')}
             />
             <Select
               label={t('inventory.unitOfMeasurement', language)}
               placeholder={t('inventory.unitOfMeasurement', language)}
               required
-              data={UNITS.map(unit => ({
-                value: unit.value,
-                label: t(`inventory.${unit.value}` as any, language) || unit.label
-              }))}
+              data={UNITS.map(unit => {
+                const label = t(`inventory.${unit.value}` as any, language) || unit.label || '';
+                return {
+                  value: unit.value,
+                  label: String(label),
+                };
+              })}
               {...form.getInputProps('unitOfMeasurement')}
             />
             <Grid>

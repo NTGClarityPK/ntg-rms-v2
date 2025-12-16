@@ -674,10 +674,13 @@ export function EmployeesPage() {
               <Grid.Col span={12}>
                 <MultiSelect
                   label={t('employees.assignedBranches', language)}
-                  data={branches.map((b) => ({
-                    value: b.id,
-                    label: language === 'ar' && b.nameAr ? b.nameAr : b.nameEn,
-                  }))}
+                  data={branches.map((b) => {
+                    const label = language === 'ar' && b.nameAr ? b.nameAr : (b.nameEn || '');
+                    return {
+                      value: b.id,
+                      label: String(label || ''),
+                    };
+                  })}
                   {...form.getInputProps('branchIds')}
                 />
               </Grid.Col>

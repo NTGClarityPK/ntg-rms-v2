@@ -108,10 +108,6 @@ export function createDynamicTheme(
               '&:hover:not(:disabled)': {
                 backgroundColor: config.components.button.hoverColor,
               },
-              // Remove border from outline variant buttons
-              '&[data-variant="outline"]': {
-                border: 'none',
-              },
             },
           };
         },

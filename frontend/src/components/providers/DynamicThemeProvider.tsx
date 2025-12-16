@@ -89,6 +89,83 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
         color: ${config.components.header.textColor} !important;
       }
       
+      /* Page Title Bar */
+      .page-title-bar {
+        position: fixed !important;
+        top: 60px !important; /* Below header */
+        left: 250px !important; /* To the right of navbar (expanded) */
+        right: 0 !important;
+        height: 60px !important; /* Same height as header */
+        background-color: ${config.components.titleBar.backgroundColor} !important;
+        z-index: 100 !important;
+        display: flex !important;
+        align-items: center !important;
+        border-bottom: 1px solid ${config.components.header.borderColor} !important;
+        transition: left 0.3s ease !important;
+        border-top-left-radius: 12px !important; /* Rounded top-left corner */
+        overflow: hidden !important;
+        padding-left: var(--mantine-spacing-md) !important; /* Left padding for text */
+        padding-right: var(--mantine-spacing-md) !important;
+      }
+      
+      /* Page Sub Title Bar - Same position as title bar */
+      .page-sub-title-bar {
+        position: fixed !important;
+        top: 60px !important; /* Same position as title bar */
+        left: 250px !important; /* To the right of navbar (expanded) */
+        right: 0 !important;
+        height: 60px !important; /* Same height as title bar */
+        background-color: ${config.components.subTitleBar.backgroundColor} !important;
+        z-index: 98 !important; /* Behind title bar */
+        transition: left 0.3s ease !important;
+      }
+      
+      /* Adjust for collapsed navbar (desktop) - use data attribute for reliable targeting */
+      @media (min-width: 768px) {
+        body[data-navbar-collapsed="true"] .page-title-bar {
+          left: 70px !important;
+        }
+        
+        body[data-navbar-collapsed="true"] .page-sub-title-bar {
+          left: 70px !important;
+        }
+      }
+      
+      /* When navbar is hidden on mobile (below sm breakpoint), move to left edge */
+      @media (max-width: 767px) {
+        .page-title-bar,
+        .page-sub-title-bar {
+          left: 0 !important;
+        }
+      }
+      
+      /* Title bar content - left aligned with padding to match content div */
+      .page-title-bar .mantine-Title-root {
+        margin: 0 !important;
+        text-align: left !important;
+        padding-left: var(--mantine-spacing-md) !important;
+      }
+      
+      /* Add top margin to main content to account for title bar */
+      .mantine-AppShell-main {
+        padding-top: calc(60px + var(--mantine-spacing-md)) !important;
+      }
+      
+      /* Reduce margin-top for content div after title bar */
+      .page-title-bar ~ div:not(.page-sub-title-bar) {
+        margin-top: 30px !important;
+      }
+      
+      /* Remove padding from tabs component to align with title bar text */
+      .page-title-bar ~ * .mantine-Tabs-root {
+        padding-left: 0 !important;
+      }
+      
+      .page-title-bar ~ * .mantine-Tabs-list {
+        padding-left: 0 !important;
+        margin-left: 0 !important;
+      }
+      
       /* NavLink */
       .mantine-NavLink-root {
         color: ${config.components.navbar.textColor} !important;
@@ -130,6 +207,52 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       .mantine-AppShell-navbar[style*="width: 70"] .mantine-NavLink-root .mantine-NavLink-leftSection,
       .mantine-AppShell-navbar[style*="width: 70px"] .mantine-NavLink-root .mantine-NavLink-leftSection {
         margin-right: 0 !important;
+      }
+      
+      /* Collapsed Navbar - Center NavLinks within Stack containers */
+      body[data-navbar-collapsed="true"] .mantine-AppShell-navbar .mantine-Stack-root .mantine-NavLink-root {
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        margin: 0 auto !important;
+        width: fit-content !important; /* Let NavLink size to its content */
+      }
+
+      body[data-navbar-collapsed="true"] .mantine-AppShell-navbar .mantine-NavLink-root {
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+      }
+
+      body[data-navbar-collapsed="true"] .mantine-AppShell-navbar .mantine-NavLink-root .mantine-NavLink-body {
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        margin: 0 auto !important;
+        width: auto !important;
+        min-width: auto !important;
+      }
+
+      body[data-navbar-collapsed="true"] .mantine-AppShell-navbar .mantine-NavLink-root .mantine-NavLink-leftSection {
+        margin-right: 0 !important;
+        margin-left: 0 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+      }
+
+      /* Collapsed Navbar - Align expand button with icons */
+      body[data-navbar-collapsed="true"] .mantine-AppShell-navbar .mantine-Box-root:has(.mantine-ActionIcon-root) {
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+        display: flex !important;
+        justify-content: center !important;
+      }
+
+      body[data-navbar-collapsed="true"] .mantine-AppShell-navbar .mantine-ActionIcon-root {
+        margin: 0 auto !important;
       }
       
       /* Input Components */
@@ -274,6 +397,11 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
         color: ${config.components.button.textColor} !important;
       }
       
+      /* Button Outline Variant - Remove border */
+      .mantine-Button-root[data-variant="outline"] {
+        border: none !important;
+      }
+      
       /* Override inline hover styles */
       .mantine-Button-root[style*="background"]:hover:not(:disabled):not([data-disabled]),
       button[style*="background"][class*="mantine-Button"]:hover:not(:disabled):not([data-disabled]),
@@ -413,6 +541,8 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       .mantine-Tabs-root {
         background-color: ${config.components.tabs.backgroundColor} !important;
         border-color: ${config.components.tabs.borderColor} !important;
+        border-radius: 8px !important; /* Add rounded corners on all sides */
+        overflow: hidden !important; /* Ensure content respects border-radius */
       }
       
       .mantine-Tabs-list {

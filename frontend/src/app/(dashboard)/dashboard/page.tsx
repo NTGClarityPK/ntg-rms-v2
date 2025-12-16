@@ -106,11 +106,19 @@ export default function DashboardPage() {
   };
 
   return (
-    <Stack gap="md">
-      <Title order={1}>{t('dashboard.title' as any, language) || 'Dashboard'}</Title>
-      
-      {/* Welcome Card */}
-      <Paper p="md" withBorder>
+    <>
+      <div className="page-title-bar">
+        <Title order={1} style={{ margin: 0, textAlign: 'left' }}>
+          {t('dashboard.title' as any, language) || 'Dashboard'}
+        </Title>
+      </div>
+
+      <div className="page-sub-title-bar"></div>
+
+      <div style={{ marginTop: '60px', paddingLeft: 'var(--mantine-spacing-md)', paddingRight: 'var(--mantine-spacing-md)', paddingTop: 'var(--mantine-spacing-sm)', paddingBottom: 'var(--mantine-spacing-xl)' }}>
+        <Stack gap="md">
+          {/* Welcome Card */}
+          <Paper p="md" withBorder>
         <Stack gap="sm">
           <Text size="lg" fw={600}>
             {t('dashboard.welcomeMessage' as any, language)?.replace('{name}', user?.nameEn || user?.email || 'User') || `Welcome, ${user?.nameEn || user?.email || 'User'}`}
@@ -287,7 +295,9 @@ export default function DashboardPage() {
           </Paper>
         </Grid.Col>
       </Grid>
-    </Stack>
+        </Stack>
+      </div>
+    </>
   );
 }
 

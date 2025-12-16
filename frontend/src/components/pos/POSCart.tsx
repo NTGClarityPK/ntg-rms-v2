@@ -1226,11 +1226,15 @@ export function POSCart({
               <Select
                 placeholder={t('pos.selectCustomer', language)}
                 data={[
-                  { value: 'walk-in', label: t('pos.walkInCustomer', language) },
-                  ...customers.map((c) => ({
-                    value: c.id,
-                    label: `${c.nameEn} (${c.phone})`,
-                  })),
+                  { value: 'walk-in', label: String(t('pos.walkInCustomer', language) || 'Walk-in Customer') },
+                  ...customers.map((c) => {
+                    const name = c.nameEn || '';
+                    const phone = c.phone || '';
+                    return {
+                      value: c.id,
+                      label: String(`${name} (${phone})`),
+                    };
+                  }),
                 ]}
                 value={selectedCustomerId || 'walk-in'}
                 onChange={(value) => {

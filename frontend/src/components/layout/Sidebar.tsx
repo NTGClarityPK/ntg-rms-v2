@@ -149,13 +149,13 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
       </ScrollArea>
 
       {/* Toggle Button */}
-      <Box p="md" style={{ borderTop: `1px solid ${theme.colors.gray[3]}` }}>
+      <Box p={collapsed ? "xs" : "md"} style={{ borderTop: `1px solid ${theme.colors.gray[3]}`, display: collapsed ? 'flex' : 'block', justifyContent: collapsed ? 'center' : 'flex-start' }}>
         <Tooltip label={collapsed ? (t('navigation.expand', language) || 'Expand') : (t('navigation.collapse', language) || 'Collapse')} position="right" withArrow>
           <ActionIcon
             variant="subtle"
             size="lg"
             onClick={() => onCollapseChange?.(!collapsed)}
-            style={{ width: '100%' }}
+            style={{ width: collapsed ? 'auto' : '100%' }}
           >
             {collapsed ? <IconChevronRight size={20} /> : <IconChevronLeft size={20} />}
           </ActionIcon>
