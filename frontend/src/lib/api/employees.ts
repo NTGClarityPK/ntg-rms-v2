@@ -1,6 +1,13 @@
 import apiClient from './client';
 import { API_ENDPOINTS } from '../constants/api';
 
+export interface Role {
+  id: string;
+  name: string;
+  displayNameEn: string;
+  displayNameAr?: string;
+}
+
 export interface Employee {
   id: string;
   tenantId: string;
@@ -8,7 +15,8 @@ export interface Employee {
   email: string;
   name: string;
   phone?: string;
-  role: string;
+  role: string; // Keep for backward compatibility
+  roles?: Role[]; // New: multiple roles
   employeeId?: string;
   photoUrl?: string;
   nationalId?: string;
@@ -30,7 +38,7 @@ export interface Employee {
 export interface CreateEmployeeDto {
   email: string;
   name: string;
-  role: string;
+  roleIds: string[]; // Array of role IDs
   phone?: string;
   employeeId?: string;
   photoUrl?: string;
@@ -49,7 +57,7 @@ export interface UpdateEmployeeDto {
   name?: string;
   email?: string;
   phone?: string;
-  role?: string;
+  roleIds?: string[]; // Array of role IDs
   employeeId?: string;
   photoUrl?: string;
   nationalId?: string;

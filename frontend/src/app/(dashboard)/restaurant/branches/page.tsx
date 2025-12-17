@@ -31,6 +31,7 @@ import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors } from '@/lib/hooks/use-theme-colors';
 import { useErrorColor, useSuccessColor, useInfoColor } from '@/lib/hooks/use-theme-colors';
+import { PermissionGuard } from '@/components/common/PermissionGuard';
 
 export default function BranchesPage() {
   const { language } = useLanguageStore();
@@ -346,9 +347,11 @@ export default function BranchesPage() {
     <Container size="xl" py="xl">
       <Group justify="space-between" mb="xl">
         <Title order={2}>Branch Management</Title>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => handleOpenModal()}>
-          Add Branch
-        </Button>
+        <PermissionGuard resource="restaurant" action="create">
+          <Button leftSection={<IconPlus size={16} />} onClick={() => handleOpenModal()}>
+            Add Branch
+          </Button>
+        </PermissionGuard>
       </Group>
 
       {error && (
@@ -439,20 +442,24 @@ export default function BranchesPage() {
                   </Table.Td>
                   <Table.Td>
                     <Group gap="xs">
-                      <ActionIcon
-                        variant="subtle"
-                        style={{ color: infoColor }}
-                        onClick={() => handleOpenModal(branch)}
-                      >
-                        <IconEdit size={16} />
-                      </ActionIcon>
-                      <ActionIcon
-                        variant="subtle"
-                        style={{ color: errorColor }}
-                        onClick={() => handleDelete(branch)}
-                      >
-                        <IconTrash size={16} />
-                      </ActionIcon>
+                      <PermissionGuard resource="restaurant" action="update">
+                        <ActionIcon
+                          variant="subtle"
+                          style={{ color: infoColor }}
+                          onClick={() => handleOpenModal(branch)}
+                        >
+                          <IconEdit size={16} />
+                        </ActionIcon>
+                      </PermissionGuard>
+                      <PermissionGuard resource="restaurant" action="delete">
+                        <ActionIcon
+                          variant="subtle"
+                          style={{ color: errorColor }}
+                          onClick={() => handleDelete(branch)}
+                        >
+                          <IconTrash size={16} />
+                        </ActionIcon>
+                      </PermissionGuard>
                     </Group>
                   </Table.Td>
                 </Table.Tr>

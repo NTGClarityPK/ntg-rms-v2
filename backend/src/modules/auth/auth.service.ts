@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../../database/supabase.service';
+import { RolesService } from '../roles/roles.service';
 import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
@@ -13,6 +14,7 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private supabaseService: SupabaseService,
+    private rolesService: RolesService,
   ) {}
 
   async signup(signupDto: SignupDto) {
@@ -126,6 +128,31 @@ export class AuthService {
     }
 
     console.log('User record created successfully:', userData.id);
+
+    // Assign role based on user role field
+    try {
+      const roles = await this.rolesService.getRoles();
+      const userRole = signupDto.role || 'tenant_owner';
+      
+      // Map tenant_owner to manager role for full access
+      const roleToAssign = userRole === 'tenant_owner' ? 'manager' : userRole;
+      const role = roles.find((r) => r.name === roleToAssign);
+      
+      if (role) {
+        await this.rolesService.assignRolesToUser(userData.id, [role.id], userData.id);
+        console.log(`Assigned ${role.name} role to user ${userData.id}`);
+      } else {
+        // Fallback: assign manager role if role not found
+        const managerRole = roles.find((r) => r.name === 'manager');
+        if (managerRole) {
+          await this.rolesService.assignRolesToUser(userData.id, [managerRole.id], userData.id);
+          console.log(`Assigned manager role (fallback) to user ${userData.id}`);
+        }
+      }
+    } catch (roleError) {
+      console.error('Failed to assign role to user:', roleError);
+      // Don't fail signup if role assignment fails, but log it
+    }
 
     // Create a default branch for the tenant if this is a new tenant
     if (!signupDto.tenantId) {

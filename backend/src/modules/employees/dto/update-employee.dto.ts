@@ -17,10 +17,11 @@ export class UpdateEmployeeDto {
   @IsOptional()
   phone?: string;
 
-  @ApiProperty({ required: false })
-  @IsString()
+  @ApiProperty({ required: false, type: [String], description: 'Array of role IDs to assign to the employee' })
+  @IsArray()
+  @IsUUID('4', { each: true })
   @IsOptional()
-  role?: string;
+  roleIds?: string[];
 
   @ApiProperty({ required: false })
   @IsString()

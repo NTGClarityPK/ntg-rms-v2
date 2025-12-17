@@ -596,6 +596,7 @@
     "email": "Email",
     "phone": "Phone",
     "roleLabel": "Role",
+    "selectRoles": "Select one or more roles",
     "employeeId": "Employee ID",
     "nationalId": "National ID",
     "dateOfBirth": "Date of Birth",
