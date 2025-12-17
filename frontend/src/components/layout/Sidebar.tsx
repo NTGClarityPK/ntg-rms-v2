@@ -61,15 +61,15 @@ export function Sidebar({ onMobileClose }: SidebarProps = {}) {
       item.href === '/dashboard' ||
       item.href.startsWith('/pos') ||
       item.href === '/menu' ||
-      item.href === '/restaurant'
+      item.href === '/orders' ||
+      item.href === '/delivery'
   );
   const managementItems = navItems.filter(
     (item) =>
+      item.href === '/restaurant' ||
       item.href === '/customers' ||
-      item.href === '/orders' ||
       item.href === '/inventory' ||
       item.href === '/employees' ||
-      item.href === '/delivery' ||
       item.href === '/reports' ||
       item.href === '/settings'
   );
