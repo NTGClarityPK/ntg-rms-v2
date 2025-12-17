@@ -53,6 +53,7 @@ export function CategoriesPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const form = useForm({
     initialValues: {
@@ -225,9 +226,10 @@ export function CategoriesPage() {
   };
 
   const handleSubmit = async (values: typeof form.values) => {
-    if (!user?.tenantId) return;
+    if (!user?.tenantId || submitting) return;
 
     try {
+      setSubmitting(true);
       setError(null);
 
       const categoryData = {
@@ -309,6 +311,8 @@ export function CategoriesPage() {
         message: errorMsg,
         color: errorColor,
       });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -617,10 +621,10 @@ export function CategoriesPage() {
             </Grid>
 
             <Group justify="flex-end" mt="md">
-              <Button variant="subtle" onClick={handleCloseModal}>
+              <Button variant="subtle" onClick={handleCloseModal} disabled={submitting}>
                 {t('common.cancel' as any, language) || 'Cancel'}
               </Button>
-              <Button type="submit" style={{ backgroundColor: primaryColor }}>
+              <Button type="submit" style={{ backgroundColor: primaryColor }} loading={submitting} disabled={submitting}>
                 {t('common.save' as any, language) || 'Save'}
               </Button>
             </Group>
