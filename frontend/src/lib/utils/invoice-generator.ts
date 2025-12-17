@@ -174,15 +174,16 @@ export class InvoiceGenerator {
     <div class="section-title">${isRTL ? 'الفاتورة' : 'INVOICE'}</div>
     <div class="info">${isRTL ? 'رقم الطلب' : 'Order #'}: ${order.orderNumber}</div>
     <div class="info">${isRTL ? 'التاريخ' : 'Date'}: ${new Date(order.orderDate).toLocaleString(language === 'ar' ? 'ar-IQ' : 'en-US')}</div>
+    ${(order as any).orderType ? `<div class="info">${isRTL ? 'نوع الطلب' : 'Order Type'}: ${(order as any).orderType === 'dine_in' ? (isRTL ? 'أكل في المطعم' : 'Dine In') : (order as any).orderType === 'takeaway' ? (isRTL ? 'طلب خارجي' : 'Takeaway') : (order as any).orderType === 'delivery' ? (isRTL ? 'توصيل' : 'Delivery') : (order as any).orderType}</div>` : ''}
     ${order.tableId ? `<div class="info">${isRTL ? 'الطاولة' : 'Table'}: ${order.tableId}</div>` : ''}
   </div>
 
   ${customerName ? `
   <div class="section">
     <div class="section-title">${isRTL ? 'العميل' : 'CUSTOMER'}</div>
-    <div class="info">${customerName}</div>
-    ${customerPhone ? `<div class="info">${customerPhone}</div>` : ''}
-    ${customerAddress ? `<div class="info">${customerAddress}</div>` : ''}
+    <div class="info"><strong>${isRTL ? 'الاسم' : 'Name'}:</strong> ${customerName}</div>
+    ${customerPhone ? `<div class="info"><strong>${isRTL ? 'الهاتف' : 'Phone'}:</strong> ${customerPhone}</div>` : ''}
+    ${customerAddress ? `<div class="info"><strong>${isRTL ? 'العنوان' : 'Address'}:</strong> ${customerAddress}</div>` : ''}
   </div>
   ` : ''}
 
@@ -241,12 +242,11 @@ export class InvoiceGenerator {
     </div>
   </div>
 
-  ${(order as any).paymentMethod ? `
   <div class="section">
-    <div class="info">${isRTL ? 'طريقة الدفع' : 'Payment Method'}: ${(order as any).paymentMethod.toUpperCase()}</div>
-    ${order.paymentStatus === 'paid' ? `<div class="info">${isRTL ? 'تم الدفع' : 'PAID'}</div>` : ''}
+    <div class="section-title">${isRTL ? 'معلومات الدفع' : 'PAYMENT INFORMATION'}</div>
+    ${(order as any).paymentMethod ? `<div class="info"><strong>${isRTL ? 'طريقة الدفع' : 'Payment Method'}:</strong> ${(order as any).paymentMethod === 'cash' ? (isRTL ? 'نقدي' : 'Cash') : (order as any).paymentMethod === 'card' ? (isRTL ? 'بطاقة' : 'Card') : (order as any).paymentMethod === 'zainCash' ? 'ZainCash' : (order as any).paymentMethod === 'asiaHawala' ? 'Asia Hawala' : (order as any).paymentMethod === 'bankTransfer' ? (isRTL ? 'تحويل بنكي' : 'Bank Transfer') : (order as any).paymentMethod.toUpperCase()}</div>` : ''}
+    <div class="info"><strong>${isRTL ? 'حالة الدفع' : 'Payment Status'}:</strong> ${order.paymentStatus === 'paid' ? (isRTL ? 'تم الدفع' : 'PAID') : order.paymentStatus === 'partial' ? (isRTL ? 'دفع جزئي' : 'PARTIAL') : (isRTL ? 'غير مدفوع' : 'UNPAID')}</div>
   </div>
-  ` : ''}
 
   ${showVatNumber && tenant.vatNumber && order.taxAmount ? `
   <div class="section">
@@ -443,6 +443,11 @@ export class InvoiceGenerator {
       <div><strong>${isRTL ? 'رقم الطلب' : 'Order Number'}:</strong> ${order.orderNumber}</div>
       <div><strong>${isRTL ? 'التاريخ' : 'Date'}:</strong> ${new Date(order.orderDate).toLocaleString(language === 'ar' ? 'ar-IQ' : 'en-US')}</div>
     </div>
+    ${(order as any).orderType ? `
+    <div class="invoice-info-row">
+      <div><strong>${isRTL ? 'نوع الطلب' : 'Order Type'}:</strong> ${(order as any).orderType === 'dine_in' ? (isRTL ? 'أكل في المطعم' : 'Dine In') : (order as any).orderType === 'takeaway' ? (isRTL ? 'طلب خارجي' : 'Takeaway') : (order as any).orderType === 'delivery' ? (isRTL ? 'توصيل' : 'Delivery') : (order as any).orderType}</div>
+    </div>
+    ` : ''}
     ${order.tableId ? `
     <div class="invoice-info-row">
       <div><strong>${isRTL ? 'الطاولة' : 'Table'}:</strong> ${order.tableId}</div>
@@ -529,15 +534,13 @@ export class InvoiceGenerator {
     </div>
   </div>
 
-  ${(order as any).paymentMethod ? `
   <div class="section">
     <div class="section-title">${isRTL ? 'معلومات الدفع' : 'PAYMENT INFORMATION'}</div>
     <div class="info">
-      <strong>${isRTL ? 'طريقة الدفع' : 'Payment Method'}:</strong> ${(order as any).paymentMethod.toUpperCase()}<br>
-      <strong>${isRTL ? 'حالة الدفع' : 'Payment Status'}:</strong> ${order.paymentStatus === 'paid' ? (isRTL ? 'تم الدفع' : 'PAID') : (isRTL ? 'غير مدفوع' : 'UNPAID')}
+      ${(order as any).paymentMethod ? `<strong>${isRTL ? 'طريقة الدفع' : 'Payment Method'}:</strong> ${(order as any).paymentMethod === 'cash' ? (isRTL ? 'نقدي' : 'Cash') : (order as any).paymentMethod === 'card' ? (isRTL ? 'بطاقة' : 'Card') : (order as any).paymentMethod === 'zainCash' ? 'ZainCash' : (order as any).paymentMethod === 'asiaHawala' ? 'Asia Hawala' : (order as any).paymentMethod === 'bankTransfer' ? (isRTL ? 'تحويل بنكي' : 'Bank Transfer') : (order as any).paymentMethod.toUpperCase()}<br>` : ''}
+      <strong>${isRTL ? 'حالة الدفع' : 'Payment Status'}:</strong> ${order.paymentStatus === 'paid' ? (isRTL ? 'تم الدفع' : 'PAID') : order.paymentStatus === 'partial' ? (isRTL ? 'دفع جزئي' : 'PARTIAL') : (isRTL ? 'غير مدفوع' : 'UNPAID')}
     </div>
   </div>
-  ` : ''}
 
   ${(order as any).specialInstructions ? `
   <div class="notes">

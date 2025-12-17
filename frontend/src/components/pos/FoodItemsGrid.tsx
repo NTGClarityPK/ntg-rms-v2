@@ -25,6 +25,7 @@ import { useThemeColor, useThemeColorShade } from '@/lib/hooks/use-theme-color';
 import { getErrorColor, getWarningColor } from '@/lib/utils/theme';
 import { ItemSelectionModal } from './ItemSelectionModal';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { menuApi } from '@/lib/api/menu';
 
 interface FoodItemsGridProps {
   tenantId: string;
@@ -71,6 +72,38 @@ export function FoodItemsGrid({
 
       setCategories(cats);
 
+      // Load active menus from API (menus are not stored in IndexedDB)
+      let activeMenuTypes: string[] = [];
+      try {
+        if (navigator.onLine) {
+          const menus = await menuApi.getMenus();
+          activeMenuTypes = menus
+            .filter((menu) => menu.isActive)
+            .map((menu) => menu.menuType)
+            .filter(Boolean);
+        } else {
+          // Offline: use food items' menuTypes to infer active menus
+          // This is a fallback - ideally menus should be synced to IndexedDB
+          const allItems = await db.foodItems
+            .where('tenantId')
+            .equals(tenantId)
+            .filter((item) => item.isActive && !item.deletedAt)
+            .toArray();
+          const allMenuTypes = new Set<string>();
+          allItems.forEach((item) => {
+            if (item.menuTypes) {
+              item.menuTypes.forEach((mt) => allMenuTypes.add(mt));
+            } else if (item.menuType) {
+              allMenuTypes.add(item.menuType);
+            }
+          });
+          activeMenuTypes = Array.from(allMenuTypes);
+        }
+      } catch (error) {
+        console.error('Failed to load active menus:', error);
+        // Continue with empty array - will show no items if no active menus
+      }
+
       // Load food items
       let itemsQuery = db.foodItems
         .where('tenantId')
@@ -83,11 +116,23 @@ export function FoodItemsGrid({
 
       const items = await itemsQuery.toArray();
 
-      // Filter by search query
+      // Filter food items to only include those in active menus
       let filteredItems = items;
+      if (activeMenuTypes.length > 0) {
+        filteredItems = items.filter((item) => {
+          // Check if item belongs to at least one active menu
+          const itemMenuTypes = item.menuTypes || (item.menuType ? [item.menuType] : []);
+          return itemMenuTypes.some((menuType: string) => activeMenuTypes.includes(menuType));
+        });
+      } else {
+        // If no active menus, show no items
+        filteredItems = [];
+      }
+
+      // Filter by search query
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
-        filteredItems = items.filter(
+        filteredItems = filteredItems.filter(
           (item) =>
             item.name?.toLowerCase().includes(query) ||
             item.description?.toLowerCase().includes(query),

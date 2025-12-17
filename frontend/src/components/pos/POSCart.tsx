@@ -862,6 +862,9 @@ export function POSCart({
             }
           }
 
+          // Store payment method before clearing (needed for invoice generation)
+          const savedPaymentMethod = paymentMethod;
+          
           // Set placed order and items for invoice (before clearing cart)
           setPlacedOrder(order);
           setPlacedOrderItems([...cartItems]);
@@ -903,9 +906,14 @@ export function POSCart({
                 }
               }
               
+              // Get payment method from the order or use the saved one (before it was cleared)
+              const orderPaymentMethod = orderWithDetails.paymentMethod || savedPaymentMethod;
+              
               const invoiceData = {
                 order: {
                   ...orderWithDetails,
+                  orderType: orderWithDetails.orderType || orderType,
+                  paymentMethod: orderPaymentMethod,
                   items: orderWithDetails.items?.map((item: any) => ({
                     ...item,
                     foodItemName: item.foodItem?.name || '',
@@ -1039,6 +1047,9 @@ export function POSCart({
         await syncService.queueChange('orderItems', 'CREATE', item.id!, item);
       }
 
+      // Store payment method before clearing (needed for invoice generation)
+      const savedPaymentMethod = paymentMethod;
+      
       // Set placed order and items for invoice (before clearing cart)
       setPlacedOrder(order);
       setPlacedOrderItems([...cartItems]);

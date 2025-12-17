@@ -200,10 +200,17 @@ export function OrderDetailsModal({
 
     setPrinting(true);
     try {
+      // Extract payment method from payments array if available
+      const payments = (orderDetails as any).payments || [];
+      const paymentMethod = (orderDetails as any).paymentMethod || 
+        (payments.length > 0 ? payments[payments.length - 1]?.paymentMethod || payments[0]?.payment_method : undefined);
+      
       // Prepare invoice data
       const invoiceData = {
         order: {
           ...orderDetails,
+          orderType: orderDetails.orderType,
+          paymentMethod: paymentMethod,
           items: orderDetails.items?.map(item => ({
             ...item,
             foodItemName: item.foodItem?.name || '',

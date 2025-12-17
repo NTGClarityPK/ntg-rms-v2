@@ -100,11 +100,13 @@ export function MenusPage() {
     return uniqueType;
   };
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (showLoading: boolean = true) => {
     if (!user?.tenantId) return;
 
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       setError(null);
 
       // Load menus
@@ -117,7 +119,9 @@ export function MenusPage() {
     } catch (err: any) {
       setError(err.message || 'Failed to load menus');
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   }, [user?.tenantId]);
 
@@ -186,6 +190,13 @@ export function MenusPage() {
   };
 
   const handleToggleMenu = async (menuType: string, isActive: boolean) => {
+    // Optimistically update the UI immediately
+    setMenus((prevMenus) =>
+      prevMenus.map((menu) =>
+        menu.menuType === menuType ? { ...menu, isActive } : menu
+      )
+    );
+
     try {
       await menuApi.activateMenu(menuType, isActive);
       
@@ -197,10 +208,18 @@ export function MenusPage() {
         color: successColor,
       });
 
-      loadData();
+      // Reload data to ensure consistency with server (without showing loading state)
+      loadData(false);
       // Notify other tabs that menus have been updated
       notifyMenuDataUpdate('menus-updated');
     } catch (err: any) {
+      // Revert the optimistic update on error
+      setMenus((prevMenus) =>
+        prevMenus.map((menu) =>
+          menu.menuType === menuType ? { ...menu, isActive: !isActive } : menu
+        )
+      );
+      
       notifications.show({
         title: t('common.error' as any, language) || 'Error',
         message: err.message || 'Failed to update menu',
