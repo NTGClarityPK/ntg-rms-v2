@@ -1354,35 +1354,41 @@ export class MenuService {
       activeItemIds = activeItems?.map((item) => item.id) || [];
     }
 
-    // Try to get menu names from menus table
-    const { data: menuNames } = await supabase
+    // Try to get menu names and active status from menus table
+    const { data: menuData } = await supabase
       .from('menus')
-      .select('menu_type, name')
+      .select('menu_type, name, is_active')
       .eq('tenant_id', tenantId)
       .in('menu_type', allMenuTypes);
 
-    // Create a map of menu_type to name
+    // Create maps of menu_type to name and is_active
     const menuNameMap = new Map<string, string>();
-    if (menuNames) {
-      menuNames.forEach((mn: any) => {
+    const menuActiveMap = new Map<string, boolean>();
+    if (menuData) {
+      menuData.forEach((mn: any) => {
         menuNameMap.set(mn.menu_type, mn.name);
+        menuActiveMap.set(mn.menu_type, mn.is_active !== false); // Default to true if null/undefined
       });
     }
 
-    // Group by menu_type and count active items
+    // Group by menu_type and count all items (not just active ones)
     const menus = allMenuTypes.map((menuType) => {
       const itemsInMenu = menuItems.filter((mi) => mi.menu_type === menuType);
-      const activeItemsInMenu = itemsInMenu.filter((mi) => activeItemIds.includes(mi.food_item_id));
       
       // Use stored name if available, otherwise generate from menu_type
       const storedName = menuNameMap.get(menuType);
       const displayName = storedName || (menuType.charAt(0).toUpperCase() + menuType.slice(1).replace(/_/g, ' '));
       
+      // Get is_active from menus table, default to true if not set
+      const isActive = menuActiveMap.has(menuType) 
+        ? menuActiveMap.get(menuType)! 
+        : (itemsInMenu.length > 0); // Default to true if menu has items, false if empty
+      
       return {
         menuType,
         name: displayName,
-        isActive: activeItemsInMenu.length > 0,
-        itemCount: activeItemsInMenu.length,
+        isActive,
+        itemCount: itemsInMenu.length, // Count all items, not just active ones
       };
     });
 
@@ -1472,29 +1478,52 @@ export class MenuService {
   async activateMenu(tenantId: string, menuType: string, isActive: boolean) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Get all food items assigned to this menu type
-    const { data: menuItems } = await supabase
-      .from('menu_items')
-      .select('food_item_id')
+    // Update the menu's is_active status in the menus table
+    // First, check if a menu record exists
+    const { data: existingMenus, error: selectError } = await supabase
+      .from('menus')
+      .select('menu_type')
       .eq('tenant_id', tenantId)
-      .eq('menu_type', menuType);
+      .eq('menu_type', menuType)
+      .limit(1);
 
-    if (!menuItems || menuItems.length === 0) {
-      return { message: `Menu ${isActive ? 'activated' : 'deactivated'} successfully`, menuType, isActive };
+    if (selectError && !selectError.message.includes('does not exist')) {
+      throw new BadRequestException(`Failed to check menu status: ${selectError.message}`);
     }
 
-    const foodItemIds = menuItems.map((mi) => mi.food_item_id);
+    if (existingMenus && existingMenus.length > 0) {
+      // Update existing menu record
+      const { error } = await supabase
+        .from('menus')
+        .update({ 
+          is_active: isActive, 
+          updated_at: new Date().toISOString() 
+        })
+        .eq('tenant_id', tenantId)
+        .eq('menu_type', menuType);
 
-    // Activate/deactivate all items in the menu
-    const { error } = await supabase
-      .from('food_items')
-      .update({ is_active: isActive, updated_at: new Date().toISOString() })
-      .eq('tenant_id', tenantId)
-      .in('id', foodItemIds)
-      .is('deleted_at', null);
+      if (error) {
+        throw new BadRequestException(`Failed to ${isActive ? 'activate' : 'deactivate'} menu: ${error.message}`);
+      }
+    } else {
+      // If menu record doesn't exist, create it with the active status
+      // Generate display name from menu_type
+      const displayName = menuType.charAt(0).toUpperCase() + menuType.slice(1).replace(/_/g, ' ');
+      const { error } = await supabase
+        .from('menus')
+        .insert({
+          tenant_id: tenantId,
+          menu_type: menuType,
+          name: displayName,
+          is_active: isActive,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
 
-    if (error) {
-      throw new BadRequestException(`Failed to ${isActive ? 'activate' : 'deactivate'} menu: ${error.message}`);
+      // If table doesn't exist or insert fails, we'll continue (menu will still work)
+      if (error && !error.message.includes('relation') && !error.message.includes('does not exist')) {
+        throw new BadRequestException(`Failed to ${isActive ? 'activate' : 'deactivate'} menu: ${error.message}`);
+      }
     }
 
     return { message: `Menu ${isActive ? 'activated' : 'deactivated'} successfully`, menuType, isActive };
