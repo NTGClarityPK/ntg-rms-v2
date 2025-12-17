@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Container,
   Title,
   Button,
   Stack,
@@ -159,10 +158,7 @@ export function MenusPage() {
   };
 
   return (
-    <Container size="xl" py="xl">
-      <Title order={2} mb="xl">
-        {t('menu.menuManagement', language)}
-      </Title>
+    <Stack gap="md">
 
       {error && (
         <Alert icon={<IconAlertCircle size={16} />} color={errorColor} mb="md">
@@ -260,7 +256,7 @@ export function MenusPage() {
           </Group>
         </Stack>
       </Modal>
-    </Container>
+    </Stack>
   );
 }
 

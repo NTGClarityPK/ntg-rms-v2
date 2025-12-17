@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useForm } from '@mantine/form';
 import {
-  Container,
   Title,
   Button,
   Stack,
@@ -427,9 +426,8 @@ export function AddOnGroupsPage() {
 
 
   return (
-    <Container size="xl" py="xl">
-      <Group justify="space-between" mb="xl">
-        <Title order={2}>{t('menu.addOnGroupManagement', language)}</Title>
+    <Stack gap="md">
+      <Group justify="flex-end">
         <Button
           leftSection={<IconPlus size={16} />}
           onClick={() => handleOpenGroupModal()}
@@ -766,7 +764,7 @@ export function AddOnGroupsPage() {
           </Stack>
         </form>
       </Modal>
-    </Container>
+    </Stack>
   );
 }
 

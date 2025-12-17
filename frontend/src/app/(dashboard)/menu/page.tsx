@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Tabs } from '@mantine/core';
+import { Tabs, Title } from '@mantine/core';
 import { IconCategory, IconToolsKitchen2, IconPlus, IconMenu2 } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
@@ -21,37 +21,49 @@ export default function MenuPage() {
   };
 
   return (
-    <Tabs value={activeTab} onChange={handleTabChange}>
-      <Tabs.List>
-        <Tabs.Tab value="categories" leftSection={<IconCategory size={16} />}>
-          {t('menu.categories', language)}
-        </Tabs.Tab>
-        <Tabs.Tab value="food-items" leftSection={<IconToolsKitchen2 size={16} />}>
-          {t('menu.foodItems', language)}
-        </Tabs.Tab>
-        <Tabs.Tab value="add-ons" leftSection={<IconPlus size={16} />}>
-          {t('menu.addOns', language)}
-        </Tabs.Tab>
-        <Tabs.Tab value="menus" leftSection={<IconMenu2 size={16} />}>
-          {t('menu.menus', language)}
-        </Tabs.Tab>
-      </Tabs.List>
+    <>
+      <div className="page-title-bar">
+        <Title order={1} style={{ margin: 0, textAlign: 'left' }}>
+          {t('navigation.menu', language)}
+        </Title>
+      </div>
 
-      <Tabs.Panel value="categories" pt="md">
-        <CategoriesPage />
-      </Tabs.Panel>
+      <div className="page-sub-title-bar"></div>
 
-      <Tabs.Panel value="food-items" pt="md">
-        <FoodItemsPage />
-      </Tabs.Panel>
+      <div style={{ marginTop: '60px', paddingLeft: 'var(--mantine-spacing-md)', paddingRight: 'var(--mantine-spacing-md)', paddingTop: 'var(--mantine-spacing-sm)', paddingBottom: 'var(--mantine-spacing-xl)' }}>
+        <Tabs value={activeTab} onChange={handleTabChange}>
+          <Tabs.List>
+            <Tabs.Tab value="categories" leftSection={<IconCategory size={16} />}>
+              {t('menu.categories', language)}
+            </Tabs.Tab>
+            <Tabs.Tab value="food-items" leftSection={<IconToolsKitchen2 size={16} />}>
+              {t('menu.foodItems', language)}
+            </Tabs.Tab>
+            <Tabs.Tab value="add-ons" leftSection={<IconPlus size={16} />}>
+              {t('menu.addOns', language)}
+            </Tabs.Tab>
+            <Tabs.Tab value="menus" leftSection={<IconMenu2 size={16} />}>
+              {t('menu.menus', language)}
+            </Tabs.Tab>
+          </Tabs.List>
 
-      <Tabs.Panel value="add-ons" pt="md">
-        <AddOnGroupsPage />
-      </Tabs.Panel>
+          <Tabs.Panel value="categories" pt="md" px="md" pb="md">
+            <CategoriesPage />
+          </Tabs.Panel>
 
-      <Tabs.Panel value="menus" pt="md">
-        <MenusPage />
-      </Tabs.Panel>
-    </Tabs>
+          <Tabs.Panel value="food-items" pt="md" px="md" pb="md">
+            <FoodItemsPage />
+          </Tabs.Panel>
+
+          <Tabs.Panel value="add-ons" pt="md" px="md" pb="md">
+            <AddOnGroupsPage />
+          </Tabs.Panel>
+
+          <Tabs.Panel value="menus" pt="md" px="md" pb="md">
+            <MenusPage />
+          </Tabs.Panel>
+        </Tabs>
+      </div>
+    </>
   );
 }

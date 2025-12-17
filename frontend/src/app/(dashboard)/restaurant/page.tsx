@@ -444,7 +444,7 @@ export default function RestaurantPage() {
             </Tabs.Tab>
           </Tabs.List>
 
-          <Tabs.Panel value="business" pt="md">
+          <Tabs.Panel value="business" pt="md" px="md" pb="md">
             <Stack gap="lg">
           <Paper withBorder p="md">
             <Title order={3} mb="md">
@@ -521,7 +521,7 @@ export default function RestaurantPage() {
             </Stack>
           </Tabs.Panel>
 
-          <Tabs.Panel value="branding" pt="md">
+          <Tabs.Panel value="branding" pt="md" px="md" pb="md">
             <Stack gap="lg">
               <Paper withBorder p="md">
                 <Title order={3} mb="md">

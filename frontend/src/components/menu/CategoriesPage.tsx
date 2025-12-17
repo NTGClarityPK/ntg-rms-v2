@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useForm } from '@mantine/form';
 import {
-  Container,
   Title,
   Button,
   Stack,
@@ -360,9 +359,8 @@ export function CategoriesPage() {
   };
 
   return (
-    <Container size="xl" py="xl">
-      <Group justify="space-between" mb="xl">
-        <Title order={2}>{t('menu.categoryManagement', language)}</Title>
+    <Stack gap="md">
+      <Group justify="flex-end">
         <Button
           leftSection={<IconPlus size={16} />}
           onClick={() => handleOpenModal()}
@@ -627,7 +625,7 @@ export function CategoriesPage() {
           </Stack>
         </form>
       </Modal>
-    </Container>
+    </Stack>
   );
 }
 

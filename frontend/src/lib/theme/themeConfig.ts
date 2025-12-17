@@ -183,7 +183,7 @@ export function generateThemeConfig(
         hoverColor: themeColors.colorDarkHover,
       },
       table: {
-        backgroundColor: themeColors.colorMedium,
+        backgroundColor: themeColors.colorCard,
         headerBackground: themeColors.colorDark,
         headerHoverBackground: themeColors.colorDarkHover, // Table header hover
         borderColor: themeColors.border,
