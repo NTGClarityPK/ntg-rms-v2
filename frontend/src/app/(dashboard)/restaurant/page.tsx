@@ -37,36 +37,90 @@ import { notifications } from '@mantine/notifications';
 import { DEFAULT_THEME_COLOR, getLegacyThemeColor } from '@/lib/utils/theme';
 import { ColorInput } from '@mantine/core';
 
-// Common timezones list
-const TIMEZONES = [
-  { value: 'Asia/Baghdad', label: 'Asia/Baghdad (Iraq)' },
-  { value: 'Asia/Dubai', label: 'Asia/Dubai (UAE)' },
-  { value: 'Asia/Riyadh', label: 'Asia/Riyadh (Saudi Arabia)' },
-  { value: 'Asia/Kuwait', label: 'Asia/Kuwait' },
-  { value: 'Asia/Qatar', label: 'Asia/Qatar' },
-  { value: 'Asia/Tehran', label: 'Asia/Tehran (Iran)' },
-  { value: 'Asia/Beirut', label: 'Asia/Beirut (Lebanon)' },
-  { value: 'Asia/Amman', label: 'Asia/Amman (Jordan)' },
-  { value: 'Asia/Damascus', label: 'Asia/Damascus (Syria)' },
-  { value: 'Asia/Jerusalem', label: 'Asia/Jerusalem (Israel)' },
-  { value: 'Europe/London', label: 'Europe/London (UK)' },
-  { value: 'Europe/Paris', label: 'Europe/Paris (France)' },
-  { value: 'Europe/Berlin', label: 'Europe/Berlin (Germany)' },
-  { value: 'Europe/Rome', label: 'Europe/Rome (Italy)' },
-  { value: 'Europe/Madrid', label: 'Europe/Madrid (Spain)' },
-  { value: 'America/New_York', label: 'America/New_York (US Eastern)' },
-  { value: 'America/Chicago', label: 'America/Chicago (US Central)' },
-  { value: 'America/Denver', label: 'America/Denver (US Mountain)' },
-  { value: 'America/Los_Angeles', label: 'America/Los_Angeles (US Pacific)' },
-  { value: 'America/Toronto', label: 'America/Toronto (Canada)' },
-  { value: 'Asia/Tokyo', label: 'Asia/Tokyo (Japan)' },
-  { value: 'Asia/Shanghai', label: 'Asia/Shanghai (China)' },
-  { value: 'Asia/Hong_Kong', label: 'Asia/Hong_Kong' },
-  { value: 'Asia/Singapore', label: 'Asia/Singapore' },
-  { value: 'Asia/Kolkata', label: 'Asia/Kolkata (India)' },
-  { value: 'Australia/Sydney', label: 'Australia/Sydney' },
-  { value: 'Australia/Melbourne', label: 'Australia/Melbourne' },
+// Common timezones list with GMT offsets
+const TIMEZONE_DATA = [
+  { value: 'Asia/Baghdad', label: 'Asia/Baghdad', country: 'Iraq' },
+  { value: 'Asia/Dubai', label: 'Asia/Dubai', country: 'UAE' },
+  { value: 'Asia/Riyadh', label: 'Asia/Riyadh', country: 'Saudi Arabia' },
+  { value: 'Asia/Kuwait', label: 'Asia/Kuwait', country: 'Kuwait' },
+  { value: 'Asia/Qatar', label: 'Asia/Qatar', country: 'Qatar' },
+  { value: 'Asia/Tehran', label: 'Asia/Tehran', country: 'Iran' },
+  { value: 'Asia/Beirut', label: 'Asia/Beirut', country: 'Lebanon' },
+  { value: 'Asia/Amman', label: 'Asia/Amman', country: 'Jordan' },
+  { value: 'Asia/Damascus', label: 'Asia/Damascus', country: 'Syria' },
+  { value: 'Asia/Jerusalem', label: 'Asia/Jerusalem', country: 'Israel' },
+  { value: 'Europe/London', label: 'Europe/London', country: 'UK' },
+  { value: 'Europe/Paris', label: 'Europe/Paris', country: 'France' },
+  { value: 'Europe/Berlin', label: 'Europe/Berlin', country: 'Germany' },
+  { value: 'Europe/Rome', label: 'Europe/Rome', country: 'Italy' },
+  { value: 'Europe/Madrid', label: 'Europe/Madrid', country: 'Spain' },
+  { value: 'America/New_York', label: 'America/New_York', country: 'US Eastern' },
+  { value: 'America/Chicago', label: 'America/Chicago', country: 'US Central' },
+  { value: 'America/Denver', label: 'America/Denver', country: 'US Mountain' },
+  { value: 'America/Los_Angeles', label: 'America/Los_Angeles', country: 'US Pacific' },
+  { value: 'America/Toronto', label: 'America/Toronto', country: 'Canada' },
+  { value: 'Asia/Tokyo', label: 'Asia/Tokyo', country: 'Japan' },
+  { value: 'Asia/Shanghai', label: 'Asia/Shanghai', country: 'China' },
+  { value: 'Asia/Hong_Kong', label: 'Asia/Hong_Kong', country: 'Hong Kong' },
+  { value: 'Asia/Singapore', label: 'Asia/Singapore', country: 'Singapore' },
+  { value: 'Asia/Kolkata', label: 'Asia/Kolkata', country: 'India' },
+  { value: 'Australia/Sydney', label: 'Australia/Sydney', country: 'Australia' },
+  { value: 'Australia/Melbourne', label: 'Australia/Melbourne', country: 'Australia' },
 ];
+
+// Function to get GMT offset for a timezone
+const getGMTOffset = (timezone: string): number => {
+  try {
+    const now = new Date();
+    // Format the same moment in UTC and target timezone
+    const utcFormatter = new Intl.DateTimeFormat('en', {
+      timeZone: 'UTC',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const tzFormatter = new Intl.DateTimeFormat('en', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    
+    const utcParts = utcFormatter.formatToParts(now);
+    const tzParts = tzFormatter.formatToParts(now);
+    
+    const utcHour = parseInt(utcParts.find(p => p.type === 'hour')?.value || '0', 10);
+    const utcMinute = parseInt(utcParts.find(p => p.type === 'minute')?.value || '0', 10);
+    const tzHour = parseInt(tzParts.find(p => p.type === 'hour')?.value || '0', 10);
+    const tzMinute = parseInt(tzParts.find(p => p.type === 'minute')?.value || '0', 10);
+    
+    // Calculate offset in hours
+    const utcMinutes = utcHour * 60 + utcMinute;
+    const tzMinutes = tzHour * 60 + tzMinute;
+    let offsetMinutes = tzMinutes - utcMinutes;
+    
+    // Handle day boundary (if difference is > 12 hours, assume it crossed midnight)
+    if (Math.abs(offsetMinutes) > 12 * 60) {
+      if (offsetMinutes > 0) {
+        offsetMinutes -= 24 * 60;
+      } else {
+        offsetMinutes += 24 * 60;
+      }
+    }
+    
+    return offsetMinutes / 60;
+  } catch {
+    return 0;
+  }
+};
+
+// Function to format GMT offset as string
+const formatGMTOffset = (offset: number): string => {
+  const sign = offset >= 0 ? '+' : '-';
+  const hours = Math.floor(Math.abs(offset));
+  const minutes = Math.round((Math.abs(offset) - hours) * 60);
+  return `GMT${sign}${hours}:${minutes.toString().padStart(2, '0')}`;
+};
 
 export default function RestaurantPage() {
   const { language } = useLanguageStore();
@@ -106,6 +160,21 @@ export default function RestaurantPage() {
       primaryColor: (value) => (value && !/^#[0-9A-Fa-f]{6}$/.test(value) ? 'Invalid color code' : null),
     },
   });
+
+  // Generate timezones with GMT offsets and translations, sorted by offset
+  const getTimezones = useCallback(() => {
+    return TIMEZONE_DATA.map(tz => {
+      const offset = getGMTOffset(tz.value);
+      const offsetStr = formatGMTOffset(offset);
+      const tzLabel = t(`restaurant.timezones.${tz.label}` as any, language) || tz.label;
+      const countryLabel = tz.country ? (t(`restaurant.timezones.${tz.country}` as any, language) || tz.country) : '';
+      return {
+        value: tz.value,
+        label: `${tzLabel} (${offsetStr})${countryLabel ? ` - ${countryLabel}` : ''}`,
+        offset,
+      };
+    }).sort((a, b) => a.offset - b.offset); // Sort by offset (west to east, lowest to highest)
+  }, [language]);
 
   const loadRestaurantInfo = useCallback(async () => {
     try {
@@ -478,9 +547,9 @@ export default function RestaurantPage() {
               <Grid.Col span={{ base: 12, md: 6 }}>
                 <Select
                   label={t('restaurant.timezone', language)}
-                  data={TIMEZONES.map(tz => ({
+                  data={getTimezones().map(tz => ({
                     value: tz.value,
-                    label: language === 'ar' ? tz.label.replace('Asia/Baghdad', 'آسيا/بغداد').replace('Iraq', 'العراق') : tz.label
+                    label: tz.label
                   }))}
                   searchable
                   {...form.getInputProps('timezone')}
