@@ -144,6 +144,7 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
         margin: 0 !important;
         text-align: left !important;
         padding-left: var(--mantine-spacing-md) !important;
+        padding-top: var(--mantine-spacing-sm) !important;
       }
       
       /* Add top margin to main content to account for title bar */
@@ -592,6 +593,24 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       .filter-button-group .mantine-Button-root:hover:not([data-selected="true"]):not(.filter-button-selected):not(:disabled) {
         background-color: ${config.components.tabs.hoverTabBackgroundColor} !important;
         color: ${config.components.tabs.hoverTabFontColor} !important;
+      }
+
+      /* Filter Chips - configurable from themeConfig.filterChip */
+      .filter-chip-group .mantine-Chip-label {
+        background-color: ${config.components.filterChip.backgroundColor} !important;
+        color: ${config.components.filterChip.textColor} !important;
+        border-radius: 20px !important;
+        transition: all 0.2s ease !important;
+      }
+
+      .filter-chip-group .mantine-Chip-label:hover {
+        background-color: ${config.components.filterChip.hoverBackgroundColor} !important;
+        color: ${config.components.filterChip.hoverTextColor} !important;
+      }
+
+      .filter-chip-group .mantine-Chip-input:checked + .mantine-Chip-label {
+        background-color: ${config.components.filterChip.selectedBackgroundColor} !important;
+        color: ${config.components.filterChip.selectedTextColor} !important;
       }
     `;
   }, [themeConfig]);

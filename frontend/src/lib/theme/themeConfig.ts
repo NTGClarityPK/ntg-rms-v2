@@ -84,6 +84,14 @@ export interface ThemeConfig {
     subTitleBar: {
       backgroundColor: string;
     };
+    filterChip: {
+      backgroundColor: string;
+      textColor: string;
+      selectedBackgroundColor: string;
+      selectedTextColor: string;
+      hoverBackgroundColor: string;
+      hoverTextColor: string;
+    };
   };
   
   // Typography Settings
@@ -202,6 +210,14 @@ export function generateThemeConfig(
       },
       subTitleBar: {
         backgroundColor: themeColors.colorMedium, // Sub title bar background color - customize this
+      },
+      filterChip: {
+        backgroundColor: themeColors.colorMedium, // Unselected chip background
+        textColor: themeColors.colorTextDark, // Unselected chip text
+        selectedBackgroundColor: themeColors.primary, // Selected chip background
+        selectedTextColor: themeColors.colorCard, // Selected chip text
+        hoverBackgroundColor: themeColors.colorDarkHover, // Hover chip background
+        hoverTextColor: themeColors.colorCard, // Hover chip text
       },
     },
     

@@ -3,7 +3,7 @@
  * Adapted for Mantine v7
  */
 
-const DEFAULT_PRIMARY_COLOR = '#FF5A5F'; // Default color
+const DEFAULT_PRIMARY_COLOR = '#e4f4f5'; // Default color
 
 /**
  * Convert hex color to RGB

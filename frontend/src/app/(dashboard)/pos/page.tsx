@@ -19,7 +19,7 @@ export default function POSPage() {
   const { settings } = useSettings();
   const searchParams = useSearchParams();
   const editOrderId = searchParams?.get('editOrder');
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [cartItems, setCartItems] = useState<any[]>([]);
   
@@ -335,8 +335,8 @@ export default function POSPage() {
         <Grid.Col span={{ base: 12, md: 7 }} style={{ height: '100%', overflow: 'hidden' }}>
           <FoodItemsGrid
             tenantId={user.tenantId}
-            selectedCategoryId={selectedCategoryId}
-            onCategoryChange={setSelectedCategoryId}
+            selectedCategoryIds={selectedCategoryIds}
+            onCategoryChange={setSelectedCategoryIds}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
             onAddToCart={handleAddToCart}

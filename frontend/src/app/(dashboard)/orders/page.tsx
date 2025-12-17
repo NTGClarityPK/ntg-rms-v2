@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Container,
-  Tabs,
+  Chip,
   TextInput,
   Select,
   Button,
@@ -47,7 +46,9 @@ import { useDateFormat } from '@/lib/hooks/use-date-format';
 
 dayjs.extend(relativeTime);
 
-type OrderTab = 'all' | 'pending' | 'preparing' | 'ready' | 'served' | 'completed' | 'cancelled';
+// Available order statuses for filtering
+const ORDER_STATUSES = ['pending', 'preparing', 'ready', 'served', 'completed', 'cancelled'] as const;
+type OrderStatusFilter = typeof ORDER_STATUSES[number];
 
 export default function OrdersPage() {
   const { language } = useLanguageStore();
@@ -55,7 +56,7 @@ export default function OrdersPage() {
   const primary = useThemeColor();
   const { user } = useAuthStore();
   const { formatDateTime } = useDateFormat();
-  const [activeTab, setActiveTab] = useState<OrderTab>('all');
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -89,8 +90,8 @@ export default function OrdersPage() {
       setLoading(true);
     }
     try {
-      // Load orders from backend
-      const status = activeTab === 'all' ? undefined : (activeTab as OrderStatus);
+      // Load orders from backend - no status filter at API level, filter client-side
+      const status = undefined;
       const params = {
         status,
         branchId: selectedBranch || undefined,
@@ -259,7 +260,7 @@ export default function OrdersPage() {
         setLoading(false);
       }
     }
-  }, [activeTab, selectedBranch, selectedOrderType, selectedPaymentStatus, language, user?.tenantId]);
+  }, [selectedBranch, selectedOrderType, selectedPaymentStatus, language, user?.tenantId]);
 
   // Update ref whenever loadOrders changes
   useEffect(() => {
@@ -275,7 +276,7 @@ export default function OrdersPage() {
   useEffect(() => {
     loadOrders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, selectedBranch, selectedOrderType, selectedPaymentStatus]);
+  }, [selectedBranch, selectedOrderType, selectedPaymentStatus]);
 
   // Set up Supabase Realtime subscription for cross-browser updates
   useEffect(() => {
@@ -392,8 +393,9 @@ export default function OrdersPage() {
   }, [loadOrders]);
 
   const filteredOrders = orders.filter((order) => {
-    // First apply tab filter (status filter)
-    if (activeTab !== 'all' && order.status !== activeTab) {
+    // First apply status filter (multi-select)
+    // If no statuses selected, show all orders
+    if (selectedStatuses.length > 0 && !selectedStatuses.includes(order.status)) {
       return false;
     }
     
@@ -433,34 +435,18 @@ export default function OrdersPage() {
   };
 
   return (
-    <Container size="xl" py="md">
-      <Stack gap="md">
-        {/* Header */}
-        <Group justify="space-between" align="center">
-          <Title order={1}>
-            {t('orders.title', language)}
-          </Title>
-          <Group>
-            <Button
-              leftSection={<IconChefHat size={16} />}
-              variant="light"
-              component="a"
-              href="/orders/kitchen"
-            >
-              {t('orders.kitchenDisplay', language)}
-            </Button>
-            <Button
-              leftSection={<IconRefresh size={16} />}
-              variant="light"
-              onClick={() => loadOrders(false)}
-              loading={loading}
-            >
-              {t('common.refresh' as any, language)}
-            </Button>
-          </Group>
-        </Group>
+    <>
+      <div className="page-title-bar">
+        <Title order={1} style={{ margin: 0, textAlign: 'left' }}>
+          {t('orders.title', language)}
+        </Title>
+      </div>
 
-        {/* Filters */}
+      <div className="page-sub-title-bar"></div>
+
+      <div style={{ marginTop: '60px', paddingLeft: 'var(--mantine-spacing-md)', paddingRight: 'var(--mantine-spacing-md)', paddingTop: 'var(--mantine-spacing-sm)', paddingBottom: 'var(--mantine-spacing-xl)' }}>
+        <Stack gap="md">
+          {/* Filters */}
         <Paper p="md" withBorder>
           <Grid>
             <Grid.Col span={{ base: 12, sm: 4 }}>
@@ -509,20 +495,67 @@ export default function OrdersPage() {
           </Grid>
         </Paper>
 
-        {/* Tabs */}
-        <Tabs value={activeTab} onChange={(value) => setActiveTab(value as OrderTab)}>
-          <Tabs.List>
-            <Tabs.Tab value="all">{t('orders.allOrders', language)}</Tabs.Tab>
-            <Tabs.Tab value="pending">{t('orders.pending', language)}</Tabs.Tab>
-            <Tabs.Tab value="preparing">{t('orders.preparing', language)}</Tabs.Tab>
-            <Tabs.Tab value="ready">{t('orders.ready', language)}</Tabs.Tab>
-            <Tabs.Tab value="served">{t('orders.served', language)}</Tabs.Tab>
-            <Tabs.Tab value="completed">{t('orders.completed', language)}</Tabs.Tab>
-            <Tabs.Tab value="cancelled">{t('orders.cancelled', language)}</Tabs.Tab>
-          </Tabs.List>
+        {/* Status Filter Chips + Actions */}
+        <Paper p="sm" withBorder>
+          <Group justify="space-between" align="center" wrap="wrap" gap="sm">
+            <Group gap="xs" wrap="wrap" className="filter-chip-group">
+              <Chip
+                checked={selectedStatuses.length === 0}
+                onChange={() => setSelectedStatuses([])}
+                variant="filled"
+              >
+                {t('orders.allOrders', language)}
+              </Chip>
+              <Chip.Group multiple value={selectedStatuses} onChange={setSelectedStatuses}>
+                <Group gap="xs" wrap="wrap">
+                  <Chip value="pending" variant="filled">
+                    {t('orders.pending', language)}
+                  </Chip>
+                  <Chip value="preparing" variant="filled">
+                    {t('orders.preparing', language)}
+                  </Chip>
+                  <Chip value="ready" variant="filled">
+                    {t('orders.ready', language)}
+                  </Chip>
+                  <Chip value="served" variant="filled">
+                    {t('orders.served', language)}
+                  </Chip>
+                  <Chip value="completed" variant="filled">
+                    {t('orders.completed', language)}
+                  </Chip>
+                  <Chip value="cancelled" variant="filled">
+                    {t('orders.cancelled', language)}
+                  </Chip>
+                </Group>
+              </Chip.Group>
+            </Group>
+            
+            {/* Action buttons - right side */}
+            <Group gap="xs">
+              <Button
+                leftSection={<IconChefHat size={16} />}
+                variant="light"
+                component="a"
+                href="/orders/kitchen"
+                size="sm"
+              >
+                {t('orders.kitchenDisplay', language)}
+              </Button>
+              <ActionIcon
+                variant="light"
+                size="lg"
+                onClick={() => loadOrders(false)}
+                loading={loading}
+                title={t('common.refresh' as any, language)}
+              >
+                <IconRefresh size={18} />
+              </ActionIcon>
+            </Group>
+          </Group>
+        </Paper>
 
-          {/* Orders List */}
-          <Box mt="md">
+        {/* Orders List */}
+        <Box mt="md">
             {loading ? (
               <Stack gap="md">
                 {[1, 2].map((i) => (
@@ -622,8 +655,8 @@ export default function OrdersPage() {
               </Stack>
             )}
           </Box>
-        </Tabs>
-      </Stack>
+        </Stack>
+      </div>
 
       {selectedOrder && (
         <OrderDetailsModal
@@ -633,6 +666,6 @@ export default function OrdersPage() {
           onStatusUpdate={handleStatusUpdate}
         />
       )}
-    </Container>
+    </>
   );
 }
