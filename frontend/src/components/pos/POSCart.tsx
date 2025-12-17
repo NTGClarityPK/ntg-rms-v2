@@ -146,6 +146,9 @@ export function POSCart({
   const [invoiceModalOpened, setInvoiceModalOpened] = useState(false);
   const [placedOrder, setPlacedOrder] = useState<Order | null>(null);
   const [placedOrderItems, setPlacedOrderItems] = useState<CartItem[]>([]);
+  const [placedOrderPaymentMethod, setPlacedOrderPaymentMethod] = useState<string | null>(null);
+  const [placedOrderCustomerName, setPlacedOrderCustomerName] = useState<string | undefined>(undefined);
+  const [placedOrderCustomerPhone, setPlacedOrderCustomerPhone] = useState<string | undefined>(undefined);
   // Address handling for delivery orders
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [newAddress, setNewAddress] = useState<string>('');
@@ -862,12 +865,17 @@ export function POSCart({
             }
           }
 
-          // Store payment method before clearing (needed for invoice generation)
+          // Store payment method and customer info before clearing (needed for invoice generation)
           const savedPaymentMethod = paymentMethod;
+          const customerName = selectedCustomerData?.name;
+          const customerPhone = selectedCustomerData?.phone;
           
           // Set placed order and items for invoice (before clearing cart)
           setPlacedOrder(order);
           setPlacedOrderItems([...cartItems]);
+          setPlacedOrderPaymentMethod(savedPaymentMethod);
+          setPlacedOrderCustomerName(customerName);
+          setPlacedOrderCustomerPhone(customerPhone);
 
           // Clear cart
           onClearCart();
@@ -1047,12 +1055,17 @@ export function POSCart({
         await syncService.queueChange('orderItems', 'CREATE', item.id!, item);
       }
 
-      // Store payment method before clearing (needed for invoice generation)
+      // Store payment method and customer info before clearing (needed for invoice generation)
       const savedPaymentMethod = paymentMethod;
+      const customerName = selectedCustomerData?.name;
+      const customerPhone = selectedCustomerData?.phone;
       
       // Set placed order and items for invoice (before clearing cart)
       setPlacedOrder(order);
       setPlacedOrderItems([...cartItems]);
+      setPlacedOrderPaymentMethod(savedPaymentMethod);
+      setPlacedOrderCustomerName(customerName);
+      setPlacedOrderCustomerPhone(customerPhone);
 
       // Clear cart
       onClearCart();
@@ -1088,93 +1101,74 @@ export function POSCart({
     }
   };
 
-  const handlePrintInvoice = () => {
+  const handlePrintInvoice = async () => {
     if (!placedOrder) return;
 
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
+    try {
+      // Fetch tenant and branch info for invoice
+      const tenant = await restaurantApi.getInfo();
+      const branches = await restaurantApi.getBranches();
+      const branch = branches.find(b => b.id === placedOrder.branchId);
+      
+      // Fetch full order details with customer info if needed
+      let orderWithDetails: any = placedOrder;
+      if (placedOrder.customerId && !(placedOrder as any).customer) {
+        try {
+          orderWithDetails = await ordersApi.getOrderById(placedOrder.id);
+        } catch (error) {
+          console.error('Failed to fetch order details:', error);
+        }
+      }
+      
+      // Prepare invoice data with all necessary information
+      const invoiceData = {
+        order: {
+          ...orderWithDetails,
+          orderType: orderWithDetails.orderType || placedOrder.orderType,
+          paymentMethod: orderWithDetails.paymentMethod || placedOrderPaymentMethod,
+          items: placedOrderItems.map((item: any) => ({
+            ...item,
+            foodItemName: item.foodItemName || (item as any).foodItemNameEn || (item as any).foodItemNameAr || '',
+            variationName: item.variationName,
+            addOns: item.addOns?.map((a: any) => ({
+              addOnName: a.addOnName || (a as any).addOnNameEn || (a as any).addOnNameAr || '',
+            })) || [],
+            quantity: item.quantity,
+            subtotal: item.subtotal,
+          })),
+        } as any,
+        tenant: {
+          ...tenant,
+          footerText: settings?.invoice?.footerText || '',
+          termsAndConditions: settings?.invoice?.termsAndConditions || '',
+        },
+        branch: branch || undefined,
+        invoiceSettings: {
+          headerText: settings?.invoice?.headerText,
+          footerText: settings?.invoice?.footerText,
+          termsAndConditions: settings?.invoice?.termsAndConditions,
+          showLogo: settings?.invoice?.showLogo,
+          showVatNumber: settings?.invoice?.showVatNumber,
+          showQrCode: settings?.invoice?.showQrCode,
+        },
+        customerName: orderWithDetails.customer?.name || placedOrderCustomerName,
+        customerPhone: orderWithDetails.customer?.phone || placedOrderCustomerPhone,
+        customerAddress: undefined,
+      };
 
-    const invoiceHTML = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Invoice - ${placedOrder.orderNumber}</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 20px; }
-            .header { text-align: center; margin-bottom: 20px; }
-            .order-info { margin-bottom: 20px; }
-            .items-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-            .items-table th, .items-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            .items-table th { background-color: #f2f2f2; }
-            .summary { margin-top: 20px; }
-            .summary-row { display: flex; justify-content: space-between; margin-bottom: 10px; }
-            .total { font-size: 18px; font-weight: bold; margin-top: 10px; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>${t('pos.invoice', language)}</h1>
-          </div>
-          <div class="order-info">
-            <p><strong>${t('pos.orderNumber', language)}:</strong> ${placedOrder.orderNumber}</p>
-            ${placedOrder.tokenNumber ? `<p><strong>${t('pos.tokenNumber', language)}:</strong> ${placedOrder.tokenNumber}</p>` : ''}
-            <p><strong>${t('pos.orderDate', language)}:</strong> ${new Date(placedOrder.orderDate).toLocaleString()}</p>
-          </div>
-            <table class="items-table">
-            <thead>
-              <tr>
-                <th>${t('pos.item', language)}</th>
-                <th>${t('pos.quantity', language)}</th>
-                <th>${t('pos.price', language)}</th>
-                <th>${t('pos.subtotal', language)}</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${placedOrderItems.map(item => `
-                <tr>
-                  <td>${(item as any).foodItemName || (item as any).foodItemNameEn || (item as any).foodItemNameAr || ''}</td>
-                  <td>${item.quantity}</td>
-                  <td>${item.unitPrice.toFixed(2)} ${currency}</td>
-                  <td>${item.subtotal.toFixed(2)} ${currency}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-          <div class="summary">
-            <div class="summary-row">
-              <span>${t('pos.subtotal', language)}:</span>
-              <span>${placedOrder.subtotal.toFixed(2)} ${currency}</span>
-            </div>
-            ${placedOrder.discountAmount > 0 ? `
-              <div class="summary-row">
-                <span>${t('pos.discount', language)}:</span>
-                <span>-${placedOrder.discountAmount.toFixed(2)} ${currency}</span>
-              </div>
-            ` : ''}
-            ${placedOrder.taxAmount > 0 ? `
-              <div class="summary-row">
-                <span>${t('pos.tax', language)}:</span>
-                <span>${placedOrder.taxAmount.toFixed(2)} ${currency}</span>
-              </div>
-            ` : ''}
-            ${placedOrder.deliveryCharge > 0 ? `
-              <div class="summary-row">
-                <span>${t('pos.deliveryCharge', language)}:</span>
-                <span>${placedOrder.deliveryCharge.toFixed(2)} ${currency}</span>
-              </div>
-            ` : ''}
-            <div class="summary-row total">
-              <span>${t('pos.grandTotal', language)}:</span>
-              <span>${placedOrder.totalAmount.toFixed(2)} ${currency}</span>
-            </div>
-          </div>
-        </body>
-      </html>
-    `;
-
-    printWindow.document.write(invoiceHTML);
-    printWindow.document.close();
-    printWindow.print();
+      const template = settings?.invoice?.receiptTemplate === 'a4' ? 'a4' : 'thermal';
+      const html = template === 'a4' 
+        ? InvoiceGenerator.generateA4(invoiceData, language)
+        : InvoiceGenerator.generateThermal(invoiceData, language);
+      InvoiceGenerator.printInvoice(html);
+    } catch (error) {
+      console.error('Failed to print invoice:', error);
+      notifications.show({
+        title: t('common.error' as any, language) || 'Error',
+        message: 'Failed to generate invoice',
+        color: getErrorColor(),
+      });
+    }
   };
 
   const selectedCustomer = customers.find((c) => c.id === selectedCustomerId);
@@ -1781,6 +1775,9 @@ export function POSCart({
           setInvoiceModalOpened(false);
           setPlacedOrder(null);
           setPlacedOrderItems([]);
+          setPlacedOrderPaymentMethod(null);
+          setPlacedOrderCustomerName(undefined);
+          setPlacedOrderCustomerPhone(undefined);
         }}
         title={t('pos.invoice', language)}
         size="lg"
