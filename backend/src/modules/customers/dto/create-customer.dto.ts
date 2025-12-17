@@ -9,12 +9,7 @@ export class CreateCustomerAddressDto {
 
   @ApiProperty()
   @IsString()
-  addressEn: string;
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  addressAr?: string;
+  address: string;
 
   @ApiProperty({ required: false })
   @IsString()
@@ -45,12 +40,7 @@ export class CreateCustomerAddressDto {
 export class CreateCustomerDto {
   @ApiProperty()
   @IsString()
-  nameEn: string;
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  nameAr?: string;
+  name: string;
 
   @ApiProperty()
   @IsString()

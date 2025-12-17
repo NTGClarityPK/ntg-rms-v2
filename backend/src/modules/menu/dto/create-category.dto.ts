@@ -4,22 +4,12 @@ import { IsString, IsOptional, IsUUID, IsBoolean, IsNumber } from 'class-validat
 export class CreateCategoryDto {
   @ApiProperty()
   @IsString()
-  nameEn: string;
+  name: string;
 
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
-  nameAr?: string;
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  descriptionEn?: string;
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  descriptionAr?: string;
+  description?: string;
 
   @ApiProperty({ required: false })
   @IsUUID()

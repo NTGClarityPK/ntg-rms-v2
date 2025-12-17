@@ -16,6 +16,7 @@ import { InventoryService } from '../inventory/inventory.service';
 import { DeliveryService } from '../delivery/delivery.service';
 import { TaxesService } from '../taxes/taxes.service';
 import { SettingsService } from '../settings/settings.service';
+import { OrdersSseService } from './orders-sse.service';
 
 @Injectable()
 export class OrdersService {
@@ -25,6 +26,7 @@ export class OrdersService {
     private inventoryService: InventoryService,
     private taxesService: TaxesService,
     private settingsService: SettingsService,
+    private ordersSseService: OrdersSseService,
     @Inject(forwardRef(() => DeliveryService))
     private deliveryService: DeliveryService,
   ) {}
@@ -319,8 +321,7 @@ export class OrdersService {
             .from('branches')
             .insert({
               tenant_id: tenantId,
-              name_en: 'Main Branch',
-              name_ar: 'الفرع الرئيسي',
+              name: 'Main Branch',
               code: 'MAIN',
               is_active: true,
             })
@@ -368,8 +369,7 @@ export class OrdersService {
               .from('branches')
               .insert({
                 tenant_id: tenantId,
-                name_en: 'Main Branch',
-                name_ar: 'الفرع الرئيسي',
+                name: 'Main Branch',
                 code: 'MAIN',
                 is_active: true,
               })
@@ -709,10 +709,9 @@ export class OrdersService {
         try {
           // Build address notes for walk-in customers (store as JSON for language-based display)
           let deliveryNotes: string | null = null;
-          if (!createDto.customerAddressId && (createDto.deliveryAddressEn || createDto.deliveryAddressAr)) {
+          if (!createDto.customerAddressId && (createDto.deliveryAddress || createDto.deliveryAddress)) {
             const addressData = {
-              addressEn: createDto.deliveryAddressEn || null,
-              addressAr: createDto.deliveryAddressAr || null,
+              address: createDto.deliveryAddress || null,
               city: createDto.deliveryAddressCity || null,
               state: createDto.deliveryAddressState || null,
               country: createDto.deliveryAddressCountry || null,
@@ -741,19 +740,30 @@ export class OrdersService {
 
       // Try to get full order details for response
       // If getOrderById fails (e.g., due to RLS or timing), return the basic order
+      let fullOrder;
       try {
-        const fullOrder = await this.getOrderById(tenantId, order.id);
-        return fullOrder;
+        fullOrder = await this.getOrderById(tenantId, order.id);
       } catch (error) {
-        // If getOrderById fails, return the basic order data
-        console.warn(`Failed to fetch full order details for ${order.id}, returning basic order:`, error instanceof Error ? error.message : 'Unknown error');
-        return {
+        // If getOrderById fails, create basic order object
+        console.warn(`Failed to fetch full order details for ${order.id}, using basic order:`, error instanceof Error ? error.message : 'Unknown error');
+        fullOrder = {
           ...order,
           items: orderItems,
           payments: [],
           timeline: [{ event: 'Order Placed', timestamp: order.placed_at || order.created_at }],
         };
       }
+      
+      // Emit SSE event for new order (always emit, even if getOrderById failed)
+      console.log(`📡 Emitting ORDER_CREATED event for order ${order.id}, tenant ${tenantId}`);
+      this.ordersSseService.emitOrderUpdate({
+        type: 'ORDER_CREATED',
+        tenantId,
+        orderId: order.id,
+        order: fullOrder,
+      });
+      
+      return fullOrder;
     } catch (error) {
       if (error instanceof BadRequestException || error instanceof NotFoundException) {
         throw error;
@@ -768,7 +778,7 @@ export class OrdersService {
   async getOrders(
     tenantId: string,
     filters: {
-      status?: string;
+      status?: string | string[];
       branchId?: string;
       orderType?: string;
       paymentStatus?: string;
@@ -776,6 +786,7 @@ export class OrdersService {
       endDate?: string;
       limit?: number;
       offset?: number;
+      includeItems?: boolean;
     } = {},
   ) {
     const supabase = this.supabaseService.getServiceRoleClient();
@@ -793,8 +804,13 @@ export class OrdersService {
       .order('created_at', { ascending: false })
       .limit(defaultLimit); // Always set a limit to avoid PostgREST default limit issues
 
+    // Support multiple statuses (array) or single status (string)
     if (filters.status) {
-      query = query.eq('status', filters.status);
+      if (Array.isArray(filters.status) && filters.status.length > 0) {
+        query = query.in('status', filters.status);
+      } else if (typeof filters.status === 'string') {
+        query = query.eq('status', filters.status);
+      }
     }
 
     if (filters.branchId) {
@@ -848,7 +864,7 @@ export class OrdersService {
       branchIds.length > 0
         ? supabase
             .from('branches')
-            .select('id, name_en, name_ar, code')
+            .select('id, name, code')
             .in('id', branchIds)
         : Promise.resolve({ data: [], error: null }),
       counterIds.length > 0
@@ -866,13 +882,13 @@ export class OrdersService {
       customerIds.length > 0
         ? supabase
             .from('customers')
-            .select('id, name_en, name_ar, phone')
+            .select('id, name, phone')
             .in('id', customerIds)
         : Promise.resolve({ data: [], error: null }),
       cashierIds.length > 0
         ? supabase
             .from('users')
-            .select('id, name_en, name_ar, email')
+            .select('id, name, email')
             .in('id', cashierIds)
         : Promise.resolve({ data: [], error: null }),
     ]);
@@ -884,13 +900,183 @@ export class OrdersService {
     const customerMap = new Map((customers.data || []).map((c: any) => [c.id, c]));
     const cashierMap = new Map((cashiers.data || []).map((u: any) => [u.id, u]));
 
+    // If includeItems is true, batch fetch all order items
+    let orderItemsMap = new Map<string, any[]>();
+    let foodItemMap = new Map<string, any>();
+    let variationMap = new Map<string, any>();
+    let addOnMap = new Map<string, any>();
+
+    if (filters.includeItems && orders && orders.length > 0) {
+      const orderIds = orders.map((o: any) => o.id);
+      
+      // Batch fetch all order items for all orders
+      const { data: allOrderItems, error: itemsError } = await supabase
+        .from('order_items')
+        .select('*')
+        .in('order_id', orderIds)
+        .order('created_at', { ascending: true });
+
+      if (itemsError) {
+        throw new InternalServerErrorException(`Failed to fetch order items: ${itemsError.message}`);
+      }
+
+      // Group items by order_id
+      if (allOrderItems) {
+        allOrderItems.forEach((item: any) => {
+          const orderId = item.order_id;
+          if (!orderItemsMap.has(orderId)) {
+            orderItemsMap.set(orderId, []);
+          }
+          orderItemsMap.get(orderId)!.push(item);
+        });
+      }
+
+      // Collect unique IDs for batch fetching related data
+      const foodItemIds = [...new Set(allOrderItems?.map((item: any) => item.food_item_id).filter(Boolean) || [])];
+      const variationIds = [...new Set(allOrderItems?.map((item: any) => item.variation_id).filter(Boolean) || [])];
+
+      // Batch fetch food items and variations
+      const [foodItemsResult, variationsResult] = await Promise.all([
+        foodItemIds.length > 0
+          ? supabase
+              .from('food_items')
+              .select('id, name, image_url')
+              .in('id', foodItemIds)
+          : Promise.resolve({ data: [], error: null }),
+        variationIds.length > 0
+          ? supabase
+              .from('food_item_variations')
+              .select('id, variation_group, variation_name, price_adjustment')
+              .in('id', variationIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+
+      // Create lookup maps
+      if (foodItemsResult.data) {
+        foodItemsResult.data.forEach((fi: any) => {
+          foodItemMap.set(fi.id, fi);
+        });
+      }
+      if (variationsResult.data) {
+        variationsResult.data.forEach((v: any) => {
+          variationMap.set(v.id, v);
+        });
+      }
+
+      // Batch fetch all add-ons for all order items
+      const orderItemIds = allOrderItems?.map((item: any) => item.id).filter(Boolean) || [];
+      if (orderItemIds.length > 0) {
+        const { data: allAddOns } = await supabase
+          .from('order_item_add_ons')
+          .select('*')
+          .in('order_item_id', orderItemIds);
+
+        // Collect add-on IDs
+        const addOnIds = [...new Set(allAddOns?.map((a: any) => a.add_on_id).filter(Boolean) || [])];
+        
+        if (addOnIds.length > 0) {
+          const { data: addOnDetails } = await supabase
+            .from('add_ons')
+            .select('id, name, price')
+            .in('id', addOnIds);
+
+          if (addOnDetails) {
+            addOnDetails.forEach((a: any) => {
+              addOnMap.set(a.id, a);
+            });
+          }
+        }
+
+        // Group add-ons by order_item_id
+        const addOnsByItemId = new Map<string, any[]>();
+        allAddOns?.forEach((addOn: any) => {
+          const itemId = addOn.order_item_id;
+          if (!addOnsByItemId.has(itemId)) {
+            addOnsByItemId.set(itemId, []);
+          }
+          addOnsByItemId.get(itemId)!.push(addOn);
+        });
+
+        // Attach add-ons to order items map
+        orderItemsMap.forEach((items, orderId) => {
+          items.forEach((item: any) => {
+            (item as any).addOns = addOnsByItemId.get(item.id) || [];
+          });
+        });
+      }
+    }
+
     // Get order items count for each order and enrich with related data
     const ordersWithItemCount = await Promise.all(
       (orders || []).map(async (order: any) => {
-        const { count } = await supabase
-          .from('order_items')
-          .select('*', { count: 'exact', head: true })
-          .eq('order_id', order.id);
+        // Get items count (if not including items) or use items from map
+        let itemsCount = 0;
+        let items: any[] = [];
+
+        if (filters.includeItems) {
+          const orderItems = orderItemsMap.get(order.id) || [];
+          itemsCount = orderItems.length;
+          
+          // Transform order items with related data
+          items = orderItems.map((item: any) => {
+            const foodItemData = item.food_item_id ? foodItemMap.get(item.food_item_id) : null;
+            const transformedFoodItem = foodItemData ? {
+              id: foodItemData.id,
+              name: foodItemData.name || null,
+              imageUrl: foodItemData.image_url || null,
+            } : null;
+
+            const variationData = item.variation_id ? variationMap.get(item.variation_id) : null;
+            const transformedVariation = variationData ? {
+              id: variationData.id,
+              variationGroup: variationData.variation_group || null,
+              variationName: variationData.variation_name || null,
+              priceAdjustment: Number(variationData.price_adjustment) || 0,
+            } : null;
+
+            const itemAddOns = (item.addOns || []).map((addOn: any) => {
+              const addOnData = addOn.add_on_id ? addOnMap.get(addOn.add_on_id) : null;
+              const transformedAddOn = addOnData ? {
+                id: addOnData.id,
+                name: addOnData.name || null,
+                price: Number(addOnData.price) || 0,
+              } : null;
+
+              return {
+                id: addOn.id,
+                addOnId: addOn.add_on_id,
+                quantity: Number(addOn.quantity) || 0,
+                unitPrice: Number(addOn.unit_price) || 0,
+                addOn: transformedAddOn,
+              };
+            });
+
+            return {
+              id: item.id,
+              orderId: item.order_id,
+              foodItemId: item.food_item_id,
+              foodItem: transformedFoodItem,
+              variationId: item.variation_id || null,
+              variation: transformedVariation,
+              quantity: Number(item.quantity) || 0,
+              unitPrice: Number(item.unit_price) || 0,
+              discountAmount: Number(item.discount_amount) || 0,
+              taxAmount: Number(item.tax_amount) || 0,
+              subtotal: Number(item.subtotal) || 0,
+              specialInstructions: item.special_instructions || null,
+              addOns: itemAddOns,
+              createdAt: item.created_at,
+              updatedAt: item.updated_at,
+            };
+          });
+        } else {
+          // Only get count if not including items
+          const { count } = await supabase
+            .from('order_items')
+            .select('*', { count: 'exact', head: true })
+            .eq('order_id', order.id);
+          itemsCount = count || 0;
+        }
 
         // Transform snake_case to camelCase and ensure numeric fields are numbers
         return {
@@ -923,7 +1109,8 @@ export class OrdersService {
           orderDate: order.order_date || order.created_at,
           createdAt: order.created_at,
           updatedAt: order.updated_at,
-          itemsCount: count || 0,
+          itemsCount,
+          ...(filters.includeItems ? { items } : {}),
         };
       }),
     );
@@ -955,7 +1142,7 @@ export class OrdersService {
       order.branch_id
         ? supabase
             .from('branches')
-            .select('id, name_en, name_ar, code')
+            .select('id, name, code')
             .eq('id', order.branch_id)
             .maybeSingle()
         : Promise.resolve({ data: null, error: null }),
@@ -976,14 +1163,14 @@ export class OrdersService {
       order.customer_id
         ? supabase
             .from('customers')
-            .select('id, name_en, name_ar, phone, email')
+            .select('id, name, phone, email')
             .eq('id', order.customer_id)
             .maybeSingle()
         : Promise.resolve({ data: null, error: null }),
       order.cashier_id
         ? supabase
             .from('users')
-            .select('id, name_en, name_ar, email')
+            .select('id, name, email')
             .eq('id', order.cashier_id)
             .maybeSingle()
         : Promise.resolve({ data: null, error: null }),
@@ -1083,7 +1270,7 @@ export class OrdersService {
       foodItemIds.length > 0
         ? supabase
             .from('food_items')
-            .select('id, name_en, name_ar, image_url')
+            .select('id, name, image_url')
             .in('id', foodItemIds)
         : Promise.resolve({ data: [], error: null }),
       variationIds.length > 0
@@ -1111,7 +1298,7 @@ export class OrdersService {
         const addOnDetails = addOnIds.length > 0
           ? await supabase
               .from('add_ons')
-              .select('id, name_en, name_ar, price')
+              .select('id, name, price')
               .in('id', addOnIds)
           : { data: [], error: null };
 
@@ -1121,8 +1308,7 @@ export class OrdersService {
         const foodItemData = item.food_item_id ? foodItemMap.get(item.food_item_id) : null;
         const transformedFoodItem = foodItemData ? {
           id: foodItemData.id,
-          nameEn: foodItemData.name_en || null,
-          nameAr: foodItemData.name_ar || null,
+          name: foodItemData.name || null,
           imageUrl: foodItemData.image_url || null,
         } : null;
 
@@ -1152,8 +1338,7 @@ export class OrdersService {
             const addOnData = addOn.add_on_id ? addOnDetailsMap.get(addOn.add_on_id) : null;
             const transformedAddOn = addOnData ? {
               id: addOnData.id,
-              nameEn: addOnData.name_en || null,
-              nameAr: addOnData.name_ar || null,
+              name: addOnData.name || null,
               price: Number(addOnData.price) || 0,
             } : null;
 
@@ -1498,10 +1683,9 @@ export class OrdersService {
         if (existingDelivery) {
           // Build address notes for walk-in customers (store as JSON for language-based display)
           let deliveryNotes: string | null = null;
-          if (!updateDto.customerAddressId && (updateDto.deliveryAddressEn || updateDto.deliveryAddressAr)) {
+          if (!updateDto.customerAddressId && (updateDto.deliveryAddress || updateDto.deliveryAddress)) {
             const addressData = {
-              addressEn: updateDto.deliveryAddressEn || null,
-              addressAr: updateDto.deliveryAddressAr || null,
+              address: updateDto.deliveryAddress || null,
               city: updateDto.deliveryAddressCity || null,
               state: updateDto.deliveryAddressState || null,
               country: updateDto.deliveryAddressCountry || null,
@@ -1598,7 +1782,7 @@ export class OrdersService {
     }
 
     // Update order
-    const { data: updatedOrder, error } = await supabase
+    const { data: supabaseUpdatedOrder, error } = await supabase
       .from('orders')
       .update(updateData)
       .eq('id', orderId)
@@ -1641,7 +1825,18 @@ export class OrdersService {
       .update({ updated_at: new Date().toISOString() })
       .eq('id', orderId);
 
-    return this.getOrderById(tenantId, orderId);
+    // Get updated order for SSE event
+    const updatedOrder = await this.getOrderById(tenantId, orderId);
+    
+    // Emit SSE event for order status change
+    this.ordersSseService.emitOrderUpdate({
+      type: 'ORDER_STATUS_CHANGED',
+      tenantId,
+      orderId,
+      order: updatedOrder,
+    });
+
+    return updatedOrder;
   }
 
   /**

@@ -89,7 +89,12 @@ function LoginForm() {
 
     try {
       const response = await authApi.login(values);
-      setUser(response.user);
+      // Map response to User type (handle both old and new API formats)
+      const user = {
+        ...response.user,
+        name: response.user.name || (response.user as any).nameEn || (response.user as any).nameAr || 'User',
+      };
+      setUser(user);
       router.push('/dashboard');
     } catch (err: any) {
       const errorMsg = err.response?.data?.error?.message || 

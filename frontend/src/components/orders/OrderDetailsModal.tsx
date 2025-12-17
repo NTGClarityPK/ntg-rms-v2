@@ -206,12 +206,10 @@ export function OrderDetailsModal({
           ...orderDetails,
           items: orderDetails.items?.map(item => ({
             ...item,
-            foodItemNameEn: item.foodItem?.nameEn || '',
-            foodItemNameAr: item.foodItem?.nameAr || '',
+            foodItemName: item.foodItem?.name || '',
             variationName: item.variation?.variationName || '',
             addOns: item.addOns?.map(a => ({
-              addOnNameEn: a.addOn?.nameEn || '',
-              addOnNameAr: a.addOn?.nameAr || '',
+              addOnName: a.addOn?.name || '',
             })) || [],
           })) || [],
         } as any,
@@ -230,9 +228,7 @@ export function OrderDetailsModal({
           showQrCode: settings?.invoice?.showQrCode,
         },
         customerName: orderDetails.customer
-          ? (language === 'ar' && orderDetails.customer.nameAr
-              ? orderDetails.customer.nameAr
-              : orderDetails.customer.nameEn || '')
+          ? (orderDetails.customer.name || '')
           : undefined,
         customerPhone: orderDetails.customer?.phone,
         customerAddress: undefined, // Can be added from delivery address if needed
@@ -458,23 +454,21 @@ export function OrderDetailsModal({
           </Paper>
 
           {/* Customer & Branch Info */}
-          {((orderDetails.customer && (orderDetails.customer.nameEn || orderDetails.customer.nameAr)) ||
-            (orderDetails.branch && (orderDetails.branch.nameEn || orderDetails.branch.nameAr)) ||
+          {((orderDetails.customer && orderDetails.customer.name) ||
+            (orderDetails.branch && orderDetails.branch.name) ||
             (orderDetails.table && orderDetails.table.table_number)) && (
             <Paper p="md" withBorder>
               <Text fw={600} mb="sm">
                 {t('orders.customerInfo', language)}
               </Text>
               <Grid>
-                {orderDetails.branch && (orderDetails.branch.nameEn || orderDetails.branch.nameAr) && (
+                {orderDetails.branch && orderDetails.branch.name && (
                   <Grid.Col span={6}>
                     <Text size="sm" c="dimmed">
                       {t('restaurant.branch', language)}
                     </Text>
                     <Text>
-                      {language === 'ar' && orderDetails.branch.nameAr
-                        ? orderDetails.branch.nameAr
-                        : orderDetails.branch.nameEn || '-'}
+                      {orderDetails.branch.name || '-'}
                     </Text>
                   </Grid.Col>
                 )}
@@ -486,16 +480,14 @@ export function OrderDetailsModal({
                     <Text>{orderDetails.table.table_number}</Text>
                   </Grid.Col>
                 )}
-                {orderDetails.customer && (orderDetails.customer.nameEn || orderDetails.customer.nameAr) && (
+                {orderDetails.customer && orderDetails.customer.name && (
                   <>
                     <Grid.Col span={6}>
                       <Text size="sm" c="dimmed">
                         {t('pos.customerName', language)}
                       </Text>
                       <Text>
-                        {language === 'ar' && orderDetails.customer.nameAr
-                          ? orderDetails.customer.nameAr
-                          : orderDetails.customer.nameEn || '-'}
+                        {orderDetails.customer.name || '-'}
                       </Text>
                     </Grid.Col>
                     {orderDetails.customer.phone && (
@@ -534,9 +526,7 @@ export function OrderDetailsModal({
                         <Stack gap={4}>
                           <Text fw={500}>
                             {item.foodItem
-                              ? (language === 'ar' && item.foodItem.nameAr
-                                  ? item.foodItem.nameAr
-                                  : item.foodItem.nameEn || t('pos.item', language))
+                              ? (item.foodItem.name || t('pos.item', language))
                               : t('pos.item', language) + ` #${item.foodItemId || item.id}`}
                           </Text>
                           {item.variation && item.variation.variationName && (
@@ -551,9 +541,7 @@ export function OrderDetailsModal({
                                 .filter(addOn => addOn.addOn)
                                 .map(
                                   (addOn) =>
-                                    language === 'ar' && addOn.addOn?.nameAr
-                                      ? addOn.addOn.nameAr
-                                      : addOn.addOn?.nameEn || ''
+                                    addOn.addOn?.name || ''
                                 )
                                 .filter(Boolean)
                                 .join(', ') || '-'}

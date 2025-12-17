@@ -4,12 +4,7 @@ import { IsString, IsOptional, IsNumber, IsBoolean } from 'class-validator';
 export class CreateIngredientDto {
   @ApiProperty()
   @IsString()
-  nameEn: string;
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  nameAr?: string;
+  name: string;
 
   @ApiProperty({ required: false })
   @IsString()

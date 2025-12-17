@@ -4,12 +4,7 @@ import { IsString, IsOptional, IsEmail, IsUUID, IsNumber, Min, Max } from 'class
 export class CreateBranchDto {
   @ApiProperty()
   @IsString()
-  nameEn: string;
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  nameAr?: string;
+  name: string;
 
   @ApiProperty()
   @IsString()
@@ -18,12 +13,7 @@ export class CreateBranchDto {
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
-  addressEn?: string;
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  addressAr?: string;
+  address?: string;
 
   @ApiProperty({ required: false })
   @IsString()

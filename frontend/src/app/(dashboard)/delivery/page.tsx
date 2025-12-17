@@ -92,13 +92,13 @@ export default function DeliveryPage() {
       setBranches(
         data.map((b) => ({
           value: b.id,
-          label: language === 'ar' && b.nameAr ? b.nameAr : b.nameEn,
+          label: b.name,
         }))
       );
     } catch (error) {
       console.error('Failed to load branches:', error);
     }
-  }, [language]);
+  }, []);
 
   const loadPersonnel = useCallback(async () => {
     try {
@@ -239,11 +239,9 @@ export default function DeliveryPage() {
     return (
       delivery.order?.orderNumber.toLowerCase().includes(query) ||
       delivery.order?.tokenNumber?.toLowerCase().includes(query) ||
-      delivery.order?.customer?.nameEn?.toLowerCase().includes(query) ||
-      delivery.order?.customer?.nameAr?.toLowerCase().includes(query) ||
+      delivery.order?.customer?.name?.toLowerCase().includes(query) ||
       delivery.order?.customer?.phone?.includes(query) ||
-      delivery.deliveryPerson?.nameEn?.toLowerCase().includes(query) ||
-      delivery.deliveryPerson?.nameAr?.toLowerCase().includes(query)
+      delivery.deliveryPerson?.name?.toLowerCase().includes(query)
     );
   });
 
@@ -292,7 +290,7 @@ export default function DeliveryPage() {
                 placeholder={t('delivery.filterByPersonnel' as any, language) || 'Filter by Personnel'}
                 data={personnel.map((p) => ({
                   value: p.id,
-                  label: language === 'ar' && p.nameAr ? p.nameAr : p.nameEn,
+                  label: p.name,
                 }))}
                 value={selectedDeliveryPerson}
                 onChange={setSelectedDeliveryPerson}
@@ -359,9 +357,7 @@ export default function DeliveryPage() {
                             <Group gap="xs">
                               <IconUser size={16} />
                               <Text size="sm" c="dimmed">
-                                {language === 'ar' && delivery.order.customer.nameAr
-                                  ? delivery.order.customer.nameAr
-                                  : delivery.order.customer.nameEn}
+                                {delivery.order.customer.name}
                                 {delivery.order.customer.phone && ` - ${delivery.order.customer.phone}`}
                               </Text>
                             </Group>
@@ -372,10 +368,8 @@ export default function DeliveryPage() {
                               <Text size="sm" c="dimmed">
                                 {delivery.customerAddress
                                   ? (() => {
-                                      // Show address based on selected language
-                                      const address = language === 'ar' && delivery.customerAddress.addressAr
-                                        ? delivery.customerAddress.addressAr
-                                        : (delivery.customerAddress.addressEn || delivery.customerAddress.addressLine1);
+                                      // Show address
+                                      const address = delivery.customerAddress.address || delivery.customerAddress.addressLine1;
                                       const city = delivery.customerAddress.city;
                                       const state = delivery.customerAddress.state;
                                       const country = delivery.customerAddress.country;
@@ -394,9 +388,7 @@ export default function DeliveryPage() {
                                       try {
                                         // Try to parse as JSON first (new format)
                                         const addressData = JSON.parse(delivery.notes);
-                                        const address = language === 'ar' && addressData.addressAr
-                                          ? addressData.addressAr
-                                          : (addressData.addressEn || '');
+                                        const address = addressData.address || '';
                                         const city = addressData.city;
                                         const state = addressData.state;
                                         const country = addressData.country;
@@ -426,9 +418,7 @@ export default function DeliveryPage() {
                               <IconTruck size={16} />
                               <Text size="sm" c="dimmed">
                                 {t('delivery.assignedTo' as any, language) || 'Assigned to'}:{' '}
-                                {language === 'ar' && delivery.deliveryPerson.nameAr
-                                  ? delivery.deliveryPerson.nameAr
-                                  : delivery.deliveryPerson.nameEn}
+                                {delivery.deliveryPerson.name}
                               </Text>
                             </Group>
                           )}
@@ -541,7 +531,7 @@ export default function DeliveryPage() {
                 placeholder={t('delivery.selectPersonnel' as any, language) || 'Select Delivery Personnel'}
                 data={personnel.map((p) => ({
                   value: p.id,
-                  label: `${language === 'ar' && p.nameAr ? p.nameAr : p.nameEn} ${
+                  label: `${p.name} ${
                     p.activeDeliveriesCount > 0 ? `(${p.activeDeliveriesCount} active)` : ''
                   }`,
                 }))}
@@ -592,9 +582,7 @@ export default function DeliveryPage() {
                         {t('customers.customer' as any, language) || 'Customer'}:
                       </Text>
                       <Text size="sm" fw={500}>
-                        {language === 'ar' && selectedDelivery.order.customer.nameAr
-                          ? selectedDelivery.order.customer.nameAr
-                          : selectedDelivery.order.customer.nameEn}
+                        {selectedDelivery.order.customer.name}
                       </Text>
                     </Group>
                     {selectedDelivery.order.customer.phone && (
@@ -618,10 +606,8 @@ export default function DeliveryPage() {
                       <Text size="sm" fw={500} style={{ textAlign: 'right', maxWidth: '60%' }}>
                         {selectedDelivery.customerAddress
                           ? (() => {
-                              // Show address based on selected language
-                              const address = language === 'ar' && selectedDelivery.customerAddress.addressAr
-                                ? selectedDelivery.customerAddress.addressAr
-                                : (selectedDelivery.customerAddress.addressEn || selectedDelivery.customerAddress.addressLine1);
+                              // Show address
+                              const address = selectedDelivery.customerAddress.address || selectedDelivery.customerAddress.addressLine1;
                               const city = selectedDelivery.customerAddress.city;
                               const state = selectedDelivery.customerAddress.state;
                               const country = selectedDelivery.customerAddress.country;
@@ -640,9 +626,7 @@ export default function DeliveryPage() {
                               try {
                                 // Try to parse as JSON first (new format)
                                 const addressData = JSON.parse(selectedDelivery.notes);
-                                const address = language === 'ar' && addressData.addressAr
-                                  ? addressData.addressAr
-                                  : (addressData.addressEn || '');
+                                const address = addressData.address || '';
                                 const city = addressData.city;
                                 const state = addressData.state;
                                 const country = addressData.country;
@@ -674,9 +658,7 @@ export default function DeliveryPage() {
                       {t('delivery.assignedTo' as any, language) || 'Assigned to'}:
                     </Text>
                     <Text size="sm" fw={500}>
-                      {language === 'ar' && selectedDelivery.deliveryPerson.nameAr
-                        ? selectedDelivery.deliveryPerson.nameAr
-                        : selectedDelivery.deliveryPerson.nameEn}
+                      {selectedDelivery.deliveryPerson.name}
                     </Text>
                   </Group>
                 )}

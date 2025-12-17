@@ -4,12 +4,11 @@ import { IsString, IsOptional, IsArray, IsUUID, IsBoolean } from 'class-validato
 export class CreateMenuDto {
   @ApiProperty()
   @IsString()
-  nameEn: string;
+  name: string;
 
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
-  nameAr?: string;
 
   @ApiProperty({ required: false })
   @IsString()
@@ -19,7 +18,6 @@ export class CreateMenuDto {
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
-  descriptionAr?: string;
 
   @ApiProperty({ required: false, type: [String] })
   @IsArray()

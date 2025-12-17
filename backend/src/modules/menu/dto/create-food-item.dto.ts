@@ -5,22 +5,12 @@ import { FoodItemVariationDto, FoodItemDiscountDto } from './update-food-item.dt
 export class CreateFoodItemDto {
   @ApiProperty()
   @IsString()
-  nameEn: string;
+  name: string;
 
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
-  nameAr?: string;
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  descriptionEn?: string;
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  descriptionAr?: string;
+  description?: string;
 
   @ApiProperty()
   @IsUUID()

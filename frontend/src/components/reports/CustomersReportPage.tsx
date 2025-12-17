@@ -28,11 +28,11 @@ export default function CustomersReportPage() {
   const loadBranches = useCallback(async () => {
     try {
       const data = await restaurantApi.getBranches();
-      setBranches(data.map((b) => ({ value: b.id, label: language === 'ar' && b.nameAr ? b.nameAr : b.nameEn })));
+      setBranches(data.map((b) => ({ value: b.id, label: b.name })));
     } catch (error) {
       console.error('Failed to load branches:', error);
     }
-  }, [language]);
+  }, []);
 
   const loadReport = useCallback(async (reportFilters?: ReportQueryParams, silent = false) => {
     const filtersToUse = reportFilters || filters;

@@ -51,8 +51,7 @@ export function useDynamicTheme() {
                 // Update restaurant store with logo and other info
                 setRestaurant({
                   id: user.tenantId,
-                  nameEn: serverData.nameEn || 'RMS',
-                  nameAr: serverData.nameAr,
+                  name: serverData.name || 'RMS',
                   logoUrl: serverData.logoUrl,
                   primaryColor: serverData.primaryColor,
                 });
@@ -62,8 +61,7 @@ export function useDynamicTheme() {
                   const existingTenant = await db.tenants.get(user.tenantId);
                   if (existingTenant) {
                     await db.tenants.update(user.tenantId, {
-                      nameEn: serverData.nameEn,
-                      nameAr: serverData.nameAr,
+                      name: serverData.name,
                       logoUrl: serverData.logoUrl,
                       primaryColor: serverData.primaryColor || existingTenant.primaryColor,
                       updatedAt: new Date().toISOString(),
@@ -72,8 +70,7 @@ export function useDynamicTheme() {
                     // Create tenant record if it doesn't exist
                     await db.tenants.add({
                       id: user.tenantId,
-                      nameEn: serverData.nameEn,
-                      nameAr: serverData.nameAr,
+                      name: serverData.name,
                       subdomain: serverData.subdomain,
                       email: serverData.email,
                       phone: serverData.phone,

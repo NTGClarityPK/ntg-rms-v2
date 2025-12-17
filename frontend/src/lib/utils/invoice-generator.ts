@@ -163,9 +163,9 @@ export class InvoiceGenerator {
   <div class="header">
     ${headerText ? `<div class="info" style="margin-bottom: 5px;">${headerText}</div>` : ''}
     ${showLogo && tenant.logoUrl ? `<img src="${tenant.logoUrl}" alt="Logo" class="logo" />` : ''}
-    <div class="title">${isRTL ? tenant.nameAr || tenant.nameEn : tenant.nameEn}</div>
-    ${branch ? `<div class="info">${isRTL ? branch.nameAr || branch.nameEn : branch.nameEn}</div>` : ''}
-    ${branch?.addressEn ? `<div class="info">${isRTL ? branch.addressAr || branch.addressEn : branch.addressEn}</div>` : ''}
+    <div class="title">${tenant.name}</div>
+    ${branch ? `<div class="info">${branch.name}</div>` : ''}
+    ${branch?.address ? `<div class="info">${branch.address}</div>` : ''}
     ${branch?.phone ? `<div class="info">${branch.phone}</div>` : ''}
     ${showVatNumber && tenant.vatNumber ? `<div class="info">VAT: ${tenant.vatNumber}</div>` : ''}
   </div>
@@ -190,20 +190,18 @@ export class InvoiceGenerator {
     <div class="section-title">${isRTL ? 'العناصر' : 'ITEMS'}</div>
     <div class="items">
       ${((order as any).items || []).map((item: any) => {
-        const itemName = item.foodItemNameEn || item.foodItem?.nameEn || 'Item';
-        const itemNameAr = item.foodItemNameAr || item.foodItem?.nameAr;
+        const itemName = item.foodItemName || item.foodItem?.name || 'Item';
         const variationName = item.variationName || item.variation?.variationName;
         const addOns = item.addOns || [];
         const addOnNames = addOns.map((a: any) => {
-          const addOnNameEn = a.addOnNameEn || a.addOn?.nameEn || '';
-          const addOnNameAr = a.addOnNameAr || a.addOn?.nameAr;
-          return isRTL && addOnNameAr ? addOnNameAr : addOnNameEn;
+          const addOnName = a.addOnName || a.addOn?.name || '';
+          return addOnName;
         }).filter(Boolean);
         
         return `
         <div class="item">
           <div class="item-name">
-            ${item.quantity}x ${isRTL && itemNameAr ? itemNameAr : itemName}
+            ${item.quantity}x ${itemName}
             ${variationName ? ` (${variationName})` : ''}
             ${addOnNames.length > 0 ? ` + ${addOnNames.join(', ')}` : ''}
           </div>
@@ -428,9 +426,9 @@ export class InvoiceGenerator {
     ${headerText ? `<div class="info" style="margin-bottom: 10px; text-align: center; font-weight: bold;">${headerText}</div>` : ''}
     <div class="header-left">
       ${showLogo && tenant.logoUrl ? `<img src="${tenant.logoUrl}" alt="Logo" class="logo" />` : ''}
-      <div class="title">${isRTL ? tenant.nameAr || tenant.nameEn : tenant.nameEn}</div>
-      ${branch ? `<div class="info">${isRTL ? branch.nameAr || branch.nameEn : branch.nameEn}</div>` : ''}
-      ${branch?.addressEn ? `<div class="info">${isRTL ? branch.addressAr || branch.addressEn : branch.addressEn}</div>` : ''}
+      <div class="title">${tenant.name}</div>
+      ${branch ? `<div class="info">${branch.name}</div>` : ''}
+      ${branch?.address ? `<div class="info">${branch.address}</div>` : ''}
       ${branch?.phone ? `<div class="info">${branch.phone}</div>` : ''}
       ${branch?.email ? `<div class="info">${branch.email}</div>` : ''}
     </div>
@@ -476,14 +474,12 @@ export class InvoiceGenerator {
       </thead>
       <tbody>
         ${((order as any).items || []).map((item: any) => {
-          const itemNameEn = item.foodItemNameEn || item.foodItem?.nameEn || 'Item';
-          const itemNameAr = item.foodItemNameAr || item.foodItem?.nameAr;
+          const itemName = item.foodItemName || item.foodItem?.name || 'Item';
           const variationName = item.variationName || item.variation?.variationName;
           const addOns = item.addOns || [];
           const addOnNames = addOns.map((a: any) => {
-            const addOnNameEn = a.addOnNameEn || a.addOn?.nameEn || '';
-            const addOnNameAr = a.addOnNameAr || a.addOn?.nameAr;
-            return isRTL && addOnNameAr ? addOnNameAr : addOnNameEn;
+            const addOnName = a.addOnName || a.addOn?.name || '';
+            return addOnName;
           }).filter(Boolean);
           const unitPrice = item.quantity > 0 ? (item.subtotal || 0) / item.quantity : 0;
           
@@ -491,7 +487,7 @@ export class InvoiceGenerator {
           <tr>
             <td>${item.quantity || 0}</td>
             <td>
-              ${isRTL && itemNameAr ? itemNameAr : itemNameEn}
+              ${itemName}
               ${variationName ? `<br><small>${variationName}</small>` : ''}
               ${addOnNames.length > 0 ? `<br><small>+ ${addOnNames.join(', ')}</small>` : ''}
             </td>

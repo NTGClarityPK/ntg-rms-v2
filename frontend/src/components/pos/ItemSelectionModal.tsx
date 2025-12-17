@@ -275,8 +275,7 @@ export function ItemSelectionModal({
           if (addOn) {
             addOnsArray.push({
               addOnId: addOn.id,
-              addOnNameEn: addOn.nameEn,
-              addOnNameAr: addOn.nameAr,
+              addOnName: addOn.name,
               price: addOn.price,
               quantity: 1,
             });
@@ -287,8 +286,7 @@ export function ItemSelectionModal({
 
     const cartItem = {
       foodItemId: foodItem.id,
-      foodItemNameEn: foodItem.nameEn,
-      foodItemNameAr: foodItem.nameAr,
+      foodItemName: foodItem.name,
       foodItemImageUrl: foodItem.imageUrl,
       variationId: selectedVariation?.id,
       variationGroup: selectedVariation?.variationGroup,
@@ -347,7 +345,7 @@ export function ItemSelectionModal({
       onClose={onClose}
       title={
         <Text fw={600} size="lg">
-          {language === 'ar' && foodItem.nameAr ? foodItem.nameAr : foodItem.nameEn}
+          {foodItem.name}
         </Text>
       }
       size="lg"
@@ -372,16 +370,14 @@ export function ItemSelectionModal({
                 objectFit: 'cover',
                 objectPosition: 'center',
               }}
-              alt={language === 'ar' && foodItem.nameAr ? foodItem.nameAr : foodItem.nameEn}
+              alt={foodItem.name || ''}
             />
           </div>
         )}
 
-        {foodItem.descriptionEn && (
+        {foodItem.description && (
           <Text size="sm" c="dimmed">
-            {language === 'ar' && foodItem.descriptionAr
-              ? foodItem.descriptionAr
-              : foodItem.descriptionEn}
+            {foodItem.description}
           </Text>
         )}
 
@@ -436,7 +432,7 @@ export function ItemSelectionModal({
                   <Stack key={group.id} gap="xs">
                     <Group justify="space-between">
                       <Text fw={500} size="sm">
-                        {language === 'ar' && group.nameAr ? group.nameAr : group.nameEn}
+                        {group.name}
                         {isRequired && <Text component="span" c={getErrorColor()}> *</Text>}
                       </Text>
                       <Badge size="xs" variant="light">
@@ -462,7 +458,7 @@ export function ItemSelectionModal({
                               label={
                                 <Group justify="space-between" style={{ flex: 1 }}>
                                   <Text>
-                                    {language === 'ar' && addOn.nameAr ? addOn.nameAr : addOn.nameEn}
+                                    {addOn.name}
                                   </Text>
                                   {addOn.price > 0 && (
                                     <Text fw={500} c={primaryColor}>
@@ -485,7 +481,7 @@ export function ItemSelectionModal({
                             label={
                               <Group justify="space-between" style={{ flex: 1 }}>
                                 <Text>
-                                  {language === 'ar' && addOn.nameAr ? addOn.nameAr : addOn.nameEn}
+                                  {language === 'ar' && addOn.name ? addOn.name : addOn.nameEn}
                                 </Text>
                                 {addOn.price > 0 && (
                                   <Text fw={500} c={primaryColor}>

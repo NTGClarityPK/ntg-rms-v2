@@ -9,9 +9,12 @@ import {
   UseGuards,
   Query,
   ParseIntPipe,
+  Res,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { Response } from 'express';
 import { OrdersService } from './orders.service';
+import { OrdersSseService } from './orders-sse.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -24,11 +27,14 @@ import { UpdatePaymentStatusDto } from './dto/update-payment-status.dto';
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth('JWT-auth')
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly ordersSseService: OrdersSseService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Get all orders with filters' })
-  @ApiQuery({ name: 'status', required: false, enum: ['pending', 'preparing', 'ready', 'served', 'completed', 'cancelled'] })
+  @ApiQuery({ name: 'status', required: false, description: 'Order status(es). Can be comma-separated for multiple values: pending,preparing' })
   @ApiQuery({ name: 'branchId', required: false, type: String })
   @ApiQuery({ name: 'orderType', required: false, enum: ['dine_in', 'takeaway', 'delivery'] })
   @ApiQuery({ name: 'paymentStatus', required: false, enum: ['unpaid', 'paid', 'partial'] })
@@ -36,6 +42,7 @@ export class OrdersController {
   @ApiQuery({ name: 'endDate', required: false, type: String })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'offset', required: false, type: Number })
+  @ApiQuery({ name: 'includeItems', required: false, type: Boolean, description: 'Include order items in response' })
   getOrders(
     @CurrentUser() user: any,
     @Query('status') status?: string,
@@ -46,9 +53,13 @@ export class OrdersController {
     @Query('endDate') endDate?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
+    @Query('includeItems') includeItems?: string,
   ) {
+    // Parse status: support comma-separated values like "pending,preparing"
+    const statusArray = status?.includes(',') ? status.split(',').map(s => s.trim()) : status ? [status] : undefined;
+    
     return this.ordersService.getOrders(user.tenantId, {
-      status,
+      status: statusArray,
       branchId,
       orderType,
       paymentStatus,
@@ -56,6 +67,7 @@ export class OrdersController {
       endDate,
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined,
+      includeItems: includeItems === 'true' || includeItems === '1',
     });
   }
 
@@ -63,6 +75,126 @@ export class OrdersController {
   @ApiOperation({ summary: 'Create a new order' })
   createOrder(@CurrentUser() user: any, @Body() createDto: CreateOrderDto) {
     return this.ordersService.createOrder(user.tenantId, user.id, createDto);
+  }
+
+  @Get('kitchen/stream')
+  @ApiOperation({ summary: 'Server-Sent Events stream for kitchen display order updates' })
+  streamKitchenOrders(@CurrentUser() user: any, @Res({ passthrough: false }) res: Response): void {
+    console.log(`📡 SSE connection opened for tenant ${user.tenantId}`);
+    console.log(`📡 Request origin: ${res.req.headers.origin}`);
+    console.log(`📡 Request headers:`, JSON.stringify(res.req.headers, null, 2));
+    
+    // CORS headers for SSE (EventSource requires these) - set FIRST
+    const origin = res.req.headers.origin || '*';
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET');
+    res.setHeader('Access-Control-Allow-Headers', 'Cache-Control');
+    
+    // Set SSE headers BEFORE any writes
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+    
+    // Set status and flush headers immediately
+    res.status(200);
+    
+    // Flush headers immediately so browser recognizes the connection
+    if (typeof (res as any).flushHeaders === 'function') {
+      (res as any).flushHeaders();
+      console.log('✅ Headers flushed');
+    }
+    
+    // Send initial connection message
+    try {
+      const initialData = ': connected\n\ndata: {"type":"CONNECTION_TEST","tenantId":"' + user.tenantId + '","orderId":"test","message":"SSE connection established"}\n\n';
+      const written = res.write(initialData);
+      console.log(`✅ Initial data written: ${written}, writable: ${!res.writableEnded}`);
+      
+      // Flush the response to ensure headers and initial data are sent immediately
+      if (typeof res.flush === 'function') {
+        res.flush();
+        console.log('✅ Response flushed');
+      }
+      
+      console.log(`✅ SSE headers set and initial message sent for tenant ${user.tenantId}`);
+    } catch (error) {
+      console.error('❌ Error writing initial SSE message:', error);
+      return;
+    }
+    
+    // Subscribe to order updates for this tenant
+    const subscription = this.ordersSseService.createTenantStream(user.tenantId).subscribe({
+      next: (event) => {
+        try {
+          // Check if response is still writable
+          if (res.writableEnded || res.destroyed) {
+            console.warn(`⚠️ Cannot send SSE event - response already closed for tenant ${user.tenantId}`);
+            return;
+          }
+          
+          // Format as SSE message
+          const data = JSON.stringify(event);
+          console.log(`📤 Sending SSE event to tenant ${user.tenantId}:`, event.type, event.orderId);
+          
+          const success = res.write(`data: ${data}\n\n`);
+          if (!success) {
+            console.warn(`⚠️ Backpressure detected - response buffer is full for tenant ${user.tenantId}`);
+            // Wait for drain event
+            res.once('drain', () => {
+              console.log(`✅ Response buffer drained for tenant ${user.tenantId}`);
+            });
+          } else {
+            console.log(`✅ Successfully wrote SSE event to response for tenant ${user.tenantId}`);
+          }
+        } catch (error) {
+          console.error('❌ Error sending SSE event:', error);
+          // Don't unsubscribe on write error - connection might still be valid
+        }
+      },
+      error: (error) => {
+        console.error('❌ SSE stream error:', error);
+        try {
+          res.write(`event: error\ndata: ${JSON.stringify({ message: 'Stream error' })}\n\n`);
+        } catch (writeError) {
+          console.error('❌ Failed to write error to SSE stream:', writeError);
+        }
+      },
+      complete: () => {
+        console.log(`📡 SSE connection completed for tenant ${user.tenantId}`);
+        try {
+          res.end();
+        } catch (error) {
+          console.error('❌ Error ending SSE connection:', error);
+        }
+      },
+    });
+
+    // Send heartbeat every 30 seconds to keep connection alive
+    const heartbeatInterval = setInterval(() => {
+      try {
+        res.write(': heartbeat\n\n');
+      } catch (error) {
+        console.error('❌ Heartbeat failed, connection may be closed:', error);
+        clearInterval(heartbeatInterval);
+        subscription.unsubscribe();
+      }
+    }, 30000);
+
+    // Handle client disconnect
+    const handleClose = () => {
+      console.log(`📡 Client disconnected for tenant ${user.tenantId}`);
+      clearInterval(heartbeatInterval);
+      subscription.unsubscribe();
+      try {
+        res.end();
+      } catch (error) {
+        // Connection already closed, ignore
+      }
+    };
+
+    res.on('close', handleClose);
   }
 
   @Get(':id')

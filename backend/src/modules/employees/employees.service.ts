@@ -24,7 +24,7 @@ export class EmployeesService {
         `
         *,
         user_branches(
-          branch:branches(id, name_en, name_ar, code)
+          branch:branches(id, name, code)
         )
       `,
       )
@@ -64,8 +64,7 @@ export class EmployeesService {
       tenantId: emp.tenant_id,
       supabaseAuthId: emp.supabase_auth_id,
       email: emp.email,
-      nameEn: emp.name_en,
-      nameAr: emp.name_ar,
+      name: emp.name,
       phone: emp.phone,
       role: emp.role,
       employeeId: emp.employee_id,
@@ -81,8 +80,7 @@ export class EmployeesService {
       updatedAt: emp.updated_at,
       branches: (emp.user_branches || []).map((ub: any) => ({
         id: ub.branch?.id,
-        nameEn: ub.branch?.name_en,
-        nameAr: ub.branch?.name_ar,
+        name: ub.branch?.name,
         code: ub.branch?.code,
       })),
     }));
@@ -100,7 +98,7 @@ export class EmployeesService {
         `
         *,
         user_branches(
-          branch:branches(id, name_en, name_ar, code)
+          branch:branches(id, name, code)
         )
       `,
       )
@@ -119,8 +117,7 @@ export class EmployeesService {
       tenantId: employee.tenant_id,
       supabaseAuthId: employee.supabase_auth_id,
       email: employee.email,
-      nameEn: employee.name_en,
-      nameAr: employee.name_ar,
+      name: employee.name,
       phone: employee.phone,
       role: employee.role,
       employeeId: employee.employee_id,
@@ -136,8 +133,7 @@ export class EmployeesService {
       updatedAt: employee.updated_at,
       branches: (employee.user_branches || []).map((ub: any) => ({
         id: ub.branch?.id,
-        nameEn: ub.branch?.name_en,
-        nameAr: ub.branch?.name_ar,
+        name: ub.branch?.name,
         code: ub.branch?.code,
       })),
     };
@@ -193,8 +189,7 @@ export class EmployeesService {
         tenant_id: tenantId,
         supabase_auth_id: supabaseAuthId,
         email: createDto.email,
-        name_en: createDto.nameEn,
-        name_ar: createDto.nameAr || createDto.nameEn,
+        name: createDto.name,
         phone: createDto.phone,
         role: createDto.role,
         employee_id: employeeId,
@@ -242,8 +237,7 @@ export class EmployeesService {
       tenantId: employee.tenant_id,
       supabaseAuthId: employee.supabase_auth_id,
       email: employee.email,
-      nameEn: employee.name_en,
-      nameAr: employee.name_ar,
+      name: employee.name,
       phone: employee.phone,
       role: employee.role,
       employeeId: employee.employee_id,
@@ -298,8 +292,7 @@ export class EmployeesService {
       updated_at: new Date().toISOString(),
     };
 
-    if (updateDto.nameEn !== undefined) updateData.name_en = updateDto.nameEn;
-    if (updateDto.nameAr !== undefined) updateData.name_ar = updateDto.nameAr;
+    if (updateDto.name !== undefined) updateData.name = updateDto.name;
     if (updateDto.email !== undefined) updateData.email = updateDto.email;
     if (updateDto.phone !== undefined) updateData.phone = updateDto.phone;
     if (updateDto.role !== undefined) updateData.role = updateDto.role;
@@ -350,8 +343,7 @@ export class EmployeesService {
       tenantId: employee.tenant_id,
       supabaseAuthId: employee.supabase_auth_id,
       email: employee.email,
-      nameEn: employee.name_en,
-      nameAr: employee.name_ar,
+      name: employee.name,
       phone: employee.phone,
       role: employee.role,
       employeeId: employee.employee_id,

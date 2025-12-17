@@ -124,13 +124,13 @@ export default function TaxesPage() {
       setCategories(
         data.map((cat) => ({
           value: cat.id,
-          label: language === 'ar' && cat.nameAr ? cat.nameAr : cat.nameEn,
+          label: cat.name,
         }))
       );
     } catch (error) {
       console.error('Failed to load categories:', error);
     }
-  }, [language]);
+  }, []);
 
   const loadFoodItems = useCallback(async () => {
     try {
@@ -138,13 +138,13 @@ export default function TaxesPage() {
       setFoodItems(
         data.map((item) => ({
           value: item.id,
-          label: language === 'ar' && item.nameAr ? item.nameAr : item.nameEn,
+          label: item.name,
         }))
       );
     } catch (error) {
       console.error('Failed to load food items:', error);
     }
-  }, [language]);
+  }, []);
 
   useEffect(() => {
     loadTaxes();

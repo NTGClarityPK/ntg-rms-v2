@@ -31,8 +31,9 @@ import { ordersApi, Order, OrderStatus } from '@/lib/api/orders';
 import { notifications } from '@mantine/notifications';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getSuccessColor, getErrorColor, getWarningColor, getInfoColor, getStatusColor } from '@/lib/utils/theme';
-import { supabase } from '@/lib/supabase/client';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { onOrderUpdate, notifyOrderUpdate } from '@/lib/utils/order-events';
+import { useKitchenSse, OrderUpdateEvent } from '@/lib/hooks/use-kitchen-sse';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/ar';
@@ -51,9 +52,15 @@ export default function KitchenDisplayPage() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [processingOrderId, setProcessingOrderId] = useState<string | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const subscriptionRef = useRef<any>(null);
   const previousOrderIdsRef = useRef<Set<string>>(new Set());
   const audioResumedRef = useRef<boolean>(false);
+  const loadOrdersRef = useRef<typeof loadOrders>();
+  const soundEnabledRef = useRef<boolean>(soundEnabled);
+  
+  // Keep soundEnabled ref updated
+  useEffect(() => {
+    soundEnabledRef.current = soundEnabled;
+  }, [soundEnabled]);
 
   // Initialize audio for alerts
   useEffect(() => {
@@ -130,7 +137,7 @@ export default function KitchenDisplayPage() {
     } catch (error) {
       console.error('Failed to play sound:', error);
     }
-  }, [soundEnabled]);
+  }, [soundEnabled]); // Removed loadOrders dependency
 
   const playSoundInternal = (audioContext: AudioContext) => {
     try {
@@ -159,37 +166,20 @@ export default function KitchenDisplayPage() {
       setLoading(true);
     }
     try {
-      const data = await ordersApi.getOrders({
-        status: 'pending',
+      // Fetch pending and preparing orders in a single call with items included
+      // This reduces API calls from 2 + N (where N = number of orders) to just 1
+      const allOrders = await ordersApi.getOrders({
+        status: ['pending', 'preparing'],
+        includeItems: true,
       });
-      // Also get preparing orders
-      const preparingData = await ordersApi.getOrders({
-        status: 'preparing',
-      });
-      const allOrders = [...data, ...preparingData];
-      
-      // Fetch full order details with items for each order
-      const ordersWithItems = await Promise.all(
-        allOrders.map(async (order) => {
-          try {
-            // Fetch full order details which includes items
-            const fullOrder = await ordersApi.getOrderById(order.id);
-            return fullOrder;
-          } catch (error) {
-            console.error(`Failed to load full details for order ${order.id}:`, error);
-            // Return order without items if fetch fails
-            return order;
-          }
-        })
-      );
       
       // Sort by order date (newest first)
-      ordersWithItems.sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
+      allOrders.sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
       
       // Only update if data actually changed (to prevent unnecessary re-renders)
       setOrders((prevOrders) => {
         const prevIds = new Set(prevOrders.map(o => o.id));
-        const newIds = new Set(ordersWithItems.map(o => o.id));
+        const newIds = new Set(allOrders.map(o => o.id));
         
         // Detect new orders (orders that exist in newIds but not in prevIds)
         const newOrderIds = [...newIds].filter(id => !prevIds.has(id));
@@ -198,21 +188,24 @@ export default function KitchenDisplayPage() {
         const idsChanged = prevIds.size !== newIds.size || 
           [...prevIds].some(id => !newIds.has(id)) ||
           prevOrders.some(prev => {
-            const updated = ordersWithItems.find(o => o.id === prev.id);
+            const updated = allOrders.find(o => o.id === prev.id);
             return updated && (updated.status !== prev.status || updated.updatedAt !== prev.updatedAt);
           });
         
-        // Play sound for new orders detected via polling
+        // Play sound for new orders detected
         if (hasNewOrders && soundEnabled) {
-          console.log('🔔 New orders detected via polling:', newOrderIds);
-          playSound();
+          console.log('🔔 New orders detected:', newOrderIds);
+          // Use soundEnabled from closure, playSound will be called via ref if needed
+          if (audioContextRef.current && audioResumedRef.current) {
+            playSoundInternal(audioContextRef.current);
+          }
         }
         
         // Update previous order IDs ref
         previousOrderIdsRef.current = newIds;
         
         if (idsChanged || prevOrders.length === 0) {
-          return ordersWithItems;
+          return allOrders;
         }
         return prevOrders;
       });
@@ -229,102 +222,111 @@ export default function KitchenDisplayPage() {
         setLoading(false);
       }
     }
-  }, [language, soundEnabled, playSound]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [language]); // Removed soundEnabled and playSound to prevent infinite loops - using refs instead
 
   // Set dayjs locale when language changes
   useEffect(() => {
     dayjs.locale(language === 'ar' ? 'ar' : 'en');
   }, [language]);
 
+  // Store loadOrders in ref for stable reference
+  useEffect(() => {
+    loadOrdersRef.current = loadOrders;
+  }, [loadOrders]);
+
+  // Initial load on mount
   useEffect(() => {
     loadOrders();
   }, [loadOrders]);
 
-  // Set up Supabase Realtime subscription for cross-browser updates
+  // Server-Sent Events (SSE) for real-time kitchen display updates
+  // Receives instant updates when orders are created or status changes
+  // Falls back to polling if SSE fails
+  const { isConnected, isConnecting } = useKitchenSse({
+    onOrderUpdate: (event: OrderUpdateEvent) => {
+      console.log('📨 Order update received via SSE:', event.type, event.orderId);
+      
+      // Play sound for new orders
+      if (event.type === 'ORDER_CREATED' && soundEnabledRef.current) {
+        console.log('🔔 New order detected via SSE - playing sound:', event.orderId);
+        if (audioContextRef.current && audioResumedRef.current) {
+          playSoundInternal(audioContextRef.current);
+        }
+      }
+      
+      // Reload orders to get latest data
+      if (loadOrdersRef.current) {
+        loadOrdersRef.current(true); // silent = true to avoid loading spinner
+      }
+    },
+    onConnect: () => {
+      console.log('✅ SSE connected - receiving real-time order updates');
+    },
+    onError: (error) => {
+      console.error('❌ SSE connection error:', error);
+      // Fallback: reload orders manually on error
+      if (loadOrdersRef.current) {
+        loadOrdersRef.current(true);
+      }
+    },
+    enabled: true,
+  });
+
+  // Fallback polling if SSE is not connected AND not connecting (poll every 5 seconds)
+  // Wait 3 seconds before starting fallback to give SSE time to connect
+  // This ensures updates even if SSE fails, but doesn't interfere with SSE connection attempts
+  const sseConnectedRef = useRef(isConnected);
+  const sseConnectingRef = useRef(isConnecting);
+  
   useEffect(() => {
-    if (!user?.tenantId || !supabase) {
-      console.warn('Supabase Realtime: Missing tenantId or supabase client');
+    sseConnectedRef.current = isConnected;
+    sseConnectingRef.current = isConnecting;
+  }, [isConnected, isConnecting]);
+
+  useEffect(() => {
+    // Don't start polling if SSE is connected or actively connecting
+    if (isConnected || isConnecting) {
       return;
     }
 
-    console.log('Setting up Supabase Realtime subscription for kitchen...');
-    console.log('Tenant ID:', user.tenantId);
-    
-    const channel = supabase
-      .channel(`orders-realtime-kitchen-${user.tenantId}-${Date.now()}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-          filter: `tenant_id=eq.${user.tenantId}`,
-        },
-        (payload) => {
-          console.log('✅ Order change received in kitchen:', {
-            eventType: payload.eventType,
-            new: payload.new,
-            old: payload.old,
-            table: payload.table,
-            schema: payload.schema,
-          });
-          // Play sound for new orders
-          if (payload.eventType === 'INSERT' && soundEnabled) {
-            console.log('🔔 New order detected via Realtime:', payload.new?.id);
-            playSound();
+    let pollInterval: NodeJS.Timeout | null = null;
+
+    // Wait 3 seconds before starting fallback polling
+    // This gives SSE time to establish connection on page load
+    const fallbackDelay = setTimeout(() => {
+      // Double-check SSE is still not connected after delay (use refs for current state)
+      if (!sseConnectedRef.current && !sseConnectingRef.current) {
+        console.log('⚠️ SSE not connected after delay, using polling fallback');
+        pollInterval = setInterval(() => {
+          // Only poll if SSE is still not connected (check refs for current state)
+          if (!sseConnectedRef.current && !sseConnectingRef.current && loadOrdersRef.current && navigator.onLine) {
+            loadOrdersRef.current(true); // silent poll
           }
-          // Reload orders silently in background (INSERT, UPDATE, DELETE)
-          console.log('🔄 Reloading orders due to change...');
-          loadOrders(true); // silent = true
-        }
-      )
-      .subscribe((status, err) => {
-        console.log('Supabase Realtime subscription status:', status);
-        if (err) {
-          console.error('❌ Supabase Realtime error:', err);
-        }
-        if (status === 'SUBSCRIBED') {
-          console.log('✅ Successfully subscribed to orders table changes');
-          console.log('📡 Listening for changes on orders table with tenant_id =', user.tenantId);
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('❌ Supabase Realtime channel error');
-        } else if (status === 'TIMED_OUT') {
-          console.error('❌ Supabase Realtime subscription timed out');
-        } else if (status === 'CLOSED') {
-          console.warn('⚠️ Supabase Realtime channel closed');
-        }
-      });
-
-    subscriptionRef.current = channel;
-
-    // Fallback: Poll for changes every 5 seconds if Realtime doesn't work
-    const pollInterval = setInterval(() => {
-      console.log('🔄 Polling for order changes (fallback)...');
-      loadOrders(true); // silent = true, no loading state
-    }, 5000);
+        }, 5000); // Poll every 5 seconds as fallback
+      }
+    }, 3000); // Wait 3 seconds before starting fallback
 
     return () => {
-      console.log('Cleaning up Supabase Realtime subscription...');
-      clearInterval(pollInterval);
-      if (subscriptionRef.current && supabase) {
-        supabase.removeChannel(subscriptionRef.current);
+      clearTimeout(fallbackDelay);
+      if (pollInterval) {
+        clearInterval(pollInterval);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.tenantId, soundEnabled, loadOrders, playSound]);
+  }, [isConnected, isConnecting]);
 
   // Listen for order status changes from other screens
   useEffect(() => {
-    const { onOrderUpdate } = require('@/lib/utils/order-events');
-    
     const unsubscribeStatusChanged = onOrderUpdate('order-status-changed', () => {
-      loadOrders();
+      if (loadOrdersRef.current) {
+        loadOrdersRef.current(true); // silent reload
+      }
     });
 
     return () => {
       unsubscribeStatusChanged();
     };
-  }, [loadOrders]);
+  }, []); // Empty deps - only set up once, use ref for latest function
 
   const handleMarkAsReady = async (order: Order) => {
     setProcessingOrderId(order.id);
@@ -337,12 +339,13 @@ export default function KitchenDisplayPage() {
       });
       
       // Notify same-browser screens about the status change (for immediate UI update)
-      const { notifyOrderUpdate } = await import('@/lib/utils/order-events');
       notifyOrderUpdate('order-status-changed', order.id);
       
-      // Note: Supabase Realtime will handle cross-browser updates automatically
-      // We still call loadOrders() for immediate local update, but Supabase will also trigger it
-      loadOrders();
+      // Reload orders for immediate local update
+      // Smart polling will also pick up changes automatically
+      if (loadOrdersRef.current) {
+        loadOrdersRef.current();
+      }
     } catch (error: any) {
       notifications.show({
         title: t('common.error' as any, language),
@@ -365,12 +368,13 @@ export default function KitchenDisplayPage() {
       });
       
       // Notify same-browser screens about the status change (for immediate UI update)
-      const { notifyOrderUpdate } = await import('@/lib/utils/order-events');
       notifyOrderUpdate('order-status-changed', order.id);
       
-      // Note: Supabase Realtime will handle cross-browser updates automatically
-      // We still call loadOrders() for immediate local update, but Supabase will also trigger it
-      loadOrders();
+      // Reload orders for immediate local update
+      // Smart polling will also pick up changes automatically
+      if (loadOrdersRef.current) {
+        loadOrdersRef.current();
+      }
     } catch (error: any) {
       notifications.show({
         title: t('common.error' as any, language),
@@ -672,9 +676,7 @@ function OrderCard({
                       <Text fw={500} size="md" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
                         {item.quantity}x{' '}
                         {item.foodItem
-                          ? (language === 'ar' && item.foodItem.nameAr
-                              ? item.foodItem.nameAr
-                              : item.foodItem.nameEn || t('pos.item', language))
+                          ? (item.foodItem.name || t('pos.item', language))
                           : t('pos.item', language) + ` #${item.foodItemId || item.id}`}
                       </Text>
                       {item.variation && item.variation.variationName && (
@@ -689,9 +691,7 @@ function OrderCard({
                             .filter(addOn => addOn.addOn)
                             .map(
                               (addOn) =>
-                                (language === 'ar' && addOn.addOn?.nameAr
-                                  ? addOn.addOn.nameAr
-                                  : addOn.addOn?.nameEn) || ''
+                                addOn.addOn?.name || ''
                             )
                             .filter(Boolean)
                             .join(', ') || '-'}

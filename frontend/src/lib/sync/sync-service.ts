@@ -32,7 +32,7 @@ class SyncService {
       await this.pullChanges();
     }
 
-    // Start periodic sync (every 30 seconds when online)
+    // Start periodic sync (every 2 minutes when online)
     this.startPeriodicSync();
   }
 
@@ -84,7 +84,7 @@ class SyncService {
       }
     }, 5000);
 
-    // Then sync every 10 seconds (reduced from 30 for better responsiveness)
+    // Then sync every 2 minutes (reduced frequency to save database credits)
     this.syncInterval = setInterval(async () => {
       if (navigator.onLine && !this.isSyncing) {
         console.log('🔄 Periodic sync check...');
@@ -92,7 +92,7 @@ class SyncService {
         // Refresh reports every sync cycle
         await this.refreshReports();
       }
-    }, 10000); // Every 10 seconds
+    }, 120000); // Every 2 minutes (120 seconds)
   }
 
   /**
@@ -450,11 +450,21 @@ class SyncService {
   /**
    * Refresh cached reports from backend
    * This is called periodically to ensure reports are up-to-date
+   * Only refreshes when on dashboard page to avoid unnecessary API calls
    */
   async refreshReports(): Promise<void> {
     if (!navigator.onLine) {
       console.log('📴 Offline, skipping report refresh...');
       return;
+    }
+
+    // Only refresh reports when on dashboard page
+    if (typeof window !== 'undefined') {
+      const currentPath = window.location.pathname;
+      if (currentPath !== '/dashboard' && currentPath !== '/') {
+        console.log('📊 Skipping report refresh (not on dashboard page)');
+        return;
+      }
     }
 
     try {

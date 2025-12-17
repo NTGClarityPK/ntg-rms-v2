@@ -11,9 +11,8 @@ import { useRouter } from 'next/navigation';
 
 interface UserMenuProps {
   user?: {
-    nameEn?: string;
-    nameAr?: string;
     email?: string;
+    name?: string;
   } | null;
   onLogout: () => void;
 }
@@ -32,20 +31,20 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
           variant="subtle"
           leftSection={
             <Avatar size={24} radius="xl" color={primary}>
-              {(user?.nameEn || user?.email || 'U').charAt(0).toUpperCase()}
+              {(user?.name || user?.email || 'U').charAt(0).toUpperCase()}
             </Avatar>
           }
           rightSection={<IconChevronDown size={16} />}
           size="sm"
         >
-          {user?.nameEn || 'User'}
+          {user?.name || 'User'}
         </Button>
       </Menu.Target>
 
       <Menu.Dropdown>
         <Menu.Label>
           <Text size="sm" fw={500}>
-            {user?.nameEn || 'User'}
+            {user?.name || 'User'}
           </Text>
           <Text size="xs" c="dimmed">
             {user?.email}

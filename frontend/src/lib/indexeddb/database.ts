@@ -3,8 +3,7 @@ import Dexie, { Table as DexieTable } from 'dexie';
 // Define interfaces for all tables
 export interface Tenant {
   id: string;
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   subdomain: string;
   email: string;
   phone?: string;
@@ -25,11 +24,9 @@ export interface Tenant {
 export interface Branch {
   id: string;
   tenantId: string;
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   code: string;
-  addressEn?: string;
-  addressAr?: string;
+  address?: string;
   city?: string;
   state?: string;
   country?: string;
@@ -50,8 +47,7 @@ export interface User {
   id: string;
   tenantId: string;
   email: string;
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   phone?: string;
   role: string;
   isActive: boolean;
@@ -65,10 +61,8 @@ export interface User {
 export interface Category {
   id: string;
   tenantId: string;
-  nameEn: string;
-  nameAr?: string;
-  descriptionEn?: string;
-  descriptionAr?: string;
+  name: string;
+  description?: string;
   imageUrl?: string;
   categoryType: string;
   parentId?: string;
@@ -85,10 +79,8 @@ export interface FoodItem {
   id: string;
   tenantId: string;
   categoryId?: string;
-  nameEn: string;
-  nameAr?: string;
-  descriptionEn?: string;
-  descriptionAr?: string;
+  name: string;
+  description?: string;
   imageUrl?: string;
   basePrice: number;
   stockType: string;
@@ -167,8 +159,7 @@ export interface Employee {
   tenantId: string;
   supabaseAuthId?: string;
   email: string;
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   phone?: string;
   role: string;
   employeeId?: string;
@@ -190,8 +181,7 @@ export interface Employee {
 export interface Customer {
   id: string;
   tenantId: string;
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   phone: string;
   email?: string;
   dateOfBirth?: string;
@@ -212,8 +202,7 @@ export interface Customer {
 export interface Ingredient {
   id: string;
   tenantId: string;
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   category?: string;
   unitOfMeasurement: string;
   currentStock: number;
@@ -295,8 +284,7 @@ export interface FoodItemDiscount {
 export interface AddOn {
   id: string;
   addOnGroupId: string;
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   price: number;
   isActive: boolean;
   displayOrder: number;
@@ -310,8 +298,7 @@ export interface AddOn {
 export interface AddOnGroup {
   id: string;
   tenantId: string;
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   selectionType: 'single' | 'multiple';
   isRequired: boolean;
   minSelections: number;
@@ -335,8 +322,7 @@ export interface FoodItemAddOnGroup {
 export interface CartItem {
   id?: number;
   foodItemId: string;
-  foodItemNameEn: string;
-  foodItemNameAr?: string;
+  foodItemName: string;
   foodItemImageUrl?: string;
   variationId?: string;
   variationGroup?: string;
@@ -344,8 +330,7 @@ export interface CartItem {
   variationPriceAdjustment?: number;
   addOns?: {
     addOnId: string;
-    addOnNameEn: string;
-    addOnNameAr?: string;
+    addOnName: string;
     price: number;
     quantity: number;
   }[];

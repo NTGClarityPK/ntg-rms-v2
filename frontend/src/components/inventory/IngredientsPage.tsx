@@ -74,8 +74,7 @@ export function IngredientsPage() {
 
   const form = useForm({
     initialValues: {
-      nameEn: '',
-      nameAr: '',
+      name: '',
       category: '',
       unitOfMeasurement: '',
       currentStock: 0,
@@ -85,7 +84,7 @@ export function IngredientsPage() {
       isActive: true,
     },
     validate: {
-      nameEn: (value) => (!value ? t('inventory.ingredientNameEn', language) + ' is required' : null),
+      name: (value) => (!value ? (t('inventory.ingredientName', language) || 'Ingredient name') + ' is required' : null),
       unitOfMeasurement: (value) => (!value ? t('inventory.unitOfMeasurement', language) + ' is required' : null),
     },
   });
@@ -112,7 +111,7 @@ export function IngredientsPage() {
           
           // Keep the most recent ingredient if there are duplicates by name
           for (const ing of Array.from(byId.values())) {
-            const key = ing.nameEn?.toLowerCase().trim() || '';
+            const key = ing.name?.toLowerCase().trim() || '';
             if (key) {
               const existing = byName.get(key);
               if (!existing || new Date(ing.updatedAt) > new Date(existing.updatedAt)) {
@@ -132,8 +131,7 @@ export function IngredientsPage() {
           const ingredientsToStore = uniqueIngredients.map(ing => ({
             id: ing.id,
             tenantId: user.tenantId,
-            nameEn: ing.nameEn,
-            nameAr: ing.nameAr,
+            name: ing.name,
             category: ing.category,
             unitOfMeasurement: ing.unitOfMeasurement,
             currentStock: ing.currentStock,
@@ -145,7 +143,7 @@ export function IngredientsPage() {
             updatedAt: ing.updatedAt,
             lastSynced: new Date().toISOString(),
             syncStatus: 'synced' as const,
-          }));
+          })) as any;
           
           if (ingredientsToStore.length > 0) {
             await db.ingredients.bulkPut(ingredientsToStore);
@@ -164,7 +162,7 @@ export function IngredientsPage() {
           const byName = new Map<string, typeof localIngredients[0]>();
           
           for (const ing of Array.from(byId.values())) {
-            const key = ing.nameEn?.toLowerCase().trim() || '';
+            const key = ((ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '').toLowerCase().trim();
             if (key) {
               const existing = byName.get(key);
               if (!existing || new Date(ing.updatedAt || ing.createdAt || '') > new Date(existing.updatedAt || existing.createdAt || '')) {
@@ -180,8 +178,7 @@ export function IngredientsPage() {
           setIngredients(uniqueIngredients.map((ing) => ({
         id: ing.id,
         tenantId: ing.tenantId,
-        nameEn: ing.nameEn,
-        nameAr: ing.nameAr,
+        name: (ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '',
         category: ing.category,
         unitOfMeasurement: ing.unitOfMeasurement,
         currentStock: ing.currentStock,
@@ -206,7 +203,7 @@ export function IngredientsPage() {
         const byName = new Map<string, typeof localIngredients[0]>();
         
         for (const ing of Array.from(byId.values())) {
-          const key = ing.nameEn?.toLowerCase().trim() || '';
+          const key = (ing as any).name?.toLowerCase().trim() || (ing as any).nameEn?.toLowerCase().trim() || '';
           if (key) {
             const existing = byName.get(key);
             if (!existing || new Date(ing.updatedAt || ing.createdAt || '') > new Date(existing.updatedAt || existing.createdAt || '')) {
@@ -222,8 +219,7 @@ export function IngredientsPage() {
         setIngredients(uniqueIngredients.map((ing) => ({
               id: ing.id,
           tenantId: ing.tenantId,
-              nameEn: ing.nameEn,
-              nameAr: ing.nameAr,
+              name: (ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '',
               category: ing.category,
               unitOfMeasurement: ing.unitOfMeasurement,
               currentStock: ing.currentStock,
@@ -251,8 +247,7 @@ export function IngredientsPage() {
     if (ingredient) {
       setEditingIngredient(ingredient);
       form.setValues({
-        nameEn: ingredient.nameEn,
-        nameAr: ingredient.nameAr || '',
+        name: ingredient.name,
         category: ingredient.category || '',
         unitOfMeasurement: ingredient.unitOfMeasurement,
         currentStock: ingredient.currentStock,
@@ -285,8 +280,7 @@ export function IngredientsPage() {
       if (editingIngredient) {
         // Update
         const updateData: UpdateIngredientDto = {
-        nameEn: values.nameEn,
-        nameAr: values.nameAr || undefined,
+        name: values.name,
         category: values.category || undefined,
         unitOfMeasurement: values.unitOfMeasurement,
         currentStock: values.currentStock,
@@ -313,8 +307,7 @@ export function IngredientsPage() {
       } else {
         // Create
         const createData: CreateIngredientDto = {
-          nameEn: values.nameEn,
-          nameAr: values.nameAr || undefined,
+          name: values.name,
           category: values.category || undefined,
           unitOfMeasurement: values.unitOfMeasurement,
           currentStock: values.currentStock,
@@ -330,8 +323,7 @@ export function IngredientsPage() {
         await db.ingredients.put({
           id: savedIngredient.id,
           tenantId: user.tenantId,
-          nameEn: savedIngredient.nameEn,
-          nameAr: savedIngredient.nameAr,
+          name: savedIngredient.name,
           category: savedIngredient.category,
           unitOfMeasurement: savedIngredient.unitOfMeasurement,
           currentStock: savedIngredient.currentStock,
@@ -343,7 +335,7 @@ export function IngredientsPage() {
           updatedAt: savedIngredient.updatedAt,
           lastSynced: new Date().toISOString(),
           syncStatus: 'synced' as const,
-        });
+        } as any);
 
         // Only queue if offline (already synced via API when online)
         if (!navigator.onLine) {
@@ -376,7 +368,7 @@ export function IngredientsPage() {
   const handleDelete = (ingredient: Ingredient) => {
     modals.openConfirmModal({
       title: t('common.delete' as any, language) || 'Delete',
-      children: <Text size="sm">{t('inventory.deleteIngredient', language)}: {language === 'ar' && ingredient.nameAr ? ingredient.nameAr : ingredient.nameEn}?</Text>,
+      children: <Text size="sm">{t('inventory.deleteIngredient', language)}: {ingredient.name}?</Text>,
       labels: { confirm: t('common.delete' as any, language) || 'Delete', cancel: t('common.cancel' as any, language) || 'Cancel' },
       confirmProps: { color: errorColor },
       onConfirm: async () => {
@@ -415,10 +407,9 @@ export function IngredientsPage() {
 
   // Filter ingredients
   const filteredIngredients = ingredients.filter((ing) => {
-    if (!ing.nameEn) return false;
+    if (!ing.name) return false;
     const matchesSearch = 
-      ing.nameEn?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (ing.nameAr && ing.nameAr.toLowerCase().includes(searchQuery.toLowerCase()));
+      ing.name?.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
   });
 
@@ -510,7 +501,7 @@ export function IngredientsPage() {
           <Table striped highlightOnHover>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>{t('inventory.ingredientNameEn', language)}</Table.Th>
+                <Table.Th>{t('inventory.ingredientName', language)}</Table.Th>
                 <Table.Th>{t('inventory.category', language)}</Table.Th>
                 <Table.Th>{t('inventory.currentStock', language)}</Table.Th>
                 <Table.Th>{t('inventory.minimumThreshold', language)}</Table.Th>
@@ -524,7 +515,7 @@ export function IngredientsPage() {
                 <Table.Tr key={ingredient.id}>
                   <Table.Td>
                     <Text fw={500}>
-                      {language === 'ar' && ingredient.nameAr ? ingredient.nameAr : ingredient.nameEn}
+                      {ingredient.name}
                     </Text>
                   </Table.Td>
                   <Table.Td>
@@ -602,15 +593,10 @@ export function IngredientsPage() {
         <form onSubmit={form.onSubmit(handleSubmit)}>
           <Stack gap="md">
             <TextInput
-              label={t('inventory.ingredientNameEn', language)}
-              placeholder={t('inventory.ingredientNameEn', language)}
+              label={t('inventory.ingredientName', language) || 'Ingredient Name'}
+              placeholder={t('inventory.ingredientName', language) || 'Enter ingredient name'}
               required
-              {...form.getInputProps('nameEn')}
-            />
-            <TextInput
-              label={t('inventory.ingredientNameAr', language)}
-              placeholder={t('inventory.ingredientNameAr', language)}
-              {...form.getInputProps('nameAr')}
+              {...form.getInputProps('name')}
             />
             <Select
               label={t('inventory.category', language)}

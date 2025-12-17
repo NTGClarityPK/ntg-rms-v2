@@ -70,10 +70,8 @@ export function FoodItemsPage() {
 
   const form = useForm({
     initialValues: {
-      nameEn: '',
-      nameAr: '',
-      descriptionEn: '',
-      descriptionAr: '',
+      name: '',
+      description: '',
       categoryId: '',
       basePrice: 0,
       stockType: 'unlimited',
@@ -87,7 +85,7 @@ export function FoodItemsPage() {
       discounts: [] as FoodItemDiscount[],
     },
     validate: {
-      nameEn: (value) => (!value ? t('menu.foodItemNameEn', language) + ' is required' : null),
+      name: (value) => (!value ? (t('menu.foodItemName', language) || 'Name') + ' is required' : null),
       categoryId: (value) => (!value ? t('menu.selectCategory', language) + ' is required' : null),
       basePrice: (value) => (value <= 0 ? 'Base price must be greater than 0' : null),
     },
@@ -126,10 +124,8 @@ export function FoodItemsPage() {
 
           return {
         id: item.id,
-        nameEn: item.nameEn,
-        nameAr: item.nameAr,
-        descriptionEn: item.descriptionEn,
-        descriptionAr: item.descriptionAr,
+        name: (item as any).name || (item as any).nameEn || (item as any).nameAr || '',
+        description: (item as any).description || (item as any).descriptionEn || (item as any).descriptionAr || '',
         imageUrl: item.imageUrl,
         categoryId: item.categoryId,
         basePrice: item.basePrice,
@@ -178,10 +174,8 @@ export function FoodItemsPage() {
             await db.foodItems.put({
               id: item.id,
               tenantId: user.tenantId,
-              nameEn: item.nameEn,
-              nameAr: item.nameAr,
-              descriptionEn: item.descriptionEn,
-              descriptionAr: item.descriptionAr,
+              name: item.name || (item as any).nameEn || (item as any).nameAr || '',
+              description: item.description || (item as any).descriptionEn || (item as any).descriptionAr || '',
               imageUrl: item.imageUrl,
               categoryId: item.categoryId,
               basePrice: item.basePrice,
@@ -196,7 +190,7 @@ export function FoodItemsPage() {
               updatedAt: item.updatedAt,
               lastSynced: new Date().toISOString(),
               syncStatus: 'synced',
-            });
+            } as any);
 
             // Save variations
             if (item.variations && item.variations.length > 0) {
@@ -326,10 +320,8 @@ export function FoodItemsPage() {
         : (item.menuType ? [item.menuType] : []);
 
       form.setValues({
-        nameEn: item.nameEn,
-        nameAr: item.nameAr || '',
-        descriptionEn: item.descriptionEn || '',
-        descriptionAr: item.descriptionAr || '',
+        name: item.name || (item as any).nameEn || (item as any).nameAr || '',
+        description: item.description || (item as any).descriptionEn || (item as any).descriptionAr || '',
         categoryId: item.categoryId || '',
         basePrice: item.basePrice,
         stockType: item.stockType,
@@ -383,7 +375,7 @@ export function FoodItemsPage() {
       e.stopPropagation();
     }
     if (activeStep === 0) {
-      const step1Valid = form.validateField('nameEn').hasError === false &&
+      const step1Valid = form.validateField('name').hasError === false &&
         form.validateField('categoryId').hasError === false &&
         form.validateField('basePrice').hasError === false;
       if (step1Valid) {
@@ -464,10 +456,8 @@ export function FoodItemsPage() {
     (async () => {
       try {
       const itemData = {
-        nameEn: values.nameEn,
-        nameAr: values.nameAr || undefined,
-        descriptionEn: values.descriptionEn || undefined,
-        descriptionAr: values.descriptionAr || undefined,
+        name: values.name,
+        description: values.description || undefined,
         categoryId: values.categoryId,
         basePrice: values.basePrice,
         stockType: values.stockType,
@@ -591,7 +581,7 @@ export function FoodItemsPage() {
           updatedAt: savedItem.updatedAt,
           lastSynced: new Date().toISOString(),
           syncStatus: 'synced',
-        });
+        } as any);
 
           // Save variations
           if (values.variations && values.variations.length > 0) {
@@ -828,7 +818,7 @@ export function FoodItemsPage() {
                       {item.imageUrl ? (
                         <Image
                           src={item.imageUrl}
-                          alt={item.nameEn}
+                          alt={item.name || ''}
                           width={40}
                           height={40}
                           radius="sm"
@@ -853,13 +843,11 @@ export function FoodItemsPage() {
                       )}
                           <div style={{ minWidth: 0, flex: 1 }}>
                             <Text fw={500} truncate>
-                          {language === 'ar' && item.nameAr ? item.nameAr : item.nameEn}
+                          {item.name || ''}
                         </Text>
-                        {item.descriptionEn && (
+                        {item.description && (
                               <Text size="xs" c="dimmed" lineClamp={1}>
-                            {language === 'ar' && item.descriptionAr
-                              ? item.descriptionAr
-                              : item.descriptionEn}
+                            {item.description || ''}
                           </Text>
                         )}
                       </div>
@@ -868,9 +856,7 @@ export function FoodItemsPage() {
                   <Table.Td>
                         <Text truncate>
                     {category
-                      ? language === 'ar' && category.nameAr
-                        ? category.nameAr
-                        : category.nameEn
+                      ? category.name || ''
                       : '-'}
                         </Text>
                   </Table.Td>
@@ -983,29 +969,17 @@ export function FoodItemsPage() {
             >
               <Stack gap="md" mt="xl">
                 <Grid>
-                  <Grid.Col span={{ base: 12, md: 6 }}>
+                  <Grid.Col span={12}>
                     <TextInput
-                      label={t('menu.foodItemNameEn', language)}
+                      label={t('menu.foodItemName', language) || 'Name'}
                       required
-                      {...form.getInputProps('nameEn')}
-                    />
-                  </Grid.Col>
-                  <Grid.Col span={{ base: 12, md: 6 }}>
-                    <TextInput
-                      label={t('menu.foodItemNameAr', language)}
-                      {...form.getInputProps('nameAr')}
+                      {...form.getInputProps('name')}
                     />
                   </Grid.Col>
                   <Grid.Col span={12}>
                     <Textarea
-                      label={t('menu.descriptionEn', language)}
-                      {...form.getInputProps('descriptionEn')}
-                    />
-                  </Grid.Col>
-                  <Grid.Col span={12}>
-                    <Textarea
-                      label={t('menu.descriptionAr', language)}
-                      {...form.getInputProps('descriptionAr')}
+                      label={t('menu.description', language) || 'Description'}
+                      {...form.getInputProps('description')}
                     />
                   </Grid.Col>
                   <Grid.Col span={{ base: 12, md: 6 }}>
@@ -1015,7 +989,7 @@ export function FoodItemsPage() {
                       placeholder={categories.length === 0 ? t('menu.noCategories', language) : undefined}
                       data={categories.map((cat) => ({
                         value: cat.id,
-                        label: language === 'ar' && cat.nameAr ? cat.nameAr : cat.nameEn,
+                        label: cat.name || '',
                       }))}
                       disabled={categories.length === 0}
                       {...form.getInputProps('categoryId')}
@@ -1222,13 +1196,10 @@ export function FoodItemsPage() {
                       ? t('menu.noAddOnGroupsAvailable', language)
                       : t('menu.selectAddOnGroups', language)
                   }
-                  data={addOnGroups.map((group) => {
-                    const label = language === 'ar' && group.nameAr ? group.nameAr : (group.nameEn || '');
-                    return {
-                      value: group.id,
-                      label: String(label || ''),
-                    };
-                  })}
+                  data={addOnGroups.map((group) => ({
+                    value: group.id,
+                    label: group.name || '',
+                  }))}
                   disabled={addOnGroups.length === 0}
                   {...form.getInputProps('addOnGroupIds')}
                 />

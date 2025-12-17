@@ -86,15 +86,12 @@ export function StockManagementPage() {
     const uniqueIngredients = Array.from(byId.values());
     
     return uniqueIngredients
-      .filter((ing) => ing.nameEn)
-      .map((ing) => {
-        const label = language === 'ar' && ing.nameAr ? ing.nameAr : (ing.nameEn || '');
-        return {
-          value: ing.id,
-          label: String(label || ''), // Ensure label is always a string
-        };
-      });
-  }, [ingredients, language]);
+      .filter((ing) => ing.name)
+      .map((ing) => ({
+        value: ing.id,
+        label: ing.name || '',
+      }));
+  }, [ingredients]);
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
@@ -189,7 +186,7 @@ export function StockManagementPage() {
       const byName = new Map<string, typeof localIngredients[0]>();
       
       for (const ing of Array.from(byId.values())) {
-        const key = ing.nameEn?.toLowerCase().trim() || '';
+        const key = ((ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '').toLowerCase().trim();
         if (key) {
           const existing = byName.get(key);
           if (!existing || new Date(ing.updatedAt || ing.createdAt || '') > new Date(existing.updatedAt || existing.createdAt || '')) {
@@ -205,8 +202,7 @@ export function StockManagementPage() {
       setIngredients(uniqueIngredients.map((ing) => ({
         id: ing.id,
         tenantId: ing.tenantId,
-        nameEn: ing.nameEn,
-        nameAr: ing.nameAr,
+        name: (ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '',
         category: ing.category,
         unitOfMeasurement: ing.unitOfMeasurement,
         currentStock: ing.currentStock,
@@ -228,7 +224,7 @@ export function StockManagementPage() {
           const serverByName = new Map<string, Ingredient>();
           
           for (const ing of Array.from(serverById.values())) {
-            const key = ing.nameEn?.toLowerCase().trim() || '';
+            const key = ((ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '').toLowerCase().trim();
             if (key) {
               const existing = serverByName.get(key);
               if (!existing || new Date(ing.updatedAt) > new Date(existing.updatedAt)) {
@@ -247,8 +243,7 @@ export function StockManagementPage() {
           const ingredientsToStore = uniqueServerIngredients.map(ing => ({
             id: ing.id,
             tenantId: user.tenantId,
-            nameEn: ing.nameEn,
-            nameAr: ing.nameAr,
+            name: ing.name,
             category: ing.category,
             unitOfMeasurement: ing.unitOfMeasurement,
             currentStock: ing.currentStock,
@@ -263,7 +258,7 @@ export function StockManagementPage() {
           }));
           
           if (ingredientsToStore.length > 0) {
-            await db.ingredients.bulkPut(ingredientsToStore);
+            await db.ingredients.bulkPut(ingredientsToStore as any);
           }
         } catch (err: any) {
           console.warn('Failed to sync ingredients from server:', err);
@@ -289,7 +284,7 @@ export function StockManagementPage() {
       if (navigator.onLine) {
         try {
           const serverBranches = await restaurantApi.getBranches();
-          setBranches(serverBranches);
+          setBranches(serverBranches as any);
         } catch (err: any) {
           console.warn('Failed to sync branches from server:', err);
         }
@@ -798,8 +793,7 @@ export function StockManagementPage() {
   const filteredTransactions = transactions.filter((tx) => {
     const matchesSearch = searchQuery === '' || 
       (tx.ingredient && (
-        tx.ingredient.nameEn?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (tx.ingredient.nameAr && tx.ingredient.nameAr.toLowerCase().includes(searchQuery.toLowerCase()))
+        tx.ingredient.name?.toLowerCase().includes(searchQuery.toLowerCase())
       ));
     return matchesSearch;
   });
@@ -944,7 +938,7 @@ export function StockManagementPage() {
                   <Table.Td>
                     {tx.ingredient ? (
                       <Text fw={500}>
-                        {language === 'ar' && tx.ingredient.nameAr ? tx.ingredient.nameAr : tx.ingredient.nameEn}
+                        {tx.ingredient.name}
                       </Text>
                     ) : (
                       <Text size="sm" c="dimmed">-</Text>
@@ -1037,13 +1031,10 @@ export function StockManagementPage() {
             {branches.length > 0 && (
               <Select
                 label={t('restaurant.branch', language) || 'Branch'}
-                data={branches.map((b) => {
-                  const label = language === 'ar' && b.nameAr ? b.nameAr : (b.nameEn || '');
-                  return {
-                    value: b.id,
-                    label: String(label || ''),
-                  };
-                })}
+                data={branches.map((b) => ({
+                  value: b.id,
+                  label: (b as any).name || (b as any).nameEn || (b as any).nameAr || '',
+                }))}
                 {...addStockForm.getInputProps('branchId')}
               />
             )}
@@ -1105,7 +1096,7 @@ export function StockManagementPage() {
                 label={t('restaurant.branch', language) || 'Branch'}
                 data={branches.map((b) => ({
                   value: b.id,
-                  label: language === 'ar' && b.nameAr ? b.nameAr : b.nameEn,
+                  label: (b as any).name || (b as any).nameEn || (b as any).nameAr || '',
                 }))}
                 {...deductStockForm.getInputProps('branchId')}
               />
@@ -1178,7 +1169,7 @@ export function StockManagementPage() {
                 label={t('restaurant.branch', language) || 'Branch'}
                 data={branches.map((b) => ({
                   value: b.id,
-                  label: language === 'ar' && b.nameAr ? b.nameAr : b.nameEn,
+                  label: (b as any).name || (b as any).nameEn || (b as any).nameAr || '',
                 }))}
                 {...adjustStockForm.getInputProps('branchId')}
               />
@@ -1239,7 +1230,7 @@ export function StockManagementPage() {
                   required
                   data={branches.map((b) => ({
                     value: b.id,
-                    label: language === 'ar' && b.nameAr ? b.nameAr : b.nameEn,
+                    label: (b as any).name || (b as any).nameEn || (b as any).nameAr || '',
                   }))}
                   {...transferStockForm.getInputProps('fromBranchId')}
                 />
@@ -1250,7 +1241,7 @@ export function StockManagementPage() {
                     .filter((b) => b.id !== transferStockForm.values.fromBranchId)
                     .map((b) => ({
                       value: b.id,
-                      label: language === 'ar' && b.nameAr ? b.nameAr : b.nameEn,
+                      label: (b as any).name || (b as any).nameEn || (b as any).nameAr || '',
                     }))}
                   {...transferStockForm.getInputProps('toBranchId')}
                 />

@@ -89,10 +89,8 @@ export function FoodItemsGrid({
         const query = searchQuery.toLowerCase();
         filteredItems = items.filter(
           (item) =>
-            item.nameEn?.toLowerCase().includes(query) ||
-            item.nameAr?.toLowerCase().includes(query) ||
-            item.descriptionEn?.toLowerCase().includes(query) ||
-            item.descriptionAr?.toLowerCase().includes(query),
+            item.name?.toLowerCase().includes(query) ||
+            item.description?.toLowerCase().includes(query),
         );
       }
 
@@ -150,7 +148,7 @@ export function FoodItemsGrid({
                   data-selected={selectedCategoryId === category.id ? "true" : "false"}
                   leftSection={selectedCategoryId === category.id ? <IconCheck size={14} /> : undefined}
                 >
-                  {language === 'ar' && category.nameAr ? category.nameAr : category.nameEn}
+                  {category.name}
                 </Button>
               ))}
             </Group>
@@ -201,21 +199,19 @@ export function FoodItemsGrid({
                         <Image
                           src={item.imageUrl || '/placeholder-food.png'}
                           height={120}
-                          alt={language === 'ar' && item.nameAr ? item.nameAr : item.nameEn}
+                          alt={item.name || ''}
                           fit="cover"
                         />
                       </Card.Section>
 
                       <Stack gap="xs" mt="md" style={{ flex: 1 }}>
                         <Text fw={500} size="sm" lineClamp={2}>
-                          {language === 'ar' && item.nameAr ? item.nameAr : item.nameEn}
+                          {item.name}
                         </Text>
 
-                        {item.descriptionEn && (
+                        {item.description && (
                           <Text size="xs" c="dimmed" lineClamp={2}>
-                            {language === 'ar' && item.descriptionAr
-                              ? item.descriptionAr
-                              : item.descriptionEn}
+                            {item.description}
                           </Text>
                         )}
 

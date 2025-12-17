@@ -93,8 +93,7 @@ export class AuthController {
     return {
       id: user.id,
       email: user.email,
-      nameEn: user.nameEn || user.name_en,
-      nameAr: user.nameAr || user.name_ar,
+      name: user.name || 'User',
       role: user.role,
       tenantId: user.tenantId || user.tenant_id,
     };

@@ -90,8 +90,7 @@ export default function RestaurantPage() {
 
   const form = useForm<UpdateRestaurantInfoDto>({
     initialValues: {
-      nameEn: '',
-      nameAr: '',
+      name: '',
       email: '',
       phone: '',
       logoUrl: '',
@@ -117,8 +116,7 @@ export default function RestaurantPage() {
       
       if (localData) {
         const formValues = {
-          nameEn: localData.nameEn,
-          nameAr: localData.nameAr,
+          name: (localData as any).name || (localData as any).nameEn || (localData as any).nameAr || '',
           email: localData.email,
           phone: localData.phone || '',
           logoUrl: localData.logoUrl || '',
@@ -136,8 +134,7 @@ export default function RestaurantPage() {
         if (localData) {
           setRestaurant({
             id: localData.id,
-            nameEn: localData.nameEn || 'RMS',
-            nameAr: localData.nameAr,
+            name: (localData as any).name || (localData as any).nameEn || (localData as any).nameAr || 'RMS',
             logoUrl: localData.logoUrl,
             primaryColor: localData.primaryColor,
           });
@@ -172,8 +169,7 @@ export default function RestaurantPage() {
 
           if (shouldUpdate) {
             const formValues = {
-              nameEn: serverData.nameEn,
-              nameAr: serverData.nameAr || '',
+              name: serverData.name || '',
               email: serverData.email,
               phone: serverData.phone || '',
               logoUrl: serverData.logoUrl || '',
@@ -191,8 +187,7 @@ export default function RestaurantPage() {
             // Update restaurant store for Header
             setRestaurant({
               id: serverData.id,
-              nameEn: serverData.nameEn || 'RMS',
-              nameAr: serverData.nameAr,
+              name: serverData.name || 'RMS',
               logoUrl: serverData.logoUrl,
               primaryColor: serverData.primaryColor,
             });
@@ -200,8 +195,7 @@ export default function RestaurantPage() {
             // Update IndexedDB with server data
             await db.tenants.put({
               id: serverData.id,
-              nameEn: serverData.nameEn,
-              nameAr: serverData.nameAr,
+              name: serverData.name,
               subdomain: serverData.subdomain,
               email: serverData.email,
               phone: serverData.phone,
@@ -214,7 +208,7 @@ export default function RestaurantPage() {
               updatedAt: serverData.updatedAt,
               lastSynced: new Date().toISOString(),
               syncStatus: 'synced' as const,
-            });
+            } as any);
           }
         } catch (err: any) {
           console.warn('Failed to load from server, using local data:', err);
@@ -257,8 +251,7 @@ export default function RestaurantPage() {
         // Update restaurant store immediately
         setRestaurant({
           id: user?.tenantId || '',
-          nameEn: form.values.nameEn || 'RMS',
-          nameAr: form.values.nameAr,
+          name: form.values.name || 'RMS',
           logoUrl: updated.logoUrl,
           primaryColor: form.values.primaryColor,
         });
@@ -307,9 +300,6 @@ export default function RestaurantPage() {
       if (updateData.phone === '' || !updateData.phone) {
         delete updateData.phone;
       }
-      if (updateData.nameAr === '' || !updateData.nameAr) {
-        delete updateData.nameAr;
-      }
 
       // Save to IndexedDB first (offline-first)
       const tenantId = user?.tenantId || '';
@@ -317,8 +307,7 @@ export default function RestaurantPage() {
       
       const tenantData = {
         id: tenantId,
-        nameEn: updateData.nameEn || existingTenant?.nameEn || '',
-        nameAr: updateData.nameAr || existingTenant?.nameAr,
+        name: updateData.name || (existingTenant as any)?.name || (existingTenant as any)?.nameEn || (existingTenant as any)?.nameAr || '',
         subdomain: existingTenant?.subdomain || '',
         email: updateData.email || existingTenant?.email || '',
         phone: updateData.phone || existingTenant?.phone,
@@ -333,7 +322,7 @@ export default function RestaurantPage() {
         syncStatus: 'pending' as const,
       };
 
-      await db.tenants.put(tenantData);
+      await db.tenants.put(tenantData as any);
 
       // Queue sync to backend
       await syncService.queueChange('tenants', 'UPDATE', tenantId, updateData);
@@ -342,8 +331,7 @@ export default function RestaurantPage() {
       const updatedLogoUrl = updateData.logoUrl || existingTenant?.logoUrl;
       setRestaurant({
         id: tenantId,
-        nameEn: updateData.nameEn || existingTenant?.nameEn || 'RMS',
-        nameAr: updateData.nameAr || existingTenant?.nameAr,
+        name: updateData.name || (existingTenant as any)?.name || (existingTenant as any)?.nameEn || (existingTenant as any)?.nameAr || 'RMS',
         logoUrl: updatedLogoUrl,
         primaryColor: updateData.primaryColor || existingTenant?.primaryColor,
       });
@@ -465,15 +453,9 @@ export default function RestaurantPage() {
             <Grid>
               <Grid.Col span={{ base: 12, md: 6 }}>
                 <TextInput
-                  label={t('restaurant.restaurantNameEnglish', language)}
+                  label="Restaurant Name"
                   required
-                  {...form.getInputProps('nameEn')}
-                />
-              </Grid.Col>
-              <Grid.Col span={{ base: 12, md: 6 }}>
-                <TextInput
-                  label={t('restaurant.restaurantNameArabic', language)}
-                  {...form.getInputProps('nameAr')}
+                  {...form.getInputProps('name')}
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 6 }}>

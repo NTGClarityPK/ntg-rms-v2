@@ -35,8 +35,7 @@ export default function ProfilePage() {
 
   const form = useForm<UpdateProfileDto>({
     initialValues: {
-      nameEn: '',
-      nameAr: '',
+      name: '',
       phone: '',
       email: '',
     },
@@ -52,8 +51,7 @@ export default function ProfilePage() {
         const data = await authApi.getProfile();
         setProfile(data);
         form.setValues({
-          nameEn: data.nameEn || '',
-          nameAr: data.nameAr || '',
+          name: data.name || '',
           phone: data.phone || '',
           email: data.email || '',
         });
@@ -124,17 +122,10 @@ export default function ProfilePage() {
             <form onSubmit={form.onSubmit(handleSubmit)}>
               <Stack gap="md">
                 <TextInput
-                  label={t('profile.nameEn' as any, language) || 'Name (English)'}
-                  placeholder={t('profile.nameEnPlaceholder' as any, language) || 'Enter your name in English'}
+                  label={t('profile.name' as any, language) || 'Name'}
+                  placeholder={t('profile.namePlaceholder' as any, language) || 'Enter your name'}
                   leftSection={<IconUser size={16} />}
-                  {...form.getInputProps('nameEn')}
-                />
-
-                <TextInput
-                  label={t('profile.nameAr' as any, language) || 'Name (Arabic)'}
-                  placeholder={t('profile.nameArPlaceholder' as any, language) || 'Enter your name in Arabic'}
-                  leftSection={<IconUser size={16} />}
-                  {...form.getInputProps('nameAr')}
+                  {...form.getInputProps('name')}
                 />
 
                 <TextInput

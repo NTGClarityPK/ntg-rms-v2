@@ -10,8 +10,7 @@ export interface LoginCredentials {
 export interface SignupData {
   email: string;
   password: string;
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   phone?: string;
   role?: string;
   defaultCurrency?: string;
@@ -21,8 +20,7 @@ export interface AuthResponse {
   user: {
     id: string;
     email: string;
-    nameEn: string;
-    nameAr?: string;
+    name: string;
     role: string;
     tenantId: string;
   };
@@ -33,8 +31,7 @@ export interface AuthResponse {
 export interface UserProfile {
   id: string;
   email: string;
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   phone?: string;
   role: string;
   tenantId: string;
@@ -43,8 +40,7 @@ export interface UserProfile {
 }
 
 export interface UpdateProfileDto {
-  nameEn?: string;
-  nameAr?: string;
+  name?: string;
   phone?: string;
   email?: string;
 }

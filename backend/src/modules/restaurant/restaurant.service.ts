@@ -32,8 +32,7 @@ export class RestaurantService {
 
     return {
       id: tenant.id,
-      nameEn: tenant.name_en,
-      nameAr: tenant.name_ar,
+      name: tenant.name,
       subdomain: tenant.subdomain,
       email: tenant.email,
       phone: tenant.phone,
@@ -58,8 +57,7 @@ export class RestaurantService {
     // Build update object
     const updateData: any = {};
     
-    if (updateDto.nameEn !== undefined) updateData.name_en = updateDto.nameEn;
-    if (updateDto.nameAr !== undefined) updateData.name_ar = updateDto.nameAr;
+    if (updateDto.name !== undefined) updateData.name = updateDto.name;
     if (updateDto.email !== undefined) updateData.email = updateDto.email;
     if (updateDto.phone !== undefined) updateData.phone = updateDto.phone;
     if (updateDto.logoUrl !== undefined) updateData.logo_url = updateDto.logoUrl;
@@ -94,8 +92,7 @@ export class RestaurantService {
 
     return {
       id: tenant.id,
-      nameEn: tenant.name_en,
-      nameAr: tenant.name_ar,
+      name: tenant.name,
       subdomain: tenant.subdomain,
       email: tenant.email,
       phone: tenant.phone,
@@ -134,7 +131,7 @@ export class RestaurantService {
     if (managerIds.length > 0) {
       const { data: managers } = await supabase
         .from('users')
-        .select('id, name_en, name_ar, email')
+        .select('id, name, email')
         .in('id', managerIds)
         .eq('tenant_id', tenantId)
         .is('deleted_at', null);
@@ -143,8 +140,7 @@ export class RestaurantService {
         managersMap = managers.reduce((acc, manager) => {
           acc[manager.id] = {
             id: manager.id,
-            nameEn: manager.name_en,
-            nameAr: manager.name_ar,
+            name: manager.name,
             email: manager.email,
           };
           return acc;
@@ -155,11 +151,9 @@ export class RestaurantService {
     return branches.map(branch => ({
       id: branch.id,
       tenantId: branch.tenant_id,
-      nameEn: branch.name_en,
-      nameAr: branch.name_ar,
+      name: branch.name,
       code: branch.code,
-      addressEn: branch.address_en,
-      addressAr: branch.address_ar,
+      address: branch.address,
       city: branch.city,
       state: branch.state,
       country: branch.country,
@@ -198,7 +192,7 @@ export class RestaurantService {
     if (branch.manager_id) {
       const { data: managerData } = await supabase
         .from('users')
-        .select('id, name_en, name_ar, email')
+        .select('id, name, email')
         .eq('id', branch.manager_id)
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
@@ -207,8 +201,7 @@ export class RestaurantService {
       if (managerData) {
         manager = {
           id: managerData.id,
-          nameEn: managerData.name_en,
-          nameAr: managerData.name_ar,
+          name: managerData.name,
           email: managerData.email,
         };
       }
@@ -217,11 +210,9 @@ export class RestaurantService {
     return {
       id: branch.id,
       tenantId: branch.tenant_id,
-      nameEn: branch.name_en,
-      nameAr: branch.name_ar,
+      name: branch.name,
       code: branch.code,
-      addressEn: branch.address_en,
-      addressAr: branch.address_ar,
+      address: branch.address,
       city: branch.city,
       state: branch.state,
       country: branch.country,
@@ -275,11 +266,9 @@ export class RestaurantService {
       .from('branches')
       .insert({
         tenant_id: tenantId,
-        name_en: createDto.nameEn,
-        name_ar: createDto.nameAr || createDto.nameEn,
+        name: createDto.name,
         code: createDto.code,
-        address_en: createDto.addressEn,
-        address_ar: createDto.addressAr,
+        address: createDto.address || null,
         city: createDto.city,
         state: createDto.state,
         country: createDto.country || 'Iraq',
@@ -305,7 +294,7 @@ export class RestaurantService {
     if (branch.manager_id) {
       const { data: managerData } = await supabase
         .from('users')
-        .select('id, name_en, name_ar, email')
+        .select('id, name, email')
         .eq('id', branch.manager_id)
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
@@ -314,8 +303,7 @@ export class RestaurantService {
       if (managerData) {
         manager = {
           id: managerData.id,
-          nameEn: managerData.name_en,
-          nameAr: managerData.name_ar,
+          name: managerData.name,
           email: managerData.email,
         };
       }
@@ -324,11 +312,9 @@ export class RestaurantService {
     return {
       id: branch.id,
       tenantId: branch.tenant_id,
-      nameEn: branch.name_en,
-      nameAr: branch.name_ar,
+      name: branch.name,
       code: branch.code,
-      addressEn: branch.address_en,
-      addressAr: branch.address_ar,
+      address: branch.address,
       city: branch.city,
       state: branch.state,
       country: branch.country,
@@ -397,11 +383,9 @@ export class RestaurantService {
     // Build update object
     const updateData: any = {};
     
-    if (updateDto.nameEn !== undefined) updateData.name_en = updateDto.nameEn;
-    if (updateDto.nameAr !== undefined) updateData.name_ar = updateDto.nameAr;
+    if (updateDto.name !== undefined) updateData.name = updateDto.name;
     if (updateDto.code !== undefined) updateData.code = updateDto.code;
-    if (updateDto.addressEn !== undefined) updateData.address_en = updateDto.addressEn;
-    if (updateDto.addressAr !== undefined) updateData.address_ar = updateDto.addressAr;
+    if (updateDto.address !== undefined) updateData.address = updateDto.address;
     if (updateDto.city !== undefined) updateData.city = updateDto.city;
     if (updateDto.state !== undefined) updateData.state = updateDto.state;
     if (updateDto.country !== undefined) updateData.country = updateDto.country;
@@ -434,7 +418,7 @@ export class RestaurantService {
     if (branch.manager_id) {
       const { data: managerData } = await supabase
         .from('users')
-        .select('id, name_en, name_ar, email')
+        .select('id, name, email')
         .eq('id', branch.manager_id)
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
@@ -443,8 +427,7 @@ export class RestaurantService {
       if (managerData) {
         manager = {
           id: managerData.id,
-          nameEn: managerData.name_en,
-          nameAr: managerData.name_ar,
+          name: managerData.name,
           email: managerData.email,
         };
       }
@@ -453,11 +436,9 @@ export class RestaurantService {
     return {
       id: branch.id,
       tenantId: branch.tenant_id,
-      nameEn: branch.name_en,
-      nameAr: branch.name_ar,
+      name: branch.name,
       code: branch.code,
-      addressEn: branch.address_en,
-      addressAr: branch.address_ar,
+      address: branch.address,
       city: branch.city,
       state: branch.state,
       country: branch.country,
@@ -515,7 +496,7 @@ export class RestaurantService {
       .from('counters')
       .select(`
         *,
-        branch:branches!counters_branch_id_fkey(id, name_en, name_ar, code)
+        branch:branches!counters_branch_id_fkey(id, name, code)
       `)
       .is('deleted_at', null)
       .order('created_at', { ascending: true });
@@ -568,7 +549,7 @@ export class RestaurantService {
       .from('counters')
       .select(`
         *,
-        branch:branches!counters_branch_id_fkey(id, tenant_id, name_en, name_ar, code)
+        branch:branches!counters_branch_id_fkey(id, tenant_id, name, code)
       `)
       .eq('id', counterId)
       .is('deleted_at', null)
@@ -588,8 +569,7 @@ export class RestaurantService {
       branchId: counter.branch_id,
       branch: {
         id: counter.branch.id,
-        nameEn: counter.branch.name_en,
-        nameAr: counter.branch.name_ar,
+        name: counter.branch.name,
         code: counter.branch.code,
       },
       name: counter.name,
@@ -642,7 +622,7 @@ export class RestaurantService {
       })
       .select(`
         *,
-        branch:branches!counters_branch_id_fkey(id, name_en, name_ar, code)
+        branch:branches!counters_branch_id_fkey(id, name, code)
       `)
       .single();
 
@@ -658,8 +638,7 @@ export class RestaurantService {
       branchId: counter.branch_id,
       branch: {
         id: counter.branch.id,
-        nameEn: counter.branch.name_en,
-        nameAr: counter.branch.name_ar,
+        name: counter.branch.name,
         code: counter.branch.code,
       },
       name: counter.name,
@@ -727,7 +706,7 @@ export class RestaurantService {
       .eq('id', counterId)
       .select(`
         *,
-        branch:branches!counters_branch_id_fkey(id, name_en, name_ar, code)
+        branch:branches!counters_branch_id_fkey(id, name, code)
       `)
       .single();
 
@@ -743,8 +722,7 @@ export class RestaurantService {
       branchId: counter.branch_id,
       branch: {
         id: counter.branch.id,
-        nameEn: counter.branch.name_en,
-        nameAr: counter.branch.name_ar,
+        name: counter.branch.name,
         code: counter.branch.code,
       },
       name: counter.name,
@@ -803,7 +781,7 @@ export class RestaurantService {
       .from('tables')
       .select(`
         *,
-        branch:branches!tables_branch_id_fkey(id, name_en, name_ar, code)
+        branch:branches!tables_branch_id_fkey(id, name, code)
       `)
       .is('deleted_at', null)
       .order('created_at', { ascending: true });
@@ -858,7 +836,7 @@ export class RestaurantService {
       .from('tables')
       .select(`
         *,
-        branch:branches!tables_branch_id_fkey(id, tenant_id, name_en, name_ar, code)
+        branch:branches!tables_branch_id_fkey(id, tenant_id, name, code)
       `)
       .eq('id', tableId)
       .is('deleted_at', null)
@@ -878,8 +856,7 @@ export class RestaurantService {
       branchId: table.branch_id,
       branch: {
         id: table.branch.id,
-        nameEn: table.branch.name_en,
-        nameAr: table.branch.name_ar,
+        name: table.branch.name,
         code: table.branch.code,
       },
       tableNumber: table.table_number,
@@ -935,7 +912,7 @@ export class RestaurantService {
       })
       .select(`
         *,
-        branch:branches!tables_branch_id_fkey(id, name_en, name_ar, code)
+        branch:branches!tables_branch_id_fkey(id, name, code)
       `)
       .single();
 
@@ -951,8 +928,7 @@ export class RestaurantService {
       branchId: table.branch_id,
       branch: {
         id: table.branch.id,
-        nameEn: table.branch.name_en,
-        nameAr: table.branch.name_ar,
+        name: table.branch.name,
         code: table.branch.code,
       },
       tableNumber: table.table_number,
@@ -1024,7 +1000,7 @@ export class RestaurantService {
       .eq('id', tableId)
       .select(`
         *,
-        branch:branches!tables_branch_id_fkey(id, name_en, name_ar, code)
+        branch:branches!tables_branch_id_fkey(id, name, code)
       `)
       .single();
 
@@ -1040,8 +1016,7 @@ export class RestaurantService {
       branchId: table.branch_id,
       branch: {
         id: table.branch.id,
-        nameEn: table.branch.name_en,
-        nameAr: table.branch.name_ar,
+        name: table.branch.name,
         code: table.branch.code,
       },
       tableNumber: table.table_number,
