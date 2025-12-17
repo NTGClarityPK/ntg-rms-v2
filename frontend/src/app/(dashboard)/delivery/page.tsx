@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Container,
-  Tabs,
+  Chip,
   TextInput,
   Select,
   Button,
@@ -62,8 +61,6 @@ import { useSuccessColor } from '@/lib/hooks/use-theme-colors';
 
 dayjs.extend(relativeTime);
 
-type DeliveryTab = 'all' | 'pending' | 'assigned' | 'out_for_delivery' | 'delivered' | 'cancelled';
-
 export default function DeliveryPage() {
   const { language } = useLanguageStore();
   const { formatDateTime } = useDateFormat();
@@ -71,7 +68,7 @@ export default function DeliveryPage() {
   const errorColor = useThemeColor();
   const successColor = useSuccessColor();
   const infoColor = getInfoColor();
-  const [activeTab, setActiveTab] = useState<DeliveryTab>('all');
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [deliveries, setDeliveries] = useState<DeliveryOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -114,9 +111,8 @@ export default function DeliveryPage() {
       setLoading(true);
     }
     try {
-      const status = activeTab === 'all' ? undefined : (activeTab as DeliveryStatus);
+      // Load all deliveries, filter client-side for multi-select
       const data = await deliveryApi.getDeliveryOrders({
-        status,
         branchId: selectedBranch || undefined,
         deliveryPersonId: selectedDeliveryPerson || undefined,
       });
@@ -134,7 +130,7 @@ export default function DeliveryPage() {
         setLoading(false);
       }
     }
-  }, [activeTab, selectedBranch, selectedDeliveryPerson, language]);
+  }, [selectedBranch, selectedDeliveryPerson, language]);
 
   useEffect(() => {
     loadBranches();
@@ -228,8 +224,8 @@ export default function DeliveryPage() {
   };
 
   const filteredDeliveries = deliveries.filter((delivery) => {
-    // Apply tab filter
-    if (activeTab !== 'all' && delivery.status !== activeTab) {
+    // Apply status filter (multi-select)
+    if (selectedStatuses.length > 0 && !selectedStatuses.includes(delivery.status)) {
       return false;
     }
 
@@ -246,27 +242,30 @@ export default function DeliveryPage() {
   });
 
   return (
-    <Container size="xl" py="md">
-      <Stack gap="md">
-        {/* Header */}
-        <Group justify="space-between" align="center">
-          <Title order={1}>
+    <>
+      <div className="page-title-bar">
+        <Group justify="space-between" align="center" style={{ width: '100%', height: '100%', paddingRight: 'var(--mantine-spacing-md)' }}>
+          <Title order={1} style={{ margin: 0, textAlign: 'left' }}>
             {t('delivery.title' as any, language) || 'Delivery Management'}
           </Title>
-          <Group>
-            <Button
-              leftSection={<IconRefresh size={16} />}
-              variant="light"
-              onClick={() => loadDeliveries(false)}
-              loading={loading}
-            >
-              {t('common.refresh' as any, language)}
-            </Button>
-          </Group>
+          <ActionIcon
+            variant="light"
+            size="lg"
+            onClick={() => loadDeliveries(false)}
+            loading={loading}
+            title={t('common.refresh' as any, language)}
+          >
+            <IconRefresh size={18} />
+          </ActionIcon>
         </Group>
+      </div>
 
-        {/* Filters */}
-        <Paper p="md" withBorder>
+      <div className="page-sub-title-bar"></div>
+
+      <div style={{ marginTop: '60px', paddingLeft: 'var(--mantine-spacing-md)', paddingRight: 'var(--mantine-spacing-md)', paddingTop: 'var(--mantine-spacing-sm)', paddingBottom: 'var(--mantine-spacing-xl)' }}>
+        <Stack gap="md">
+          {/* Filters */}
+          <Paper p="md" withBorder>
           <Grid>
             <Grid.Col span={{ base: 12, sm: 4 }}>
               <TextInput
@@ -300,19 +299,40 @@ export default function DeliveryPage() {
           </Grid>
         </Paper>
 
-        {/* Tabs */}
-        <Tabs value={activeTab} onChange={(value) => setActiveTab(value as DeliveryTab)}>
-          <Tabs.List>
-            <Tabs.Tab value="all">{t('delivery.allDeliveries' as any, language) || 'All Deliveries'}</Tabs.Tab>
-            <Tabs.Tab value="pending">{t('delivery.pending' as any, language) || 'Pending'}</Tabs.Tab>
-            <Tabs.Tab value="assigned">{t('delivery.assigned' as any, language) || 'Assigned'}</Tabs.Tab>
-            <Tabs.Tab value="out_for_delivery">{t('delivery.outForDelivery' as any, language) || 'Out for Delivery'}</Tabs.Tab>
-            <Tabs.Tab value="delivered">{t('delivery.delivered' as any, language) || 'Delivered'}</Tabs.Tab>
-            <Tabs.Tab value="cancelled">{t('delivery.cancelled' as any, language) || 'Cancelled'}</Tabs.Tab>
-          </Tabs.List>
+        {/* Status Filter Chips */}
+        <Paper p="sm" withBorder>
+          <Group gap="xs" wrap="wrap" className="filter-chip-group">
+            <Chip
+              checked={selectedStatuses.length === 0}
+              onChange={() => setSelectedStatuses([])}
+              variant="filled"
+            >
+              {t('delivery.allDeliveries' as any, language) || 'All Deliveries'}
+            </Chip>
+            <Chip.Group multiple value={selectedStatuses} onChange={setSelectedStatuses}>
+              <Group gap="xs" wrap="wrap">
+                <Chip value="pending" variant="filled">
+                  {t('delivery.pending' as any, language) || 'Pending'}
+                </Chip>
+                <Chip value="assigned" variant="filled">
+                  {t('delivery.assigned' as any, language) || 'Assigned'}
+                </Chip>
+                <Chip value="out_for_delivery" variant="filled">
+                  {t('delivery.outForDelivery' as any, language) || 'Out for Delivery'}
+                </Chip>
+                <Chip value="delivered" variant="filled">
+                  {t('delivery.delivered' as any, language) || 'Delivered'}
+                </Chip>
+                <Chip value="cancelled" variant="filled">
+                  {t('delivery.cancelled' as any, language) || 'Cancelled'}
+                </Chip>
+              </Group>
+            </Chip.Group>
+          </Group>
+        </Paper>
 
-          {/* Deliveries List */}
-          <Box mt="md">
+        {/* Deliveries List */}
+        <Box>
             {loading ? (
               <Stack gap="md">
                 {[1, 2].map((i) => (
@@ -510,8 +530,8 @@ export default function DeliveryPage() {
               </Stack>
             )}
           </Box>
-        </Tabs>
-      </Stack>
+        </Stack>
+      </div>
 
       {/* Assign Delivery Modal */}
       <Modal
@@ -698,6 +718,6 @@ export default function DeliveryPage() {
           </Stack>
         )}
       </Modal>
-    </Container>
+    </>
   );
 }

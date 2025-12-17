@@ -88,7 +88,7 @@ export function generateThemeColors(primaryColor: string, isDark: boolean = fals
     colorMedium: isDark ? '#2B2424' : '#EBE7E7',
     colorDark: isDark ? '#3B2F2F' : '#D6CCCC',
     colorDarkHover: isDark ? '#4B3B3B' : '#CCBFBF',
-    colorCard: isDark ? '#241F1F' : '#FFFFFF',
+    colorCard: isDark ? '#241F1F#' : '#FFFFFF',
     colorTextDark: isDark ? '#E6D9D9' : '#4A4342',
     colorTextMedium: isDark ? '#C6B9B9' : '#6B6059',
     colorTextLight: isDark ? '#A69999' : '#8C7E77',

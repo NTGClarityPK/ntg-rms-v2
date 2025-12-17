@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useForm } from '@mantine/form';
 import {
-  Container,
   Title,
   Paper,
   Stack,
@@ -449,20 +448,34 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <Container size="xl">
-        <Stack gap="md">
-          <Skeleton height={40} width="30%" />
-          <Skeleton height={400} />
-        </Stack>
-      </Container>
+      <>
+        <div className="page-title-bar">
+          <Title order={1} style={{ margin: 0, textAlign: 'left' }}>
+            {t('settings.title' as any, language) || 'Settings'}
+          </Title>
+        </div>
+        <div className="page-sub-title-bar"></div>
+        <div style={{ marginTop: '60px', paddingLeft: 'var(--mantine-spacing-md)', paddingRight: 'var(--mantine-spacing-md)', paddingTop: 'var(--mantine-spacing-sm)', paddingBottom: 'var(--mantine-spacing-xl)' }}>
+          <Stack gap="md">
+            <Skeleton height={40} width="30%" />
+            <Skeleton height={400} />
+          </Stack>
+        </div>
+      </>
     );
   }
 
   return (
-    <Container size="xl">
-      <Stack gap="md">
-        <Title order={1}>{t('settings.title' as any, language) || 'Settings'}</Title>
+    <>
+      <div className="page-title-bar">
+        <Title order={1} style={{ margin: 0, textAlign: 'left' }}>
+          {t('settings.title' as any, language) || 'Settings'}
+        </Title>
+      </div>
 
+      <div className="page-sub-title-bar"></div>
+
+      <div style={{ marginTop: '60px', paddingLeft: 'var(--mantine-spacing-md)', paddingRight: 'var(--mantine-spacing-md)', paddingTop: 'var(--mantine-spacing-sm)', paddingBottom: 'var(--mantine-spacing-xl)' }}>
         <Tabs value={activeTab} onChange={setActiveTab}>
           <Tabs.List>
             <Tabs.Tab value="general" leftSection={<IconSettings size={16} />}>
@@ -481,7 +494,7 @@ export default function SettingsPage() {
           
           </Tabs.List>
 
-          <Tabs.Panel value="general" pt="md">
+          <Tabs.Panel value="general" pt="md" px="md" pb="md">
             <Paper p="md" withBorder>
               <Stack gap="md">
                 <Title order={3}>{t('settings.general' as any, language) || 'General Settings'}</Title>
@@ -573,7 +586,7 @@ export default function SettingsPage() {
             </Paper>
           </Tabs.Panel>
 
-          <Tabs.Panel value="invoice" pt="md">
+          <Tabs.Panel value="invoice" pt="md" px="md" pb="md">
             <Paper p="md" withBorder>
               <Stack gap="md">
                 <Title order={3}>{t('settings.invoice' as any, language) || 'Invoice Settings'}</Title>
@@ -630,7 +643,7 @@ export default function SettingsPage() {
             </Paper>
           </Tabs.Panel>
 
-          <Tabs.Panel value="payment" pt="md">
+          <Tabs.Panel value="payment" pt="md" px="md" pb="md">
             <Paper p="md" withBorder>
               <Stack gap="md">
                 <Title order={3}>{t('settings.paymentMethods' as any, language) || 'Payment Methods'}</Title>
@@ -669,7 +682,7 @@ export default function SettingsPage() {
 
       
 
-          <Tabs.Panel value="tax" pt="md">
+          <Tabs.Panel value="tax" pt="md" px="md" pb="md">
             <Stack gap="md">
               {/* Enable Tax System Toggle */}
               <Paper p="md" withBorder>
@@ -862,7 +875,7 @@ export default function SettingsPage() {
 
           
         </Tabs>
-      </Stack>
-    </Container>
+      </div>
+    </>
   );
 }

@@ -196,12 +196,12 @@ export function generateThemeConfig(
         borderColor: themeColors.border,
         textColor: themeColors.colorTextMedium,
       },
-      tabs: {
+      tabs: { //controls tabs and also the filter buttons in select date range in Reports page
         backgroundColor: themeColors.colorMedium,
         borderColor: themeColors.border,
         textColor: themeColors.colorTextMedium,
-        selectedTabFontColor: themeColors.colorTextDark, // Selected tab font color - customize this
-        selectedTabBackgroundColor: themeColors.colorDark, // Selected tab background
+        selectedTabFontColor: themeColors.colorCard, // Selected tab font color - customize this
+        selectedTabBackgroundColor: themeColors.primary, // Selected tab background
         hoverTabFontColor: themeColors.colorTextDark, // Tab hover font color
         hoverTabBackgroundColor: themeColors.colorDark, // Tab hover background
       },

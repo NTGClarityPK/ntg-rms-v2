@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Container, Tabs, Stack, Skeleton, Paper, Text, Title } from '@mantine/core';
+import { useState } from 'react';
+import { Tabs, Title } from '@mantine/core';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import SalesReportPage from '@/components/reports/SalesReportPage';
@@ -17,12 +17,16 @@ export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState<string | null>('sales');
 
   return (
-    <Container size="xl" py="md">
-      <Stack gap="md">
-        <Title order={1}>
+    <>
+      <div className="page-title-bar">
+        <Title order={1} style={{ margin: 0, textAlign: 'left' }}>
           {t('reports.title' as any, language) || 'Reports & Analytics'}
         </Title>
+      </div>
 
+      <div className="page-sub-title-bar"></div>
+
+      <div style={{ marginTop: '60px', paddingLeft: 'var(--mantine-spacing-md)', paddingRight: 'var(--mantine-spacing-md)', paddingTop: 'var(--mantine-spacing-sm)', paddingBottom: 'var(--mantine-spacing-xl)' }}>
         <Tabs value={activeTab} onChange={setActiveTab} data-active-tab={activeTab}>
           <Tabs.List>
             <Tabs.Tab value="sales">
@@ -48,35 +52,35 @@ export default function ReportsPage() {
             </Tabs.Tab>
           </Tabs.List>
 
-          <Tabs.Panel value="sales" pt="md" data-tab-value="sales">
+          <Tabs.Panel value="sales" pt="md" px="md" pb="md" data-tab-value="sales">
             <SalesReportPage />
           </Tabs.Panel>
 
-          <Tabs.Panel value="orders" pt="md" data-tab-value="orders">
+          <Tabs.Panel value="orders" pt="md" px="md" pb="md" data-tab-value="orders">
             <OrdersReportPage />
           </Tabs.Panel>
 
-          <Tabs.Panel value="customers" pt="md" data-tab-value="customers">
+          <Tabs.Panel value="customers" pt="md" px="md" pb="md" data-tab-value="customers">
             <CustomersReportPage />
           </Tabs.Panel>
 
-          <Tabs.Panel value="inventory" pt="md" data-tab-value="inventory">
+          <Tabs.Panel value="inventory" pt="md" px="md" pb="md" data-tab-value="inventory">
             <InventoryReportPage />
           </Tabs.Panel>
 
-          <Tabs.Panel value="financial" pt="md" data-tab-value="financial">
+          <Tabs.Panel value="financial" pt="md" px="md" pb="md" data-tab-value="financial">
             <FinancialReportPage />
           </Tabs.Panel>
 
-          <Tabs.Panel value="tax" pt="md" data-tab-value="tax">
+          <Tabs.Panel value="tax" pt="md" px="md" pb="md" data-tab-value="tax">
             <TaxReportPage />
           </Tabs.Panel>
 
-          <Tabs.Panel value="top-items" pt="md" data-tab-value="top-items">
+          <Tabs.Panel value="top-items" pt="md" px="md" pb="md" data-tab-value="top-items">
             <TopItemsReportPage />
           </Tabs.Panel>
         </Tabs>
-      </Stack>
-    </Container>
+      </div>
+    </>
   );
 }
