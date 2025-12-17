@@ -437,9 +437,31 @@ export default function OrdersPage() {
   return (
     <>
       <div className="page-title-bar">
-        <Title order={1} style={{ margin: 0, textAlign: 'left' }}>
-          {t('orders.title', language)}
-        </Title>
+        <Group justify="space-between" align="center" style={{ width: '100%', height: '100%', paddingRight: 'var(--mantine-spacing-md)' }}>
+          <Title order={1} style={{ margin: 0, textAlign: 'left' }}>
+            {t('orders.title', language)}
+          </Title>
+          <Group gap="xs">
+            <Button
+              leftSection={<IconChefHat size={16} />}
+              variant="light"
+              component="a"
+              href="/orders/kitchen"
+              size="sm"
+            >
+              {t('orders.kitchenDisplay', language)}
+            </Button>
+            <ActionIcon
+              variant="light"
+              size="lg"
+              onClick={() => loadOrders(false)}
+              loading={loading}
+              title={t('common.refresh' as any, language)}
+            >
+              <IconRefresh size={18} />
+            </ActionIcon>
+          </Group>
+        </Group>
       </div>
 
       <div className="page-sub-title-bar"></div>
@@ -495,62 +517,38 @@ export default function OrdersPage() {
           </Grid>
         </Paper>
 
-        {/* Status Filter Chips + Actions */}
+        {/* Status Filter Chips */}
         <Paper p="sm" withBorder>
-          <Group justify="space-between" align="center" wrap="wrap" gap="sm">
-            <Group gap="xs" wrap="wrap" className="filter-chip-group">
-              <Chip
-                checked={selectedStatuses.length === 0}
-                onChange={() => setSelectedStatuses([])}
-                variant="filled"
-              >
-                {t('orders.allOrders', language)}
-              </Chip>
-              <Chip.Group multiple value={selectedStatuses} onChange={setSelectedStatuses}>
-                <Group gap="xs" wrap="wrap">
-                  <Chip value="pending" variant="filled">
-                    {t('orders.pending', language)}
-                  </Chip>
-                  <Chip value="preparing" variant="filled">
-                    {t('orders.preparing', language)}
-                  </Chip>
-                  <Chip value="ready" variant="filled">
-                    {t('orders.ready', language)}
-                  </Chip>
-                  <Chip value="served" variant="filled">
-                    {t('orders.served', language)}
-                  </Chip>
-                  <Chip value="completed" variant="filled">
-                    {t('orders.completed', language)}
-                  </Chip>
-                  <Chip value="cancelled" variant="filled">
-                    {t('orders.cancelled', language)}
-                  </Chip>
-                </Group>
-              </Chip.Group>
-            </Group>
-            
-            {/* Action buttons - right side */}
-            <Group gap="xs">
-              <Button
-                leftSection={<IconChefHat size={16} />}
-                variant="light"
-                component="a"
-                href="/orders/kitchen"
-                size="sm"
-              >
-                {t('orders.kitchenDisplay', language)}
-              </Button>
-              <ActionIcon
-                variant="light"
-                size="lg"
-                onClick={() => loadOrders(false)}
-                loading={loading}
-                title={t('common.refresh' as any, language)}
-              >
-                <IconRefresh size={18} />
-              </ActionIcon>
-            </Group>
+          <Group gap="xs" wrap="wrap" className="filter-chip-group">
+            <Chip
+              checked={selectedStatuses.length === 0}
+              onChange={() => setSelectedStatuses([])}
+              variant="filled"
+            >
+              {t('orders.allOrders', language)}
+            </Chip>
+            <Chip.Group multiple value={selectedStatuses} onChange={setSelectedStatuses}>
+              <Group gap="xs" wrap="wrap">
+                <Chip value="pending" variant="filled">
+                  {t('orders.pending', language)}
+                </Chip>
+                <Chip value="preparing" variant="filled">
+                  {t('orders.preparing', language)}
+                </Chip>
+                <Chip value="ready" variant="filled">
+                  {t('orders.ready', language)}
+                </Chip>
+                <Chip value="served" variant="filled">
+                  {t('orders.served', language)}
+                </Chip>
+                <Chip value="completed" variant="filled">
+                  {t('orders.completed', language)}
+                </Chip>
+                <Chip value="cancelled" variant="filled">
+                  {t('orders.cancelled', language)}
+                </Chip>
+              </Group>
+            </Chip.Group>
           </Group>
         </Paper>
 

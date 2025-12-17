@@ -60,7 +60,11 @@ const EMPLOYMENT_TYPES = [
   { value: 'contract', label: 'Contract' },
 ];
 
-export function EmployeesPage() {
+interface EmployeesPageProps {
+  addTrigger?: number;
+}
+
+export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
   const notificationColors = useNotificationColors();
@@ -188,6 +192,14 @@ export function EmployeesPage() {
   useEffect(() => {
     loadEmployees();
   }, [loadEmployees]);
+
+  // Trigger add modal from parent
+  useEffect(() => {
+    if (addTrigger && addTrigger > 0) {
+      handleOpenModal();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addTrigger]);
 
   const handleOpenModal = (employee?: Employee) => {
     if (employee) {
@@ -509,12 +521,6 @@ export function EmployeesPage() {
           </Grid.Col>
         </Grid>
       </Paper>
-
-      <Group justify="flex-end">
-        <Button leftSection={<IconPlus size={16} />} onClick={() => handleOpenModal()}>
-          {t('employees.addEmployee', language)}
-        </Button>
-      </Group>
 
       <Paper withBorder>
         <Table.ScrollContainer minWidth={800}>

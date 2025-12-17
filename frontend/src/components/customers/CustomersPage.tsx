@@ -53,7 +53,11 @@ const LOYALTY_TIERS = {
   platinum: { label: 'Platinum', color: 'blue', discount: 15 },
 };
 
-export function CustomersPage() {
+interface CustomersPageProps {
+  addTrigger?: number;
+}
+
+export function CustomersPage({ addTrigger }: CustomersPageProps) {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
   const notificationColors = useNotificationColors();
@@ -159,6 +163,14 @@ export function CustomersPage() {
   useEffect(() => {
     loadCustomers();
   }, [loadCustomers]);
+
+  // Trigger add modal from parent
+  useEffect(() => {
+    if (addTrigger && addTrigger > 0) {
+      handleOpenModal();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addTrigger]);
 
   const handleOpenModal = async (customer?: Customer) => {
     if (customer) {
@@ -440,12 +452,6 @@ export function CustomersPage() {
           onChange={(e) => setSearchQuery(e.currentTarget.value)}
         />
       </Paper>
-
-      <Group justify="flex-end">
-        <Button leftSection={<IconPlus size={16} />} onClick={() => handleOpenModal()}>
-          {t('customers.addCustomer', language)}
-        </Button>
-      </Group>
 
       <Paper withBorder>
         <Table.ScrollContainer minWidth={800}>
