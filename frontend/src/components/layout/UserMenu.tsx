@@ -25,7 +25,7 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
   const router = useRouter();
 
   return (
-    <Menu shadow="md" width={200} position="bottom-end">
+    <Menu shadow="md" width={200} position="bottom-end" zIndex={2000}>
       <Menu.Target>
         <Button
           variant="subtle"
