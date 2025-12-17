@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useForm } from '@mantine/form';
 import {
-  Container,
   Title,
   Button,
   Stack,
@@ -813,9 +812,8 @@ export function StockManagementPage() {
   };
 
   return (
-    <Container size="xl" py="xl">
-      <Group justify="space-between" mb="xl">
-        <Title order={2}>{t('inventory.stockManagement', language)}</Title>
+    <Stack gap="md">
+      <Group justify="flex-end">
         <Group gap="xs">
           <Button
             leftSection={<IconPlus size={16} />}
@@ -1274,7 +1272,7 @@ export function StockManagementPage() {
           </Stack>
         </form>
       </Modal>
-    </Container>
+    </Stack>
   );
 }
 

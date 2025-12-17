@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useForm } from '@mantine/form';
 import {
-  Container,
   Title,
   Button,
   Stack,
@@ -456,32 +455,25 @@ export function EmployeesPage() {
 
   if (loading && employees.length === 0) {
     return (
-      <Container size="xl" py="xl">
-        <Skeleton height={36} width={250} mb="xl" />
+      <Stack gap="md">
+        <Skeleton height={36} width={250} />
         <Stack gap="md">
           <Skeleton height={40} width="100%" />
           <Skeleton height={300} width="100%" />
         </Stack>
-      </Container>
+      </Stack>
     );
   }
 
   return (
-    <Container size="xl" py="xl">
-      <Group justify="space-between" mb="xl">
-        <Title order={2}>{t('employees.title', language)}</Title>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => handleOpenModal()}>
-          {t('employees.addEmployee', language)}
-        </Button>
-      </Group>
-
+    <Stack gap="md">
       {error && (
         <Alert icon={<IconAlertCircle size={16} />} color={errorColor} mb="md">
           {error}
         </Alert>
       )}
 
-      <Paper withBorder p="md" mb="md">
+      <Paper withBorder p="md">
         <Grid>
           <Grid.Col span={{ base: 12, md: 4 }}>
             <TextInput
@@ -517,6 +509,12 @@ export function EmployeesPage() {
           </Grid.Col>
         </Grid>
       </Paper>
+
+      <Group justify="flex-end">
+        <Button leftSection={<IconPlus size={16} />} onClick={() => handleOpenModal()}>
+          {t('employees.addEmployee', language)}
+        </Button>
+      </Group>
 
       <Paper withBorder>
         <Table.ScrollContainer minWidth={800}>
@@ -706,7 +704,7 @@ export function EmployeesPage() {
           </Stack>
         </form>
       </Modal>
-    </Container>
+    </Stack>
   );
 }
 

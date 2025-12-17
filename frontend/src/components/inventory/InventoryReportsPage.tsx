@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Container,
   Title,
   Stack,
   Table,
@@ -324,8 +323,7 @@ export function InventoryReportsPage() {
   };
 
   return (
-    <Container size="xl" py="xl">
-      <Title order={2} mb="xl">{t('inventory.reports', language)}</Title>
+    <Stack gap="md">
 
       {/* Summary Cards */}
       <Grid mb="xl">
@@ -606,7 +604,7 @@ export function InventoryReportsPage() {
           </Table>
         </Table.ScrollContainer>
       )}
-    </Container>
+    </Stack>
   );
 }
 

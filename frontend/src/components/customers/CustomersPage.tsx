@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useForm } from '@mantine/form';
 import {
-  Container,
   Title,
   Button,
   Stack,
@@ -415,32 +414,25 @@ export function CustomersPage() {
 
   if (loading && customers.length === 0) {
     return (
-      <Container size="xl" py="xl">
-        <Skeleton height={36} width={250} mb="xl" />
+      <Stack gap="md">
+        <Skeleton height={36} width={250} />
         <Stack gap="md">
           <Skeleton height={40} width="100%" />
           <Skeleton height={300} width="100%" />
         </Stack>
-      </Container>
+      </Stack>
     );
   }
 
   return (
-    <Container size="xl" py="xl">
-      <Group justify="space-between" mb="xl">
-        <Title order={2}>{t('customers.title', language)}</Title>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => handleOpenModal()}>
-          {t('customers.addCustomer', language)}
-        </Button>
-      </Group>
-
+    <Stack gap="md">
       {error && (
         <Alert icon={<IconAlertCircle size={16} />} color={errorColor} mb="md">
           {error}
         </Alert>
       )}
 
-      <Paper withBorder p="md" mb="md">
+      <Paper withBorder p="md">
         <TextInput
           placeholder={t('customers.searchPlaceholder', language)}
           leftSection={<IconSearch size={16} />}
@@ -448,6 +440,12 @@ export function CustomersPage() {
           onChange={(e) => setSearchQuery(e.currentTarget.value)}
         />
       </Paper>
+
+      <Group justify="flex-end">
+        <Button leftSection={<IconPlus size={16} />} onClick={() => handleOpenModal()}>
+          {t('customers.addCustomer', language)}
+        </Button>
+      </Group>
 
       <Paper withBorder>
         <Table.ScrollContainer minWidth={800}>
@@ -940,7 +938,7 @@ export function CustomersPage() {
           </Tabs>
         )}
       </Modal>
-    </Container>
+    </Stack>
   );
 }
 

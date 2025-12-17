@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useForm } from '@mantine/form';
 import {
-  Container,
   Title,
   Button,
   Stack,
@@ -495,9 +494,8 @@ export function RecipesPage() {
   };
 
   return (
-    <Container size="xl" py="xl">
-      <Group justify="space-between" mb="xl">
-        <Title order={2}>{t('inventory.recipes', language)}</Title>
+    <Stack gap="md">
+      <Group justify="flex-end">
         <Button
           leftSection={<IconLink size={16} />}
           onClick={() => handleOpenModal()}
@@ -732,7 +730,7 @@ export function RecipesPage() {
           </Stack>
         </form>
       </Modal>
-    </Container>
+    </Stack>
   );
 }
 
