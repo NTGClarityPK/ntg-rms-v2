@@ -307,4 +307,16 @@ export class MenuController {
   ) {
     return this.menuService.activateMenu(user.tenantId, menuType, body.isActive);
   }
+
+  @Post('menus')
+  @ApiOperation({ summary: 'Create a new menu type' })
+  createMenu(@CurrentUser() user: any, @Body() createDto: CreateMenuDto) {
+    return this.menuService.createMenu(user.tenantId, createDto);
+  }
+
+  @Delete('menus/:menuType')
+  @ApiOperation({ summary: 'Delete a menu type' })
+  deleteMenu(@CurrentUser() user: any, @Param('menuType') menuType: string) {
+    return this.menuService.deleteMenu(user.tenantId, menuType);
+  }
 }

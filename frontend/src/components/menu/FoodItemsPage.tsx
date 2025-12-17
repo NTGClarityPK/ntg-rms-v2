@@ -58,6 +58,7 @@ export function FoodItemsPage() {
   const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [addOnGroups, setAddOnGroups] = useState<any[]>([]);
+  const [menus, setMenus] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [opened, setOpened] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
@@ -104,6 +105,10 @@ export function FoodItemsPage() {
       // Load add-on groups (only active ones for selection)
       const groups = await menuApi.getAddOnGroups();
       setAddOnGroups(groups.filter((group) => group.isActive));
+
+      // Load menus for menu type selection
+      const menuList = await menuApi.getMenus();
+      setMenus(menuList);
 
       // Load food items from IndexedDB first
       const localItems = await db.foodItems
@@ -286,11 +291,36 @@ export function FoodItemsPage() {
       loadData();
     });
     
+    // Listen for menu updates to refresh menu list
+    const unsubscribe3 = onMenuDataUpdate('menus-updated', () => {
+      loadData();
+    });
+    
     return () => {
       unsubscribe1();
       unsubscribe2();
+      unsubscribe3();
     };
   }, [loadData]);
+
+  // Helper function to get menu name from menu type
+  const getMenuName = (menuType: string): string => {
+    const menu = menus.find((m) => m.menuType === menuType);
+    if (menu) {
+      return menu.name || menu.menuType;
+    }
+    
+    // Fallback to translations for default menu types
+    const menuTypeLabels: Record<string, string> = {
+      all_day: t('menu.allDay', language),
+      breakfast: t('menu.breakfast', language),
+      lunch: t('menu.lunch', language),
+      dinner: t('menu.dinner', language),
+      kids_special: t('menu.kidsSpecial', language),
+    };
+    
+    return menuTypeLabels[menuType] || menuType;
+  };
 
   const handleOpenModal = async (item?: FoodItem) => {
     // Ensure add-on groups are loaded
@@ -300,6 +330,16 @@ export function FoodItemsPage() {
         setAddOnGroups(groups.filter((group) => group.isActive));
       } catch (err) {
         console.error('Failed to load add-on groups:', err);
+      }
+    }
+
+    // Ensure menus are loaded
+    if (menus.length === 0) {
+      try {
+        const menuList = await menuApi.getMenus();
+        setMenus(menuList);
+      } catch (err) {
+        console.error('Failed to load menus:', err);
       }
     }
 
@@ -873,24 +913,14 @@ export function FoodItemsPage() {
                                 size="sm"
                                 style={{ color: primaryColor }}
                               >
-                                {menuType === 'all_day' ? t('menu.allDay', language) :
-                                 menuType === 'breakfast' ? t('menu.breakfast', language) :
-                                 menuType === 'lunch' ? t('menu.lunch', language) :
-                                 menuType === 'dinner' ? t('menu.dinner', language) :
-                                 menuType === 'kids_special' ? t('menu.kidsSpecial', language) :
-                                 menuType}
+                                {getMenuName(menuType)}
                               </Badge>
                             ))}
                           </Group>
                         ) : item.menuType ? (
                           <Badge variant="light" size="sm" style={{ color: primaryColor }}>
-                      {item.menuType === 'all_day' ? t('menu.allDay', language) :
-                       item.menuType === 'breakfast' ? t('menu.breakfast', language) :
-                       item.menuType === 'lunch' ? t('menu.lunch', language) :
-                       item.menuType === 'dinner' ? t('menu.dinner', language) :
-                       item.menuType === 'kids_special' ? t('menu.kidsSpecial', language) :
-                       item.menuType}
-                    </Badge>
+                            {getMenuName(item.menuType)}
+                          </Badge>
                         ) : (
                           <Text c="dimmed" size="sm">-</Text>
                         )}
@@ -1033,14 +1063,12 @@ export function FoodItemsPage() {
                     <MultiSelect
                       label={t('menu.menuTypes', language)}
                       placeholder={t('menu.selectMenuTypes', language)}
-                      data={[
-                        { value: 'all_day', label: t('menu.allDay', language) },
-                        { value: 'breakfast', label: t('menu.breakfast', language) },
-                        { value: 'lunch', label: t('menu.lunch', language) },
-                        { value: 'dinner', label: t('menu.dinner', language) },
-                        { value: 'kids_special', label: t('menu.kidsSpecial', language) },
-                      ]}
+                      data={menus.map((menu) => ({
+                        value: menu.menuType,
+                        label: menu.name || menu.menuType,
+                      }))}
                       {...form.getInputProps('menuTypes')}
+                      searchable
                     />
                   </Grid.Col>
                   <Grid.Col span={{ base: 12, md: 6 }}>

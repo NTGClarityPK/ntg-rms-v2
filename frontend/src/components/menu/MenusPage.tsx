@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useForm } from '@mantine/form';
 import {
   Container,
   Title,
@@ -15,8 +16,12 @@ import {
   Alert,
   MultiSelect,
   Modal,
+  TextInput,
+  ActionIcon,
+  Grid,
 } from '@mantine/core';
-import { IconMenu2, IconAlertCircle, IconCheck } from '@tabler/icons-react';
+import { IconMenu2, IconAlertCircle, IconCheck, IconPlus, IconTrash } from '@tabler/icons-react';
+import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { menuApi, FoodItem } from '@/lib/api/menu';
 import { useLanguageStore } from '@/lib/store/language-store';
@@ -36,9 +41,64 @@ export function MenusPage() {
   const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [assignModalOpened, setAssignModalOpened] = useState(false);
+  const [createModalOpened, setCreateModalOpened] = useState(false);
   const [selectedMenuType, setSelectedMenuType] = useState<string>('');
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  const form = useForm({
+    initialValues: {
+      name: '',
+      foodItemIds: [] as string[],
+      isActive: true,
+    },
+    validate: {
+      name: (value) => {
+        if (!value) return (t('menu.menuName', language) || 'Menu Name') + ' is required';
+        if (value.trim().length < 2) {
+          return 'Menu name must be at least 2 characters';
+        }
+        return null;
+      },
+    },
+  });
+
+  // Generate a unique menu type from the menu name
+  const generateMenuType = (name: string, existingMenus: any[]): string => {
+    // Convert to lowercase, replace spaces and special chars with underscores
+    let baseType = name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s]/g, '') // Remove special characters
+      .replace(/\s+/g, '_') // Replace spaces with underscores
+      .replace(/_+/g, '_') // Replace multiple underscores with single
+      .replace(/^_|_$/g, ''); // Remove leading/trailing underscores
+
+    // If empty after cleaning, use a default
+    if (!baseType) {
+      baseType = 'menu';
+    }
+
+    // Get existing menu types
+    const existingTypes = existingMenus.map((m) => m.menuType);
+    const defaultMenuTypes = ['all_day', 'breakfast', 'lunch', 'dinner', 'kids_special'];
+    const allExistingTypes = [...defaultMenuTypes, ...existingTypes];
+
+    // Check if base type is unique
+    if (!allExistingTypes.includes(baseType)) {
+      return baseType;
+    }
+
+    // If not unique, append a number
+    let counter = 1;
+    let uniqueType = `${baseType}_${counter}`;
+    while (allExistingTypes.includes(uniqueType)) {
+      counter++;
+      uniqueType = `${baseType}_${counter}`;
+    }
+
+    return uniqueType;
+  };
 
   const loadData = useCallback(async () => {
     if (!user?.tenantId) return;
@@ -149,6 +209,84 @@ export function MenusPage() {
     }
   };
 
+  const handleOpenCreateModal = () => {
+    form.reset();
+    setCreateModalOpened(true);
+  };
+
+  const handleCloseCreateModal = () => {
+    setCreateModalOpened(false);
+    form.reset();
+  };
+
+  const handleCreateMenu = async (values: typeof form.values) => {
+    try {
+      // Generate unique menu type from name
+      const menuType = generateMenuType(values.name, menus);
+
+      await menuApi.createMenu({
+        menuType,
+        name: values.name.trim(),
+        foodItemIds: values.foodItemIds.length > 0 ? values.foodItemIds : undefined,
+        isActive: values.isActive,
+      });
+
+      notifications.show({
+        title: t('common.success' as any, language) || 'Success',
+        message: t('menu.saveSuccess', language),
+        color: successColor,
+      });
+
+      handleCloseCreateModal();
+      loadData();
+      notifyMenuDataUpdate('menus-updated');
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || err.message || 'Failed to create menu';
+      notifications.show({
+        title: t('common.error' as any, language) || 'Error',
+        message: errorMsg,
+        color: errorColor,
+      });
+    }
+  };
+
+  const handleDeleteMenu = (menu: any) => {
+    modals.openConfirmModal({
+      title: t('common.delete' as any, language) || 'Delete',
+      children: (
+        <Text size="sm">
+          {t('menu.deleteMenuConfirm', language) || `Are you sure you want to delete the menu "${menu.name}"? This will remove all items from this menu.`}
+        </Text>
+      ),
+      labels: { 
+        confirm: t('common.delete' as any, language) || 'Delete', 
+        cancel: t('common.cancel' as any, language) || 'Cancel' 
+      },
+      confirmProps: { color: errorColor },
+      onConfirm: async () => {
+        try {
+          await menuApi.deleteMenu(menu.menuType);
+          
+          notifications.show({
+            title: t('common.success' as any, language) || 'Success',
+            message: t('menu.deleteSuccess', language),
+            color: successColor,
+          });
+
+          loadData();
+          notifyMenuDataUpdate('menus-updated');
+        } catch (err: any) {
+          const errorMsg = err.response?.data?.message || err.message || 'Failed to delete menu';
+          notifications.show({
+            title: t('common.error' as any, language) || 'Error',
+            message: errorMsg,
+            color: errorColor,
+          });
+        }
+      },
+    });
+  };
+
 
   const menuTypeLabels: Record<string, string> = {
     all_day: t('menu.allDay', language),
@@ -158,11 +296,22 @@ export function MenusPage() {
     kids_special: t('menu.kidsSpecial', language),
   };
 
+  const defaultMenuTypes = ['all_day', 'breakfast', 'lunch', 'dinner', 'kids_special'];
+
   return (
     <Container size="xl" py="xl">
-      <Title order={2} mb="xl">
-        {t('menu.menuManagement', language)}
-      </Title>
+      <Group justify="space-between" mb="xl">
+        <Title order={2}>
+          {t('menu.menuManagement', language)}
+        </Title>
+        <Button
+          leftSection={<IconPlus size={16} />}
+          onClick={handleOpenCreateModal}
+          style={{ backgroundColor: primaryColor }}
+        >
+          {t('menu.createMenu', language) || 'Create Menu'}
+        </Button>
+      </Group>
 
       {error && (
         <Alert icon={<IconAlertCircle size={16} />} color={errorColor} mb="md">
@@ -199,7 +348,7 @@ export function MenusPage() {
               <Group>
                 <IconMenu2 size={24} color={primaryColor} />
                 <div>
-                  <Text fw={500}>{menuTypeLabels[menu.menuType] || menu.menuType}</Text>
+                  <Text fw={500}>{menuTypeLabels[menu.menuType] || menu.name || menu.menuType}</Text>
                   <Text size="sm" c="dimmed">
                     {menu.itemCount} {t('menu.foodItems', language)}
                   </Text>
@@ -221,6 +370,15 @@ export function MenusPage() {
                   onChange={(e) => handleToggleMenu(menu.menuType, e.currentTarget.checked)}
                   label={menu.isActive ? t('menu.active', language) : t('menu.inactive', language)}
                 />
+                {!defaultMenuTypes.includes(menu.menuType) && (
+                  <ActionIcon
+                    variant="light"
+                    color={errorColor}
+                    onClick={() => handleDeleteMenu(menu)}
+                  >
+                    <IconTrash size={16} />
+                  </ActionIcon>
+                )}
               </Group>
             </Group>
           </Paper>
@@ -259,6 +417,50 @@ export function MenusPage() {
             </Button>
           </Group>
         </Stack>
+      </Modal>
+
+      <Modal
+        opened={createModalOpened}
+        onClose={handleCloseCreateModal}
+        title={t('menu.createMenu', language) || 'Create Menu'}
+        size="lg"
+      >
+        <form onSubmit={form.onSubmit(handleCreateMenu)}>
+          <Stack gap="md">
+            <TextInput
+              label={t('menu.menuName', language) || 'Menu Name'}
+              placeholder="e.g., Happy Hour, Brunch Menu, Kids Special"
+              description="Enter a name for your menu. A unique identifier will be generated automatically."
+              required
+              {...form.getInputProps('name')}
+            />
+            <MultiSelect
+              label={t('menu.foodItems', language)}
+              description={t('menu.selectFoodItemsForMenu', language) || 'Select food items to add to this menu (optional)'}
+              data={foodItems.map((item) => ({
+                value: item.id,
+                label: item.name || '',
+              }))}
+              {...form.getInputProps('foodItemIds')}
+              searchable
+              clearable
+            />
+            <Switch
+              label={t('menu.active', language)}
+              {...form.getInputProps('isActive', { type: 'checkbox' })}
+              color={form.values.isActive ? successColor : 'gray'}
+            />
+
+            <Group justify="flex-end" mt="md">
+              <Button variant="subtle" onClick={handleCloseCreateModal}>
+                {t('common.cancel' as any, language) || 'Cancel'}
+              </Button>
+              <Button type="submit" style={{ backgroundColor: primaryColor }}>
+                {t('common.create' as any, language) || 'Create'}
+              </Button>
+            </Group>
+          </Stack>
+        </form>
       </Modal>
     </Container>
   );

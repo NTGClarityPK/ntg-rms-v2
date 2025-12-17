@@ -225,6 +225,15 @@ export const menuApi = {
     const { data } = await apiClient.put(`/menu/menus/${menuType}/activate`, { isActive });
     return data;
   },
+
+  createMenu: async (menuData: { menuType: string; name?: string; foodItemIds?: string[]; isActive?: boolean }): Promise<any> => {
+    const { data } = await apiClient.post('/menu/menus', menuData);
+    return data;
+  },
+
+  deleteMenu: async (menuType: string): Promise<void> => {
+    await apiClient.delete(`/menu/menus/${menuType}`);
+  },
 };
 
 
