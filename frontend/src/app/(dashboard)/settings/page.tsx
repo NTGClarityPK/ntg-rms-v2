@@ -593,7 +593,7 @@ export default function SettingsPage() {
                 />
                 <Select
                   label={t('settings.invoiceNumberFormat' as any, language) || 'Invoice Number Format'}
-                  data={INVOICE_FORMATS.map(f => ({ value: f.value, label: `${f.label} (${f.example})` }))}
+                  data={INVOICE_FORMATS.map(f => ({ value: f.value, label: `${f.label} (Example: ${ f.example})` }))}
                   searchable
                   {...invoiceForm.getInputProps('invoiceNumberFormat')}
                 />
