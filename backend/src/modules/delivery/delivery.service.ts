@@ -54,29 +54,25 @@ export class DeliveryService {
           branch_id,
           customer:customers(
             id,
-            name_en,
-            name_ar,
+            name,
             phone,
             email
           ),
           branch:branches(
             id,
-            name_en,
-            name_ar,
+            name,
             code
           )
         ),
         delivery_person:users!deliveries_delivery_person_id_fkey(
           id,
-          name_en,
-          name_ar,
+          name,
           phone,
           email
         ),
         customer_address:customer_addresses(
           id,
-          address_en,
-          address_ar,
+          address,
           city,
           state,
           country,
@@ -178,8 +174,7 @@ export class DeliveryService {
               customer: delivery.order.customer
                 ? {
                     id: delivery.order.customer.id,
-                    nameEn: delivery.order.customer.name_en,
-                    nameAr: delivery.order.customer.name_ar,
+                    name: delivery.order.customer.name,
                     phone: delivery.order.customer.phone,
                     email: delivery.order.customer.email,
                   }
@@ -187,8 +182,7 @@ export class DeliveryService {
               branch: delivery.order.branch
                 ? {
                     id: delivery.order.branch.id,
-                    nameEn: delivery.order.branch.name_en,
-                    nameAr: delivery.order.branch.name_ar,
+                    name: delivery.order.branch.name,
                     code: delivery.order.branch.code,
                   }
                 : null,
@@ -197,8 +191,7 @@ export class DeliveryService {
         deliveryPerson: delivery.delivery_person
           ? {
               id: delivery.delivery_person.id,
-              nameEn: delivery.delivery_person.name_en,
-              nameAr: delivery.delivery_person.name_ar,
+              name: delivery.delivery_person.name,
               phone: delivery.delivery_person.phone,
               email: delivery.delivery_person.email,
             }
@@ -206,10 +199,9 @@ export class DeliveryService {
         customerAddress: delivery.customer_address
           ? {
               id: delivery.customer_address.id,
-              addressEn: delivery.customer_address.address_en || '',
-              addressAr: delivery.customer_address.address_ar || null,
-              addressLine1: delivery.customer_address.address_en || '', // Keep for backward compatibility
-              addressLine2: delivery.customer_address.address_ar || null, // Keep for backward compatibility
+              address: delivery.customer_address.address || '',
+              addressLine1: delivery.customer_address.address || '', // Keep for backward compatibility
+              addressLine2: null, // Keep for backward compatibility
               city: delivery.customer_address.city || null,
               state: delivery.customer_address.state || null,
               country: delivery.customer_address.country || null,
@@ -271,7 +263,7 @@ export class DeliveryService {
       delivery.delivery_person_id
         ? supabase
             .from('users')
-            .select('id, name_en, name_ar, phone, email')
+            .select('id, name, phone, email')
             .eq('id', delivery.delivery_person_id)
             .single()
         : Promise.resolve({ data: null, error: null }),
@@ -318,8 +310,7 @@ export class DeliveryService {
       deliveryPerson: deliveryPerson.data
         ? {
             id: deliveryPerson.data.id,
-            nameEn: deliveryPerson.data.name_en,
-            nameAr: deliveryPerson.data.name_ar,
+            name: deliveryPerson.data.name,
             phone: deliveryPerson.data.phone,
             email: deliveryPerson.data.email,
           }
@@ -327,10 +318,9 @@ export class DeliveryService {
       customerAddress: customerAddress.data
         ? {
             id: customerAddress.data.id,
-            addressEn: customerAddress.data.address_en || '',
-            addressAr: customerAddress.data.address_ar || null,
-            addressLine1: customerAddress.data.address_en || '', // Keep for backward compatibility
-            addressLine2: customerAddress.data.address_ar || null, // Keep for backward compatibility
+            address: customerAddress.data.address || '',
+            addressLine1: customerAddress.data.address || '', // Keep for backward compatibility
+            addressLine2: null, // Keep for backward compatibility
             city: customerAddress.data.city || null,
             state: customerAddress.data.state || null,
             country: customerAddress.data.country || null,
@@ -358,13 +348,12 @@ export class DeliveryService {
       .select(
         `
         id,
-        name_en,
-        name_ar,
+        name,
         phone,
         email,
         is_active,
         user_branches(
-          branch:branches(id, name_en, name_ar, code)
+          branch:branches(id, name, code)
         )
       `,
       )
@@ -409,16 +398,14 @@ export class DeliveryService {
 
     return filteredPersonnel.map((person: any) => ({
       id: person.id,
-      nameEn: person.name_en,
-      nameAr: person.name_ar,
+      name: person.name,
       phone: person.phone,
       email: person.email,
       isActive: person.is_active,
       activeDeliveriesCount: deliveryCounts.get(person.id) || 0,
       branches: (person.user_branches || []).map((ub: any) => ({
         id: ub.branch?.id,
-        nameEn: ub.branch?.name_en,
-        nameAr: ub.branch?.name_ar,
+        name: ub.branch?.name,
         code: ub.branch?.code,
       })),
     }));

@@ -52,7 +52,7 @@ async function createDefaultCoupons() {
     // Get all active tenants
     const { data: tenants, error: tenantsError } = await supabase
       .from('tenants')
-      .select('id, name_en, email')
+      .select('id, name, email')
       .is('deleted_at', null);
 
     if (tenantsError) {
@@ -80,7 +80,7 @@ async function createDefaultCoupons() {
         .maybeSingle();
 
       if (existing) {
-        console.log(`⏭️  Tenant "${tenant.name_en || tenant.email}" - Coupon "5" already exists`);
+        console.log(`⏭️  Tenant "${tenant.name || tenant.email}" - Coupon "5" already exists`);
         skipped++;
         continue;
       }
@@ -99,11 +99,11 @@ async function createDefaultCoupons() {
         });
 
       if (insertError) {
-        console.error(`❌ Failed to create coupon for tenant "${tenant.name_en || tenant.email}":`, insertError.message);
+        console.error(`❌ Failed to create coupon for tenant "${tenant.name || tenant.email}":`, insertError.message);
         continue;
       }
 
-      console.log(`✅ Created coupon "5" for tenant "${tenant.name_en || tenant.email}"`);
+      console.log(`✅ Created coupon "5" for tenant "${tenant.name || tenant.email}"`);
       created++;
     }
 

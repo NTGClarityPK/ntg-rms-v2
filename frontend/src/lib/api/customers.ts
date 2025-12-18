@@ -4,8 +4,7 @@ import { API_ENDPOINTS } from '../constants/api';
 export interface Customer {
   id: string;
   tenantId: string;
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   phone: string;
   email?: string;
   dateOfBirth?: string;
@@ -26,8 +25,7 @@ export interface CustomerAddress {
   id: string;
   customerId: string;
   addressLabel?: string;
-  addressEn: string;
-  addressAr?: string;
+  address: string;
   city?: string;
   state?: string;
   country?: string;
@@ -50,8 +48,7 @@ export interface CustomerOrder {
 }
 
 export interface CreateCustomerDto {
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   phone: string;
   email?: string;
   dateOfBirth?: string;
@@ -59,8 +56,7 @@ export interface CreateCustomerDto {
   notes?: string;
   address?: {
     label?: string;
-    addressEn: string;
-    addressAr?: string;
+    address: string;
     city?: string;
     state?: string;
     country?: string;
@@ -70,8 +66,7 @@ export interface CreateCustomerDto {
 }
 
 export interface UpdateCustomerDto {
-  nameEn?: string;
-  nameAr?: string;
+  name?: string;
   phone?: string;
   email?: string;
   dateOfBirth?: string;
@@ -113,8 +108,7 @@ export const customersApi = {
 
   createCustomerAddress: async (customerId: string, address: {
     label?: string;
-    addressEn: string;
-    addressAr?: string;
+    address: string;
     city?: string;
     state?: string;
     country?: string;

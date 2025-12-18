@@ -5,22 +5,12 @@ export class UpdateCategoryDto {
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
-  nameEn?: string;
+  name?: string;
 
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
-  nameAr?: string;
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  descriptionEn?: string;
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  descriptionAr?: string;
+  description?: string;
 
   @ApiProperty({ required: false })
   @IsString()

@@ -321,8 +321,7 @@ export class OrdersService {
             .from('branches')
             .insert({
               tenant_id: tenantId,
-              name_en: 'Main Branch',
-              name_ar: 'الفرع الرئيسي',
+              name: 'Main Branch',
               code: 'MAIN',
               is_active: true,
             })
@@ -370,8 +369,7 @@ export class OrdersService {
               .from('branches')
               .insert({
                 tenant_id: tenantId,
-                name_en: 'Main Branch',
-                name_ar: 'الفرع الرئيسي',
+                name: 'Main Branch',
                 code: 'MAIN',
                 is_active: true,
               })
@@ -711,10 +709,9 @@ export class OrdersService {
         try {
           // Build address notes for walk-in customers (store as JSON for language-based display)
           let deliveryNotes: string | null = null;
-          if (!createDto.customerAddressId && (createDto.deliveryAddressEn || createDto.deliveryAddressAr)) {
+          if (!createDto.customerAddressId && (createDto.deliveryAddress || createDto.deliveryAddress)) {
             const addressData = {
-              addressEn: createDto.deliveryAddressEn || null,
-              addressAr: createDto.deliveryAddressAr || null,
+              address: createDto.deliveryAddress || null,
               city: createDto.deliveryAddressCity || null,
               state: createDto.deliveryAddressState || null,
               country: createDto.deliveryAddressCountry || null,
@@ -867,7 +864,7 @@ export class OrdersService {
       branchIds.length > 0
         ? supabase
             .from('branches')
-            .select('id, name_en, name_ar, code')
+            .select('id, name, code')
             .in('id', branchIds)
         : Promise.resolve({ data: [], error: null }),
       counterIds.length > 0
@@ -885,13 +882,13 @@ export class OrdersService {
       customerIds.length > 0
         ? supabase
             .from('customers')
-            .select('id, name_en, name_ar, phone')
+            .select('id, name, phone')
             .in('id', customerIds)
         : Promise.resolve({ data: [], error: null }),
       cashierIds.length > 0
         ? supabase
             .from('users')
-            .select('id, name_en, name_ar, email')
+            .select('id, name, email')
             .in('id', cashierIds)
         : Promise.resolve({ data: [], error: null }),
     ]);
@@ -943,7 +940,7 @@ export class OrdersService {
         foodItemIds.length > 0
           ? supabase
               .from('food_items')
-              .select('id, name_en, name_ar, image_url')
+              .select('id, name, image_url')
               .in('id', foodItemIds)
           : Promise.resolve({ data: [], error: null }),
         variationIds.length > 0
@@ -980,7 +977,7 @@ export class OrdersService {
         if (addOnIds.length > 0) {
           const { data: addOnDetails } = await supabase
             .from('add_ons')
-            .select('id, name_en, name_ar, price')
+            .select('id, name, price')
             .in('id', addOnIds);
 
           if (addOnDetails) {
@@ -1025,8 +1022,7 @@ export class OrdersService {
             const foodItemData = item.food_item_id ? foodItemMap.get(item.food_item_id) : null;
             const transformedFoodItem = foodItemData ? {
               id: foodItemData.id,
-              nameEn: foodItemData.name_en || null,
-              nameAr: foodItemData.name_ar || null,
+              name: foodItemData.name || null,
               imageUrl: foodItemData.image_url || null,
             } : null;
 
@@ -1042,8 +1038,7 @@ export class OrdersService {
               const addOnData = addOn.add_on_id ? addOnMap.get(addOn.add_on_id) : null;
               const transformedAddOn = addOnData ? {
                 id: addOnData.id,
-                nameEn: addOnData.name_en || null,
-                nameAr: addOnData.name_ar || null,
+                name: addOnData.name || null,
                 price: Number(addOnData.price) || 0,
               } : null;
 
@@ -1147,7 +1142,7 @@ export class OrdersService {
       order.branch_id
         ? supabase
             .from('branches')
-            .select('id, name_en, name_ar, code')
+            .select('id, name, code')
             .eq('id', order.branch_id)
             .maybeSingle()
         : Promise.resolve({ data: null, error: null }),
@@ -1168,14 +1163,14 @@ export class OrdersService {
       order.customer_id
         ? supabase
             .from('customers')
-            .select('id, name_en, name_ar, phone, email')
+            .select('id, name, phone, email')
             .eq('id', order.customer_id)
             .maybeSingle()
         : Promise.resolve({ data: null, error: null }),
       order.cashier_id
         ? supabase
             .from('users')
-            .select('id, name_en, name_ar, email')
+            .select('id, name, email')
             .eq('id', order.cashier_id)
             .maybeSingle()
         : Promise.resolve({ data: null, error: null }),
@@ -1275,7 +1270,7 @@ export class OrdersService {
       foodItemIds.length > 0
         ? supabase
             .from('food_items')
-            .select('id, name_en, name_ar, image_url')
+            .select('id, name, image_url')
             .in('id', foodItemIds)
         : Promise.resolve({ data: [], error: null }),
       variationIds.length > 0
@@ -1303,7 +1298,7 @@ export class OrdersService {
         const addOnDetails = addOnIds.length > 0
           ? await supabase
               .from('add_ons')
-              .select('id, name_en, name_ar, price')
+              .select('id, name, price')
               .in('id', addOnIds)
           : { data: [], error: null };
 
@@ -1313,8 +1308,7 @@ export class OrdersService {
         const foodItemData = item.food_item_id ? foodItemMap.get(item.food_item_id) : null;
         const transformedFoodItem = foodItemData ? {
           id: foodItemData.id,
-          nameEn: foodItemData.name_en || null,
-          nameAr: foodItemData.name_ar || null,
+          name: foodItemData.name || null,
           imageUrl: foodItemData.image_url || null,
         } : null;
 
@@ -1344,8 +1338,7 @@ export class OrdersService {
             const addOnData = addOn.add_on_id ? addOnDetailsMap.get(addOn.add_on_id) : null;
             const transformedAddOn = addOnData ? {
               id: addOnData.id,
-              nameEn: addOnData.name_en || null,
-              nameAr: addOnData.name_ar || null,
+              name: addOnData.name || null,
               price: Number(addOnData.price) || 0,
             } : null;
 
@@ -1690,10 +1683,9 @@ export class OrdersService {
         if (existingDelivery) {
           // Build address notes for walk-in customers (store as JSON for language-based display)
           let deliveryNotes: string | null = null;
-          if (!updateDto.customerAddressId && (updateDto.deliveryAddressEn || updateDto.deliveryAddressAr)) {
+          if (!updateDto.customerAddressId && (updateDto.deliveryAddress || updateDto.deliveryAddress)) {
             const addressData = {
-              addressEn: updateDto.deliveryAddressEn || null,
-              addressAr: updateDto.deliveryAddressAr || null,
+              address: updateDto.deliveryAddress || null,
               city: updateDto.deliveryAddressCity || null,
               state: updateDto.deliveryAddressState || null,
               country: updateDto.deliveryAddressCountry || null,
@@ -1758,22 +1750,7 @@ export class OrdersService {
       throw new NotFoundException('Order not found');
     }
 
-    // Validate status transition
-    const validTransitions: Record<string, string[]> = {
-      pending: ['preparing', 'cancelled'],
-      preparing: ['ready', 'cancelled'],
-      ready: ['served', 'cancelled'],
-      served: ['completed', 'cancelled'],
-      completed: [],
-      cancelled: [],
-    };
-
-    const allowedStatuses = validTransitions[order.status] || [];
-    if (!allowedStatuses.includes(updateDto.status)) {
-      throw new BadRequestException(
-        `Cannot transition from ${order.status} to ${updateDto.status}. Allowed transitions: ${allowedStatuses.join(', ')}`,
-      );
-    }
+    // No status transition constraints - allow any status to change to any other status
 
     // Prepare update data
     const updateData: any = {

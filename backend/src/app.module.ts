@@ -15,6 +15,7 @@ import { SyncModule } from './modules/sync/sync.module';
 import { CouponsModule } from './modules/coupons/coupons.module';
 import { TaxesModule } from './modules/taxes/taxes.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { RolesModule } from './modules/roles/roles.module';
 import { DatabaseModule } from './database/database.module';
 
 @Module({
@@ -89,6 +90,7 @@ import { DatabaseModule } from './database/database.module';
     CouponsModule,
     TaxesModule,
     DashboardModule,
+    RolesModule,
   ],
 })
 export class AppModule {}

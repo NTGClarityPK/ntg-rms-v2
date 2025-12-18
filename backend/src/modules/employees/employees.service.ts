@@ -5,12 +5,16 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { SupabaseService } from '../../database/supabase.service';
+import { RolesService } from '../roles/roles.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 
 @Injectable()
 export class EmployeesService {
-  constructor(private supabaseService: SupabaseService) {}
+  constructor(
+    private supabaseService: SupabaseService,
+    private rolesService: RolesService,
+  ) {}
 
   /**
    * Get all employees for a tenant
@@ -18,23 +22,13 @@ export class EmployeesService {
   async getEmployees(tenantId: string, filters?: { branchId?: string; role?: string; status?: string }) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
+    // Query users first without nested relations to avoid Supabase relationship ambiguity
     let query = supabase
       .from('users')
-      .select(
-        `
-        *,
-        user_branches(
-          branch:branches(id, name_en, name_ar, code)
-        )
-      `,
-      )
+      .select('*')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
-
-    if (filters?.role) {
-      query = query.eq('role', filters.role);
-    }
 
     if (filters?.status) {
       if (filters.status === 'active') {
@@ -50,12 +44,86 @@ export class EmployeesService {
       throw new InternalServerErrorException(`Failed to fetch employees: ${error.message}`);
     }
 
-    // Filter by branch if specified
+    if (!employees || employees.length === 0) {
+      return [];
+    }
+
+    // Get all employee IDs
+    const employeeIds = employees.map((emp: any) => emp.id);
+
+    // Fetch user_roles separately
+    const { data: userRolesData, error: rolesError } = await supabase
+      .from('user_roles')
+      .select(
+        `
+        user_id,
+        role:roles(id, name, display_name_en, display_name_ar)
+      `,
+      )
+      .in('user_id', employeeIds);
+
+    if (rolesError) {
+      console.error('Failed to fetch user roles:', rolesError);
+    }
+
+    // Fetch user_branches separately
+    const { data: userBranchesData, error: branchesError } = await supabase
+      .from('user_branches')
+      .select(
+        `
+        user_id,
+        branch:branches(id, name, code)
+      `,
+      )
+      .in('user_id', employeeIds);
+
+    if (branchesError) {
+      console.error('Failed to fetch user branches:', branchesError);
+    }
+
+    // Group roles and branches by user_id
+    const rolesByUserId = new Map<string, any[]>();
+    (userRolesData || []).forEach((ur: any) => {
+      if (!rolesByUserId.has(ur.user_id)) {
+        rolesByUserId.set(ur.user_id, []);
+      }
+      if (ur.role) {
+        rolesByUserId.get(ur.user_id)!.push({
+          id: ur.role.id,
+          name: ur.role.name,
+          displayNameEn: ur.role.display_name_en,
+          displayNameAr: ur.role.display_name_ar,
+        });
+      }
+    });
+
+    const branchesByUserId = new Map<string, any[]>();
+    (userBranchesData || []).forEach((ub: any) => {
+      if (!branchesByUserId.has(ub.user_id)) {
+        branchesByUserId.set(ub.user_id, []);
+      }
+      if (ub.branch) {
+        branchesByUserId.get(ub.user_id)!.push({
+          id: ub.branch.id,
+          name: ub.branch.name,
+          code: ub.branch.code,
+        });
+      }
+    });
+
+    // Filter by branch and role if specified
     let filteredEmployees = employees || [];
     if (filters?.branchId) {
-      filteredEmployees = filteredEmployees.filter((emp: any) =>
-        emp.user_branches?.some((ub: any) => ub.branch?.id === filters.branchId),
-      );
+      filteredEmployees = filteredEmployees.filter((emp: any) => {
+        const branches = branchesByUserId.get(emp.id) || [];
+        return branches.some((b: any) => b.id === filters.branchId);
+      });
+    }
+    if (filters?.role) {
+      filteredEmployees = filteredEmployees.filter((emp: any) => {
+        const roles = rolesByUserId.get(emp.id) || [];
+        return roles.some((r: any) => r.name === filters.role);
+      });
     }
 
     // Transform snake_case to camelCase
@@ -64,10 +132,10 @@ export class EmployeesService {
       tenantId: emp.tenant_id,
       supabaseAuthId: emp.supabase_auth_id,
       email: emp.email,
-      nameEn: emp.name_en,
-      nameAr: emp.name_ar,
+      name: emp.name,
       phone: emp.phone,
-      role: emp.role,
+      role: emp.role, // Keep for backward compatibility
+      roles: rolesByUserId.get(emp.id) || [],
       employeeId: emp.employee_id,
       photoUrl: emp.photo_url,
       nationalId: emp.national_id,
@@ -79,12 +147,7 @@ export class EmployeesService {
       lastLoginAt: emp.last_login_at,
       createdAt: emp.created_at,
       updatedAt: emp.updated_at,
-      branches: (emp.user_branches || []).map((ub: any) => ({
-        id: ub.branch?.id,
-        nameEn: ub.branch?.name_en,
-        nameAr: ub.branch?.name_ar,
-        code: ub.branch?.code,
-      })),
+      branches: branchesByUserId.get(emp.id) || [],
     }));
   }
 
@@ -94,16 +157,10 @@ export class EmployeesService {
   async getEmployeeById(tenantId: string, employeeId: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
+    // Query user first
     const { data: employee, error } = await supabase
       .from('users')
-      .select(
-        `
-        *,
-        user_branches(
-          branch:branches(id, name_en, name_ar, code)
-        )
-      `,
-      )
+      .select('*')
       .eq('id', employeeId)
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
@@ -113,16 +170,41 @@ export class EmployeesService {
       throw new NotFoundException('Employee not found');
     }
 
+    // Fetch user_roles separately
+    const { data: userRolesData } = await supabase
+      .from('user_roles')
+      .select(
+        `
+        role:roles(id, name, display_name_en, display_name_ar)
+      `,
+      )
+      .eq('user_id', employeeId);
+
+    // Fetch user_branches separately
+    const { data: userBranchesData } = await supabase
+      .from('user_branches')
+      .select(
+        `
+        branch:branches(id, name, code)
+      `,
+      )
+      .eq('user_id', employeeId);
+
     // Transform snake_case to camelCase
     return {
       id: employee.id,
       tenantId: employee.tenant_id,
       supabaseAuthId: employee.supabase_auth_id,
       email: employee.email,
-      nameEn: employee.name_en,
-      nameAr: employee.name_ar,
+      name: employee.name,
       phone: employee.phone,
-      role: employee.role,
+      role: employee.role, // Keep for backward compatibility
+      roles: (userRolesData || []).map((ur: any) => ({
+        id: ur.role?.id,
+        name: ur.role?.name,
+        displayNameEn: ur.role?.display_name_en,
+        displayNameAr: ur.role?.display_name_ar,
+      })),
       employeeId: employee.employee_id,
       photoUrl: employee.photo_url,
       nationalId: employee.national_id,
@@ -134,10 +216,9 @@ export class EmployeesService {
       lastLoginAt: employee.last_login_at,
       createdAt: employee.created_at,
       updatedAt: employee.updated_at,
-      branches: (employee.user_branches || []).map((ub: any) => ({
+      branches: (userBranchesData || []).map((ub: any) => ({
         id: ub.branch?.id,
-        nameEn: ub.branch?.name_en,
-        nameAr: ub.branch?.name_ar,
+        name: ub.branch?.name,
         code: ub.branch?.code,
       })),
     };
@@ -186,6 +267,14 @@ export class EmployeesService {
       }
     }
 
+    // Get first role name for backward compatibility (keep role field)
+    let firstRoleName = '';
+    if (createDto.roleIds && createDto.roleIds.length > 0) {
+      const roles = await this.rolesService.getRoles();
+      const firstRole = roles.find((r) => r.id === createDto.roleIds[0]);
+      firstRoleName = firstRole?.name || '';
+    }
+
     // Create employee record
     const { data: employee, error: employeeError } = await supabase
       .from('users')
@@ -193,10 +282,9 @@ export class EmployeesService {
         tenant_id: tenantId,
         supabase_auth_id: supabaseAuthId,
         email: createDto.email,
-        name_en: createDto.nameEn,
-        name_ar: createDto.nameAr || createDto.nameEn,
+        name: createDto.name,
         phone: createDto.phone,
-        role: createDto.role,
+        role: firstRoleName, // Keep for backward compatibility
         employee_id: employeeId,
         photo_url: createDto.photoUrl,
         national_id: createDto.nationalId,
@@ -221,7 +309,25 @@ export class EmployeesService {
       throw new InternalServerErrorException(`Failed to create employee: ${employeeError.message}`);
     }
 
+    // Assign roles if provided
+    let assignedRoles: any[] = [];
+    if (createDto.roleIds && createDto.roleIds.length > 0) {
+      try {
+        const userRoles = await this.rolesService.assignRolesToUser(employee.id, createDto.roleIds, userId);
+        assignedRoles = userRoles.map((ur) => ({
+          id: ur.role?.id,
+          name: ur.role?.name,
+          displayNameEn: ur.role?.displayNameEn,
+          displayNameAr: ur.role?.displayNameAr,
+        }));
+      } catch (roleError) {
+        console.error('Failed to assign roles:', roleError);
+        // Don't fail employee creation if role assignment fails, but log it
+      }
+    }
+
     // Assign branches if provided
+    let assignedBranches: any[] = [];
     if (createDto.branchIds && createDto.branchIds.length > 0) {
       const branchAssignments = createDto.branchIds.map((branchId) => ({
         user_id: employee.id,
@@ -233,19 +339,26 @@ export class EmployeesService {
       if (branchError) {
         console.error('Failed to assign branches:', branchError);
         // Don't fail employee creation if branch assignment fails
+      } else {
+        // Fetch branch details
+        const { data: branchesData } = await supabase
+          .from('branches')
+          .select('id, name, code')
+          .in('id', createDto.branchIds);
+        assignedBranches = branchesData || [];
       }
     }
 
-    // Transform snake_case to camelCase
+    // Return employee data directly instead of calling getEmployeeById
     return {
       id: employee.id,
       tenantId: employee.tenant_id,
       supabaseAuthId: employee.supabase_auth_id,
       email: employee.email,
-      nameEn: employee.name_en,
-      nameAr: employee.name_ar,
+      name: employee.name,
       phone: employee.phone,
-      role: employee.role,
+      role: employee.role, // Keep for backward compatibility
+      roles: assignedRoles,
       employeeId: employee.employee_id,
       photoUrl: employee.photo_url,
       nationalId: employee.national_id,
@@ -254,15 +367,17 @@ export class EmployeesService {
       joiningDate: employee.joining_date,
       salary: employee.salary ? Number(employee.salary) : undefined,
       isActive: employee.is_active,
+      lastLoginAt: employee.last_login_at,
       createdAt: employee.created_at,
       updatedAt: employee.updated_at,
+      branches: assignedBranches,
     };
   }
 
   /**
    * Update an employee
    */
-  async updateEmployee(tenantId: string, employeeId: string, updateDto: UpdateEmployeeDto) {
+  async updateEmployee(tenantId: string, employeeId: string, updateDto: UpdateEmployeeDto, userId: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Check if employee exists
@@ -298,11 +413,34 @@ export class EmployeesService {
       updated_at: new Date().toISOString(),
     };
 
-    if (updateDto.nameEn !== undefined) updateData.name_en = updateDto.nameEn;
-    if (updateDto.nameAr !== undefined) updateData.name_ar = updateDto.nameAr;
+    // Update roles if provided
+    let assignedRoles: any[] = [];
+    if (updateDto.roleIds !== undefined) {
+      try {
+        const userRoles = await this.rolesService.assignRolesToUser(employeeId, updateDto.roleIds, userId);
+        assignedRoles = userRoles.map((ur) => ({
+          id: ur.role?.id,
+          name: ur.role?.name,
+          displayNameEn: ur.role?.displayNameEn,
+          displayNameAr: ur.role?.displayNameAr,
+        }));
+        // Update role field for backward compatibility (use first role)
+        if (updateDto.roleIds.length > 0) {
+          const roles = await this.rolesService.getRoles();
+          const firstRole = roles.find((r) => r.id === updateDto.roleIds![0]);
+          if (firstRole) {
+            updateData.role = firstRole.name;
+          }
+        }
+      } catch (roleError) {
+        console.error('Failed to update roles:', roleError);
+        // Continue with other updates
+      }
+    }
+
+    if (updateDto.name !== undefined) updateData.name = updateDto.name;
     if (updateDto.email !== undefined) updateData.email = updateDto.email;
     if (updateDto.phone !== undefined) updateData.phone = updateDto.phone;
-    if (updateDto.role !== undefined) updateData.role = updateDto.role;
     if (updateDto.employeeId !== undefined) updateData.employee_id = updateDto.employeeId;
     if (updateDto.photoUrl !== undefined) updateData.photo_url = updateDto.photoUrl;
     if (updateDto.nationalId !== undefined) updateData.national_id = updateDto.nationalId;
@@ -320,11 +458,14 @@ export class EmployeesService {
       .select()
       .single();
 
-    if (error) {
-      throw new InternalServerErrorException(`Failed to update employee: ${error.message}`);
+    if (error || !employee) {
+      throw new InternalServerErrorException(
+        error ? `Failed to update employee: ${error.message}` : 'Employee not found after update',
+      );
     }
 
     // Update branch assignments if provided
+    let assignedBranches: any[] = [];
     if (updateDto.branchIds !== undefined) {
       // Delete existing assignments
       await supabase.from('user_branches').delete().eq('user_id', employeeId);
@@ -340,20 +481,55 @@ export class EmployeesService {
 
         if (branchError) {
           console.error('Failed to update branch assignments:', branchError);
+        } else {
+          // Fetch branch details
+          const { data: branchesData } = await supabase
+            .from('branches')
+            .select('id, name, code')
+            .in('id', updateDto.branchIds);
+          assignedBranches = branchesData || [];
         }
       }
     }
 
-    // Transform snake_case to camelCase
+    // If roles weren't updated, fetch them
+    if (assignedRoles.length === 0) {
+      try {
+        const userRoles = await this.rolesService.getUserRoles(employeeId);
+        assignedRoles = userRoles.map((ur) => ({
+          id: ur.role?.id,
+          name: ur.role?.name,
+          displayNameEn: ur.role?.displayNameEn,
+          displayNameAr: ur.role?.displayNameAr,
+        }));
+      } catch (roleError) {
+        console.error('Failed to fetch roles:', roleError);
+      }
+    }
+
+    // If branches weren't updated, fetch them
+    if (assignedBranches.length === 0 && updateDto.branchIds === undefined) {
+      const { data: userBranches } = await supabase
+        .from('user_branches')
+        .select('branch:branches(id, name, code)')
+        .eq('user_id', employeeId);
+      assignedBranches = (userBranches || []).map((ub: any) => ({
+        id: ub.branch?.id,
+        name: ub.branch?.name,
+        code: ub.branch?.code,
+      }));
+    }
+
+    // Return updated employee data directly instead of calling getEmployeeById
     return {
       id: employee.id,
       tenantId: employee.tenant_id,
       supabaseAuthId: employee.supabase_auth_id,
       email: employee.email,
-      nameEn: employee.name_en,
-      nameAr: employee.name_ar,
+      name: employee.name,
       phone: employee.phone,
-      role: employee.role,
+      role: employee.role, // Keep for backward compatibility
+      roles: assignedRoles,
       employeeId: employee.employee_id,
       photoUrl: employee.photo_url,
       nationalId: employee.national_id,
@@ -362,8 +538,10 @@ export class EmployeesService {
       joiningDate: employee.joining_date,
       salary: employee.salary ? Number(employee.salary) : undefined,
       isActive: employee.is_active,
+      lastLoginAt: employee.last_login_at,
       createdAt: employee.created_at,
       updatedAt: employee.updated_at,
+      branches: assignedBranches,
     };
   }
 

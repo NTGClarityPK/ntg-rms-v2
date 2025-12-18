@@ -100,8 +100,7 @@ function AuthCallbackContent() {
           setUser({
             id: user.id,
             email: user.email,
-            nameEn: user.nameEn || user.name_en || 'User',
-            nameAr: user.nameAr || user.name_ar || user.nameEn || user.name_en,
+            name: user.name || user.nameEn || user.name_en || user.nameAr || user.name_ar || 'User',
             role: user.role,
             tenantId: user.tenantId || user.tenant_id,
           });

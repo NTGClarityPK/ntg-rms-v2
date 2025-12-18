@@ -74,7 +74,7 @@ export default function POSPage() {
           const cartItemsFromOrder = await Promise.all(
             order.items.map(async (item) => {
               // Use food item from API response, or load from IndexedDB as fallback
-              let foodItem = item.foodItem;
+              let foodItem: any = item.foodItem;
               if (!foodItem) {
                 foodItem = await db.foodItems.get(item.foodItemId);
               }
@@ -93,8 +93,7 @@ export default function POSPage() {
               const addOns = item.addOns?.map((addOn: any) => ({
                 addOnId: addOn.addOnId || addOn.id,
                 quantity: addOn.quantity || 1,
-                addOnNameEn: addOn.addOn?.nameEn,
-                addOnNameAr: addOn.addOn?.nameAr,
+                addOnName: addOn.addOn?.name,
               })) || [];
 
               // Get variation info from API response
@@ -102,8 +101,7 @@ export default function POSPage() {
               
               return {
                 foodItemId: item.foodItemId,
-                foodItemNameEn: foodItem?.nameEn || item.foodItem?.nameEn || 'Unknown Item',
-                foodItemNameAr: foodItem?.nameAr || item.foodItem?.nameAr,
+                foodItemName: foodItem?.name || item.foodItem?.name || 'Unknown Item',
                 foodItemImageUrl: foodItem?.imageUrl || item.foodItem?.imageUrl,
                 variationId: item.variationId,
                 variationGroup: variation?.variationGroup || item.variation?.variationGroup,
@@ -324,7 +322,7 @@ export default function POSPage() {
               onChange={(value) => setSelectedBranchId(value)}
               data={branches.map((branch) => ({
                 value: branch.id,
-                label: language === 'ar' && branch.nameAr ? branch.nameAr : branch.nameEn,
+                label: branch.name || '',
               }))}
               style={{ width: 200 }}
             />

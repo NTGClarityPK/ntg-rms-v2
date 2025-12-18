@@ -1,15 +1,22 @@
 import apiClient from './client';
 import { API_ENDPOINTS } from '../constants/api';
 
+export interface Role {
+  id: string;
+  name: string;
+  displayNameEn: string;
+  displayNameAr?: string;
+}
+
 export interface Employee {
   id: string;
   tenantId: string;
   supabaseAuthId?: string;
   email: string;
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   phone?: string;
-  role: string;
+  role: string; // Keep for backward compatibility
+  roles?: Role[]; // New: multiple roles
   employeeId?: string;
   photoUrl?: string;
   nationalId?: string;
@@ -23,17 +30,15 @@ export interface Employee {
   updatedAt: string;
   branches?: Array<{
     id: string;
-    nameEn: string;
-    nameAr?: string;
+    name: string;
     code: string;
   }>;
 }
 
 export interface CreateEmployeeDto {
   email: string;
-  nameEn: string;
-  nameAr?: string;
-  role: string;
+  name: string;
+  roleIds: string[]; // Array of role IDs
   phone?: string;
   employeeId?: string;
   photoUrl?: string;
@@ -49,11 +54,10 @@ export interface CreateEmployeeDto {
 }
 
 export interface UpdateEmployeeDto {
-  nameEn?: string;
-  nameAr?: string;
+  name?: string;
   email?: string;
   phone?: string;
-  role?: string;
+  roleIds?: string[]; // Array of role IDs
   employeeId?: string;
   photoUrl?: string;
   nationalId?: string;

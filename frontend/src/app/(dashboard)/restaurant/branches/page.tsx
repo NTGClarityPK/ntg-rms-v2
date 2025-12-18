@@ -31,6 +31,7 @@ import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors } from '@/lib/hooks/use-theme-colors';
 import { useErrorColor, useSuccessColor, useInfoColor } from '@/lib/hooks/use-theme-colors';
+import { PermissionGuard } from '@/components/common/PermissionGuard';
 
 export default function BranchesPage() {
   const { language } = useLanguageStore();
@@ -46,11 +47,9 @@ export default function BranchesPage() {
 
   const form = useForm<CreateBranchDto>({
     initialValues: {
-      nameEn: '',
-      nameAr: '',
+      name: '',
       code: '',
-      addressEn: '',
-      addressAr: '',
+      address: '',
       city: '',
       state: '',
       country: 'Iraq',
@@ -61,7 +60,7 @@ export default function BranchesPage() {
       managerId: undefined,
     },
     validate: {
-      nameEn: (value) => (!value ? 'Name (English) is required' : null),
+      name: (value) => (!value ? 'Name is required' : null),
       code: (value) => (!value ? 'Code is required' : null),
       email: (value) => (value && !/^\S+@\S+$/.test(value) ? 'Invalid email' : null),
     },
@@ -81,11 +80,9 @@ export default function BranchesPage() {
       setBranches(localBranches.map(b => ({
         id: b.id,
         tenantId: b.tenantId,
-        nameEn: b.nameEn,
-        nameAr: b.nameAr,
+        name: (b as any).name || (b as any).nameEn || (b as any).nameAr || '',
         code: b.code,
-        addressEn: b.addressEn,
-        addressAr: b.addressAr,
+        address: (b as any).address || (b as any).addressEn || (b as any).addressAr || '',
         city: b.city,
         state: b.state,
         country: b.country,
@@ -110,11 +107,9 @@ export default function BranchesPage() {
             await db.branches.put({
               id: branch.id,
               tenantId: branch.tenantId,
-              nameEn: branch.nameEn,
-              nameAr: branch.nameAr,
+              name: branch.name,
               code: branch.code,
-              addressEn: branch.addressEn,
-              addressAr: branch.addressAr,
+              address: branch.address || '',
               city: branch.city,
               phone: branch.phone,
               isActive: branch.isActive,
@@ -122,7 +117,7 @@ export default function BranchesPage() {
               updatedAt: branch.updatedAt,
               lastSynced: new Date().toISOString(),
               syncStatus: 'synced',
-            });
+            } as any);
           }
         } catch (err: any) {
           console.warn('Failed to load from server:', err);
@@ -139,11 +134,9 @@ export default function BranchesPage() {
     if (branch) {
       setEditingBranch(branch);
       form.setValues({
-        nameEn: branch.nameEn,
-        nameAr: branch.nameAr || '',
+        name: branch.name || '',
         code: branch.code,
-        addressEn: branch.addressEn || '',
-        addressAr: branch.addressAr || '',
+        address: branch.address || '',
         city: branch.city || '',
         state: branch.state || '',
         country: branch.country || 'Iraq',
@@ -170,17 +163,15 @@ export default function BranchesPage() {
 
         // Save to IndexedDB first
         await db.branches.update(editingBranch.id, {
-          nameEn: updateData.nameEn || editingBranch.nameEn,
-          nameAr: updateData.nameAr,
+          name: updateData.name || editingBranch.name,
           code: updateData.code || editingBranch.code,
-          addressEn: updateData.addressEn,
-          addressAr: updateData.addressAr,
+          address: updateData.address || '',
           city: updateData.city,
           phone: updateData.phone,
           isActive: updateData.isActive ?? editingBranch.isActive,
           updatedAt: new Date().toISOString(),
           syncStatus: 'pending',
-        });
+        } as any);
 
         // Queue sync
         await syncService.queueChange('branches', 'UPDATE', editingBranch.id, updateData);
@@ -219,11 +210,9 @@ export default function BranchesPage() {
         const branchData: Branch = {
           id: newId,
           tenantId: '', // Will be set from user context
-          nameEn: values.nameEn,
-          nameAr: values.nameAr,
+          name: values.name,
           code: values.code,
-          addressEn: values.addressEn,
-          addressAr: values.addressAr,
+          address: values.address,
           city: values.city,
           state: values.state,
           country: values.country || 'Iraq',
@@ -242,7 +231,7 @@ export default function BranchesPage() {
           ...branchData,
           lastSynced: undefined,
           syncStatus: 'pending',
-        });
+        } as any);
 
         // Queue sync
         await syncService.queueChange('branches', 'CREATE', newId, values);
@@ -298,7 +287,7 @@ export default function BranchesPage() {
       title: 'Delete Branch',
       children: (
         <Text size="sm">
-          Are you sure you want to delete &quot;{branch.nameEn}&quot;? This action cannot be undone.
+          Are you sure you want to delete &quot;{branch.name}&quot;? This action cannot be undone.
         </Text>
       ),
       labels: { confirm: 'Delete', cancel: 'Cancel' },
@@ -358,9 +347,11 @@ export default function BranchesPage() {
     <Container size="xl" py="xl">
       <Group justify="space-between" mb="xl">
         <Title order={2}>Branch Management</Title>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => handleOpenModal()}>
-          Add Branch
-        </Button>
+        <PermissionGuard resource="restaurant" action="create">
+          <Button leftSection={<IconPlus size={16} />} onClick={() => handleOpenModal()}>
+            Add Branch
+          </Button>
+        </PermissionGuard>
       </Group>
 
       {error && (
@@ -435,12 +426,7 @@ export default function BranchesPage() {
               branches.map((branch) => (
                 <Table.Tr key={branch.id}>
                   <Table.Td>
-                    <Text fw={500}>{branch.nameEn}</Text>
-                    {branch.nameAr && (
-                      <Text size="xs" c="dimmed">
-                        {branch.nameAr}
-                      </Text>
-                    )}
+                    <Text fw={500}>{branch.name}</Text>
                   </Table.Td>
                   <Table.Td>{branch.code}</Table.Td>
                   <Table.Td>{branch.city || '-'}</Table.Td>
@@ -456,20 +442,24 @@ export default function BranchesPage() {
                   </Table.Td>
                   <Table.Td>
                     <Group gap="xs">
-                      <ActionIcon
-                        variant="subtle"
-                        style={{ color: infoColor }}
-                        onClick={() => handleOpenModal(branch)}
-                      >
-                        <IconEdit size={16} />
-                      </ActionIcon>
-                      <ActionIcon
-                        variant="subtle"
-                        style={{ color: errorColor }}
-                        onClick={() => handleDelete(branch)}
-                      >
-                        <IconTrash size={16} />
-                      </ActionIcon>
+                      <PermissionGuard resource="restaurant" action="update">
+                        <ActionIcon
+                          variant="subtle"
+                          style={{ color: infoColor }}
+                          onClick={() => handleOpenModal(branch)}
+                        >
+                          <IconEdit size={16} />
+                        </ActionIcon>
+                      </PermissionGuard>
+                      <PermissionGuard resource="restaurant" action="delete">
+                        <ActionIcon
+                          variant="subtle"
+                          style={{ color: errorColor }}
+                          onClick={() => handleDelete(branch)}
+                        >
+                          <IconTrash size={16} />
+                        </ActionIcon>
+                      </PermissionGuard>
                     </Group>
                   </Table.Td>
                 </Table.Tr>
@@ -494,15 +484,9 @@ export default function BranchesPage() {
             <Grid>
               <Grid.Col span={{ base: 12, md: 6 }}>
                 <TextInput
-                  label="Name (English)"
+                  label="Name"
                   required
-                  {...form.getInputProps('nameEn')}
-                />
-              </Grid.Col>
-              <Grid.Col span={{ base: 12, md: 6 }}>
-                <TextInput
-                  label="Name (Arabic)"
-                  {...form.getInputProps('nameAr')}
+                  {...form.getInputProps('name')}
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 6 }}>
@@ -533,14 +517,8 @@ export default function BranchesPage() {
               </Grid.Col>
               <Grid.Col span={12}>
                 <TextInput
-                  label="Address (English)"
-                  {...form.getInputProps('addressEn')}
-                />
-              </Grid.Col>
-              <Grid.Col span={12}>
-                <TextInput
-                  label="Address (Arabic)"
-                  {...form.getInputProps('addressAr')}
+                  label="Address"
+                  {...form.getInputProps('address')}
                 />
               </Grid.Col>
             </Grid>

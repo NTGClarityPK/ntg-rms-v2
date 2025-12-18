@@ -61,27 +61,25 @@ export function AddOnGroupsPage() {
 
   const groupForm = useForm({
     initialValues: {
-      nameEn: '',
-      nameAr: '',
+      name: '',
       selectionType: 'multiple',
       isRequired: false,
       minSelections: 0,
       maxSelections: undefined as number | undefined,
     },
     validate: {
-      nameEn: (value) => (!value ? t('menu.addOnGroupNameEn', language) + ' is required' : null),
+      name: (value) => (!value ? (t('menu.addOnGroupName', language) || 'Name') + ' is required' : null),
     },
   });
 
   const addOnForm = useForm({
     initialValues: {
-      nameEn: '',
-      nameAr: '',
+      name: '',
       price: 0,
       isActive: true,
     },
     validate: {
-      nameEn: (value) => (!value ? t('menu.addOnNameEn', language) + ' is required' : null),
+      name: (value) => (!value ? (t('menu.addOnName', language) || 'Name') + ' is required' : null),
     },
   });
 
@@ -101,8 +99,7 @@ export function AddOnGroupsPage() {
 
       setAddOnGroups(localGroups.map((group) => ({
         id: group.id,
-        nameEn: group.nameEn,
-        nameAr: group.nameAr,
+        name: (group as any).name || (group as any).nameEn || (group as any).nameAr || '',
         selectionType: group.selectionType,
         isRequired: group.isRequired,
         minSelections: group.minSelections,
@@ -125,8 +122,7 @@ export function AddOnGroupsPage() {
             await db.addOnGroups.put({
               id: group.id,
               tenantId: user.tenantId,
-              nameEn: group.nameEn,
-              nameAr: group.nameAr,
+              name: group.name,
               selectionType: group.selectionType,
               isRequired: group.isRequired,
               minSelections: group.minSelections,
@@ -137,7 +133,7 @@ export function AddOnGroupsPage() {
               updatedAt: group.updatedAt,
               lastSynced: new Date().toISOString(),
               syncStatus: 'synced',
-            });
+            } as any);
           }
         } catch (err) {
           console.warn('Failed to sync add-on groups from server:', err);
@@ -181,8 +177,7 @@ export function AddOnGroupsPage() {
     if (group) {
       setEditingGroup(group);
       groupForm.setValues({
-        nameEn: group.nameEn,
-        nameAr: group.nameAr || '',
+        name: group.name,
         selectionType: group.selectionType,
         isRequired: group.isRequired,
         minSelections: group.minSelections,
@@ -199,8 +194,7 @@ export function AddOnGroupsPage() {
     if (addOn) {
       setEditingAddOn(addOn);
       addOnForm.setValues({
-        nameEn: addOn.nameEn,
-        nameAr: addOn.nameAr || '',
+        name: addOn.name,
         price: addOn.price,
         isActive: addOn.isActive,
       });
@@ -223,8 +217,7 @@ export function AddOnGroupsPage() {
     (async () => {
       try {
         const groupData: Partial<AddOnGroup> = {
-          nameEn: values.nameEn,
-          nameAr: values.nameAr || undefined,
+          name: values.name,
           selectionType: values.selectionType as 'single' | 'multiple',
           isRequired: values.isRequired,
           minSelections: values.minSelections,
@@ -237,8 +230,7 @@ export function AddOnGroupsPage() {
           savedGroup = await menuApi.updateAddOnGroup(currentEditingGroupId, groupData);
           
           await db.addOnGroups.update(currentEditingGroupId, {
-            nameEn: groupData.nameEn,
-            nameAr: groupData.nameAr,
+            name: groupData.name,
             selectionType: groupData.selectionType as 'single' | 'multiple',
             isRequired: groupData.isRequired,
             minSelections: groupData.minSelections,
@@ -255,8 +247,7 @@ export function AddOnGroupsPage() {
           await db.addOnGroups.add({
             id: savedGroup.id,
             tenantId: user.tenantId,
-            nameEn: groupData.nameEn!,
-            nameAr: groupData.nameAr,
+            name: groupData.name!,
             selectionType: (groupData.selectionType || 'multiple') as 'single' | 'multiple',
             isRequired: groupData.isRequired ?? false,
             minSelections: groupData.minSelections ?? 0,
@@ -267,7 +258,7 @@ export function AddOnGroupsPage() {
             updatedAt: savedGroup.updatedAt,
             lastSynced: new Date().toISOString(),
             syncStatus: 'synced',
-          });
+          } as any);
 
           await syncService.queueChange('addOnGroups', 'CREATE', savedGroup.id, savedGroup);
         }
@@ -305,8 +296,7 @@ export function AddOnGroupsPage() {
     (async () => {
       try {
         const addOnData = {
-          nameEn: values.nameEn,
-          nameAr: values.nameAr || undefined,
+          name: values.name,
           price: values.price,
           isActive: values.isActive,
         };
@@ -336,7 +326,7 @@ export function AddOnGroupsPage() {
             updatedAt: savedAddOn.updatedAt,
             lastSynced: new Date().toISOString(),
             syncStatus: 'synced',
-          });
+          } as any);
 
           await syncService.queueChange('addOns', 'CREATE', savedAddOn.id, savedAddOn);
         }
@@ -515,7 +505,7 @@ export function AddOnGroupsPage() {
                     <Group justify="space-between">
                       <div>
                         <Text fw={500} size="sm">
-                          {language === 'ar' && group.nameAr ? group.nameAr : group.nameEn}
+                          {group.name}
                         </Text>
                         <Text size="xs" c="dimmed">
                           {group.selectionType === 'single'
@@ -560,9 +550,7 @@ export function AddOnGroupsPage() {
             <Paper p="md" withBorder>
               <Group justify="space-between" mb="md">
                 <Title order={4}>
-                  {language === 'ar' && selectedGroup.nameAr
-                    ? selectedGroup.nameAr
-                    : selectedGroup.nameEn}
+                  {selectedGroup.name}
                 </Title>
                 <Button
                   size="xs"
@@ -592,7 +580,7 @@ export function AddOnGroupsPage() {
                     {addOns.map((addOn) => (
                       <Table.Tr key={addOn.id}>
                         <Table.Td>
-                          {language === 'ar' && addOn.nameAr ? addOn.nameAr : addOn.nameEn}
+                          {addOn.name}
                         </Table.Td>
                         <Table.Td>{addOn.price.toFixed(2)}</Table.Td>
                         <Table.Td>
@@ -656,15 +644,9 @@ export function AddOnGroupsPage() {
             <Grid>
               <Grid.Col span={{ base: 12, md: 6 }}>
                 <TextInput
-                  label={t('menu.addOnGroupNameEn', language)}
+                  label={t('menu.addOnGroupName', language)}
                   required
-                  {...groupForm.getInputProps('nameEn')}
-                />
-              </Grid.Col>
-              <Grid.Col span={{ base: 12, md: 6 }}>
-                <TextInput
-                  label={t('menu.addOnGroupNameAr', language)}
-                  {...groupForm.getInputProps('nameAr')}
+                  {...groupForm.getInputProps('name')}
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 6 }}>
@@ -752,15 +734,9 @@ export function AddOnGroupsPage() {
             <Grid>
               <Grid.Col span={{ base: 12, md: 6 }}>
                 <TextInput
-                  label={t('menu.addOnNameEn', language)}
+                  label={t('menu.addOnName', language)}
                   required
-                  {...addOnForm.getInputProps('nameEn')}
-                />
-              </Grid.Col>
-              <Grid.Col span={{ base: 12, md: 6 }}>
-                <TextInput
-                  label={t('menu.addOnNameAr', language)}
-                  {...addOnForm.getInputProps('nameAr')}
+                  {...addOnForm.getInputProps('name')}
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 6 }}>

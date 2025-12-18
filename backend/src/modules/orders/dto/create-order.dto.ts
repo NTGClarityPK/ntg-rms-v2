@@ -120,12 +120,7 @@ export class CreateOrderDto {
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
-  deliveryAddressEn?: string; // For walk-in delivery customers
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  deliveryAddressAr?: string; // For walk-in delivery customers
+  deliveryAddress?: string; // For walk-in delivery customers
 
   @ApiProperty({ required: false })
   @IsString()

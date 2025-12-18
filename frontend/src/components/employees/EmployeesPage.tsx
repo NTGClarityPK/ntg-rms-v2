@@ -37,6 +37,7 @@ import {
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { employeesApi, Employee, CreateEmployeeDto, UpdateEmployeeDto } from '@/lib/api/employees';
+import { rolesApi, Role } from '@/lib/api/roles';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { db } from '@/lib/indexeddb/database';
 import { syncService } from '@/lib/sync/sync-service';
@@ -45,15 +46,9 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
+import { usePermissions } from '@/lib/hooks/use-permissions';
+import { PermissionGuard } from '@/components/common/PermissionGuard';
 import '@mantine/dates/styles.css';
-
-const ROLES = [
-  { value: 'manager', label: 'Manager' },
-  { value: 'cashier', label: 'Cashier' },
-  { value: 'kitchen_staff', label: 'Kitchen Staff' },
-  { value: 'waiter', label: 'Waiter' },
-  { value: 'delivery', label: 'Delivery' },
-];
 
 const EMPLOYMENT_TYPES = [
   { value: 'full_time', label: 'Full-time' },
@@ -64,12 +59,14 @@ const EMPLOYMENT_TYPES = [
 export function EmployeesPage() {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
+  const { canCreate, canUpdate, canDelete } = usePermissions();
   const notificationColors = useNotificationColors();
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [branches, setBranches] = useState<Array<{ id: string; nameEn: string; nameAr?: string }>>([]);
+  const [branches, setBranches] = useState<Array<{ id: string; name: string }>>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [opened, setOpened] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
@@ -81,9 +78,8 @@ export function EmployeesPage() {
   const form = useForm({
     initialValues: {
       email: '',
-      nameEn: '',
-      nameAr: '',
-      role: '',
+      name: '',
+      roleIds: [] as string[],
       phone: '',
       employeeId: '',
       nationalId: '',
@@ -98,8 +94,8 @@ export function EmployeesPage() {
     },
     validate: {
       email: (value) => (!value ? (t('common.email' as any, language) || 'Email') + ' is required' : null),
-      nameEn: (value) => (!value ? t('employees.nameEn', language) + ' is required' : null),
-      role: (value) => (!value ? t('employees.roleLabel', language) + ' is required' : null),
+      name: (value) => (!value ? t('employees.name', language) || 'Name is required' : null),
+      roleIds: (value) => (!value || value.length === 0 ? t('employees.roleLabel', language) + ' is required' : null),
       password: (value, values) =>
         values.createAuthAccount && !value ? (t('common.password' as any, language) || 'Password') + ' is required' : null,
     },
@@ -110,11 +106,26 @@ export function EmployeesPage() {
 
     try {
       const serverBranches = await restaurantApi.getBranches();
-      setBranches(serverBranches);
+      setBranches(serverBranches.map(b => ({ id: b.id, name: b.name })));
     } catch (err: any) {
       console.error('Failed to load branches:', err);
     }
   }, [user?.tenantId]);
+
+  const loadRoles = useCallback(async () => {
+    try {
+      const serverRoles = await rolesApi.getRoles();
+      console.log('Loaded roles:', serverRoles);
+      setRoles(serverRoles);
+    } catch (err: any) {
+      console.error('Failed to load roles:', err);
+      notifications.show({
+        title: t('common.error' as any, language) || 'Error',
+        message: 'Failed to load roles. Please refresh the page.',
+        color: notificationColors.error,
+      });
+    }
+  }, [language, notificationColors.error]);
 
   const loadEmployees = useCallback(async () => {
     if (!user?.tenantId) return;
@@ -130,6 +141,11 @@ export function EmployeesPage() {
           if (statusFilter) filters.status = statusFilter;
 
           const serverEmployees = await employeesApi.getEmployees(filters);
+          console.log('Server employees with roles:', serverEmployees.map(emp => ({
+            name: emp.name,
+            roles: emp.roles,
+            role: emp.role
+          })));
           setEmployees(serverEmployees);
 
           // Update IndexedDB
@@ -138,10 +154,10 @@ export function EmployeesPage() {
             tenantId: user.tenantId,
             supabaseAuthId: emp.supabaseAuthId,
             email: emp.email,
-            nameEn: emp.nameEn,
-            nameAr: emp.nameAr,
+            name: emp.name || (emp as any).nameEn || (emp as any).nameAr || '',
             phone: emp.phone,
-            role: emp.role,
+            role: emp.role, // Keep for backward compatibility
+            roles: emp.roles || [], // Store roles array
             employeeId: emp.employeeId,
             photoUrl: emp.photoUrl,
             nationalId: emp.nationalId,
@@ -158,27 +174,27 @@ export function EmployeesPage() {
           }));
 
           if (employeesToStore.length > 0) {
-            await db.employees.bulkPut(employeesToStore);
+            await db.employees.bulkPut(employeesToStore as any);
           }
         } catch (err: any) {
           console.error('Failed to load employees from server:', err);
           // Fall back to IndexedDB
           const localEmployees = await db.employees.where('tenantId').equals(user.tenantId).toArray();
-          setEmployees(localEmployees as Employee[]);
+          setEmployees(localEmployees as unknown as Employee[]);
         }
       } else {
         // Load from IndexedDB when offline
         const localEmployees = await db.employees.where('tenantId').equals(user.tenantId).toArray();
-        setEmployees(localEmployees as Employee[]);
+        setEmployees(localEmployees as unknown as Employee[]);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to load employees');
-        notifications.show({
-          title: t('common.error' as any, language) || 'Error',
-          message: err.message || 'Failed to load employees',
-          color: notificationColors.error,
-          icon: <IconAlertCircle size={16} />,
-        });
+      notifications.show({
+        title: t('common.error' as any, language) || 'Error',
+        message: err.message || 'Failed to load employees',
+        color: notificationColors.error,
+        icon: <IconAlertCircle size={16} />,
+      });
     } finally {
       setLoading(false);
     }
@@ -186,7 +202,8 @@ export function EmployeesPage() {
 
   useEffect(() => {
     loadBranches();
-  }, [loadBranches]);
+    loadRoles();
+  }, [loadBranches, loadRoles]);
 
   useEffect(() => {
     loadEmployees();
@@ -195,11 +212,14 @@ export function EmployeesPage() {
   const handleOpenModal = (employee?: Employee) => {
     if (employee) {
       setEditingEmployee(employee);
+      const roleIds = employee.roles?.map((r) => r.id) || [];
+      console.log('Opening modal for employee:', employee);
+      console.log('Employee roles:', employee.roles);
+      console.log('Role IDs to set:', roleIds);
       form.setValues({
         email: employee.email,
-        nameEn: employee.nameEn,
-        nameAr: employee.nameAr || '',
-        role: employee.role,
+        name: employee.name || '',
+        roleIds: roleIds,
         phone: employee.phone || '',
         employeeId: employee.employeeId || '',
         nationalId: employee.nationalId || '',
@@ -212,10 +232,13 @@ export function EmployeesPage() {
         createAuthAccount: false,
         password: '',
       });
+      console.log('Form values after setValues:', form.values);
     } else {
       setEditingEmployee(null);
       form.reset();
+      console.log('Opening modal for new employee');
     }
+    console.log('Available roles:', roles);
     setOpened(true);
   };
 
@@ -234,11 +257,10 @@ export function EmployeesPage() {
       if (editingEmployee) {
         // Update
         const updateDto: UpdateEmployeeDto = {
-          nameEn: values.nameEn,
-          nameAr: values.nameAr || undefined,
+          name: values.name,
           email: values.email,
           phone: values.phone || undefined,
-          role: values.role,
+          roleIds: values.roleIds,
           employeeId: values.employeeId || undefined,
           nationalId: values.nationalId || undefined,
           dateOfBirth: values.dateOfBirth ? values.dateOfBirth.toISOString().split('T')[0] : undefined,
@@ -259,10 +281,10 @@ export function EmployeesPage() {
             tenantId: user.tenantId,
             supabaseAuthId: updated.supabaseAuthId,
             email: updated.email,
-            nameEn: updated.nameEn,
-            nameAr: updated.nameAr,
+            name: updated.name,
             phone: updated.phone,
-            role: updated.role,
+            role: updated.role, // Keep for backward compatibility
+            roles: updated.roles || [], // Store roles array
             employeeId: updated.employeeId,
             photoUrl: updated.photoUrl,
             nationalId: updated.nationalId,
@@ -276,7 +298,7 @@ export function EmployeesPage() {
             updatedAt: updated.updatedAt,
             lastSynced: new Date().toISOString(),
             syncStatus: 'synced',
-          });
+          } as any);
         } else {
           // Queue for sync
           await db.employees.put({
@@ -298,9 +320,8 @@ export function EmployeesPage() {
         // Create
         const createDto: CreateEmployeeDto = {
           email: values.email,
-          nameEn: values.nameEn,
-          nameAr: values.nameAr || undefined,
-          role: values.role,
+          name: values.name,
+          roleIds: values.roleIds,
           phone: values.phone || undefined,
           employeeId: values.employeeId || undefined,
           nationalId: values.nationalId || undefined,
@@ -324,10 +345,10 @@ export function EmployeesPage() {
             tenantId: user.tenantId,
             supabaseAuthId: created.supabaseAuthId,
             email: created.email,
-            nameEn: created.nameEn,
-            nameAr: created.nameAr,
+            name: created.name,
             phone: created.phone,
-            role: created.role,
+            role: created.role, // Keep for backward compatibility
+            roles: created.roles || [], // Store roles array
             employeeId: created.employeeId,
             photoUrl: created.photoUrl,
             nationalId: created.nationalId,
@@ -341,7 +362,7 @@ export function EmployeesPage() {
             updatedAt: created.updatedAt,
             lastSynced: new Date().toISOString(),
             syncStatus: 'synced',
-          });
+          } as any);
         } else {
           // Queue for sync
           const tempId = `employee-${Date.now()}`;
@@ -364,7 +385,8 @@ export function EmployeesPage() {
       }
 
       handleCloseModal();
-      loadEmployees();
+      // Reload employees to get fresh data with roles
+      await loadEmployees();
     } catch (err: any) {
       const errorMsg = err.response?.data?.error?.message || err.message || 'Failed to save employee';
       setError(errorMsg);
@@ -382,7 +404,7 @@ export function EmployeesPage() {
       title: t('employees.deleteConfirm', language),
       children: (
         <Text size="sm">
-          {t('employees.deleteConfirmMessage', language)} {employee.nameEn}?
+          {t('employees.deleteConfirmMessage', language)} {employee.name}?
         </Text>
       ),
       labels: { confirm: t('common.delete' as any, language) || 'Delete', cancel: t('common.cancel' as any, language) || 'Cancel' },
@@ -429,24 +451,40 @@ export function EmployeesPage() {
   const filteredEmployees = employees.filter((emp) => {
     const matchesSearch =
       !searchQuery ||
-      emp.nameEn?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      emp.nameAr?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      emp.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       emp.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       emp.phone?.includes(searchQuery) ||
       emp.employeeId?.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
   });
 
-  const getRoleLabel = (role: string) => {
-    const translated = t(`employees.role.${role}` as any, language);
-    if (translated && !translated.startsWith('employees.role.')) {
-      return translated;
+  const getRoleLabel = (roleName: string) => {
+    const role = roles.find((r) => r.name === roleName);
+    if (role) {
+      const translated = t(`employees.role.${role.name}` as any, language);
+      if (translated && !translated.startsWith('employees.role.')) {
+        return translated;
+      }
+      return role.displayNameEn;
     }
     // Fallback: format the role name nicely
-    return role
+    return roleName
       .split('_')
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(' ');
+  };
+
+  const getRoleLabels = (employeeRoles?: Role[]) => {
+    if (!employeeRoles || employeeRoles.length === 0) {
+      return [getRoleLabel('')];
+    }
+    return employeeRoles.map((r) => {
+      const translated = t(`employees.role.${r.name}` as any, language);
+      if (translated && !translated.startsWith('employees.role.')) {
+        return translated;
+      }
+      return r.displayNameEn;
+    });
   };
 
   const getEmploymentTypeLabel = (type?: string) => {
@@ -478,9 +516,11 @@ export function EmployeesPage() {
     <Container size="xl" py="xl">
       <Group justify="space-between" mb="xl">
         <Title order={2}>{t('employees.title', language)}</Title>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => handleOpenModal()}>
-          {t('employees.addEmployee', language)}
-        </Button>
+        <PermissionGuard resource="employees" action="create">
+          <Button leftSection={<IconPlus size={16} />} onClick={() => handleOpenModal()}>
+            {t('employees.addEmployee', language)}
+          </Button>
+        </PermissionGuard>
       </Group>
 
       {error && (
@@ -502,9 +542,9 @@ export function EmployeesPage() {
           <Grid.Col span={{ base: 12, md: 4 }}>
             <Select
               placeholder={t('employees.filterByRole', language)}
-              data={ROLES.map((r) => ({
-                value: r.value,
-                label: t(`employees.role.${r.value}` as any, language) || r.label,
+              data={roles.map((r) => ({
+                value: r.name,
+                label: t(`employees.role.${r.name}` as any, language) || r.displayNameEn,
               }))}
               clearable
               value={roleFilter}
@@ -552,7 +592,7 @@ export function EmployeesPage() {
                   <Table.Tr key={employee.id}>
                     <Table.Td>
                       <Text fw={500}>
-                        {language === 'ar' && employee.nameAr ? employee.nameAr : employee.nameEn}
+                        {employee.name}
                       </Text>
                       {employee.employeeId && (
                         <Text size="xs" c="dimmed">
@@ -562,9 +602,34 @@ export function EmployeesPage() {
                     </Table.Td>
                     <Table.Td>{employee.email}</Table.Td>
                     <Table.Td>
-                      <Badge color={primaryColor} variant="light">
-                        {getRoleLabel(employee.role)}
-                      </Badge>
+                      <Group gap="xs">
+                        {(() => {
+                          // Debug: log employee roles
+                          if (employee.name === 'Lingo' || employee.email === 'lingo@gmail.com') {
+                            console.log('Lingo employee data:', {
+                              name: employee.name,
+                              roles: employee.roles,
+                              role: employee.role,
+                              fullEmployee: employee
+                            });
+                          }
+                          
+                          // Display multiple roles if available
+                          if (employee.roles && Array.isArray(employee.roles) && employee.roles.length > 0) {
+                            return employee.roles.map((role) => (
+                              <Badge key={role.id || role.name} color={primaryColor} variant="light">
+                                {getRoleLabel(role.name)}
+                              </Badge>
+                            ));
+                          }
+                          // Fallback to single role
+                          return (
+                            <Badge color={primaryColor} variant="light">
+                              {getRoleLabel(employee.role)}
+                            </Badge>
+                          );
+                        })()}
+                      </Group>
                     </Table.Td>
                     <Table.Td>{employee.phone || '-'}</Table.Td>
                     <Table.Td>{getEmploymentTypeLabel(employee.employmentType)}</Table.Td>
@@ -581,12 +646,16 @@ export function EmployeesPage() {
                     </Table.Td>
                     <Table.Td>
                       <Group gap="xs">
-                        <ActionIcon variant="subtle" color={primaryColor} onClick={() => handleOpenModal(employee)}>
-                          <IconEdit size={16} />
-                        </ActionIcon>
-                        <ActionIcon variant="subtle" color={errorColor} onClick={() => handleDelete(employee)}>
-                          <IconTrash size={16} />
-                        </ActionIcon>
+                        <PermissionGuard resource="employees" action="update">
+                          <ActionIcon variant="subtle" color={primaryColor} onClick={() => handleOpenModal(employee)}>
+                            <IconEdit size={16} />
+                          </ActionIcon>
+                        </PermissionGuard>
+                        <PermissionGuard resource="employees" action="delete">
+                          <ActionIcon variant="subtle" color={errorColor} onClick={() => handleDelete(employee)}>
+                            <IconTrash size={16} />
+                          </ActionIcon>
+                        </PermissionGuard>
                       </Group>
                     </Table.Td>
                   </Table.Tr>
@@ -608,13 +677,10 @@ export function EmployeesPage() {
             <Grid>
               <Grid.Col span={{ base: 12, md: 6 }}>
                 <TextInput
-                  label={t('employees.nameEn', language)}
+                  label={t('employees.name', language) || 'Name'}
                   required
-                  {...form.getInputProps('nameEn')}
+                  {...form.getInputProps('name')}
                 />
-              </Grid.Col>
-              <Grid.Col span={{ base: 12, md: 6 }}>
-                <TextInput label={t('employees.nameAr', language)} {...form.getInputProps('nameAr')} />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 6 }}>
                 <TextInput label={t('common.email' as any, language)} required {...form.getInputProps('email')} />
@@ -623,15 +689,29 @@ export function EmployeesPage() {
                 <TextInput label={t('common.phone' as any, language)} {...form.getInputProps('phone')} />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 6 }}>
-                <Select
-                  label={t('employees.roleLabel', language)}
-                  required
-                  data={ROLES.map((r) => ({
-                    value: r.value,
-                    label: t(`employees.role.${r.value}` as any, language) || r.label,
-                  }))}
-                  {...form.getInputProps('role')}
-                />
+                {roles.length > 0 ? (
+                  <MultiSelect
+                    key={`role-select-${editingEmployee?.id || 'new'}`}
+                    label={t('employees.roleLabel', language)}
+                    placeholder={t('employees.selectRoles', language) || 'Select one or more roles'}
+                    required
+                    searchable
+                    clearable
+                    value={form.values.roleIds}
+                    onChange={(value) => form.setFieldValue('roleIds', value || [])}
+                    data={roles.map((r) => ({
+                      value: r.id,
+                      label: t(`employees.role.${r.name}` as any, language) || r.displayNameEn,
+                    }))}
+                  />
+                ) : (
+                  <Select
+                    label={t('employees.roleLabel', language)}
+                    placeholder="Loading roles..."
+                    disabled
+                    data={[]}
+                  />
+                )}
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 6 }}>
                 <TextInput label={t('employees.employeeId', language)} {...form.getInputProps('employeeId')} />
@@ -676,7 +756,7 @@ export function EmployeesPage() {
                   label={t('employees.assignedBranches', language)}
                   data={branches.map((b) => ({
                     value: b.id,
-                    label: language === 'ar' && b.nameAr ? b.nameAr : b.nameEn,
+                    label: b.name,
                   }))}
                   {...form.getInputProps('branchIds')}
                 />

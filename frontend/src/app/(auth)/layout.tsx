@@ -1,9 +1,9 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { ReactNode, useMemo } from 'react';
 import { Box, Title, Text, Card, useMantineTheme, Button, Group } from '@mantine/core';
 import { IconToolsKitchen2, IconLanguage } from '@tabler/icons-react';
-import { useThemeColor, useThemeColorShade } from '@/lib/hooks/use-theme-color';
+import { DEFAULT_THEME_COLOR } from '@/lib/utils/theme';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 
@@ -11,10 +11,29 @@ interface AuthLayoutProps {
   children: ReactNode;
 }
 
+// Helper function to calculate shade from a base color (for auth pages)
+function calculateShade(baseColor: string, shade: number = 8): string {
+  // Convert hex to RGB
+  const hex = baseColor.replace('#', '');
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+
+  // Darken: mix with black
+  const factor = (shade - 6) / 3;
+  const darkenFactor = factor * 0.4;
+  const newR = Math.round(Math.max(0, r * (1 - darkenFactor)));
+  const newG = Math.round(Math.max(0, g * (1 - darkenFactor)));
+  const newB = Math.round(Math.max(0, b * (1 - darkenFactor)));
+
+  return `#${[newR, newG, newB].map(x => x.toString(16).padStart(2, '0')).join('')}`;
+}
+
 export default function AuthLayout({ children }: AuthLayoutProps) {
   const theme = useMantineTheme();
-  const primary = useThemeColor();
-  const primaryShade = useThemeColorShade(8);
+  // Use default theme color for auth pages, don't read from localStorage
+  const primary = DEFAULT_THEME_COLOR;
+  const primaryShade = useMemo(() => calculateShade(DEFAULT_THEME_COLOR, 8), []);
   const { language, toggleLanguage } = useLanguageStore();
 
   return (

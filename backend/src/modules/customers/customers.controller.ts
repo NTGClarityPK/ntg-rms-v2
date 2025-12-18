@@ -3,7 +3,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CustomersService } from './customers.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { CreateCustomerDto } from './dto/create-customer.dto';
+import { CreateCustomerDto, CreateCustomerAddressDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 
 @ApiTags('customers')
@@ -51,16 +51,7 @@ export class CustomersController {
   createCustomerAddress(
     @CurrentUser() user: any,
     @Param('id') id: string,
-    @Body() addressDto: {
-      label?: string;
-      addressEn: string;
-      addressAr?: string;
-      city?: string;
-      state?: string;
-      country?: string;
-      latitude?: number;
-      longitude?: number;
-    },
+    @Body() addressDto: CreateCustomerAddressDto,
   ) {
     return this.customersService.createCustomerAddress(user.tenantId, id, addressDto);
   }

@@ -11,15 +11,13 @@ export interface DashboardData {
   pendingOrders: number;
   lowStockAlerts: Array<{
     id: string;
-    nameEn: string;
-    nameAr: string;
+    name: string;
     currentStock: number;
     minimumThreshold: number;
   }>;
   popularItems: Array<{
     id: string;
-    nameEn: string;
-    nameAr: string;
+    name: string;
     quantity: number;
   }>;
   revenueChart: Array<{

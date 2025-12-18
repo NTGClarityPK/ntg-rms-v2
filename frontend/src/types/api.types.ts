@@ -19,8 +19,7 @@ export interface User {
   id: string;
   tenantId: string;
   email: string;
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   phone?: string;
   role: string;
   isActive: boolean;

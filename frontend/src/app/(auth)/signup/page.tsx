@@ -19,6 +19,7 @@ import {
 import { useForm } from '@mantine/form';
 import { IconAlertCircle, IconMail, IconLock, IconUser, IconPhone, IconCheck } from '@tabler/icons-react';
 import { authApi } from '@/lib/api/auth';
+import { menuApi } from '@/lib/api/menu';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
@@ -40,8 +41,7 @@ export default function SignupPage() {
       email: '',
       password: '',
       confirmPassword: '',
-      nameEn: '',
-      nameAr: '',
+      name: '',
       phone: '',
       defaultCurrency: 'IQD',
     },
@@ -50,7 +50,7 @@ export default function SignupPage() {
       password: (value) => (value.length < 6 ? (language === 'ar' ? 'يجب أن تكون كلمة المرور 6 أحرف على الأقل' : 'Password must be at least 6 characters') : null),
       confirmPassword: (value, values) =>
         value !== values.password ? (language === 'ar' ? 'كلمات المرور غير متطابقة' : 'Passwords do not match') : null,
-      nameEn: (value) => (value.length < 2 ? (language === 'ar' ? 'يجب أن يكون الاسم حرفين على الأقل' : 'Name must be at least 2 characters') : null),
+      name: (value) => (value.length < 2 ? (language === 'ar' ? 'يجب أن يكون الاسم حرفين على الأقل' : 'Name must be at least 2 characters') : null),
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
   });
@@ -59,7 +59,7 @@ export default function SignupPage() {
     if (active === 0) {
       // Validate step 1: Basic Information
       const step1Valid = form.validateField('email').hasError === false &&
-        form.validateField('nameEn').hasError === false;
+        form.validateField('name').hasError === false;
       if (step1Valid) {
         setActive((current) => (current < 2 ? current + 1 : current));
       }
@@ -82,7 +82,36 @@ export default function SignupPage() {
     try {
       const { confirmPassword, ...signupData } = values;
       const response = await authApi.signup(signupData);
-      setUser(response.user);
+      // Map response to User type (handle both old and new API formats)
+      const user = {
+        ...response.user,
+        name: response.user.name || (response.user as any).nameEn || (response.user as any).nameAr || 'User',
+      };
+      setUser(user);
+
+      // Create a sample add-on group and add-on to help users understand the feature
+      try {
+        const sampleGroupName = language === 'ar' ? 'إضافات إضافية (مثال)' : 'Extra Toppings (Sample)';
+        const sampleAddOnName = language === 'ar' ? 'جبن إضافي' : 'Extra Cheese';
+        
+        const sampleGroup = await menuApi.createAddOnGroup({
+          name: sampleGroupName,
+          selectionType: 'multiple',
+          isRequired: false,
+          minSelections: 0,
+          maxSelections: undefined,
+        });
+
+        await menuApi.createAddOn(sampleGroup.id, {
+          name: sampleAddOnName,
+          price: 0,
+          isActive: true,
+        });
+      } catch (sampleErr) {
+        // Don't fail signup if sample creation fails, just log it
+        console.warn('Failed to create sample add-on:', sampleErr);
+      }
+
       router.push('/dashboard');
     } catch (err: any) {
       const errorMsg = err.response?.data?.error?.message || 
@@ -124,24 +153,14 @@ export default function SignupPage() {
             />
 
             <TextInput
-                label={t('auth.nameEnglish', language)}
+                label="Name"
                 placeholder={language === 'ar' ? 'جون دو' : 'John Doe'}
               required
                 leftSection={<IconUser size={18} />}
                 size="lg"
                 radius="md"
                 disabled={loading}
-              {...form.getInputProps('nameEn')}
-            />
-
-            <TextInput
-                label={t('auth.nameArabic', language)}
-              placeholder="جون دو"
-                leftSection={<IconUser size={18} />}
-                size="lg"
-                radius="md"
-                disabled={loading}
-              {...form.getInputProps('nameAr')}
+              {...form.getInputProps('name')}
             />
 
             <TextInput
@@ -234,16 +253,9 @@ export default function SignupPage() {
               </Box>
 
               <Box>
-                <Text size="sm" c="dimmed" mb="xs">{t('auth.nameEnglish', language)}</Text>
-                <Text fw={500}>{form.values.nameEn}</Text>
+                <Text size="sm" c="dimmed" mb="xs">Name</Text>
+                <Text fw={500}>{form.values.name}</Text>
               </Box>
-
-              {form.values.nameAr && (
-                <Box>
-                  <Text size="sm" c="dimmed" mb="xs">{t('auth.nameArabic', language)}</Text>
-                  <Text fw={500}>{form.values.nameAr}</Text>
-                </Box>
-              )}
 
               {form.values.phone && (
                 <Box>

@@ -5,25 +5,22 @@ export type DeliveryStatus = 'pending' | 'assigned' | 'out_for_delivery' | 'deli
 
 export interface DeliveryPersonnel {
   id: string;
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   phone?: string;
   email?: string;
   isActive: boolean;
   activeDeliveriesCount: number;
   branches?: Array<{
     id: string;
-    nameEn: string;
-    nameAr?: string;
+    name: string;
     code: string;
   }>;
 }
 
 export interface CustomerAddress {
   id: string;
-  addressEn?: string;
-  addressAr?: string;
-  addressLine1: string; // Backward compatibility
+  address: string;
+  addressLine1?: string; // Backward compatibility
   addressLine2?: string; // Backward compatibility
   city?: string;
   state?: string;
@@ -66,22 +63,19 @@ export interface DeliveryOrder {
     branchId?: string;
     customer?: {
       id: string;
-      nameEn: string;
-      nameAr?: string;
+      name: string;
       phone?: string;
       email?: string;
     };
     branch?: {
       id: string;
-      nameEn: string;
-      nameAr?: string;
+      name: string;
       code: string;
     };
   };
   deliveryPerson?: {
     id: string;
-    nameEn: string;
-    nameAr?: string;
+    name: string;
     phone?: string;
     email?: string;
   };

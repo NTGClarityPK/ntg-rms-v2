@@ -163,9 +163,9 @@ export class InvoiceGenerator {
   <div class="header">
     ${headerText ? `<div class="info" style="margin-bottom: 5px;">${headerText}</div>` : ''}
     ${showLogo && tenant.logoUrl ? `<img src="${tenant.logoUrl}" alt="Logo" class="logo" />` : ''}
-    <div class="title">${isRTL ? tenant.nameAr || tenant.nameEn : tenant.nameEn}</div>
-    ${branch ? `<div class="info">${isRTL ? branch.nameAr || branch.nameEn : branch.nameEn}</div>` : ''}
-    ${branch?.addressEn ? `<div class="info">${isRTL ? branch.addressAr || branch.addressEn : branch.addressEn}</div>` : ''}
+    <div class="title">${tenant.name}</div>
+    ${branch ? `<div class="info">${branch.name}</div>` : ''}
+    ${branch?.address ? `<div class="info">${branch.address}</div>` : ''}
     ${branch?.phone ? `<div class="info">${branch.phone}</div>` : ''}
     ${showVatNumber && tenant.vatNumber ? `<div class="info">VAT: ${tenant.vatNumber}</div>` : ''}
   </div>
@@ -174,15 +174,16 @@ export class InvoiceGenerator {
     <div class="section-title">${isRTL ? 'الفاتورة' : 'INVOICE'}</div>
     <div class="info">${isRTL ? 'رقم الطلب' : 'Order #'}: ${order.orderNumber}</div>
     <div class="info">${isRTL ? 'التاريخ' : 'Date'}: ${new Date(order.orderDate).toLocaleString(language === 'ar' ? 'ar-IQ' : 'en-US')}</div>
+    ${(order as any).orderType ? `<div class="info">${isRTL ? 'نوع الطلب' : 'Order Type'}: ${(order as any).orderType === 'dine_in' ? (isRTL ? 'أكل في المطعم' : 'Dine In') : (order as any).orderType === 'takeaway' ? (isRTL ? 'طلب خارجي' : 'Takeaway') : (order as any).orderType === 'delivery' ? (isRTL ? 'توصيل' : 'Delivery') : (order as any).orderType}</div>` : ''}
     ${order.tableId ? `<div class="info">${isRTL ? 'الطاولة' : 'Table'}: ${order.tableId}</div>` : ''}
   </div>
 
   ${customerName ? `
   <div class="section">
     <div class="section-title">${isRTL ? 'العميل' : 'CUSTOMER'}</div>
-    <div class="info">${customerName}</div>
-    ${customerPhone ? `<div class="info">${customerPhone}</div>` : ''}
-    ${customerAddress ? `<div class="info">${customerAddress}</div>` : ''}
+    <div class="info"><strong>${isRTL ? 'الاسم' : 'Name'}:</strong> ${customerName}</div>
+    ${customerPhone ? `<div class="info"><strong>${isRTL ? 'الهاتف' : 'Phone'}:</strong> ${customerPhone}</div>` : ''}
+    ${customerAddress ? `<div class="info"><strong>${isRTL ? 'العنوان' : 'Address'}:</strong> ${customerAddress}</div>` : ''}
   </div>
   ` : ''}
 
@@ -190,20 +191,18 @@ export class InvoiceGenerator {
     <div class="section-title">${isRTL ? 'العناصر' : 'ITEMS'}</div>
     <div class="items">
       ${((order as any).items || []).map((item: any) => {
-        const itemName = item.foodItemNameEn || item.foodItem?.nameEn || 'Item';
-        const itemNameAr = item.foodItemNameAr || item.foodItem?.nameAr;
+        const itemName = item.foodItemName || item.foodItem?.name || 'Item';
         const variationName = item.variationName || item.variation?.variationName;
         const addOns = item.addOns || [];
         const addOnNames = addOns.map((a: any) => {
-          const addOnNameEn = a.addOnNameEn || a.addOn?.nameEn || '';
-          const addOnNameAr = a.addOnNameAr || a.addOn?.nameAr;
-          return isRTL && addOnNameAr ? addOnNameAr : addOnNameEn;
+          const addOnName = a.addOnName || a.addOn?.name || '';
+          return addOnName;
         }).filter(Boolean);
         
         return `
         <div class="item">
           <div class="item-name">
-            ${item.quantity}x ${isRTL && itemNameAr ? itemNameAr : itemName}
+            ${item.quantity}x ${itemName}
             ${variationName ? ` (${variationName})` : ''}
             ${addOnNames.length > 0 ? ` + ${addOnNames.join(', ')}` : ''}
           </div>
@@ -243,12 +242,11 @@ export class InvoiceGenerator {
     </div>
   </div>
 
-  ${(order as any).paymentMethod ? `
   <div class="section">
-    <div class="info">${isRTL ? 'طريقة الدفع' : 'Payment Method'}: ${(order as any).paymentMethod.toUpperCase()}</div>
-    ${order.paymentStatus === 'paid' ? `<div class="info">${isRTL ? 'تم الدفع' : 'PAID'}</div>` : ''}
+    <div class="section-title">${isRTL ? 'معلومات الدفع' : 'PAYMENT INFORMATION'}</div>
+    ${(order as any).paymentMethod ? `<div class="info"><strong>${isRTL ? 'طريقة الدفع' : 'Payment Method'}:</strong> ${(order as any).paymentMethod === 'cash' ? (isRTL ? 'نقدي' : 'Cash') : (order as any).paymentMethod === 'card' ? (isRTL ? 'بطاقة' : 'Card') : (order as any).paymentMethod === 'zainCash' ? 'ZainCash' : (order as any).paymentMethod === 'asiaHawala' ? 'Asia Hawala' : (order as any).paymentMethod === 'bankTransfer' ? (isRTL ? 'تحويل بنكي' : 'Bank Transfer') : (order as any).paymentMethod.toUpperCase()}</div>` : ''}
+    <div class="info"><strong>${isRTL ? 'حالة الدفع' : 'Payment Status'}:</strong> ${order.paymentStatus === 'paid' ? (isRTL ? 'تم الدفع' : 'PAID') : order.paymentStatus === 'partial' ? (isRTL ? 'دفع جزئي' : 'PARTIAL') : (isRTL ? 'غير مدفوع' : 'UNPAID')}</div>
   </div>
-  ` : ''}
 
   ${showVatNumber && tenant.vatNumber && order.taxAmount ? `
   <div class="section">
@@ -428,9 +426,9 @@ export class InvoiceGenerator {
     ${headerText ? `<div class="info" style="margin-bottom: 10px; text-align: center; font-weight: bold;">${headerText}</div>` : ''}
     <div class="header-left">
       ${showLogo && tenant.logoUrl ? `<img src="${tenant.logoUrl}" alt="Logo" class="logo" />` : ''}
-      <div class="title">${isRTL ? tenant.nameAr || tenant.nameEn : tenant.nameEn}</div>
-      ${branch ? `<div class="info">${isRTL ? branch.nameAr || branch.nameEn : branch.nameEn}</div>` : ''}
-      ${branch?.addressEn ? `<div class="info">${isRTL ? branch.addressAr || branch.addressEn : branch.addressEn}</div>` : ''}
+      <div class="title">${tenant.name}</div>
+      ${branch ? `<div class="info">${branch.name}</div>` : ''}
+      ${branch?.address ? `<div class="info">${branch.address}</div>` : ''}
       ${branch?.phone ? `<div class="info">${branch.phone}</div>` : ''}
       ${branch?.email ? `<div class="info">${branch.email}</div>` : ''}
     </div>
@@ -445,6 +443,11 @@ export class InvoiceGenerator {
       <div><strong>${isRTL ? 'رقم الطلب' : 'Order Number'}:</strong> ${order.orderNumber}</div>
       <div><strong>${isRTL ? 'التاريخ' : 'Date'}:</strong> ${new Date(order.orderDate).toLocaleString(language === 'ar' ? 'ar-IQ' : 'en-US')}</div>
     </div>
+    ${(order as any).orderType ? `
+    <div class="invoice-info-row">
+      <div><strong>${isRTL ? 'نوع الطلب' : 'Order Type'}:</strong> ${(order as any).orderType === 'dine_in' ? (isRTL ? 'أكل في المطعم' : 'Dine In') : (order as any).orderType === 'takeaway' ? (isRTL ? 'طلب خارجي' : 'Takeaway') : (order as any).orderType === 'delivery' ? (isRTL ? 'توصيل' : 'Delivery') : (order as any).orderType}</div>
+    </div>
+    ` : ''}
     ${order.tableId ? `
     <div class="invoice-info-row">
       <div><strong>${isRTL ? 'الطاولة' : 'Table'}:</strong> ${order.tableId}</div>
@@ -476,14 +479,12 @@ export class InvoiceGenerator {
       </thead>
       <tbody>
         ${((order as any).items || []).map((item: any) => {
-          const itemNameEn = item.foodItemNameEn || item.foodItem?.nameEn || 'Item';
-          const itemNameAr = item.foodItemNameAr || item.foodItem?.nameAr;
+          const itemName = item.foodItemName || item.foodItem?.name || 'Item';
           const variationName = item.variationName || item.variation?.variationName;
           const addOns = item.addOns || [];
           const addOnNames = addOns.map((a: any) => {
-            const addOnNameEn = a.addOnNameEn || a.addOn?.nameEn || '';
-            const addOnNameAr = a.addOnNameAr || a.addOn?.nameAr;
-            return isRTL && addOnNameAr ? addOnNameAr : addOnNameEn;
+            const addOnName = a.addOnName || a.addOn?.name || '';
+            return addOnName;
           }).filter(Boolean);
           const unitPrice = item.quantity > 0 ? (item.subtotal || 0) / item.quantity : 0;
           
@@ -491,7 +492,7 @@ export class InvoiceGenerator {
           <tr>
             <td>${item.quantity || 0}</td>
             <td>
-              ${isRTL && itemNameAr ? itemNameAr : itemNameEn}
+              ${itemName}
               ${variationName ? `<br><small>${variationName}</small>` : ''}
               ${addOnNames.length > 0 ? `<br><small>+ ${addOnNames.join(', ')}</small>` : ''}
             </td>
@@ -533,15 +534,13 @@ export class InvoiceGenerator {
     </div>
   </div>
 
-  ${(order as any).paymentMethod ? `
   <div class="section">
     <div class="section-title">${isRTL ? 'معلومات الدفع' : 'PAYMENT INFORMATION'}</div>
     <div class="info">
-      <strong>${isRTL ? 'طريقة الدفع' : 'Payment Method'}:</strong> ${(order as any).paymentMethod.toUpperCase()}<br>
-      <strong>${isRTL ? 'حالة الدفع' : 'Payment Status'}:</strong> ${order.paymentStatus === 'paid' ? (isRTL ? 'تم الدفع' : 'PAID') : (isRTL ? 'غير مدفوع' : 'UNPAID')}
+      ${(order as any).paymentMethod ? `<strong>${isRTL ? 'طريقة الدفع' : 'Payment Method'}:</strong> ${(order as any).paymentMethod === 'cash' ? (isRTL ? 'نقدي' : 'Cash') : (order as any).paymentMethod === 'card' ? (isRTL ? 'بطاقة' : 'Card') : (order as any).paymentMethod === 'zainCash' ? 'ZainCash' : (order as any).paymentMethod === 'asiaHawala' ? 'Asia Hawala' : (order as any).paymentMethod === 'bankTransfer' ? (isRTL ? 'تحويل بنكي' : 'Bank Transfer') : (order as any).paymentMethod.toUpperCase()}<br>` : ''}
+      <strong>${isRTL ? 'حالة الدفع' : 'Payment Status'}:</strong> ${order.paymentStatus === 'paid' ? (isRTL ? 'تم الدفع' : 'PAID') : order.paymentStatus === 'partial' ? (isRTL ? 'دفع جزئي' : 'PARTIAL') : (isRTL ? 'غير مدفوع' : 'UNPAID')}
     </div>
   </div>
-  ` : ''}
 
   ${(order as any).specialInstructions ? `
   <div class="notes">

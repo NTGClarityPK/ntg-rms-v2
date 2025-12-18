@@ -74,7 +74,7 @@ export default function CountersPage() {
           setBranches(
             branchesData.map((b) => ({
               value: b.id,
-              label: `${b.nameEn} (${b.code})`,
+              label: `${b.name} (${b.code})`,
             }))
           );
         } catch (err) {
@@ -306,7 +306,7 @@ export default function CountersPage() {
                   </Table.Td>
                   <Table.Td>{counter.code}</Table.Td>
                   <Table.Td>
-                    {counter.branch?.nameEn || '-'}
+                    {(counter.branch as any)?.name || (counter.branch as any)?.nameEn || '-'}
                   </Table.Td>
                   <Table.Td>
                     <Badge style={{ 

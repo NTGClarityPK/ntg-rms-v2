@@ -58,6 +58,7 @@ export function FoodItemsPage() {
   const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [addOnGroups, setAddOnGroups] = useState<any[]>([]);
+  const [menus, setMenus] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [opened, setOpened] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
@@ -70,10 +71,8 @@ export function FoodItemsPage() {
 
   const form = useForm({
     initialValues: {
-      nameEn: '',
-      nameAr: '',
-      descriptionEn: '',
-      descriptionAr: '',
+      name: '',
+      description: '',
       categoryId: '',
       basePrice: 0,
       stockType: 'unlimited',
@@ -87,7 +86,7 @@ export function FoodItemsPage() {
       discounts: [] as FoodItemDiscount[],
     },
     validate: {
-      nameEn: (value) => (!value ? t('menu.foodItemNameEn', language) + ' is required' : null),
+      name: (value) => (!value ? (t('menu.foodItemName', language) || 'Name') + ' is required' : null),
       categoryId: (value) => (!value ? t('menu.selectCategory', language) + ' is required' : null),
       basePrice: (value) => (value <= 0 ? 'Base price must be greater than 0' : null),
     },
@@ -106,6 +105,10 @@ export function FoodItemsPage() {
       // Load add-on groups (only active ones for selection)
       const groups = await menuApi.getAddOnGroups();
       setAddOnGroups(groups.filter((group) => group.isActive));
+
+      // Load menus for menu type selection
+      const menuList = await menuApi.getMenus();
+      setMenus(menuList);
 
       // Load food items from IndexedDB first
       const localItems = await db.foodItems
@@ -126,10 +129,8 @@ export function FoodItemsPage() {
 
           return {
         id: item.id,
-        nameEn: item.nameEn,
-        nameAr: item.nameAr,
-        descriptionEn: item.descriptionEn,
-        descriptionAr: item.descriptionAr,
+        name: (item as any).name || (item as any).nameEn || (item as any).nameAr || '',
+        description: (item as any).description || (item as any).descriptionEn || (item as any).descriptionAr || '',
         imageUrl: item.imageUrl,
         categoryId: item.categoryId,
         basePrice: item.basePrice,
@@ -178,10 +179,8 @@ export function FoodItemsPage() {
             await db.foodItems.put({
               id: item.id,
               tenantId: user.tenantId,
-              nameEn: item.nameEn,
-              nameAr: item.nameAr,
-              descriptionEn: item.descriptionEn,
-              descriptionAr: item.descriptionAr,
+              name: item.name || (item as any).nameEn || (item as any).nameAr || '',
+              description: item.description || (item as any).descriptionEn || (item as any).descriptionAr || '',
               imageUrl: item.imageUrl,
               categoryId: item.categoryId,
               basePrice: item.basePrice,
@@ -196,7 +195,7 @@ export function FoodItemsPage() {
               updatedAt: item.updatedAt,
               lastSynced: new Date().toISOString(),
               syncStatus: 'synced',
-            });
+            } as any);
 
             // Save variations
             if (item.variations && item.variations.length > 0) {
@@ -292,11 +291,36 @@ export function FoodItemsPage() {
       loadData();
     });
     
+    // Listen for menu updates to refresh menu list
+    const unsubscribe3 = onMenuDataUpdate('menus-updated', () => {
+      loadData();
+    });
+    
     return () => {
       unsubscribe1();
       unsubscribe2();
+      unsubscribe3();
     };
   }, [loadData]);
+
+  // Helper function to get menu name from menu type
+  const getMenuName = (menuType: string): string => {
+    const menu = menus.find((m) => m.menuType === menuType);
+    if (menu) {
+      return menu.name || menu.menuType;
+    }
+    
+    // Fallback to translations for default menu types
+    const menuTypeLabels: Record<string, string> = {
+      all_day: t('menu.allDay', language),
+      breakfast: t('menu.breakfast', language),
+      lunch: t('menu.lunch', language),
+      dinner: t('menu.dinner', language),
+      kids_special: t('menu.kidsSpecial', language),
+    };
+    
+    return menuTypeLabels[menuType] || menuType;
+  };
 
   const handleOpenModal = async (item?: FoodItem) => {
     // Ensure add-on groups are loaded
@@ -306,6 +330,16 @@ export function FoodItemsPage() {
         setAddOnGroups(groups.filter((group) => group.isActive));
       } catch (err) {
         console.error('Failed to load add-on groups:', err);
+      }
+    }
+
+    // Ensure menus are loaded
+    if (menus.length === 0) {
+      try {
+        const menuList = await menuApi.getMenus();
+        setMenus(menuList);
+      } catch (err) {
+        console.error('Failed to load menus:', err);
       }
     }
 
@@ -326,10 +360,8 @@ export function FoodItemsPage() {
         : (item.menuType ? [item.menuType] : []);
 
       form.setValues({
-        nameEn: item.nameEn,
-        nameAr: item.nameAr || '',
-        descriptionEn: item.descriptionEn || '',
-        descriptionAr: item.descriptionAr || '',
+        name: item.name || (item as any).nameEn || (item as any).nameAr || '',
+        description: item.description || (item as any).descriptionEn || (item as any).descriptionAr || '',
         categoryId: item.categoryId || '',
         basePrice: item.basePrice,
         stockType: item.stockType,
@@ -383,7 +415,7 @@ export function FoodItemsPage() {
       e.stopPropagation();
     }
     if (activeStep === 0) {
-      const step1Valid = form.validateField('nameEn').hasError === false &&
+      const step1Valid = form.validateField('name').hasError === false &&
         form.validateField('categoryId').hasError === false &&
         form.validateField('basePrice').hasError === false;
       if (step1Valid) {
@@ -464,10 +496,8 @@ export function FoodItemsPage() {
     (async () => {
       try {
       const itemData = {
-        nameEn: values.nameEn,
-        nameAr: values.nameAr || undefined,
-        descriptionEn: values.descriptionEn || undefined,
-        descriptionAr: values.descriptionAr || undefined,
+        name: values.name,
+        description: values.description || undefined,
         categoryId: values.categoryId,
         basePrice: values.basePrice,
         stockType: values.stockType,
@@ -591,7 +621,7 @@ export function FoodItemsPage() {
           updatedAt: savedItem.updatedAt,
           lastSynced: new Date().toISOString(),
           syncStatus: 'synced',
-        });
+        } as any);
 
           // Save variations
           if (values.variations && values.variations.length > 0) {
@@ -828,7 +858,7 @@ export function FoodItemsPage() {
                       {item.imageUrl ? (
                         <Image
                           src={item.imageUrl}
-                          alt={item.nameEn}
+                          alt={item.name || ''}
                           width={40}
                           height={40}
                           radius="sm"
@@ -853,13 +883,11 @@ export function FoodItemsPage() {
                       )}
                           <div style={{ minWidth: 0, flex: 1 }}>
                             <Text fw={500} truncate>
-                          {language === 'ar' && item.nameAr ? item.nameAr : item.nameEn}
+                          {item.name || ''}
                         </Text>
-                        {item.descriptionEn && (
+                        {item.description && (
                               <Text size="xs" c="dimmed" lineClamp={1}>
-                            {language === 'ar' && item.descriptionAr
-                              ? item.descriptionAr
-                              : item.descriptionEn}
+                            {item.description || ''}
                           </Text>
                         )}
                       </div>
@@ -868,9 +896,7 @@ export function FoodItemsPage() {
                   <Table.Td>
                         <Text truncate>
                     {category
-                      ? language === 'ar' && category.nameAr
-                        ? category.nameAr
-                        : category.nameEn
+                      ? category.name || ''
                       : '-'}
                         </Text>
                   </Table.Td>
@@ -887,24 +913,14 @@ export function FoodItemsPage() {
                                 size="sm"
                                 style={{ color: primaryColor }}
                               >
-                                {menuType === 'all_day' ? t('menu.allDay', language) :
-                                 menuType === 'breakfast' ? t('menu.breakfast', language) :
-                                 menuType === 'lunch' ? t('menu.lunch', language) :
-                                 menuType === 'dinner' ? t('menu.dinner', language) :
-                                 menuType === 'kids_special' ? t('menu.kidsSpecial', language) :
-                                 menuType}
+                                {getMenuName(menuType)}
                               </Badge>
                             ))}
                           </Group>
                         ) : item.menuType ? (
                           <Badge variant="light" size="sm" style={{ color: primaryColor }}>
-                      {item.menuType === 'all_day' ? t('menu.allDay', language) :
-                       item.menuType === 'breakfast' ? t('menu.breakfast', language) :
-                       item.menuType === 'lunch' ? t('menu.lunch', language) :
-                       item.menuType === 'dinner' ? t('menu.dinner', language) :
-                       item.menuType === 'kids_special' ? t('menu.kidsSpecial', language) :
-                       item.menuType}
-                    </Badge>
+                            {getMenuName(item.menuType)}
+                          </Badge>
                         ) : (
                           <Text c="dimmed" size="sm">-</Text>
                         )}
@@ -983,29 +999,17 @@ export function FoodItemsPage() {
             >
               <Stack gap="md" mt="xl">
                 <Grid>
-                  <Grid.Col span={{ base: 12, md: 6 }}>
+                  <Grid.Col span={12}>
                     <TextInput
-                      label={t('menu.foodItemNameEn', language)}
+                      label={t('menu.foodItemName', language) || 'Name'}
                       required
-                      {...form.getInputProps('nameEn')}
-                    />
-                  </Grid.Col>
-                  <Grid.Col span={{ base: 12, md: 6 }}>
-                    <TextInput
-                      label={t('menu.foodItemNameAr', language)}
-                      {...form.getInputProps('nameAr')}
+                      {...form.getInputProps('name')}
                     />
                   </Grid.Col>
                   <Grid.Col span={12}>
                     <Textarea
-                      label={t('menu.descriptionEn', language)}
-                      {...form.getInputProps('descriptionEn')}
-                    />
-                  </Grid.Col>
-                  <Grid.Col span={12}>
-                    <Textarea
-                      label={t('menu.descriptionAr', language)}
-                      {...form.getInputProps('descriptionAr')}
+                      label={t('menu.description', language) || 'Description'}
+                      {...form.getInputProps('description')}
                     />
                   </Grid.Col>
                   <Grid.Col span={{ base: 12, md: 6 }}>
@@ -1015,7 +1019,7 @@ export function FoodItemsPage() {
                       placeholder={categories.length === 0 ? t('menu.noCategories', language) : undefined}
                       data={categories.map((cat) => ({
                         value: cat.id,
-                        label: language === 'ar' && cat.nameAr ? cat.nameAr : cat.nameEn,
+                        label: cat.name || '',
                       }))}
                       disabled={categories.length === 0}
                       {...form.getInputProps('categoryId')}
@@ -1059,14 +1063,12 @@ export function FoodItemsPage() {
                     <MultiSelect
                       label={t('menu.menuTypes', language)}
                       placeholder={t('menu.selectMenuTypes', language)}
-                      data={[
-                        { value: 'all_day', label: t('menu.allDay', language) },
-                        { value: 'breakfast', label: t('menu.breakfast', language) },
-                        { value: 'lunch', label: t('menu.lunch', language) },
-                        { value: 'dinner', label: t('menu.dinner', language) },
-                        { value: 'kids_special', label: t('menu.kidsSpecial', language) },
-                      ]}
+                      data={menus.map((menu) => ({
+                        value: menu.menuType,
+                        label: menu.name || menu.menuType,
+                      }))}
                       {...form.getInputProps('menuTypes')}
+                      searchable
                     />
                   </Grid.Col>
                   <Grid.Col span={{ base: 12, md: 6 }}>
@@ -1224,7 +1226,7 @@ export function FoodItemsPage() {
                   }
                   data={addOnGroups.map((group) => ({
                     value: group.id,
-                    label: language === 'ar' && group.nameAr ? group.nameAr : group.nameEn,
+                    label: group.name || '',
                   }))}
                   disabled={addOnGroups.length === 0}
                   {...form.getInputProps('addOnGroupIds')}

@@ -2,15 +2,10 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsString, IsOptional, IsEmail, IsPhoneNumber } from 'class-validator';
 
 export class UpdateProfileDto {
-  @ApiProperty({ description: 'User name in English', required: false })
+  @ApiProperty({ description: 'User name', required: false })
   @IsOptional()
   @IsString()
-  nameEn?: string;
-
-  @ApiProperty({ description: 'User name in Arabic', required: false })
-  @IsOptional()
-  @IsString()
-  nameAr?: string;
+  name?: string;
 
   @ApiProperty({ description: 'Phone number', required: false })
   @IsOptional()

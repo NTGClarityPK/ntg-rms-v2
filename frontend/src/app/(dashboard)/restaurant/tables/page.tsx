@@ -98,7 +98,7 @@ export default function TablesPage() {
           setBranches(
             branchesData.map((b) => ({
               value: b.id,
-              label: `${b.nameEn} (${b.code})`,
+              label: `${b.name} (${b.code})`,
             }))
           );
         } catch (err) {
@@ -328,7 +328,7 @@ export default function TablesPage() {
                     <Text fw={500}>{table.tableNumber}</Text>
                   </Table.Td>
                   <Table.Td>
-                    {table.branch?.nameEn || '-'}
+                    {(table.branch as any)?.name || (table.branch as any)?.nameEn || '-'}
                   </Table.Td>
                   <Table.Td>{table.seatingCapacity}</Table.Td>
                   <Table.Td>

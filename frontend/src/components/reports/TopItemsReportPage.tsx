@@ -28,11 +28,11 @@ export default function TopItemsReportPage() {
   const loadBranches = useCallback(async () => {
     try {
       const data = await restaurantApi.getBranches();
-      setBranches(data.map((b) => ({ value: b.id, label: language === 'ar' && b.nameAr ? b.nameAr : b.nameEn })));
+      setBranches(data.map((b) => ({ value: b.id, label: b.name })));
     } catch (error) {
       console.error('Failed to load branches:', error);
     }
-  }, [language]);
+  }, []);
 
   const loadReport = useCallback(async (reportFilters?: ReportQueryParams, silent = false) => {
     const filtersToUse = reportFilters || filters;
@@ -102,7 +102,7 @@ export default function TopItemsReportPage() {
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={report.items.map(item => ({
               ...item,
-              name: language === 'ar' && item.nameAr ? item.nameAr : (item.nameEn || item.name)
+              name: item.name
             }))} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis type="number" />
@@ -128,7 +128,7 @@ export default function TopItemsReportPage() {
           <Table.Tbody>
             {report.items.map((item) => (
               <Table.Tr key={item.id}>
-                <Table.Td>{language === 'ar' && item.nameAr ? item.nameAr : (item.nameEn || item.name)}</Table.Td>
+                <Table.Td>{item.name}</Table.Td>
                 <Table.Td>{item.quantity}</Table.Td>
                 <Table.Td>{item.revenue.toFixed(2)} {currency}</Table.Td>
                 <Table.Td>{item.orderCount}</Table.Td>

@@ -1,25 +1,16 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsOptional, IsArray, IsUUID, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsUUID, IsBoolean, Matches } from 'class-validator';
 
 export class CreateMenuDto {
   @ApiProperty()
   @IsString()
-  nameEn: string;
+  @Matches(/^[a-z0-9_]+$/, { message: 'Menu type must contain only lowercase letters, numbers, and underscores' })
+  menuType: string;
 
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
-  nameAr?: string;
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  descriptionEn?: string;
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  descriptionAr?: string;
+  name?: string;
 
   @ApiProperty({ required: false, type: [String] })
   @IsArray()

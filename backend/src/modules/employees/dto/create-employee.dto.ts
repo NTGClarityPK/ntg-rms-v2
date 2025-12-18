@@ -8,16 +8,12 @@ export class CreateEmployeeDto {
 
   @ApiProperty()
   @IsString()
-  nameEn: string;
+  name: string;
 
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  nameAr?: string;
-
-  @ApiProperty()
-  @IsString()
-  role: string; // manager, cashier, kitchen_staff, waiter, delivery
+  @ApiProperty({ type: [String], description: 'Array of role IDs to assign to the employee' })
+  @IsArray()
+  @IsUUID('4', { each: true })
+  roleIds: string[];
 
   @ApiProperty({ required: false })
   @IsString()

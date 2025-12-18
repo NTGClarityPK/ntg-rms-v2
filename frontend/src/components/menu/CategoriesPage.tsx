@@ -53,20 +53,19 @@ export function CategoriesPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const form = useForm({
     initialValues: {
-      nameEn: '',
-      nameAr: '',
-      descriptionEn: '',
-      descriptionAr: '',
+      name: '',
+      description: '',
       categoryType: 'food',
       parentId: '',
       imageUrl: '',
       isActive: true,
     },
     validate: {
-      nameEn: (value) => (!value ? t('menu.categoryNameEn', language) + ' is required' : null),
+      name: (value) => (!value ? (t('menu.categoryName', language) || 'Name') + ' is required' : null),
     },
   });
 
@@ -86,10 +85,8 @@ export function CategoriesPage() {
 
       setCategories(localCategories.map((cat) => ({
         id: cat.id,
-        nameEn: cat.nameEn,
-        nameAr: cat.nameAr,
-        descriptionEn: cat.descriptionEn,
-        descriptionAr: cat.descriptionAr,
+        name: (cat as any).name || (cat as any).nameEn || (cat as any).nameAr || '',
+        description: (cat as any).description || (cat as any).descriptionEn || (cat as any).descriptionAr || '',
         imageUrl: cat.imageUrl,
         categoryType: cat.categoryType,
         parentId: cat.parentId,
@@ -111,10 +108,8 @@ export function CategoriesPage() {
             await db.categories.put({
               id: cat.id,
               tenantId: user.tenantId,
-              nameEn: cat.nameEn,
-              nameAr: cat.nameAr,
-              descriptionEn: cat.descriptionEn,
-              descriptionAr: cat.descriptionAr,
+              name: cat.name,
+              description: cat.description,
               imageUrl: cat.imageUrl,
               categoryType: cat.categoryType,
               parentId: cat.parentId,
@@ -124,7 +119,7 @@ export function CategoriesPage() {
               updatedAt: cat.updatedAt,
               lastSynced: new Date().toISOString(),
               syncStatus: 'synced',
-            });
+            } as any);
           }
         } catch (err: any) {
           console.warn('Failed to sync categories from server:', err);
@@ -153,10 +148,8 @@ export function CategoriesPage() {
     if (category) {
       setEditingCategory(category);
       form.setValues({
-        nameEn: category.nameEn,
-        nameAr: category.nameAr || '',
-        descriptionEn: category.descriptionEn || '',
-        descriptionAr: category.descriptionAr || '',
+        name: category.name || (category as any).nameEn || (category as any).nameAr || '',
+        description: category.description || (category as any).descriptionEn || (category as any).descriptionAr || '',
         categoryType: category.categoryType,
         parentId: category.parentId || '',
         imageUrl: category.imageUrl || '',
@@ -233,16 +226,15 @@ export function CategoriesPage() {
   };
 
   const handleSubmit = async (values: typeof form.values) => {
-    if (!user?.tenantId) return;
+    if (!user?.tenantId || submitting) return;
 
     try {
+      setSubmitting(true);
       setError(null);
 
       const categoryData = {
-        nameEn: values.nameEn,
-        nameAr: values.nameAr || undefined,
-        descriptionEn: values.descriptionEn || undefined,
-        descriptionAr: values.descriptionAr || undefined,
+        name: values.name,
+        description: values.description || undefined,
         categoryType: values.categoryType,
         parentId: values.parentId || undefined,
         imageUrl: values.imageUrl || undefined,
@@ -293,7 +285,7 @@ export function CategoriesPage() {
           updatedAt: savedCategory.updatedAt,
           lastSynced: new Date().toISOString(),
           syncStatus: 'synced',
-        });
+        } as any);
 
         // Queue sync
         await syncService.queueChange('categories', 'CREATE', savedCategory.id, savedCategory);
@@ -319,6 +311,8 @@ export function CategoriesPage() {
         message: errorMsg,
         color: errorColor,
       });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -439,7 +433,7 @@ export function CategoriesPage() {
                       {category.imageUrl ? (
                         <Image
                           src={category.imageUrl}
-                          alt={category.nameEn}
+                          alt={category.name || ''}
                           width={80}
                           height={80}
                           fit="cover"
@@ -451,13 +445,11 @@ export function CategoriesPage() {
                     </Box>
                     <div>
                       <Text fw={500}>
-                        {language === 'ar' && category.nameAr ? category.nameAr : category.nameEn}
+                        {category.name || ''}
                       </Text>
-                      {category.descriptionEn && (
+                      {category.description && (
                         <Text size="sm" c="dimmed">
-                          {language === 'ar' && category.descriptionAr
-                            ? category.descriptionAr
-                            : category.descriptionEn}
+                          {category.description || ''}
                         </Text>
                       )}
                     </div>
@@ -488,7 +480,7 @@ export function CategoriesPage() {
                       <Group key={sub.id} justify="space-between" align="center">
                         <Group align="center">
                           <Text size="sm" c="dimmed">
-                            {language === 'ar' && sub.nameAr ? sub.nameAr : sub.nameEn}
+                            {sub.name || ''}
                           </Text>
                         </Group>
                         <Group gap="xs" align="center">
@@ -531,29 +523,17 @@ export function CategoriesPage() {
         <form onSubmit={form.onSubmit(handleSubmit)}>
           <Stack gap="md">
             <Grid>
-              <Grid.Col span={{ base: 12, md: 6 }}>
+              <Grid.Col span={12}>
                 <TextInput
-                  label={t('menu.categoryNameEn', language)}
+                  label={t('menu.categoryName', language) || 'Name'}
                   required
-                  {...form.getInputProps('nameEn')}
-                />
-              </Grid.Col>
-              <Grid.Col span={{ base: 12, md: 6 }}>
-                <TextInput
-                  label={t('menu.categoryNameAr', language)}
-                  {...form.getInputProps('nameAr')}
+                  {...form.getInputProps('name')}
                 />
               </Grid.Col>
               <Grid.Col span={12}>
                 <TextInput
-                  label={t('menu.descriptionEn', language)}
-                  {...form.getInputProps('descriptionEn')}
-                />
-              </Grid.Col>
-              <Grid.Col span={12}>
-                <TextInput
-                  label={t('menu.descriptionAr', language)}
-                  {...form.getInputProps('descriptionAr')}
+                  label={t('menu.description', language) || 'Description'}
+                  {...form.getInputProps('description')}
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 6 }}>
@@ -576,7 +556,7 @@ export function CategoriesPage() {
                       .filter((cat) => !editingCategory || cat.id !== editingCategory.id)
                       .map((cat) => ({
                         value: cat.id,
-                        label: language === 'ar' && cat.nameAr ? cat.nameAr : cat.nameEn,
+                        label: cat.name || '',
                       })),
                   ]}
                   {...form.getInputProps('parentId')}
@@ -641,10 +621,10 @@ export function CategoriesPage() {
             </Grid>
 
             <Group justify="flex-end" mt="md">
-              <Button variant="subtle" onClick={handleCloseModal}>
+              <Button variant="subtle" onClick={handleCloseModal} disabled={submitting}>
                 {t('common.cancel' as any, language) || 'Cancel'}
               </Button>
-              <Button type="submit" style={{ backgroundColor: primaryColor }}>
+              <Button type="submit" style={{ backgroundColor: primaryColor }} loading={submitting} disabled={submitting}>
                 {t('common.save' as any, language) || 'Save'}
               </Button>
             </Group>

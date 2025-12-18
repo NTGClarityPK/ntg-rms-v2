@@ -236,8 +236,7 @@ export class SyncService {
     for (const ingredient of ingredientsToCreate) {
       try {
         const createDto: CreateIngredientDto = {
-          nameEn: ingredient.data.nameEn,
-          nameAr: ingredient.data.nameAr,
+          name: ingredient.data.name || '',
           category: ingredient.data.category,
           unitOfMeasurement: ingredient.data.unitOfMeasurement,
           currentStock: ingredient.data.currentStock,
@@ -266,8 +265,7 @@ export class SyncService {
     for (const ingredient of ingredientsToUpdate) {
       try {
         const updateDto: UpdateIngredientDto = {
-          nameEn: ingredient.data.nameEn,
-          nameAr: ingredient.data.nameAr,
+          name: ingredient.data.name || '',
           category: ingredient.data.category,
           unitOfMeasurement: ingredient.data.unitOfMeasurement,
           currentStock: ingredient.data.currentStock,
@@ -557,7 +555,7 @@ export class SyncService {
           .select('*')
           .eq('tenant_id', tenantId)
           .is('deleted_at', null)
-          .order('name_en', { ascending: true }),
+          .order('name', { ascending: true }),
         
         // Recipes - filter by food item IDs that belong to this tenant
         foodItemIds.length > 0
@@ -573,11 +571,9 @@ export class SyncService {
         branches: (branches.data || []).map((b: any) => ({
           id: b.id,
           tenantId: b.tenant_id,
-          nameEn: b.name_en,
-          nameAr: b.name_ar,
+          name: b.name,
           code: b.code,
-          addressEn: b.address_en,
-          addressAr: b.address_ar,
+          address: b.address,
           city: b.city,
           state: b.state,
           country: b.country,
@@ -597,10 +593,8 @@ export class SyncService {
         categories: (categories.data || []).map((c: any) => ({
           id: c.id,
           tenantId: c.tenant_id,
-          nameEn: c.name_en,
-          nameAr: c.name_ar,
-          descriptionEn: c.description_en,
-          descriptionAr: c.description_ar,
+          name: c.name,
+          description: c.description,
           imageUrl: c.image_url,
           categoryType: c.category_type,
           parentId: c.parent_id,
@@ -617,10 +611,8 @@ export class SyncService {
           id: f.id,
           tenantId: f.tenant_id,
           categoryId: f.category_id,
-          nameEn: f.name_en,
-          nameAr: f.name_ar,
-          descriptionEn: f.description_en,
-          descriptionAr: f.description_ar,
+          name: f.name,
+          description: f.description,
           imageUrl: f.image_url,
           basePrice: parseFloat(f.base_price || 0),
           stockType: f.stock_type,
@@ -639,8 +631,7 @@ export class SyncService {
         addOnGroups: (addOnGroups.data || []).map((g: any) => ({
           id: g.id,
           tenantId: g.tenant_id,
-          nameEn: g.name_en,
-          nameAr: g.name_ar,
+          name: g.name,
           selectionType: g.selection_type,
           isRequired: g.is_required,
           minSelections: g.min_selections,
@@ -657,8 +648,7 @@ export class SyncService {
         addOns: (addOns.data || []).map((a: any) => ({
           id: a.id,
           addOnGroupId: a.add_on_group_id,
-          nameEn: a.name_en,
-          nameAr: a.name_ar,
+          name: a.name,
           price: parseFloat(a.price || 0),
           displayOrder: a.display_order,
           isActive: a.is_active,
@@ -713,8 +703,7 @@ export class SyncService {
         ingredients: (ingredients.data || []).map((i: any) => ({
           id: i.id,
           tenantId: i.tenant_id,
-          nameEn: i.name_en,
-          nameAr: i.name_ar,
+          name: i.name,
           category: i.category,
           unitOfMeasurement: i.unit_of_measurement,
           currentStock: Number(i.current_stock) || 0,

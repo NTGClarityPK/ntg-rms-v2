@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../../database/supabase.service';
+import { RolesService } from '../roles/roles.service';
 import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
@@ -13,6 +14,7 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private supabaseService: SupabaseService,
+    private rolesService: RolesService,
   ) {}
 
   async signup(signupDto: SignupDto) {
@@ -64,8 +66,7 @@ export class AuthService {
       const { data: tenantData, error: tenantError } = await supabase
         .from('tenants')
         .insert({
-          name_en: signupDto.nameEn + "'s Restaurant",
-          name_ar: signupDto.nameAr || signupDto.nameEn + "'s Restaurant",
+          name: signupDto.name + "'s Restaurant",
           subdomain: subdomain,
           email: signupDto.email,
           phone: signupDto.phone,
@@ -92,15 +93,13 @@ export class AuthService {
     }
 
     // Create user record in users table
-    // If only English name is provided, use it as Arabic name too
     console.log('Creating user record in users table...');
     const { data: userData, error: userError } = await supabase
       .from('users')
       .insert({
         supabase_auth_id: authData.user.id,
         email: signupDto.email,
-        name_en: signupDto.nameEn,
-        name_ar: signupDto.nameAr || signupDto.nameEn, // Use English name as Arabic if not provided
+        name: signupDto.name,
         phone: signupDto.phone,
         role: signupDto.role || 'tenant_owner',
         tenant_id: tenantId,
@@ -130,6 +129,31 @@ export class AuthService {
 
     console.log('User record created successfully:', userData.id);
 
+    // Assign role based on user role field
+    try {
+      const roles = await this.rolesService.getRoles();
+      const userRole = signupDto.role || 'tenant_owner';
+      
+      // Map tenant_owner to manager role for full access
+      const roleToAssign = userRole === 'tenant_owner' ? 'manager' : userRole;
+      const role = roles.find((r) => r.name === roleToAssign);
+      
+      if (role) {
+        await this.rolesService.assignRolesToUser(userData.id, [role.id], userData.id);
+        console.log(`Assigned ${role.name} role to user ${userData.id}`);
+      } else {
+        // Fallback: assign manager role if role not found
+        const managerRole = roles.find((r) => r.name === 'manager');
+        if (managerRole) {
+          await this.rolesService.assignRolesToUser(userData.id, [managerRole.id], userData.id);
+          console.log(`Assigned manager role (fallback) to user ${userData.id}`);
+        }
+      }
+    } catch (roleError) {
+      console.error('Failed to assign role to user:', roleError);
+      // Don't fail signup if role assignment fails, but log it
+    }
+
     // Create a default branch for the tenant if this is a new tenant
     if (!signupDto.tenantId) {
       try {
@@ -137,8 +161,7 @@ export class AuthService {
           .from('branches')
           .insert({
             tenant_id: tenantId,
-            name_en: 'Main Branch',
-            name_ar: 'الفرع الرئيسي',
+            name: 'Main Branch',
             code: 'MAIN',
             is_active: true,
           })
@@ -164,8 +187,7 @@ export class AuthService {
       user: {
         id: userData.id,
         email: userData.email as string,
-        nameEn: userData.name_en as string,
-        nameAr: userData.name_ar as string | undefined,
+        name: userData.name as string,
         role: userData.role as string,
         tenantId: userData.tenant_id as string,
       },
@@ -249,8 +271,7 @@ export class AuthService {
         const { data: newTenant, error: tenantError } = await serviceSupabase
           .from('tenants')
           .insert({
-            name_en: `${userName}'s Restaurant`,
-            name_ar: `${userName}'s Restaurant`,
+            name: `${userName}'s Restaurant`,
             subdomain: subdomain,
             email: userEmail,
           })
@@ -266,14 +287,12 @@ export class AuthService {
       }
 
       // Create user record
-      // If only English name is provided, use it as Arabic name too
       const { data: newUser, error: createUserError } = await serviceSupabase
         .from('users')
         .insert({
           supabase_auth_id: authUser.id,
           email: userEmail,
-          name_en: userName,
-          name_ar: userName, // Use English name as Arabic name if no Arabic name provided
+          name: userName,
           tenant_id: tenantId,
           role: 'tenant_owner',
           is_active: true,
@@ -296,8 +315,7 @@ export class AuthService {
             .from('branches')
             .insert({
               tenant_id: tenantId,
-              name_en: 'Main Branch',
-              name_ar: 'الفرع الرئيسي',
+              name: 'Main Branch',
               code: 'MAIN',
               is_active: true,
             })
@@ -334,8 +352,7 @@ export class AuthService {
       user: {
         id: user.id as string,
         email: user.email as string,
-        nameEn: user.name_en as string,
-        nameAr: user.name_ar as string | undefined,
+        name: user.name as string,
         role: user.role as string,
         tenantId: user.tenant_id as string,
       },
@@ -386,8 +403,7 @@ export class AuthService {
     return {
       id: user.id as string,
       email: user.email as string,
-      nameEn: user.name_en as string,
-      nameAr: user.name_ar as string | undefined,
+      name: user.name as string,
       role: user.role as string,
       tenantId: user.tenant_id as string,
     };
@@ -414,8 +430,7 @@ export class AuthService {
       user: {
         id: user.id as string,
         email: user.email as string,
-        nameEn: user.name_en as string,
-        nameAr: user.name_ar as string | undefined,
+        name: user.name as string,
         role: user.role as string,
         tenantId: user.tenant_id as string,
       },
@@ -485,13 +500,9 @@ export class AuthService {
       
       // Update last login and fix name if it's "User"
       const updateData: any = { last_login_at: new Date().toISOString() };
-      if (!existingUser.name_en || existingUser.name_en === 'User') {
-        updateData.name_en = userName;
-        updateData.name_ar = existingUser.name_ar || userName; // Use English name as Arabic if not set
-        console.log('Updating user name from', existingUser.name_en, 'to', userName);
-      } else if (!existingUser.name_ar) {
-        // If English name exists but Arabic name is missing, set it to English name
-        updateData.name_ar = existingUser.name_en;
+      if (!existingUser.name || existingUser.name === 'User') {
+        updateData.name = userName;
+        console.log('Updating user name from', existingUser.name, 'to', userName);
       }
       
       await supabase
@@ -500,7 +511,7 @@ export class AuthService {
         .eq('id', existingUser.id);
 
       // Fetch updated user if we updated the name
-      if (updateData.name_en || updateData.name_ar) {
+      if (updateData.name) {
         const { data: updatedUser } = await supabase
           .from('users')
           .select('*')
@@ -578,8 +589,7 @@ export class AuthService {
       const { data: newTenant, error: tenantError } = await supabase
         .from('tenants')
         .insert({
-          name_en: `${userName}'s Restaurant`,
-          name_ar: `${userName}'s Restaurant`,
+          name: `${userName}'s Restaurant`,
           subdomain: subdomain,
           email: userEmail,
         })
@@ -596,14 +606,12 @@ export class AuthService {
     }
 
     // Create user record
-    // If only English name is provided, use it as Arabic name too
     const { data: newUser, error: createUserError } = await supabase
       .from('users')
       .insert({
         supabase_auth_id: supabaseAuthId,
         email: userEmail,
-        name_en: userName,
-        name_ar: userName, // Use English name as Arabic name if no Arabic name provided
+        name: userName,
         photo_url: userPhoto,
         tenant_id: tenantId,
         role: 'tenant_owner',
@@ -626,8 +634,7 @@ export class AuthService {
           .from('branches')
           .insert({
             tenant_id: tenantId,
-            name_en: 'Main Branch',
-            name_ar: 'الفرع الرئيسي',
+            name: 'Main Branch',
             code: 'MAIN',
             is_active: true,
           })
@@ -665,8 +672,7 @@ export class AuthService {
     return {
       id: user.id as string,
       email: user.email as string,
-      nameEn: user.name_en as string,
-      nameAr: user.name_ar as string | undefined,
+      name: user.name as string,
       phone: user.phone as string | undefined,
       role: user.role as string,
       tenantId: user.tenant_id as string,
@@ -680,11 +686,8 @@ export class AuthService {
     
     // Build update object
     const updateData: any = {};
-    if (updateProfileDto.nameEn !== undefined) {
-      updateData.name_en = updateProfileDto.nameEn;
-    }
-    if (updateProfileDto.nameAr !== undefined) {
-      updateData.name_ar = updateProfileDto.nameAr;
+    if (updateProfileDto.name !== undefined) {
+      updateData.name = updateProfileDto.name;
     }
     if (updateProfileDto.phone !== undefined) {
       updateData.phone = updateProfileDto.phone;
@@ -720,8 +723,7 @@ export class AuthService {
     return {
       id: updatedUser.id as string,
       email: updatedUser.email as string,
-      nameEn: updatedUser.name_en as string,
-      nameAr: updatedUser.name_ar as string | undefined,
+      name: updatedUser.name as string,
       phone: updatedUser.phone as string | undefined,
       role: updatedUser.role as string,
       tenantId: updatedUser.tenant_id as string,

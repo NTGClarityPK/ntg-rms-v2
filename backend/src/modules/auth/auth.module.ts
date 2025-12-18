@@ -7,6 +7,7 @@ import { AuthService } from '../auth/auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { GoogleOAuthStrategy } from '../auth/strategies/google-oauth.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { RolesModule } from '../roles/roles.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
       },
       inject: [ConfigService],
     }),
+    RolesModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, GoogleOAuthStrategy, JwtAuthGuard],

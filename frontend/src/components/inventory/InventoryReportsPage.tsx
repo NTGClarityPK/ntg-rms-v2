@@ -80,7 +80,7 @@ export function InventoryReportsPage() {
       const byName = new Map<string, typeof localIngredients[0]>();
       
       for (const ing of Array.from(byId.values())) {
-        const key = ing.nameEn?.toLowerCase().trim() || '';
+        const key = ((ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '').toLowerCase().trim();
         if (key) {
           const existing = byName.get(key);
           if (!existing || new Date(ing.updatedAt || ing.createdAt || '') > new Date(existing.updatedAt || existing.createdAt || '')) {
@@ -127,7 +127,7 @@ export function InventoryReportsPage() {
           const serverByName = new Map<string, any>();
           
           for (const item of Array.from(serverById.values())) {
-            const key = item.nameEn?.toLowerCase().trim() || '';
+            const key = item.name?.toLowerCase().trim() || '';
             if (key) {
               const existing = serverByName.get(key);
               if (!existing || new Date(item.updatedAt) > new Date(existing.updatedAt)) {
@@ -146,8 +146,7 @@ export function InventoryReportsPage() {
           const ingredientsToStore = uniqueServerData.map((item: any) => ({
             id: item.id,
             tenantId: user.tenantId,
-            nameEn: item.nameEn,
-            nameAr: item.nameAr,
+            name: item.name,
             category: item.category,
             unitOfMeasurement: item.unitOfMeasurement,
             currentStock: item.currentStock,
@@ -162,7 +161,7 @@ export function InventoryReportsPage() {
           }));
           
           if (ingredientsToStore.length > 0) {
-            await db.ingredients.bulkPut(ingredientsToStore);
+            await db.ingredients.bulkPut(ingredientsToStore as any);
           }
         } catch (err: any) {
           console.warn('Failed to sync current stock from server:', err);
@@ -189,7 +188,7 @@ export function InventoryReportsPage() {
       const byName = new Map<string, typeof localIngredients[0]>();
       
       for (const ing of Array.from(byId.values())) {
-        const key = ing.nameEn?.toLowerCase().trim() || '';
+        const key = ((ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '').toLowerCase().trim();
         if (key) {
           const existing = byName.get(key);
           if (!existing || new Date(ing.updatedAt || ing.createdAt || '') > new Date(existing.updatedAt || existing.createdAt || '')) {
@@ -213,7 +212,10 @@ export function InventoryReportsPage() {
         })
         .sort((a, b) => a.currentStock - b.currentStock);
 
-      setLowStockAlerts(lowStock);
+      setLowStockAlerts(lowStock.map(ing => ({
+        ...ing,
+        name: (ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '',
+      })));
 
       // Sync from server if online
       if (navigator.onLine) {
@@ -225,7 +227,7 @@ export function InventoryReportsPage() {
           const serverByName = new Map<string, any>();
           
           for (const item of Array.from(serverById.values())) {
-            const key = item.nameEn?.toLowerCase().trim() || '';
+            const key = item.name?.toLowerCase().trim() || '';
             if (key) {
               const existing = serverByName.get(key);
               if (!existing || new Date(item.updatedAt) > new Date(existing.updatedAt)) {
@@ -372,7 +374,7 @@ export function InventoryReportsPage() {
               const deficit = ingredient.minimumThreshold - ingredient.currentStock;
               return (
                 <Text key={ingredient.id} size="sm">
-                  • {language === 'ar' && ingredient.nameAr ? ingredient.nameAr : ingredient.nameEn}: {ingredient.currentStock} {ingredient.unitOfMeasurement} 
+                  • {ingredient.name}: {ingredient.currentStock} {ingredient.unitOfMeasurement} 
                   ({t('inventory.stockDeficit', language)}: {deficit} {ingredient.unitOfMeasurement})
                 </Text>
               );
@@ -446,7 +448,7 @@ export function InventoryReportsPage() {
           <Table striped highlightOnHover>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>{t('inventory.ingredientNameEn', language)}</Table.Th>
+                <Table.Th>{t('inventory.ingredientName', language)}</Table.Th>
                 <Table.Th>{t('inventory.category', language)}</Table.Th>
                 <Table.Th>{t('inventory.currentStock', language)}</Table.Th>
                 <Table.Th>{t('inventory.minimumThreshold', language)}</Table.Th>
@@ -460,7 +462,7 @@ export function InventoryReportsPage() {
                 <Table.Tr key={item.id}>
                   <Table.Td>
                     <Text fw={500}>
-                      {language === 'ar' && item.nameAr ? item.nameAr : item.nameEn}
+                      {item.name}
                     </Text>
                   </Table.Td>
                   <Table.Td>
@@ -548,7 +550,7 @@ export function InventoryReportsPage() {
                   <Table.Td>
                     {tx.ingredient ? (
                       <Text fw={500}>
-                        {language === 'ar' && tx.ingredient.nameAr ? tx.ingredient.nameAr : tx.ingredient.nameEn}
+                        {tx.ingredient.name}
                       </Text>
                     ) : (
                       <Text size="sm" c="dimmed">-</Text>

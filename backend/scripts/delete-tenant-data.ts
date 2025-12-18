@@ -56,14 +56,14 @@ function question(query: string): Promise<string> {
   });
 }
 
-const TENANT_ID = 'bae76fde-4c4b-4e50-ab12-0a72e2038717';
+const TENANT_ID = '6b1b322e-ee8e-43b2-848d-3a8d4314ff7a';
 
 async function deleteTenantData() {
   try {
     // First, verify tenant exists
     const { data: tenant, error: tenantError } = await supabase
       .from('tenants')
-      .select('id, name_en, email, subdomain')
+      .select('id, name, email, subdomain')
       .eq('id', TENANT_ID)
       .single();
 
@@ -75,7 +75,7 @@ async function deleteTenantData() {
 
     console.log('⚠️  WARNING: This will permanently delete ALL data for tenant:');
     console.log(`   - Tenant ID: ${tenant.id}`);
-    console.log(`   - Name: ${tenant.name_en || 'N/A'}`);
+    console.log(`   - Name: ${tenant.name || 'N/A'}`);
     console.log(`   - Email: ${tenant.email || 'N/A'}`);
     console.log(`   - Subdomain: ${tenant.subdomain || 'N/A'}`);
     console.log('');
@@ -103,7 +103,7 @@ async function deleteTenantData() {
     console.log('1. Fetching users for tenant...');
     const { data: users, error: usersError } = await supabase
       .from('users')
-      .select('id, email, name_en, supabase_auth_id')
+      .select('id, email, name, supabase_auth_id')
       .eq('tenant_id', TENANT_ID);
 
     if (usersError) {

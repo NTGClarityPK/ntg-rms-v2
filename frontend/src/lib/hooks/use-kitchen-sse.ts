@@ -10,6 +10,15 @@ export interface OrderUpdateEvent {
   order?: any;
 }
 
+export interface ConnectionTestEvent {
+  type: 'CONNECTION_TEST';
+  tenantId?: string;
+  orderId?: string;
+  order?: any;
+}
+
+export type SseMessage = OrderUpdateEvent | ConnectionTestEvent;
+
 export interface UseKitchenSseOptions {
   /**
    * Callback function called when an order update is received
@@ -163,8 +172,8 @@ export function useKitchenSse({
             return;
           }
           
-          const data: OrderUpdateEvent = JSON.parse(event.data);
-          console.log('📨 Received order update via SSE:', data.type, data.orderId, data);
+          const data: SseMessage = JSON.parse(event.data);
+          console.log('📨 Received order update via SSE:', data.type, (data as any).orderId, data);
           
           // Handle connection test message
           if (data.type === 'CONNECTION_TEST') {
@@ -172,8 +181,11 @@ export function useKitchenSse({
             return;
           }
           
-          // Handle actual order updates
-          onOrderUpdateRef.current(data);
+          // Handle actual order updates (type guard ensures this is OrderUpdateEvent)
+          if (data.type === 'ORDER_CREATED' || data.type === 'ORDER_UPDATED' || 
+              data.type === 'ORDER_STATUS_CHANGED' || data.type === 'ORDER_DELETED') {
+            onOrderUpdateRef.current(data);
+          }
         } catch (error) {
           console.error('❌ Failed to parse SSE message:', error, 'Raw data:', event.data);
         }

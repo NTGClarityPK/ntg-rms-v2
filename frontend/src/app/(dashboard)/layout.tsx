@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { syncService } from '@/lib/sync/sync-service';
 import { authApi } from '@/lib/api/auth';
+import { rolesApi } from '@/lib/api/roles';
 import { tokenStorage } from '@/lib/api/client';
 
 export default function DashboardLayout({
@@ -18,7 +19,7 @@ export default function DashboardLayout({
 }) {
   const [mobileOpened, { toggle: toggleMobile }] = useDisclosure();
   const [desktopOpened, { toggle: toggleDesktop }] = useDisclosure(true);
-  const { isAuthenticated, user, setUser } = useAuthStore();
+  const { isAuthenticated, user, setUser, setPermissions } = useAuthStore();
   const router = useRouter();
   const [isInitializing, setIsInitializing] = useState(true);
 
@@ -50,6 +51,27 @@ export default function DashboardLayout({
           const userData = await authApi.getCurrentUser();
           // If we get here, token is valid (or was refreshed by interceptor)
           setUser(userData);
+          
+          // Load user permissions
+          if (userData?.id) {
+            try {
+              const permissions = await rolesApi.getUserPermissions(userData.id);
+              console.log('Loaded user permissions:', permissions);
+              setPermissions(permissions);
+              
+              // If no permissions and user is tenant_owner or manager, log warning
+              if (permissions.length === 0 && (userData.role === 'tenant_owner' || userData.role === 'manager')) {
+                console.warn('User has no permissions assigned. Please run migration 014_assign_roles_to_existing_users.sql to assign roles.');
+              }
+            } catch (permError: any) {
+              console.error('Failed to load user permissions:', permError);
+              // If user is tenant_owner or manager, they should have permissions
+              if (userData.role === 'tenant_owner' || userData.role === 'manager') {
+                console.warn('Owner/Manager user has no permissions. This may require running the migration to assign roles.');
+              }
+              // Continue without permissions - user will have limited access
+            }
+          }
         } catch (error: any) {
           // If error is 401 and interceptor couldn't refresh, clear everything
           // The interceptor should have already redirected, but just in case:

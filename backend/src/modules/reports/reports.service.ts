@@ -199,8 +199,8 @@ export class ReportsService {
         .from('orders')
         .select(`
           *,
-          customers:customer_id(id, name_en, name_ar, phone),
-          branches:branch_id(id, name_en, name_ar, code)
+          customers:customer_id(id, name, phone),
+          branches:branch_id(id, name, code)
         `)
         .eq('tenant_id', tenantId)
         .gte('order_date', start.toISOString())
@@ -266,11 +266,11 @@ export class ReportsService {
           orderNumber: o.order_number,
           orderDate: o.order_date,
           customer: o.customers ? {
-            name: o.customers.name_en || o.customers.name_ar,
+            name: o.customers.name,
             phone: o.customers.phone,
           } : null,
           branch: o.branches ? {
-            name: o.branches.name_en || o.branches.name_ar,
+            name: o.branches.name,
             code: o.branches.code,
           } : null,
           orderType: o.order_type,
@@ -349,7 +349,7 @@ export class ReportsService {
 
         return {
           id: customer.id,
-          name: customer.name_en || customer.name_ar,
+          name: customer.name,
           phone: customer.phone,
           email: customer.email,
           totalOrders: customerOrders.length,
@@ -456,9 +456,7 @@ export class ReportsService {
 
         return {
           id: ingredient.id,
-          name: ingredient.name_en || ingredient.name_ar,
-          nameEn: ingredient.name_en,
-          nameAr: ingredient.name_ar,
+          name: ingredient.name,
           category: ingredient.category,
           unit: ingredient.unit_of_measurement,
           currentStock: stockLevel,
@@ -802,7 +800,7 @@ export class ReportsService {
         .from('order_items')
         .select(`
           *,
-          food_items:food_item_id(id, name_en, name_ar, category_id)
+          food_items:food_item_id(id, name, category_id)
         `)
         .in('order_id', orderIds);
 
@@ -814,8 +812,6 @@ export class ReportsService {
       const itemMap = new Map<string, {
         id: string;
         name: string;
-        nameEn?: string;
-        nameAr?: string;
         quantity: number;
         revenue: number;
         orderCount: number;
@@ -828,9 +824,7 @@ export class ReportsService {
         if (!itemMap.has(foodItemId)) {
           itemMap.set(foodItemId, {
             id: foodItemId,
-            name: foodItem?.name_en || foodItem?.name_ar || 'Unknown',
-            nameEn: foodItem?.name_en,
-            nameAr: foodItem?.name_ar,
+            name: foodItem?.name || 'Unknown',
             quantity: 0,
             revenue: 0,
             orderCount: 0,

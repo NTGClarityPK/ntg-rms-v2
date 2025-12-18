@@ -39,7 +39,7 @@ export class EmployeesController {
   @Put(':id')
   @ApiOperation({ summary: 'Update an employee' })
   updateEmployee(@CurrentUser() user: any, @Param('id') id: string, @Body() updateDto: UpdateEmployeeDto) {
-    return this.employeesService.updateEmployee(user.tenantId, id, updateDto);
+    return this.employeesService.updateEmployee(user.tenantId, id, updateDto, user.id);
   }
 
   @Delete(':id')

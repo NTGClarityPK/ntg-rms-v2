@@ -75,13 +75,13 @@ export default function OrdersPage() {
       setBranches(
         data.map((b) => ({
           value: b.id,
-          label: language === 'ar' && b.nameAr ? b.nameAr : b.nameEn,
+          label: b.name || '',
         }))
       );
     } catch (error) {
       console.error('Failed to load branches:', error);
     }
-  }, [language]);
+  }, []);
 
   const loadOrders = useCallback(async (silent = false) => {
     if (!silent) {
@@ -198,8 +198,7 @@ export default function OrdersPage() {
               ...order,
               branch: branch ? {
                 id: branch.id,
-                nameEn: branch.nameEn,
-                nameAr: branch.nameAr,
+                name: (branch as any).name || (branch as any).nameEn || (branch as any).nameAr || '',
                 code: branch.code,
               } : undefined,
               table: table ? {
@@ -209,8 +208,7 @@ export default function OrdersPage() {
               } : undefined,
               customer: customer ? {
                 id: customer.id,
-                nameEn: customer.nameEn,
-                nameAr: customer.nameAr,
+                name: (customer as any).name || (customer as any).nameEn || (customer as any).nameAr || '',
                 phone: customer.phone,
                 email: customer.email,
               } : undefined,
@@ -288,6 +286,11 @@ export default function OrdersPage() {
     console.log('Setting up Supabase Realtime subscription for orders list...');
     console.log('Tenant ID:', user.tenantId);
     
+    // Declare variables for subscription status tracking and polling
+    let pollInterval: NodeJS.Timeout | null = null;
+    let pollTimeout: NodeJS.Timeout | null = null;
+    let subscriptionStatus: string | null = null;
+    
     const channel = supabase
       .channel(`orders-realtime-list-${user.tenantId}-${Date.now()}`)
       .on(
@@ -313,6 +316,8 @@ export default function OrdersPage() {
         }
       )
       .subscribe((status, err) => {
+        // Track subscription status for fallback polling check
+        subscriptionStatus = status;
         console.log('Supabase Realtime subscription status:', status);
         if (err) {
           console.error('❌ Supabase Realtime error:', err);
@@ -331,22 +336,18 @@ export default function OrdersPage() {
 
     // FIXED: Conditional polling - only poll if Realtime subscription fails
     // This prevents unnecessary API calls when Realtime is working properly
-    let pollInterval: NodeJS.Timeout | null = null;
-    let pollTimeout: NodeJS.Timeout | null = null;
-    
     // Check subscription status after 10 seconds
     // If still not subscribed, start polling as fallback
     pollTimeout = setTimeout(() => {
-      channel.subscribe((currentStatus) => {
-        // Only start polling if subscription definitely failed
-        if (currentStatus !== 'SUBSCRIBED' && currentStatus !== 'SUBSCRIBING') {
-          console.warn('⚠️ Realtime subscription failed, starting fallback polling (30s interval)');
-          pollInterval = setInterval(() => {
-            console.log('🔄 Polling for order changes (fallback)...');
-            loadOrdersRef.current?.(true); // silent = true, no loading state
-          }, 30000); // Increased from 5s to 30s to reduce load
-        }
-      });
+      // Only start polling if subscription definitely failed
+      // Check the stored status (can be null, 'SUBSCRIBED', 'SUBSCRIBING', or error states)
+      if (subscriptionStatus !== 'SUBSCRIBED' && subscriptionStatus !== 'SUBSCRIBING') {
+        console.warn('⚠️ Realtime subscription failed, starting fallback polling (30s interval)');
+        pollInterval = setInterval(() => {
+          console.log('🔄 Polling for order changes (fallback)...');
+          loadOrdersRef.current?.(true); // silent = true, no loading state
+        }, 30000); // Increased from 5s to 30s to reduce load
+      }
     }, 10000); // Wait 10 seconds before checking
 
     return () => {
@@ -401,8 +402,8 @@ export default function OrdersPage() {
     return (
       order.orderNumber.toLowerCase().includes(query) ||
       order.tokenNumber?.toLowerCase().includes(query) ||
-      order.customer?.nameEn?.toLowerCase().includes(query) ||
-      order.customer?.nameAr?.toLowerCase().includes(query) ||
+      order.customer?.name?.toLowerCase().includes(query) ||
+      order.customer?.name?.toLowerCase().includes(query) ||
       order.customer?.phone?.includes(query)
     );
   });
@@ -564,11 +565,9 @@ export default function OrdersPage() {
                           </Badge>
                         </Group>
                         <Group gap="md" align="flex-start">
-                          {order.branch && (order.branch.nameEn || order.branch.nameAr) && (
+                          {order.branch && order.branch.name && (
                             <Text size="sm" c="dimmed">
-                              {language === 'ar' && order.branch.nameAr
-                                ? order.branch.nameAr
-                                : order.branch.nameEn}
+                              {order.branch.name}
                             </Text>
                           )}
                           {order.table && order.table.table_number && (
@@ -576,11 +575,9 @@ export default function OrdersPage() {
                               {t('pos.tableNo', language)}: {order.table.table_number}
                             </Text>
                           )}
-                          {order.customer && (order.customer.nameEn || order.customer.nameAr) && (
+                          {order.customer && order.customer.name && (
                             <Text size="sm" c="dimmed">
-                              {language === 'ar' && order.customer.nameAr
-                                ? order.customer.nameAr
-                                : order.customer.nameEn}
+                              {order.customer.name}
                             </Text>
                           )}
                           {order.orderDate && (

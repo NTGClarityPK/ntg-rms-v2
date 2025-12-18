@@ -4,12 +4,7 @@ import { IsString, IsOptional, IsBoolean, IsNumber } from 'class-validator';
 export class CreateAddOnGroupDto {
   @ApiProperty()
   @IsString()
-  nameEn: string;
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  nameAr?: string;
+  name: string;
 
   @ApiProperty({ required: false, default: 'multiple' })
   @IsString()

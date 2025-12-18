@@ -11,8 +11,7 @@ export interface OrderItem {
   foodItemId: string;
   foodItem?: {
     id: string;
-    nameEn: string;
-    nameAr?: string;
+    name: string;
     imageUrl?: string;
   };
   variationId?: string;
@@ -33,8 +32,7 @@ export interface OrderItem {
     addOnId: string;
     addOn?: {
       id: string;
-      nameEn: string;
-      nameAr?: string;
+      name: string;
       price: number;
     };
     quantity: number;
@@ -49,8 +47,7 @@ export interface Order {
   branchId: string;
   branch?: {
     id: string;
-    nameEn: string;
-    nameAr?: string;
+    name: string;
     code: string;
   };
   counterId?: string;
@@ -68,8 +65,7 @@ export interface Order {
   customerId?: string;
   customer?: {
     id: string;
-    nameEn: string;
-    nameAr?: string;
+    name: string;
     phone: string;
     email?: string;
   };
@@ -141,8 +137,7 @@ export interface CreateOrderDto {
   paymentTiming?: 'pay_first' | 'pay_after';
   paymentMethod?: 'cash' | 'card' | 'zainCash' | 'asiaHawala' | 'bankTransfer';
   customerAddressId?: string;
-  deliveryAddressEn?: string; // For walk-in delivery customers
-  deliveryAddressAr?: string; // For walk-in delivery customers
+  deliveryAddress?: string; // For walk-in delivery customers
   deliveryAddressCity?: string; // For walk-in delivery customers
   deliveryAddressState?: string; // For walk-in delivery customers
   deliveryAddressCountry?: string; // For walk-in delivery customers
@@ -158,8 +153,7 @@ export interface UpdateOrderDto {
   couponCode?: string;
   specialInstructions?: string;
   customerAddressId?: string;
-  deliveryAddressEn?: string; // For walk-in delivery customers
-  deliveryAddressAr?: string; // For walk-in delivery customers
+  deliveryAddress?: string; // For walk-in delivery customers
   deliveryAddressCity?: string; // For walk-in delivery customers
   deliveryAddressState?: string; // For walk-in delivery customers
   deliveryAddressCountry?: string; // For walk-in delivery customers

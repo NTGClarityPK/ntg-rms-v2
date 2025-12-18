@@ -51,10 +51,8 @@ export class MenuService {
     categories.forEach((cat) => {
       const category = {
         id: cat.id,
-        nameEn: cat.name_en,
-        nameAr: cat.name_ar,
-        descriptionEn: cat.description_en,
-        descriptionAr: cat.description_ar,
+        name: cat.name,
+        description: cat.description,
         imageUrl: cat.image_url,
         categoryType: cat.category_type,
         parentId: cat.parent_id,
@@ -108,10 +106,8 @@ export class MenuService {
 
     return {
       id: category.id,
-      nameEn: category.name_en,
-      nameAr: category.name_ar,
-      descriptionEn: category.description_en,
-      descriptionAr: category.description_ar,
+      name: category.name,
+      description: category.description,
       imageUrl: category.image_url,
       categoryType: category.category_type,
       parentId: category.parent_id,
@@ -121,10 +117,8 @@ export class MenuService {
       updatedAt: category.updated_at,
       subcategories: subcategories?.map((sub) => ({
         id: sub.id,
-        nameEn: sub.name_en,
-        nameAr: sub.name_ar,
-        descriptionEn: sub.description_en,
-        descriptionAr: sub.description_ar,
+        name: sub.name,
+        description: sub.description,
         imageUrl: sub.image_url,
         categoryType: sub.category_type,
         displayOrder: sub.display_order,
@@ -155,10 +149,8 @@ export class MenuService {
       .from('categories')
       .insert({
         tenant_id: tenantId,
-        name_en: createDto.nameEn,
-        name_ar: createDto.nameAr || null,
-        description_en: createDto.descriptionEn || null,
-        description_ar: createDto.descriptionAr || null,
+        name: createDto.name,
+        description: createDto.description || null,
         image_url: createDto.imageUrl || null,
         category_type: createDto.categoryType || 'food',
         parent_id: createDto.parentId || null,
@@ -174,10 +166,8 @@ export class MenuService {
 
     return {
       id: category.id,
-      nameEn: category.name_en,
-      nameAr: category.name_ar,
-      descriptionEn: category.description_en,
-      descriptionAr: category.description_ar,
+      name: category.name,
+      description: category.description,
       imageUrl: category.image_url,
       categoryType: category.category_type,
       parentId: category.parent_id,
@@ -225,10 +215,8 @@ export class MenuService {
     }
 
     const updateData: any = {};
-    if (updateDto.nameEn !== undefined) updateData.name_en = updateDto.nameEn;
-    if (updateDto.nameAr !== undefined) updateData.name_ar = updateDto.nameAr;
-    if (updateDto.descriptionEn !== undefined) updateData.description_en = updateDto.descriptionEn;
-    if (updateDto.descriptionAr !== undefined) updateData.description_ar = updateDto.descriptionAr;
+    if (updateDto.name !== undefined) updateData.name = updateDto.name;
+    if (updateDto.description !== undefined) updateData.description = updateDto.description;
     if (updateDto.imageUrl !== undefined) updateData.image_url = updateDto.imageUrl;
     if (updateDto.categoryType !== undefined) updateData.category_type = updateDto.categoryType;
     if (updateDto.parentId !== undefined) updateData.parent_id = updateDto.parentId;
@@ -250,10 +238,8 @@ export class MenuService {
 
     return {
       id: category.id,
-      nameEn: category.name_en,
-      nameAr: category.name_ar,
-      descriptionEn: category.description_en,
-      descriptionAr: category.description_ar,
+      name: category.name,
+      description: category.description,
       imageUrl: category.image_url,
       categoryType: category.category_type,
       parentId: category.parent_id,
@@ -325,10 +311,21 @@ export class MenuService {
   async getFoodItems(tenantId: string, categoryId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
     
+    // First, get all active menu types
+    const { data: activeMenus } = await supabase
+      .from('menus')
+      .select('menu_type')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true);
+
+    const activeMenuTypes = activeMenus?.map((m: any) => m.menu_type) || [];
+
+    // Get food items that are active
     let query = supabase
       .from('food_items')
       .select('*')
       .eq('tenant_id', tenantId)
+      .eq('is_active', true)
       .is('deleted_at', null);
 
     if (categoryId) {
@@ -341,9 +338,33 @@ export class MenuService {
       throw new BadRequestException(`Failed to fetch food items: ${error.message}`);
     }
 
+    // Filter food items to only include those in active menus
+    // If no active menus exist, return empty array
+    if (activeMenuTypes.length === 0) {
+      return [];
+    }
+
+    // Get menu_items for all food items to check which menus they belong to
+    const foodItemIds = foodItems.map((item: any) => item.id);
+    const { data: menuItems } = await supabase
+      .from('menu_items')
+      .select('food_item_id, menu_type')
+      .in('food_item_id', foodItemIds)
+      .in('menu_type', activeMenuTypes);
+
+    // Create a set of food item IDs that belong to active menus
+    const foodItemsInActiveMenus = new Set(
+      menuItems?.map((mi: any) => mi.food_item_id) || []
+    );
+
+    // Filter food items to only include those in active menus
+    const filteredFoodItems = foodItems.filter((item: any) =>
+      foodItemsInActiveMenus.has(item.id)
+    );
+
     // Get variations, labels, and add-on groups for each item
     const itemsWithDetails = await Promise.all(
-      foodItems.map(async (item) => {
+      filteredFoodItems.map(async (item) => {
         const [variations, labels, addOnGroups, discounts, menuItems] = await Promise.all([
           supabase
             .from('food_item_variations')
@@ -372,10 +393,8 @@ export class MenuService {
 
         return {
           id: item.id,
-          nameEn: item.name_en,
-          nameAr: item.name_ar,
-          descriptionEn: item.description_en,
-          descriptionAr: item.description_ar,
+          name: item.name,
+          description: item.description,
           imageUrl: item.image_url,
           categoryId: item.category_id,
           basePrice: parseFloat(item.base_price),
@@ -456,10 +475,8 @@ export class MenuService {
 
     return {
       id: foodItem.id,
-      nameEn: foodItem.name_en,
-      nameAr: foodItem.name_ar,
-      descriptionEn: foodItem.description_en,
-      descriptionAr: foodItem.description_ar,
+      name: foodItem.name,
+      description: foodItem.description,
       imageUrl: foodItem.image_url,
       categoryId: foodItem.category_id,
       basePrice: parseFloat(foodItem.base_price),
@@ -516,10 +533,8 @@ export class MenuService {
       .insert({
         tenant_id: tenantId,
         category_id: createDto.categoryId,
-        name_en: createDto.nameEn,
-        name_ar: createDto.nameAr || null,
-        description_en: createDto.descriptionEn || null,
-        description_ar: createDto.descriptionAr || null,
+        name: createDto.name,
+        description: createDto.description || null,
         image_url: createDto.imageUrl || null,
         base_price: createDto.basePrice,
         stock_type: createDto.stockType || 'unlimited',
@@ -651,12 +666,21 @@ export class MenuService {
       }
     }
 
+    // Get current food item state to check if isActive is being changed
+    const { data: currentFoodItem } = await supabase
+      .from('food_items')
+      .select('is_active')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    const isActivating = updateDto.isActive === true && currentFoodItem?.is_active !== true;
+    const isDeactivating = updateDto.isActive === false && currentFoodItem?.is_active !== false;
+
     // Update food item
     const updateData: any = {};
-    if (updateDto.nameEn !== undefined) updateData.name_en = updateDto.nameEn;
-    if (updateDto.nameAr !== undefined) updateData.name_ar = updateDto.nameAr;
-    if (updateDto.descriptionEn !== undefined) updateData.description_en = updateDto.descriptionEn;
-    if (updateDto.descriptionAr !== undefined) updateData.description_ar = updateDto.descriptionAr;
+    if (updateDto.name !== undefined) updateData.name = updateDto.name;
+    if (updateDto.description !== undefined) updateData.description = updateDto.description;
     if (updateDto.imageUrl !== undefined) updateData.image_url = updateDto.imageUrl;
     if (updateDto.categoryId !== undefined) updateData.category_id = updateDto.categoryId;
     if (updateDto.basePrice !== undefined) updateData.base_price = updateDto.basePrice;
@@ -676,6 +700,145 @@ export class MenuService {
 
     if (updateError) {
       throw new BadRequestException(`Failed to update food item: ${updateError.message}`);
+    }
+
+    // If activating the food item, activate menus that contain this food item
+    // (only if food item is not active in another active menu)
+    if (isActivating) {
+      // Check if food item is active in another active menu
+      const isActiveInAnotherMenu = await this.isFoodItemActiveInAnotherActiveMenu(
+        supabase,
+        tenantId,
+        id,
+      );
+
+      // Only activate menus if not active in another active menu
+      if (!isActiveInAnotherMenu) {
+        // Get all menus that contain this food item
+        const { data: menuItems } = await supabase
+          .from('menu_items')
+          .select('menu_type')
+          .eq('food_item_id', id);
+
+        if (menuItems && menuItems.length > 0) {
+          const menuTypes = [...new Set(menuItems.map((mi: any) => mi.menu_type))];
+
+          // Activate all menus that contain this food item
+          for (const menuType of menuTypes) {
+            // Check if menu record exists
+            const { data: existingMenu } = await supabase
+              .from('menus')
+              .select('menu_type')
+              .eq('tenant_id', tenantId)
+              .eq('menu_type', menuType)
+              .limit(1);
+
+            if (existingMenu && existingMenu.length > 0) {
+              // Update existing menu
+              await supabase
+                .from('menus')
+                .update({
+                  is_active: true,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('tenant_id', tenantId)
+                .eq('menu_type', menuType);
+            } else {
+              // Create menu record if it doesn't exist
+              const displayName = menuType.charAt(0).toUpperCase() + menuType.slice(1).replace(/_/g, ' ');
+              await supabase
+                .from('menus')
+                .insert({
+                  tenant_id: tenantId,
+                  menu_type: menuType,
+                  name: displayName,
+                  is_active: true,
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                });
+            }
+          }
+        }
+      }
+    } else if (isDeactivating) {
+      // If deactivating the food item, deactivate all menus that contain this food item
+      // Get all menus that contain this food item
+      const { data: menuItems } = await supabase
+        .from('menu_items')
+        .select('menu_type')
+        .eq('food_item_id', id);
+
+      if (menuItems && menuItems.length > 0) {
+        const menuTypes = [...new Set(menuItems.map((mi: any) => mi.menu_type))];
+
+        // Deactivate all menus that contain this food item
+        for (const menuType of menuTypes) {
+          // Check if menu record exists
+          const { data: existingMenu } = await supabase
+            .from('menus')
+            .select('menu_type')
+            .eq('tenant_id', tenantId)
+            .eq('menu_type', menuType)
+            .limit(1);
+
+          if (existingMenu && existingMenu.length > 0) {
+            // Check if menu has other active food items before deactivating
+            const { data: otherMenuItems } = await supabase
+              .from('menu_items')
+              .select('food_item_id')
+              .eq('menu_type', menuType);
+
+            if (otherMenuItems && otherMenuItems.length > 0) {
+              const otherFoodItemIds = otherMenuItems
+                .map((mi: any) => mi.food_item_id)
+                .filter((fid: string) => fid !== id); // Exclude current food item
+
+              if (otherFoodItemIds.length > 0) {
+                // Check if any other food items in this menu are active
+                const { data: activeOtherItems } = await supabase
+                  .from('food_items')
+                  .select('id')
+                  .eq('tenant_id', tenantId)
+                  .in('id', otherFoodItemIds)
+                  .eq('is_active', true)
+                  .is('deleted_at', null);
+
+                // Only deactivate menu if no other active food items remain
+                if (!activeOtherItems || activeOtherItems.length === 0) {
+                  await supabase
+                    .from('menus')
+                    .update({
+                      is_active: false,
+                      updated_at: new Date().toISOString(),
+                    })
+                    .eq('tenant_id', tenantId)
+                    .eq('menu_type', menuType);
+                }
+              } else {
+                // No other items in menu, deactivate it
+                await supabase
+                  .from('menus')
+                  .update({
+                    is_active: false,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('tenant_id', tenantId)
+                  .eq('menu_type', menuType);
+              }
+            } else {
+              // No other items in menu, deactivate it
+              await supabase
+                .from('menus')
+                .update({
+                  is_active: false,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('tenant_id', tenantId)
+                .eq('menu_type', menuType);
+            }
+          }
+        }
+      }
     }
 
     // Update variations if provided
@@ -862,8 +1025,7 @@ export class MenuService {
 
         return {
           id: group.id,
-          nameEn: group.name_en,
-          nameAr: group.name_ar,
+          name: group.name,
           selectionType: group.selection_type,
           isRequired: group.is_required,
           minSelections: group.min_selections,
@@ -874,8 +1036,7 @@ export class MenuService {
           updatedAt: group.updated_at,
           addOns: addOns?.map((addOn) => ({
             id: addOn.id,
-            nameEn: addOn.name_en,
-            nameAr: addOn.name_ar,
+            name: addOn.name,
             price: parseFloat(addOn.price),
             isActive: addOn.is_active,
             displayOrder: addOn.display_order,
@@ -911,8 +1072,7 @@ export class MenuService {
 
     return {
       id: addOnGroup.id,
-      nameEn: addOnGroup.name_en,
-      nameAr: addOnGroup.name_ar,
+      name: addOnGroup.name,
       selectionType: addOnGroup.selection_type,
       isRequired: addOnGroup.is_required,
       minSelections: addOnGroup.min_selections,
@@ -923,8 +1083,7 @@ export class MenuService {
       updatedAt: addOnGroup.updated_at,
       addOns: addOns?.map((addOn) => ({
         id: addOn.id,
-        nameEn: addOn.name_en,
-        nameAr: addOn.name_ar,
+        name: addOn.name,
         price: parseFloat(addOn.price),
         isActive: addOn.is_active,
         displayOrder: addOn.display_order,
@@ -949,8 +1108,7 @@ export class MenuService {
       .from('add_on_groups')
       .insert({
         tenant_id: tenantId,
-        name_en: createDto.nameEn,
-        name_ar: createDto.nameAr || null,
+        name: createDto.name,
         selection_type: createDto.selectionType || 'multiple',
         is_required: createDto.isRequired || false,
         min_selections: minSelections,
@@ -967,8 +1125,7 @@ export class MenuService {
 
     return {
       id: addOnGroup.id,
-      nameEn: addOnGroup.name_en,
-      nameAr: addOnGroup.name_ar,
+      name: addOnGroup.name,
       selectionType: addOnGroup.selection_type,
       isRequired: addOnGroup.is_required,
       minSelections: addOnGroup.min_selections,
@@ -1005,8 +1162,7 @@ export class MenuService {
       .single();
 
     const updateData: any = {};
-    if (updateDto.nameEn !== undefined) updateData.name_en = updateDto.nameEn;
-    if (updateDto.nameAr !== undefined) updateData.name_ar = updateDto.nameAr;
+    if (updateDto.name !== undefined) updateData.name = updateDto.name;
     
     const selectionType = updateDto.selectionType !== undefined ? updateDto.selectionType : current?.selection_type;
     const isRequired = updateDto.isRequired !== undefined ? updateDto.isRequired : current?.is_required;
@@ -1132,8 +1288,7 @@ export class MenuService {
     return addOns.map((addOn) => ({
       id: addOn.id,
       addOnGroupId: addOn.add_on_group_id,
-      nameEn: addOn.name_en,
-      nameAr: addOn.name_ar,
+      name: addOn.name,
       price: parseFloat(addOn.price),
       isActive: addOn.is_active,
       displayOrder: addOn.display_order,
@@ -1173,8 +1328,7 @@ export class MenuService {
     return {
       id: addOn.id,
       addOnGroupId: addOn.add_on_group_id,
-      nameEn: addOn.name_en,
-      nameAr: addOn.name_ar,
+      name: addOn.name,
       price: parseFloat(addOn.price),
       isActive: addOn.is_active,
       displayOrder: addOn.display_order,
@@ -1203,8 +1357,7 @@ export class MenuService {
       .from('add_ons')
       .insert({
         add_on_group_id: createDto.addOnGroupId,
-        name_en: createDto.nameEn,
-        name_ar: createDto.nameAr || null,
+        name: createDto.name,
         price: createDto.price || 0,
         is_active: createDto.isActive !== undefined ? createDto.isActive : true,
         display_order: createDto.displayOrder || 0,
@@ -1219,8 +1372,7 @@ export class MenuService {
     return {
       id: addOn.id,
       addOnGroupId: addOn.add_on_group_id,
-      nameEn: addOn.name_en,
-      nameAr: addOn.name_ar,
+      name: addOn.name,
       price: parseFloat(addOn.price),
       isActive: addOn.is_active,
       displayOrder: addOn.display_order,
@@ -1259,8 +1411,7 @@ export class MenuService {
     }
 
     const updateData: any = {};
-    if (updateDto.nameEn !== undefined) updateData.name_en = updateDto.nameEn;
-    if (updateDto.nameAr !== undefined) updateData.name_ar = updateDto.nameAr;
+    if (updateDto.name !== undefined) updateData.name = updateDto.name;
     if (updateDto.price !== undefined) updateData.price = updateDto.price;
     if (updateDto.isActive !== undefined) updateData.is_active = updateDto.isActive;
     if (updateDto.displayOrder !== undefined) updateData.display_order = updateDto.displayOrder;
@@ -1281,8 +1432,7 @@ export class MenuService {
     return {
       id: addOn.id,
       addOnGroupId: addOn.add_on_group_id,
-      nameEn: addOn.name_en,
-      nameAr: addOn.name_ar,
+      name: addOn.name,
       price: parseFloat(addOn.price),
       isActive: addOn.is_active,
       displayOrder: addOn.display_order,
@@ -1356,9 +1506,7 @@ export class MenuService {
     // Get menus from menu_items junction table
     const supabase = this.supabaseService.getServiceRoleClient();
     
-    const menuTypes = ['all_day', 'breakfast', 'lunch', 'dinner', 'kids_special'];
-    
-    // Get item counts for each menu type from menu_items
+    // Get all unique menu types from menu_items for this tenant
     const { data: menuItems, error } = await supabase
       .from('menu_items')
       .select('menu_type, food_item_id')
@@ -1367,6 +1515,13 @@ export class MenuService {
     if (error) {
       throw new BadRequestException(`Failed to fetch menus: ${error.message}`);
     }
+
+    // Get unique menu types
+    const uniqueMenuTypes = [...new Set(menuItems.map((mi) => mi.menu_type))];
+    
+    // Include default menu types if they don't exist yet
+    const defaultMenuTypes = ['all_day', 'breakfast', 'lunch', 'dinner', 'kids_special'];
+    const allMenuTypes = [...new Set([...defaultMenuTypes, ...uniqueMenuTypes])];
 
     // Get active food items to filter counts
     const foodItemIds = menuItems.map((mi) => mi.food_item_id);
@@ -1384,17 +1539,41 @@ export class MenuService {
       activeItemIds = activeItems?.map((item) => item.id) || [];
     }
 
-    // Group by menu_type and count active items
-    const menus = menuTypes.map((menuType) => {
+    // Try to get menu names and active status from menus table
+    const { data: menuData } = await supabase
+      .from('menus')
+      .select('menu_type, name, is_active')
+      .eq('tenant_id', tenantId)
+      .in('menu_type', allMenuTypes);
+
+    // Create maps of menu_type to name and is_active
+    const menuNameMap = new Map<string, string>();
+    const menuActiveMap = new Map<string, boolean>();
+    if (menuData) {
+      menuData.forEach((mn: any) => {
+        menuNameMap.set(mn.menu_type, mn.name);
+        menuActiveMap.set(mn.menu_type, mn.is_active !== false); // Default to true if null/undefined
+      });
+    }
+
+    // Group by menu_type and count all items (not just active ones)
+    const menus = allMenuTypes.map((menuType) => {
       const itemsInMenu = menuItems.filter((mi) => mi.menu_type === menuType);
-      const activeItemsInMenu = itemsInMenu.filter((mi) => activeItemIds.includes(mi.food_item_id));
+      
+      // Use stored name if available, otherwise generate from menu_type
+      const storedName = menuNameMap.get(menuType);
+      const displayName = storedName || (menuType.charAt(0).toUpperCase() + menuType.slice(1).replace(/_/g, ' '));
+      
+      // Get is_active from menus table, default to true if not set
+      const isActive = menuActiveMap.has(menuType) 
+        ? menuActiveMap.get(menuType)! 
+        : (itemsInMenu.length > 0); // Default to true if menu has items, false if empty
       
       return {
         menuType,
-        nameEn: menuType.charAt(0).toUpperCase() + menuType.slice(1).replace('_', ' '),
-        nameAr: null, // Can be added to translations
-        isActive: activeItemsInMenu.length > 0,
-        itemCount: activeItemsInMenu.length,
+        name: displayName,
+        isActive,
+        itemCount: itemsInMenu.length, // Count all items, not just active ones
       };
     });
 
@@ -1481,21 +1660,328 @@ export class MenuService {
     return { message: 'Items assigned to menu successfully', menuType, itemCount: foodItemIds.length };
   }
 
+  /**
+   * Helper function to check if a food item is active in another active menu
+   * @param supabase Supabase client
+   * @param tenantId Tenant ID
+   * @param foodItemId Food item ID to check
+   * @param excludeMenuType Menu type to exclude from the check (current menu)
+   * @returns true if food item is active in another active menu, false otherwise
+   */
+  private async isFoodItemActiveInAnotherActiveMenu(
+    supabase: any,
+    tenantId: string,
+    foodItemId: string,
+    excludeMenuType?: string,
+  ): Promise<boolean> {
+    // Get all active menus (excluding the current menu if specified)
+    const activeMenusQuery = supabase
+      .from('menus')
+      .select('menu_type')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true);
+    
+    if (excludeMenuType) {
+      activeMenusQuery.neq('menu_type', excludeMenuType);
+    }
+
+    const { data: activeMenus } = await activeMenusQuery;
+
+    if (!activeMenus || activeMenus.length === 0) {
+      return false;
+    }
+
+    const activeMenuTypes = activeMenus.map((m: any) => m.menu_type);
+
+    // Check if the food item is in any of these active menus
+    const { data: menuItems } = await supabase
+      .from('menu_items')
+      .select('menu_type')
+      .eq('food_item_id', foodItemId)
+      .in('menu_type', activeMenuTypes);
+
+    // Check if the food item itself is active
+    const { data: foodItem } = await supabase
+      .from('food_items')
+      .select('is_active')
+      .eq('id', foodItemId)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    // Return true if food item is active AND is in another active menu
+    return foodItem?.is_active === true && menuItems && menuItems.length > 0;
+  }
+
   async activateMenu(tenantId: string, menuType: string, isActive: boolean) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Activate/deactivate all items in the menu
-    const { error } = await supabase
-      .from('food_items')
-      .update({ is_active: isActive, updated_at: new Date().toISOString() })
+    // Update the menu's is_active status in the menus table
+    // First, check if a menu record exists
+    const { data: existingMenus, error: selectError } = await supabase
+      .from('menus')
+      .select('menu_type')
       .eq('tenant_id', tenantId)
       .eq('menu_type', menuType)
-      .is('deleted_at', null);
+      .limit(1);
 
-    if (error) {
-      throw new BadRequestException(`Failed to ${isActive ? 'activate' : 'deactivate'} menu: ${error.message}`);
+    if (selectError && !selectError.message.includes('does not exist')) {
+      throw new BadRequestException(`Failed to check menu status: ${selectError.message}`);
     }
 
-    return { message: `Menu ${isActive ? 'activated' : 'deactivated'} successfully`, menuType, isActive };
+    if (existingMenus && existingMenus.length > 0) {
+      // Update existing menu record
+      const { error } = await supabase
+        .from('menus')
+        .update({ 
+          is_active: isActive, 
+          updated_at: new Date().toISOString() 
+        })
+        .eq('tenant_id', tenantId)
+        .eq('menu_type', menuType);
+
+      if (error) {
+        throw new BadRequestException(`Failed to ${isActive ? 'activate' : 'deactivate'} menu: ${error.message}`);
+      }
+    } else {
+      // If menu record doesn't exist, create it with the active status
+      // Generate display name from menu_type
+      const displayName = menuType.charAt(0).toUpperCase() + menuType.slice(1).replace(/_/g, ' ');
+      const { error } = await supabase
+        .from('menus')
+        .insert({
+          tenant_id: tenantId,
+          menu_type: menuType,
+          name: displayName,
+          is_active: isActive,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+
+      // If table doesn't exist or insert fails, we'll continue (menu will still work)
+      if (error && !error.message.includes('relation') && !error.message.includes('does not exist')) {
+        throw new BadRequestException(`Failed to ${isActive ? 'activate' : 'deactivate'} menu: ${error.message}`);
+      }
+    }
+
+    // Return response immediately to prevent timeout
+    const response = { message: `Menu ${isActive ? 'activated' : 'deactivated'} successfully`, menuType, isActive };
+
+    // Process food items asynchronously in the background (don't await)
+    this.updateFoodItemsForMenu(supabase, tenantId, menuType, isActive).catch((error) => {
+      // Log error but don't fail the request since menu update already succeeded
+      console.error(`Failed to update food items for menu ${menuType}:`, error);
+    });
+
+    return response;
+  }
+
+  /**
+   * Update food items when menu is activated/deactivated (runs asynchronously)
+   */
+  private async updateFoodItemsForMenu(
+    supabase: any,
+    tenantId: string,
+    menuType: string,
+    isActive: boolean,
+  ): Promise<void> {
+    // Get all food items in this menu
+    const { data: menuItems } = await supabase
+      .from('menu_items')
+      .select('food_item_id')
+      .eq('menu_type', menuType);
+
+    if (!menuItems || menuItems.length === 0) {
+      return;
+    }
+
+    const foodItemIds = menuItems.map((mi: any) => mi.food_item_id);
+
+    // Get all active menus (excluding current menu) for batch checking
+    const { data: activeMenus } = await supabase
+      .from('menus')
+      .select('menu_type')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .neq('menu_type', menuType);
+
+    const activeMenuTypes = activeMenus?.map((m: any) => m.menu_type) || [];
+
+    // Get all menu_items for these food items in active menus (batch query)
+    const { data: allMenuItems } = await supabase
+      .from('menu_items')
+      .select('food_item_id, menu_type')
+      .in('food_item_id', foodItemIds)
+      .in('menu_type', activeMenuTypes.length > 0 ? activeMenuTypes : []);
+
+    // Create a map of food items that are in other active menus
+    const foodItemsInOtherActiveMenus = new Set<string>();
+    if (allMenuItems) {
+      allMenuItems.forEach((mi: any) => {
+        foodItemsInOtherActiveMenus.add(mi.food_item_id);
+      });
+    }
+
+    // Get current active status of all food items (batch query)
+    const { data: foodItems } = await supabase
+      .from('food_items')
+      .select('id, is_active')
+      .eq('tenant_id', tenantId)
+      .in('id', foodItemIds)
+      .is('deleted_at', null);
+
+    // Determine which food items should be updated
+    const itemsToUpdate: string[] = [];
+    const updateData = isActive ? true : false;
+
+    if (foodItems) {
+      for (const foodItem of foodItems) {
+        // Skip if already in the desired state
+        if (foodItem.is_active === updateData) {
+          continue;
+        }
+
+        // If activating: only activate if not active in another active menu
+        // If deactivating: only deactivate if not active in another active menu
+        const isInOtherActiveMenu = foodItemsInOtherActiveMenus.has(foodItem.id);
+        if (!isInOtherActiveMenu) {
+          itemsToUpdate.push(foodItem.id);
+        }
+      }
+    }
+
+    // Batch update all food items at once
+    if (itemsToUpdate.length > 0) {
+      await supabase
+        .from('food_items')
+        .update({
+          is_active: updateData,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('tenant_id', tenantId)
+        .in('id', itemsToUpdate);
+    }
+  }
+
+  async createMenu(tenantId: string, createDto: CreateMenuDto) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Check if menu type already exists
+    const { data: existing } = await supabase
+      .from('menu_items')
+      .select('menu_type')
+      .eq('tenant_id', tenantId)
+      .eq('menu_type', createDto.menuType)
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      throw new ConflictException('Menu type already exists');
+    }
+
+    // Store menu name in menus table (create table if it doesn't exist - Supabase will handle it)
+    // We'll use upsert to handle both create and update
+    if (createDto.name) {
+      const { error: menuNameError } = await supabase
+        .from('menus')
+        .upsert({
+          tenant_id: tenantId,
+          menu_type: createDto.menuType,
+          name: createDto.name,
+          is_active: createDto.isActive !== undefined ? createDto.isActive : true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'tenant_id,menu_type',
+        });
+
+      // If table doesn't exist, we'll continue without storing the name
+      // The name will be generated from menu_type in getMenus
+      if (menuNameError && !menuNameError.message.includes('relation') && !menuNameError.message.includes('does not exist')) {
+        console.warn('Failed to store menu name:', menuNameError.message);
+      }
+    }
+
+    // If food items are provided, assign them to the menu
+    if (createDto.foodItemIds && createDto.foodItemIds.length > 0) {
+      // Validate food items belong to tenant
+      const { data: foodItems } = await supabase
+        .from('food_items')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .in('id', createDto.foodItemIds)
+        .is('deleted_at', null);
+
+      if (foodItems.length !== createDto.foodItemIds.length) {
+        throw new BadRequestException('One or more food items not found');
+      }
+
+      // Insert menu assignments
+      const menuItemsToInsert = createDto.foodItemIds.map((foodItemId, index) => ({
+        tenant_id: tenantId,
+        menu_type: createDto.menuType,
+        food_item_id: foodItemId,
+        display_order: index,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }));
+
+      const { error: insertError } = await supabase
+        .from('menu_items')
+        .insert(menuItemsToInsert);
+
+      if (insertError) {
+        throw new BadRequestException(`Failed to create menu: ${insertError.message}`);
+      }
+    }
+
+    return {
+      message: 'Menu created successfully',
+      menuType: createDto.menuType,
+      name: createDto.name || createDto.menuType.charAt(0).toUpperCase() + createDto.menuType.slice(1).replace(/_/g, ' '),
+      itemCount: createDto.foodItemIds?.length || 0,
+      isActive: createDto.isActive !== undefined ? createDto.isActive : true,
+    };
+  }
+
+  async deleteMenu(tenantId: string, menuType: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Prevent deletion of default menu types
+    const defaultMenuTypes = ['all_day', 'breakfast', 'lunch', 'dinner', 'kids_special'];
+    if (defaultMenuTypes.includes(menuType)) {
+      throw new BadRequestException('Cannot delete default menu types');
+    }
+
+    // Check if menu type exists
+    const { data: existing } = await supabase
+      .from('menu_items')
+      .select('menu_type')
+      .eq('tenant_id', tenantId)
+      .eq('menu_type', menuType)
+      .limit(1);
+
+    if (!existing || existing.length === 0) {
+      throw new NotFoundException('Menu type not found');
+    }
+
+    // Delete all menu_items with this menu type
+    const { error } = await supabase
+      .from('menu_items')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('menu_type', menuType);
+
+    if (error) {
+      throw new BadRequestException(`Failed to delete menu: ${error.message}`);
+    }
+
+    // Also delete menu name from menus table if it exists
+    await supabase
+      .from('menus')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('menu_type', menuType);
+
+    return { message: 'Menu deleted successfully', menuType };
   }
 }

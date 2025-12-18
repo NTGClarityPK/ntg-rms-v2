@@ -226,13 +226,13 @@ export default function SettingsPage() {
       setCategories(
         data.map((cat) => ({
           value: cat.id,
-          label: language === 'ar' && cat.nameAr ? cat.nameAr : cat.nameEn,
+          label: cat.name || '',
         }))
       );
     } catch (error) {
       console.error('Failed to load categories:', error);
     }
-  }, [language]);
+  }, []);
 
   const loadFoodItems = useCallback(async () => {
     try {
@@ -240,13 +240,13 @@ export default function SettingsPage() {
       setFoodItems(
         data.map((item) => ({
           value: item.id,
-          label: language === 'ar' && item.nameAr ? item.nameAr : item.nameEn,
+          label: item.name,
         }))
       );
     } catch (error) {
       console.error('Failed to load food items:', error);
     }
-  }, [language]);
+  }, []);
 
   // Load taxes, categories, and food items when tax tab is active
   useEffect(() => {
@@ -593,7 +593,7 @@ export default function SettingsPage() {
                 />
                 <Select
                   label={t('settings.invoiceNumberFormat' as any, language) || 'Invoice Number Format'}
-                  data={INVOICE_FORMATS.map(f => ({ value: f.value, label: `${f.label} (${f.example})` }))}
+                  data={INVOICE_FORMATS.map(f => ({ value: f.value, label: `${f.label} (Example: ${ f.example})` }))}
                   searchable
                   {...invoiceForm.getInputProps('invoiceNumberFormat')}
                 />

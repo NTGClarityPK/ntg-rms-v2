@@ -5,12 +5,7 @@ export class UpdateAddOnGroupDto {
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
-  nameEn?: string;
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  nameAr?: string;
+  name?: string;
 
   @ApiProperty({ required: false })
   @IsString()

@@ -3,8 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 
 export interface RestaurantInfo {
   id: string;
-  nameEn: string;
-  nameAr?: string;
+  name: string;
   logoUrl?: string;
   primaryColor?: string;
 }
