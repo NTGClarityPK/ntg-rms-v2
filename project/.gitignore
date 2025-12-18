@@ -1,0 +1,8 @@
+.env
+.env.prod
+.env.staging
+.env.local
+*.env
+
+docker-compose.override.yml
+

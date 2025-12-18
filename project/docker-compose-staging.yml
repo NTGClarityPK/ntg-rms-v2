@@ -1,0 +1,70 @@
+name: ntg-rms-staging
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: rms-redis-staging
+    restart: unless-stopped
+    networks:
+      - rms-network-staging
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: rms-elasticsearch-staging
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    networks:
+      - rms-network-staging
+    ports:
+      - "19200:9200"
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+      network: host
+    container_name: rms-backend-staging
+    env_file:
+      - .env.staging
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - rms-network-staging
+    ports:
+      - "8001:4000"
+    command: ["node", "dist/src/main.js"]
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      network: host
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NODE_ENV: ${NODE_ENV}
+    container_name: rms-frontend-staging
+    env_file:
+      - .env.staging
+    networks:
+      - rms-network-staging
+    ports:
+      - "8000:3000"
+    restart: unless-stopped
+
+networks:
+  rms-network-staging:
+    driver: bridge
+
