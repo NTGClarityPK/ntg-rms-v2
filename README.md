@@ -3,7 +3,7 @@ sdfsdf
 A comprehensive, multi-tenant Restaurant Management System with offline-first architecture, built for the Iraqi and Middle Eastern markets.
 
 ## Project Structure
-
+sefrwe
 ```
 ntg-rms-new/
 ├── frontend/          # Next.js 14 frontend application
