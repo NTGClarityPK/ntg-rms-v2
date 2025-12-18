@@ -17,6 +17,7 @@ import {
   ScrollArea,
   ActionIcon,
   Tooltip,
+  TextInput,
 } from '@mantine/core';
 import {
   IconCheck,
@@ -24,6 +25,8 @@ import {
   IconChefHat,
   IconVolume,
   IconVolumeOff,
+  IconRefresh,
+  IconSearch,
 } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
@@ -50,6 +53,7 @@ export default function KitchenDisplayPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
   const [processingOrderIds, setProcessingOrderIds] = useState<Set<string>>(new Set());
   const audioContextRef = useRef<AudioContext | null>(null);
   const previousOrderIdsRef = useRef<Set<string>>(new Set());
@@ -416,8 +420,38 @@ export default function KitchenDisplayPage() {
     return dayjs(order.orderDate).locale(locale).fromNow();
   };
 
-  const pendingOrders = orders.filter((o) => o.status === 'pending');
-  const preparingOrders = orders.filter((o) => o.status === 'preparing');
+  // Filter orders based on search query (token number or food items)
+  const filterOrders = useCallback((ordersList: Order[]): Order[] => {
+    if (!searchQuery.trim()) {
+      return ordersList;
+    }
+
+    const query = searchQuery.toLowerCase().trim();
+    
+    return ordersList.filter((order) => {
+      // Search by token number
+      if (order.tokenNumber && order.tokenNumber.toLowerCase().includes(query)) {
+        return true;
+      }
+
+      // Search by food item names
+      if (order.items && order.items.length > 0) {
+        const matchesFoodItem = order.items.some((item) => {
+          const foodItemName = item.foodItem?.name?.toLowerCase() || '';
+          return foodItemName.includes(query);
+        });
+        if (matchesFoodItem) {
+          return true;
+        }
+      }
+
+      return false;
+    });
+  }, [searchQuery]);
+
+  const filteredOrders = filterOrders(orders);
+  const pendingOrders = filteredOrders.filter((o) => o.status === 'pending');
+  const preparingOrders = filteredOrders.filter((o) => o.status === 'preparing');
 
   return (
     <Box
@@ -436,8 +470,33 @@ export default function KitchenDisplayPage() {
     >
       <Container fluid py="md" style={{ minHeight: '100%', width: '100%', paddingLeft: 0, paddingRight: 0, position: 'relative' }}>
         <Stack gap="md" style={{ width: '100%' }}>
-          {/* Sound toggle - positioned absolutely */}
+          {/* Controls - positioned absolutely */}
           <Box style={{ position: 'absolute', top: 10, right: 10, zIndex: 1001 }}>
+            <Group gap="xs">
+              {/* Refresh button */}
+              <Tooltip 
+                label={t('common.refresh', language) || 'Refresh'}
+                withArrow
+                position="bottom"
+                styles={{
+                  tooltip: {
+                    backgroundColor: 'var(--mantine-color-gray-9)',
+                    color: 'var(--mantine-color-white)',
+                  },
+                }}
+              >
+                <ActionIcon
+                  size="lg"
+                  variant="light"
+                  color={primary}
+                  onClick={() => loadOrders()}
+                  loading={loading}
+                >
+                  <IconRefresh size={20} />
+                </ActionIcon>
+              </Tooltip>
+              
+              {/* Sound toggle */}
               <Tooltip 
                 label={soundEnabled ? t('orders.disableSound', language) : t('orders.enableSound', language)}
                 withArrow
@@ -470,6 +529,18 @@ export default function KitchenDisplayPage() {
                   {soundEnabled ? <IconVolume size={20} /> : <IconVolumeOff size={20} />}
                 </ActionIcon>
               </Tooltip>
+            </Group>
+          </Box>
+
+          {/* Search input */}
+          <Box style={{ padding: '0 16px', marginTop: 10 }}>
+            <TextInput
+              placeholder={language === 'ar' ? 'ابحث برقم الرمز أو عناصر الطعام...' : 'Search by token number or food items...'}
+              leftSection={<IconSearch size={16} />}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.currentTarget.value)}
+              style={{ maxWidth: 400 }}
+            />
           </Box>
 
           {loading ? (
