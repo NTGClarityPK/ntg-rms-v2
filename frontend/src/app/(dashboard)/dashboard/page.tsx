@@ -16,10 +16,11 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { dashboardApi, DashboardData } from '@/lib/api/dashboard';
 import { useSyncStatus } from '@/lib/hooks/use-sync-status';
 import { notifications } from '@mantine/notifications';
-import { getErrorColor, getBadgeColorForText } from '@/lib/utils/theme';
+import { getErrorColor, getBadgeColorForText, getChartColors } from '@/lib/utils/theme';
 import { IconX } from '@tabler/icons-react';
 
 export default function DashboardPage() {
@@ -57,7 +58,7 @@ export default function DashboardPage() {
   const stats = dashboardData ? [
     { 
       title: t('dashboard.todaySales' as any, language) || 'Today\'s Sales', 
-      value: `${dashboardData.todaySales.toFixed(2)} ${currency}`,
+      value: formatCurrency(dashboardData.todaySales, currency),
       icon: IconCash,
     },
     { 
@@ -77,13 +78,8 @@ export default function DashboardPage() {
     },
   ] : [];
 
-  const chartColors = [
-    primary,
-    `var(--mantine-color-blue-6)`,
-    `var(--mantine-color-green-6)`,
-    `var(--mantine-color-yellow-6)`,
-    `var(--mantine-color-red-6)`,
-  ];
+  // Chart colors will be generated dynamically based on series count
+  // Using getChartColors() utility function
 
   // Format role in a user-friendly way
   const formatRole = (role: string | undefined): string => {
@@ -190,7 +186,7 @@ export default function DashboardPage() {
           <Paper p="md" withBorder h={'100%'}>
             <Stack gap="md">
               <Group>
-                <IconAlertTriangle size={24} color="red" />
+                <IconAlertTriangle size={24} color={primary} />
                 <Title order={3}>{t('dashboard.lowStockAlerts' as any, language) || 'Low Stock Alerts'}</Title>
               </Group>
               {loading ? (

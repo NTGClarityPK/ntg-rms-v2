@@ -9,8 +9,9 @@ import { reportsApi, InventoryReport, ReportQueryParams } from '@/lib/api/report
 import { ReportFilters } from './ReportFilters';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getSuccessColor, getWarningColor, getErrorColor } from '@/lib/utils/theme';
+import { getSuccessColor, getWarningColor, getErrorColor, getChartColors } from '@/lib/utils/theme';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { notifications } from '@mantine/notifications';
 import { db } from '@/lib/indexeddb/database';
 import { useSyncStatus } from '@/lib/hooks/use-sync-status';
@@ -115,7 +116,7 @@ export default function InventoryReportPage() {
         <Grid.Col span={{ base: 12, sm: 6, md: 3 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.totalIngredients' as any, language)}</Text><Text size="xl" fw={700} style={{ color: themeColor }}>{report.summary.totalIngredients}</Text></Card></Grid.Col>
         <Grid.Col span={{ base: 12, sm: 6, md: 3 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.lowStockItems' as any, language)}</Text><Text size="xl" fw={700} style={{ color: getErrorColor() }}>{report.summary.lowStockItems}</Text></Card></Grid.Col>
         <Grid.Col span={{ base: 12, sm: 6, md: 3 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.warningStockItems' as any, language)}</Text><Text size="xl" fw={700} style={{ color: getWarningColor() }}>{report.summary.warningStockItems}</Text></Card></Grid.Col>
-        <Grid.Col span={{ base: 12, sm: 6, md: 3 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.totalInventoryValue' as any, language)}</Text><Text size="xl" fw={700} style={{ color: getSuccessColor() }}>{report.summary.totalInventoryValue.toFixed(2)} {currency}</Text></Card></Grid.Col>
+        <Grid.Col span={{ base: 12, sm: 6, md: 3 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.totalInventoryValue' as any, language)}</Text><Text size="xl" fw={700} style={{ color: getSuccessColor() }}>{formatCurrency(report.summary.totalInventoryValue, currency)}</Text></Card></Grid.Col>
       </Grid>
       <Paper p="md" withBorder>
         <Text fw={600} mb="md" size="lg">{t('reports.stockLevels' as any, language) || 'Stock Levels'}</Text>
@@ -127,8 +128,15 @@ export default function InventoryReportPage() {
               <YAxis />
               <Tooltip />
               <Legend />
-              <Bar dataKey="stock" fill={themeColor} name={t('reports.currentStock' as any, language)} />
-              <Bar dataKey="threshold" fill={getWarningColor()} name={t('reports.minimumThreshold' as any, language)} />
+              {(() => {
+                const colors = getChartColors(2); // 2 series: stock and threshold
+                return (
+                  <>
+                    <Bar dataKey="stock" fill={colors[0]} name={t('reports.currentStock' as any, language)} />
+                    <Bar dataKey="threshold" fill={colors[1]} name={t('reports.minimumThreshold' as any, language)} />
+                  </>
+                );
+              })()}
             </BarChart>
           </ResponsiveContainer>
         </Box>

@@ -23,6 +23,7 @@ import { FoodItem, CartItem } from '@/lib/indexeddb/database';
 import { useThemeColor, useThemeColorShade } from '@/lib/hooks/use-theme-color';
 import { getErrorColor, getSuccessColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { formatCurrency } from '@/lib/utils/currency-formatter';
 
 interface ItemSelectionModalProps {
   opened: boolean;
@@ -407,7 +408,7 @@ export function ItemSelectionModal({
                         {variation.priceAdjustment !== 0 && (
                           <Text fw={500} c={variation.priceAdjustment > 0 ? primaryColor : getSuccessColor()}>
                             {variation.priceAdjustment > 0 ? '+' : ''}
-                            {variation.priceAdjustment.toFixed(2)} {currency}
+                            {formatCurrency(variation.priceAdjustment, currency)}
                           </Text>
                         )}
                       </Group>
@@ -462,7 +463,7 @@ export function ItemSelectionModal({
                                   </Text>
                                   {addOn.price > 0 && (
                                     <Text fw={500} c={primaryColor}>
-                                      +{addOn.price.toFixed(2)} {currency}
+                                      +{formatCurrency(addOn.price, currency)}
                                     </Text>
                                   )}
                                 </Group>
@@ -559,19 +560,19 @@ export function ItemSelectionModal({
                     {t('pos.originalPrice', language) || 'Original Price'}:
                   </Text>
                   <Text size="sm" c="dimmed" td="line-through">
-                    {originalPrice.toFixed(2)} {currency}
+                    {formatCurrency(originalPrice, currency)}
                   </Text>
                 </Group>
                 <Group justify="space-between">
                   <Badge color={getBadgeColorForText(activeDiscount.discountType === 'percentage'
                     ? `${activeDiscount.discountValue}% ${t('pos.discount', language) || 'OFF'}`
-                    : `${discountAmount.toFixed(2)} ${currency} ${t('pos.discount', language) || 'OFF'}`)} variant="light">
+                    : `${formatCurrency(discountAmount, currency)} ${t('pos.discount', language) || 'OFF'}`)} variant="light">
                     {activeDiscount.discountType === 'percentage'
                       ? `${activeDiscount.discountValue}% ${t('pos.discount', language) || 'OFF'}`
-                      : `${discountAmount.toFixed(2)} ${currency} ${t('pos.discount', language) || 'OFF'}`}
+                      : `${formatCurrency(discountAmount, currency)} ${t('pos.discount', language) || 'OFF'}`}
                   </Badge>
                   <Text size="sm" c={getSuccessColor()} fw={600}>
-                    -{discountAmount.toFixed(2)} {currency}
+                    -{formatCurrency(discountAmount, currency)}
                   </Text>
                 </Group>
               </>
@@ -582,7 +583,7 @@ export function ItemSelectionModal({
               {t('pos.total', language)}:
             </Text>
             <Text fw={700} size="xl" c={primaryColor}>
-              {calculatePrice().toFixed(2)} {currency} × {quantity} = {(calculatePrice() * quantity).toFixed(2)} {currency}
+              {formatCurrency(calculatePrice(), currency)} × {quantity} = {formatCurrency(calculatePrice() * quantity, currency)}
             </Text>
           </Group>
         </Stack>

@@ -37,6 +37,7 @@ import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getStatusColor, getSuccessColor, getErrorColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { db } from '@/lib/indexeddb/database';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -620,15 +621,15 @@ export default function OrdersPage() {
                         </Group>
                         <Group gap="md">
                           <Text size="sm" fw={500}>
-                            {t('pos.subtotal', language)}: {(order.subtotal || 0).toFixed(2)} {currency}
+                            {t('pos.subtotal', language)}: {formatCurrency(order.subtotal || 0, currency)}
                           </Text>
                           {(order.discountAmount || 0) > 0 && (
                             <Text size="sm" c={getSuccessColor()}>
-                              {t('pos.discount', language)}: -{(order.discountAmount || 0).toFixed(2)} {currency}
+                              {t('pos.discount', language)}: -{formatCurrency(order.discountAmount || 0, currency)}
                             </Text>
                           )}
                           <Text size="sm" fw={600}>
-                            {t('pos.grandTotal', language)}: {(order.totalAmount || 0).toFixed(2)} {currency}
+                            {t('pos.grandTotal', language)}: {formatCurrency(order.totalAmount || 0, currency)}
                           </Text>
                         </Group>
                       </Stack>

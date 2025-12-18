@@ -83,6 +83,10 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
     root.style.setProperty('--theme-badge-bg-base', badgeConfig.backgroundBase);
     root.style.setProperty('--theme-badge-text-base', badgeConfig.textBase);
     root.style.setProperty('--theme-badge-variation-count', String(config.components.badge.variationCount ?? 10));
+    
+    // Avatar colors
+    root.style.setProperty('--theme-avatar-bg', config.components.avatar.backgroundColor);
+    root.style.setProperty('--theme-avatar-text', config.components.avatar.textColor);
 
     // 2. Apply body styles
     document.body.style.backgroundColor = config.components.page.backgroundColor;
@@ -683,6 +687,26 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       .mantine-Radio-input:disabled ~ .mantine-Radio-label,
       .mantine-Radio-root[data-disabled] .mantine-Radio-label {
         color: ${config.components.radio.disabledLabelColor ?? config.components.radio.labelColor ?? config.colors.textMuted} !important;
+      }
+
+      /* Avatar Component Styles - Override all possible selectors and CSS variables */
+      .mantine-Avatar-root,
+      .mantine-Avatar-root[style],
+      [class*="mantine-Avatar-root"],
+      button .mantine-Avatar-root,
+      .mantine-Button-root .mantine-Avatar-root,
+      .mantine-Menu-target .mantine-Avatar-root {
+        background-color: ${config.components.avatar.backgroundColor} !important;
+        color: ${config.components.avatar.textColor} !important;
+        --avatar-color: ${config.components.avatar.textColor} !important;
+      }
+      
+      /* Override any inline color styles that Mantine might apply */
+      .mantine-Avatar-root[style*="color"],
+      button .mantine-Avatar-root[style*="color"],
+      .mantine-Button-root .mantine-Avatar-root[style*="color"],
+      .mantine-Menu-target .mantine-Avatar-root[style*="color"] {
+        color: ${config.components.avatar.textColor} !important;
       }
       
       /* Button Outline Variant - Remove border */

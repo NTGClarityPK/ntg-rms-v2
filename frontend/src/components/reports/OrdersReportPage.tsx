@@ -31,7 +31,7 @@ import { reportsApi, OrderReport, ReportQueryParams } from '@/lib/api/reports';
 import { ReportFilters } from './ReportFilters';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getThemeColorShade, getSuccessColor, getInfoColor, getWarningColor, getErrorColor } from '@/lib/utils/theme';
+import { getThemeColorShade, getSuccessColor, getInfoColor, getWarningColor, getErrorColor, getChartColors } from '@/lib/utils/theme';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { notifications } from '@mantine/notifications';
 import { db } from '@/lib/indexeddb/database';
@@ -141,7 +141,8 @@ export default function OrdersReportPage() {
     window.print();
   };
 
-  const chartColors = [themeColor, getSuccessColor(), getInfoColor(), getWarningColor(), getErrorColor()];
+  // Generate chart colors dynamically - pie chart has multiple order types
+  const chartColors = getChartColors(3); // dine-in, takeaway, delivery
 
   if (loading) {
     return (
@@ -255,7 +256,7 @@ export default function OrdersReportPage() {
                 labelLine={false}
                 label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
                 outerRadius={80}
-                fill="#8884d8"
+                fill={chartColors[0]}
                 dataKey="count"
               >
                 {typeData.map((entry, index) => (

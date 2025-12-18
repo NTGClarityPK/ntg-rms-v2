@@ -26,6 +26,7 @@ import { useThemeColor, useThemeColorShade } from '@/lib/hooks/use-theme-color';
 import { getErrorColor, getWarningColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { ItemSelectionModal } from './ItemSelectionModal';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { formatCurrency } from '@/lib/utils/currency-formatter';
 
 interface FoodItemsGridProps {
   tenantId: string;
@@ -214,7 +215,7 @@ export function FoodItemsGrid({
 
                         <Group justify="space-between" mt="auto">
                           <Text fw={700} size="lg" c={primaryColor}>
-                            {item.basePrice.toFixed(2)} {currency}
+                            {formatCurrency(item.basePrice, currency)}
                           </Text>
 
                           {isOutOfStock && (

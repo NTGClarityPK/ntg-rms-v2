@@ -309,6 +309,40 @@ export function getBadgeColorForText(text: string): string {
 }
 
 /**
+ * Get chart colors based on number of series
+ * - Single series: returns array with primary color
+ * - Multiple series: returns array with primary color and its variations (light/dark)
+ */
+export function getChartColors(seriesCount: number): string[] {
+  if (seriesCount <= 0) return [];
+  if (seriesCount === 1) {
+    return [getThemeColor()];
+  }
+
+  // For multiple series, use primary color and its variations
+  const primary = getThemeColor();
+  const isDark = typeof window !== 'undefined' && 
+    (document.documentElement.getAttribute('data-theme') === 'dark' ||
+     document.documentElement.classList.contains('mantine-dark'));
+  
+  // Generate theme colors using the existing utility
+  // We need to import generateThemeColors - but to avoid circular dependency,
+  // we'll generate variations inline using mixColors
+  const colorVariations = [
+    primary,                                    // Base primary
+    mixColors(primary, '#ffffff', 0.2),       // Light
+    mixColors(primary, '#000000', 0.2),       // Dark
+    mixColors(primary, '#ffffff', 0.4),       // Lighter
+    mixColors(primary, '#000000', 0.4),       // Darker
+    mixColors(primary, '#ffffff', 0.6),       // Lightest
+    mixColors(primary, '#000000', 0.6),       // Darkest
+  ];
+
+  // Return only the number of colors needed
+  return colorVariations.slice(0, seriesCount);
+}
+
+/**
  * Get payment status color
  * Returns dynamic theme-based color values
  */

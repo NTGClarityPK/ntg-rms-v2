@@ -157,7 +157,16 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
             onClick={() => onCollapseChange?.(!collapsed)}
             style={{ width: collapsed ? 'auto' : '100%' }}
           >
-            {collapsed ? <IconChevronRight size={20} /> : <IconChevronLeft size={20} />}
+            {(() => {
+              const isRTL = language === 'ar';
+              if (isRTL) {
+                // RTL: reversed logic
+                return collapsed ? <IconChevronLeft size={20} /> : <IconChevronRight size={20} />;
+              } else {
+                // LTR: normal logic
+                return collapsed ? <IconChevronRight size={20} /> : <IconChevronLeft size={20} />;
+              }
+            })()}
           </ActionIcon>
         </Tooltip>
       </Box>

@@ -43,6 +43,7 @@ import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { DateInput } from '@mantine/dates';
 import '@mantine/dates/styles.css';
 import { getInfoColor, getBadgeColorForText } from '@/lib/utils/theme';
@@ -497,8 +498,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
                       </Table.Td>
                       <Table.Td>
                         <Text fw={500}>
-                          {currency}
-                          {customer.totalSpent.toFixed(2)}
+                          {formatCurrency(customer.totalSpent, currency)}
                         </Text>
                       </Table.Td>
                       <Table.Td>
@@ -675,8 +675,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
                         {t('customers.totalSpent', language)}
                       </Text>
                       <Text fw={500} size="xl" c={successColor}>
-                        {currency}
-                        {(selectedCustomer.totalSpent || 0).toFixed(2)}
+                        {formatCurrency(selectedCustomer.totalSpent || 0, currency)}
                       </Text>
                     </Card>
                   </Grid.Col>
@@ -686,12 +685,11 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
                         {t('customers.averageOrderValue', language)}
                       </Text>
                       <Text fw={500} size="xl">
-                        {currency}
                         {(() => {
                           const totalOrders = selectedCustomer.totalOrders || 0;
                           const totalSpent = selectedCustomer.totalSpent || 0;
                           const avgValue = totalOrders > 0 ? totalSpent / totalOrders : 0;
-                          return avgValue.toFixed(2);
+                          return formatCurrency(avgValue, currency);
                         })()}
                       </Text>
                     </Card>
@@ -750,7 +748,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
                             <Table.Tr style={{ backgroundColor: currentTier === 'regular' ? 'var(--mantine-color-blue-0)' : undefined }}>
                               <Table.Td>
                                 <Group gap="xs">
-                                  <IconTrophy size={16} color="gray" />
+                                  <IconTrophy size={16} color={primaryColor} />
                                   <Text fw={currentTier === 'regular' ? 600 : 400}>
                                     {t('customers.loyaltyTier.regular' as any, language) || 'Regular'}
                                   </Text>
@@ -773,7 +771,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
                             <Table.Tr style={{ backgroundColor: currentTier === 'silver' ? 'var(--mantine-color-blue-0)' : undefined }}>
                               <Table.Td>
                                 <Group gap="xs">
-                                  <IconTrophy size={16} color="gray" />
+                                  <IconTrophy size={16} color={primaryColor} />
                                   <Text fw={currentTier === 'silver' ? 600 : 400}>
                                     {t('customers.loyaltyTier.silver' as any, language) || 'Silver'}
                                   </Text>
@@ -796,7 +794,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
                             <Table.Tr style={{ backgroundColor: currentTier === 'gold' ? 'var(--mantine-color-blue-0)' : undefined }}>
                               <Table.Td>
                                 <Group gap="xs">
-                                  <IconTrophy size={16} color="yellow" />
+                                  <IconTrophy size={16} color={primaryColor} />
                                   <Text fw={currentTier === 'gold' ? 600 : 400}>
                                     {t('customers.loyaltyTier.gold' as any, language) || 'Gold'}
                                   </Text>
@@ -819,7 +817,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
                             <Table.Tr style={{ backgroundColor: currentTier === 'platinum' ? 'var(--mantine-color-blue-0)' : undefined }}>
                               <Table.Td>
                                 <Group gap="xs">
-                                  <IconTrophy size={16} color={infoColor} />
+                                  <IconTrophy size={16} color={primaryColor} />
                                   <Text fw={currentTier === 'platinum' ? 600 : 400}>
                                     {t('customers.loyaltyTier.platinum' as any, language) || 'Platinum'}
                                   </Text>
@@ -879,8 +877,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
                         </Table.Td>
                         <Table.Td>
                           <Text fw={500}>
-                            {currency}
-                            {order.totalAmount.toFixed(2)}
+                            {formatCurrency(order.totalAmount, currency)}
                           </Text>
                         </Table.Td>
                         <Table.Td>

@@ -37,6 +37,7 @@ import { CartItem, RestaurantTable } from '@/lib/indexeddb/database';
 import { useThemeColor, useThemeColorShade } from '@/lib/hooks/use-theme-color';
 import { getSuccessColor, getErrorColor } from '@/lib/utils/theme';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { ItemSelectionModal } from './ItemSelectionModal';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { syncService } from '@/lib/sync/sync-service';
@@ -579,7 +580,7 @@ export function POSCart({
         setAppliedCouponId(response.data.couponId);
         notifications.show({
           title: t('pos.couponApplied', language) || 'Coupon Applied',
-          message: `${t('pos.discount', language)}: ${response.data.discount.toFixed(2)} ${currency}`,
+          message: `${t('pos.discount', language)}: ${formatCurrency(response.data.discount, currency)}`,
           color: getSuccessColor(),
         });
       }
@@ -634,7 +635,7 @@ export function POSCart({
       const subtotal = cartItems.reduce((sum, item) => sum + item.subtotal, 0);
       if (minimumDeliveryOrderAmount > 0 && subtotal < minimumDeliveryOrderAmount) {
         return t('pos.minimumDeliveryAmount' as any, language) || 
-               `Minimum delivery order amount is ${minimumDeliveryOrderAmount.toFixed(2)} ${currency}`;
+               `Minimum delivery order amount is ${formatCurrency(minimumDeliveryOrderAmount, currency)}`;
       }
     }
     return null;
@@ -1128,8 +1129,8 @@ export function POSCart({
                 <tr>
                   <td>${(item as any).foodItemName || (item as any).foodItemNameEn || (item as any).foodItemNameAr || ''}</td>
                   <td>${item.quantity}</td>
-                  <td>${item.unitPrice.toFixed(2)} ${currency}</td>
-                  <td>${item.subtotal.toFixed(2)} ${currency}</td>
+                  <td>${formatCurrency(item.unitPrice, currency)}</td>
+                  <td>${formatCurrency(item.subtotal, currency)}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -1137,29 +1138,29 @@ export function POSCart({
           <div class="summary">
             <div class="summary-row">
               <span>${t('pos.subtotal', language)}:</span>
-              <span>${placedOrder.subtotal.toFixed(2)} ${currency}</span>
+              <span>${formatCurrency(placedOrder.subtotal, currency)}</span>
             </div>
             ${placedOrder.discountAmount > 0 ? `
               <div class="summary-row">
                 <span>${t('pos.discount', language)}:</span>
-                <span>-${placedOrder.discountAmount.toFixed(2)} ${currency}</span>
+                <span>-${formatCurrency(placedOrder.discountAmount, currency)}</span>
               </div>
             ` : ''}
             ${placedOrder.taxAmount > 0 ? `
               <div class="summary-row">
                 <span>${t('pos.tax', language)}:</span>
-                <span>${placedOrder.taxAmount.toFixed(2)} ${currency}</span>
+                <span>${formatCurrency(placedOrder.taxAmount, currency)}</span>
               </div>
             ` : ''}
             ${placedOrder.deliveryCharge > 0 ? `
               <div class="summary-row">
                 <span>${t('pos.deliveryCharge', language)}:</span>
-                <span>${placedOrder.deliveryCharge.toFixed(2)} ${currency}</span>
+                <span>${formatCurrency(placedOrder.deliveryCharge, currency)}</span>
               </div>
             ` : ''}
             <div class="summary-row total">
               <span>${t('pos.grandTotal', language)}:</span>
-              <span>${placedOrder.totalAmount.toFixed(2)} ${currency}</span>
+              <span>${formatCurrency(placedOrder.totalAmount, currency)}</span>
             </div>
           </div>
         </body>
@@ -1487,7 +1488,7 @@ export function POSCart({
 
                         <Group gap="xs">
                           <Text size="sm" fw={600} c={primaryColor}>
-                            {item.subtotal.toFixed(2)} {currency}
+                            {formatCurrency(item.subtotal, currency)}
                           </Text>
                           <Button
                             variant="subtle"
@@ -1518,7 +1519,7 @@ export function POSCart({
               <Group justify="space-between">
                 <Text size="sm">{t('pos.subtotal', language)}:</Text>
                 <Text size="sm" fw={500}>
-                  {calculateSubtotal().toFixed(2)} {currency}
+                  {formatCurrency(calculateSubtotal(), currency)}
                 </Text>
               </Group>
 
@@ -1580,7 +1581,7 @@ export function POSCart({
                             {t('pos.loyaltyDiscount', language) || 'Loyalty Discount'} ({selectedCustomerData?.loyaltyTier ? t(`customers.loyaltyTier.${selectedCustomerData.loyaltyTier}` as any, language) || selectedCustomerData.loyaltyTier : ''}):
                           </Text>
                           <Text size="sm" fw={500} c={getSuccessColor()}>
-                            -{loyaltyDiscount.toFixed(2)} {currency}
+                            -{formatCurrency(loyaltyDiscount, currency)}
                           </Text>
                         </Group>
                       )}
@@ -1590,7 +1591,7 @@ export function POSCart({
                             {t('pos.discount', language)}:
                           </Text>
                           <Text size="sm" fw={500} c={getSuccessColor()}>
-                            -{totalDiscount.toFixed(2)} {currency}
+                            -{formatCurrency(totalDiscount, currency)}
                           </Text>
                         </Group>
                       )}
@@ -1612,7 +1613,7 @@ export function POSCart({
                               {taxItem.name} ({taxItem.rate}%):
                             </Text>
                             <Text size="sm" fw={500}>
-                              {taxItem.amount.toFixed(2)} {currency}
+                              {formatCurrency(taxItem.amount, currency)}
                             </Text>
                           </Group>
                         ))
@@ -1620,7 +1621,7 @@ export function POSCart({
                         <Group justify="space-between">
                           <Text size="sm">{t('pos.tax', language)}:</Text>
                           <Text size="sm" fw={500}>
-                            {tax.toFixed(2)} {currency}
+                            {formatCurrency(tax, currency)}
                           </Text>
                         </Group>
                       )}
@@ -1628,7 +1629,7 @@ export function POSCart({
                         <Group justify="space-between" pt="xs" style={{ borderTop: '1px solid #e0e0e0' }}>
                           <Text size="sm" fw={600}>{t('pos.totalTax' as any, language) || 'Total Tax'}:</Text>
                           <Text size="sm" fw={600}>
-                            {tax.toFixed(2)} {currency}
+                            {formatCurrency(tax, currency)}
                           </Text>
                         </Group>
                       )}
@@ -1663,7 +1664,7 @@ export function POSCart({
                   {t('pos.grandTotal', language)}:
                 </Text>
                 <Text fw={700} size="xl" c={primaryColor}>
-                  {calculateGrandTotal().toFixed(2)} {currency}
+                  {formatCurrency(calculateGrandTotal(), currency)}
                 </Text>
               </Group>
 
@@ -1804,31 +1805,31 @@ export function POSCart({
             <Stack gap="xs">
               <Group justify="space-between">
                 <Text size="sm">{t('pos.subtotal', language)}:</Text>
-                <Text size="sm">{placedOrder.subtotal.toFixed(2)} {currency}</Text>
+                <Text size="sm">{formatCurrency(placedOrder.subtotal, currency)}</Text>
               </Group>
               {placedOrder.discountAmount > 0 && (
                 <Group justify="space-between">
                   <Text size="sm" c="dimmed">{t('pos.discount', language)}:</Text>
-                  <Text size="sm" c={getSuccessColor()}>-{placedOrder.discountAmount.toFixed(2)} {currency}</Text>
+                  <Text size="sm" c={getSuccessColor()}>-{formatCurrency(placedOrder.discountAmount, currency)}</Text>
                 </Group>
               )}
               {placedOrder.taxAmount > 0 && (
                 <Group justify="space-between">
                   <Text size="sm">{t('pos.tax', language)}:</Text>
-                  <Text size="sm">{placedOrder.taxAmount.toFixed(2)} {currency}</Text>
+                  <Text size="sm">{formatCurrency(placedOrder.taxAmount, currency)}</Text>
                 </Group>
               )}
               {placedOrder.deliveryCharge > 0 && (
                 <Group justify="space-between">
                   <Text size="sm">{t('pos.deliveryCharge', language)}:</Text>
-                  <Text size="sm">{placedOrder.deliveryCharge.toFixed(2)} {currency}</Text>
+                  <Text size="sm">{formatCurrency(placedOrder.deliveryCharge, currency)}</Text>
                 </Group>
               )}
               <Divider />
               <Group justify="space-between">
                 <Text fw={700} size="lg">{t('pos.grandTotal', language)}:</Text>
                 <Text fw={700} size="xl" c={primaryColor}>
-                  {placedOrder.totalAmount.toFixed(2)} {currency}
+                  {formatCurrency(placedOrder.totalAmount, currency)}
                 </Text>
               </Group>
             </Stack>

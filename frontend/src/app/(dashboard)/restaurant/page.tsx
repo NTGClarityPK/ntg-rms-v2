@@ -551,7 +551,7 @@ export default function RestaurantPage() {
                         style={{ objectFit: 'contain' }}
                       />
                     ) : (
-                      <IconToolsKitchen2 size={64} stroke={1.5} color="var(--mantine-color-gray-5)" />
+                      <IconToolsKitchen2 size={64} stroke={1.5} color={themeColor} />
                     )}
                   </Box>
                   <FileButton

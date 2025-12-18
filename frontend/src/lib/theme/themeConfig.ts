@@ -144,6 +144,10 @@ export interface ThemeConfig {
       };
       variationCount?: number; // Number of color variations to generate (default: 10)
     };
+    avatar: {
+      backgroundColor: string; // Background color of the avatar circle
+      textColor: string; // Color of the initials text
+    };
   };
   
   // Typography Settings
@@ -325,6 +329,10 @@ export function generateThemeConfig(
           textBase: themeColors.primaryLight, // Base for text variations
         },
         variationCount: 10, // Number of color variations to generate
+      },
+      avatar: {
+        backgroundColor: themeColors.colorCard, // Avatar background color
+        textColor: themeColors.primary, // Avatar text color (white/light)
       },
     },
     

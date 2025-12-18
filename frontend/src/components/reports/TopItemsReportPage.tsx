@@ -9,8 +9,9 @@ import { reportsApi, TopItemsReport, ReportQueryParams } from '@/lib/api/reports
 import { ReportFilters } from './ReportFilters';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getSuccessColor, getErrorColor } from '@/lib/utils/theme';
+import { getSuccessColor, getErrorColor, getChartColors } from '@/lib/utils/theme';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { notifications } from '@mantine/notifications';
 import { db } from '@/lib/indexeddb/database';
 import { useSyncStatus } from '@/lib/hooks/use-sync-status';
@@ -109,8 +110,15 @@ export default function TopItemsReportPage() {
               <YAxis dataKey="name" type="category" width={150} />
               <Tooltip />
               <Legend />
-              <Bar dataKey="quantity" fill={themeColor} name={t('reports.quantity' as any, language)} />
-              <Bar dataKey="revenue" fill={getSuccessColor()} name={t('reports.revenue' as any, language)} />
+              {(() => {
+                const colors = getChartColors(2); // 2 series: quantity and revenue
+                return (
+                  <>
+                    <Bar dataKey="quantity" fill={colors[0]} name={t('reports.quantity' as any, language)} />
+                    <Bar dataKey="revenue" fill={colors[1]} name={t('reports.revenue' as any, language)} />
+                  </>
+                );
+              })()}
             </BarChart>
           </ResponsiveContainer>
         </Box>
@@ -130,7 +138,7 @@ export default function TopItemsReportPage() {
               <Table.Tr key={item.id}>
                 <Table.Td>{item.name}</Table.Td>
                 <Table.Td>{item.quantity}</Table.Td>
-                <Table.Td>{item.revenue.toFixed(2)} {currency}</Table.Td>
+                <Table.Td>{formatCurrency(item.revenue, currency)}</Table.Td>
                 <Table.Td>{item.orderCount}</Table.Td>
               </Table.Tr>
             ))}

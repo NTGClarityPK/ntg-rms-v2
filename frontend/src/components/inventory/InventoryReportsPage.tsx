@@ -32,6 +32,7 @@ import { useErrorColor, useSuccessColor, useWarningColor } from '@/lib/hooks/use
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getWarningColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { formatCurrency } from '@/lib/utils/currency-formatter';
 
 const CATEGORIES = [
   { value: '', label: 'All Categories' },
@@ -342,7 +343,7 @@ export function InventoryReportsPage() {
             <Stack gap="xs">
               <Text size="sm" c="dimmed">{t('inventory.totalStockValue', language) || 'Total Stock Value'}</Text>
               <Text size="xl" fw={700} style={{ color: successColor }}>
-                {currency}{totalStockValue.toFixed(2)}
+                {formatCurrency(totalStockValue, currency)}
               </Text>
             </Stack>
           </Card>
@@ -486,11 +487,11 @@ export function InventoryReportsPage() {
                     <Text>{item.minimumThreshold} {item.unitOfMeasurement}</Text>
                   </Table.Td>
                   <Table.Td>
-                    {currency}{(item.costPerUnit || 0).toFixed(2)}
+                    {formatCurrency(item.costPerUnit || 0, currency)}
                   </Table.Td>
                   <Table.Td>
                     <Text fw={500}>
-                      {currency}{(item.stockValue || 0).toFixed(2)}
+                      {formatCurrency(item.stockValue || 0, currency)}
                     </Text>
                   </Table.Td>
                   <Table.Td>
@@ -570,9 +571,9 @@ export function InventoryReportsPage() {
                   <Table.Td>
                     <Group gap="xs">
                       {tx.quantity > 0 ? (
-                        <IconTrendingUp size={14} color={successColor} />
+                        <IconTrendingUp size={14} color={primaryColor} />
                       ) : (
-                        <IconTrendingDown size={14} color={errorColor} />
+                        <IconTrendingDown size={14} color={primaryColor} />
                       )}
                       <Text fw={tx.quantity > 0 ? 500 : undefined} c={tx.quantity < 0 ? errorColor : undefined}>
                         {tx.quantity > 0 ? '+' : ''}{tx.quantity}
@@ -581,7 +582,7 @@ export function InventoryReportsPage() {
                   </Table.Td>
                   <Table.Td>
                     {tx.unitCost ? (
-                      <Text>{currency}{tx.unitCost.toFixed(2)}</Text>
+                      <Text>{formatCurrency(tx.unitCost, currency)}</Text>
                     ) : (
                       <Text size="sm" c="dimmed">-</Text>
                     )}
@@ -589,7 +590,7 @@ export function InventoryReportsPage() {
                   <Table.Td>
                     {tx.totalCost ? (
                       <Text fw={500}>
-                        {currency}{tx.totalCost.toFixed(2)}
+                        {formatCurrency(tx.totalCost, currency)}
                       </Text>
                     ) : (
                       <Text size="sm" c="dimmed">-</Text>

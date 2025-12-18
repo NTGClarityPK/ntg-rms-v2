@@ -54,6 +54,7 @@ import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getStatusColor, getSuccessColor, getErrorColor, getInfoColor } from '@/lib/utils/theme';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { formatCurrency } from '@/lib/utils/currency-formatter';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { useDateFormat } from '@/lib/hooks/use-date-format';
@@ -454,12 +455,12 @@ export default function DeliveryPage() {
                         </Group>
                         <Group gap="md">
                           <Text size="sm" fw={500}>
-                            {t('pos.totalAmount' as any, language)}: {(delivery.order?.totalAmount || 0).toFixed(2)} {currency}
+                            {t('pos.totalAmount' as any, language)}: {formatCurrency(delivery.order?.totalAmount || 0, currency)}
                           </Text>
                           {delivery.deliveryCharge > 0 && (
                             <Text size="sm" c="dimmed">
                               {t('delivery.deliveryCharge' as any, language) || 'Delivery Charge'}:{' '}
-                              {delivery.deliveryCharge.toFixed(2)} {currency}
+                              {formatCurrency(delivery.deliveryCharge, currency)}
                             </Text>
                           )}
                         </Group>
@@ -695,7 +696,7 @@ export default function DeliveryPage() {
                     {t('pos.totalAmount' as any, language)}:
                   </Text>
                   <Text size="sm" fw={600}>
-                    {(selectedDelivery.order?.totalAmount || 0).toFixed(2)} {currency}
+                    {formatCurrency(selectedDelivery.order?.totalAmount || 0, currency)}
                   </Text>
                 </Group>
                 {selectedDelivery.deliveryCharge > 0 && (
@@ -704,7 +705,7 @@ export default function DeliveryPage() {
                       {t('delivery.deliveryCharge' as any, language) || 'Delivery Charge'}:
                     </Text>
                     <Text size="sm" fw={500}>
-                      {selectedDelivery.deliveryCharge.toFixed(2)} {currency}
+                      {formatCurrency(selectedDelivery.deliveryCharge, currency)}
                     </Text>
                   </Group>
                 )}
