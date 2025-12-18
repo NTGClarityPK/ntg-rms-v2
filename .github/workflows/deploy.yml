@@ -7,97 +7,73 @@ on:
       - dev
   workflow_dispatch:
 
-env:
-  PROJECT_NAME: ntg-rms-v2
-
 jobs:
   deploy:
     name: Deploy
     runs-on: [self-hosted, ntg-server]
 
-    env:
-      GIT_BRANCH: ${{ github.ref_name }}
-
     steps:
-      - name: Determine environment
+      - name: Determine Environment
         id: env
         run: |
-          echo "Git branch: $env:GIT_BRANCH"
+          if [[ "${{ github.ref_name }}" == "main" ]]; then
+            echo "ENVIRONMENT=production" >> $GITHUB_OUTPUT
+            echo "DEPLOY_PATH=/home/dev/production/ntg-rms-v2" >> $GITHUB_OUTPUT
+            echo "BACKEND_PORT=5001" >> $GITHUB_OUTPUT
+            echo "FRONTEND_PORT=5000" >> $GITHUB_OUTPUT
+            echo "BRANCH=main" >> $GITHUB_OUTPUT
+          else
+            echo "ENVIRONMENT=staging" >> $GITHUB_OUTPUT
+            echo "DEPLOY_PATH=/home/dev/staging/ntg-rms-v2" >> $GITHUB_OUTPUT
+            echo "BACKEND_PORT=8001" >> $GITHUB_OUTPUT
+            echo "FRONTEND_PORT=8000" >> $GITHUB_OUTPUT
+            echo "BRANCH=dev" >> $GITHUB_OUTPUT
+          fi
 
-          if ($env:GIT_BRANCH -eq "main") {
-            echo "ENVIRONMENT=production" >> $env:GITHUB_ENV
-            echo "DEPLOY_PATH=/home/dev/production/${env:PROJECT_NAME}/project" >> $env:GITHUB_ENV
-            echo "BACKEND_PORT=5001" >> $env:GITHUB_ENV
-            echo "FRONTEND_PORT=5000" >> $env:GITHUB_ENV
-            echo "COMPOSE_FILE=docker-compose.yml" >> $env:GITHUB_ENV
-            echo "ENV_FILE=.env.prod" >> $env:GITHUB_ENV
-            echo "COMPOSE_CMD=docker compose --env-file .env.prod up -d --build" >> $env:GITHUB_ENV
-          }
-          elseif ($env:GIT_BRANCH -eq "dev") {
-            echo "ENVIRONMENT=staging" >> $env:GITHUB_ENV
-            echo "DEPLOY_PATH=/home/dev/staging/${env:PROJECT_NAME}/project" >> $env:GITHUB_ENV
-            echo "BACKEND_PORT=8001" >> $env:GITHUB_ENV
-            echo "FRONTEND_PORT=8000" >> $env:GITHUB_ENV
-            echo "COMPOSE_FILE=docker-compose-staging.yml" >> $env:GITHUB_ENV
-            echo "ENV_FILE=.env.staging" >> $env:GITHUB_ENV
-            echo "COMPOSE_CMD=docker compose --env-file .env.staging -f docker-compose-staging.yml up -d --build" >> $env:GITHUB_ENV
-          }
-          else {
-            Write-Error "Unsupported branch '$env:GIT_BRANCH'. This workflow only supports 'main' and 'dev'."
-            exit 1
-          }
-
-          Get-Content $env:GITHUB_ENV
-
-      - name: Show deployment configuration
+      - name: Show Deployment Info
         run: |
-          echo "Environment: $env:ENVIRONMENT"
-          echo "Deploy path: $env:DEPLOY_PATH"
-          echo "Compose file: $env:COMPOSE_FILE"
-          echo "Env file: $env:ENV_FILE"
-          echo "Backend port: $env:BACKEND_PORT"
-          echo "Frontend port: $env:FRONTEND_PORT"
+          echo "🚀 Deploying to: ${{ steps.env.outputs.ENVIRONMENT }}"
+          echo "📁 Path: ${{ steps.env.outputs.DEPLOY_PATH }}"
+          echo "🌐 Frontend Port: ${{ steps.env.outputs.FRONTEND_PORT }}"
+          echo "🔌 Backend Port: ${{ steps.env.outputs.BACKEND_PORT }}"
 
-      - name: Checkout repository metadata
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Update code on server
+      - name: Update Code on Server
         run: |
-          cd "$env:DEPLOY_PATH"
+          cd ${{ steps.env.outputs.DEPLOY_PATH }}
           git fetch origin
-          git reset --hard "origin/$env:GIT_BRANCH"
+          git reset --hard origin/${{ steps.env.outputs.BRANCH }}
 
-      - name: Build and start services with Docker Compose
+      - name: Deploy
         run: |
-          cd "$env:DEPLOY_PATH"
-          $env:COMPOSE_CMD
+          cd ${{ steps.env.outputs.DEPLOY_PATH }}
+          
+          if [ "${{ steps.env.outputs.ENVIRONMENT }}" = "production" ]; then
+            echo "🏭 Deploying PRODUCTION..."
+            docker compose --env-file .env.prod down || true
+            docker compose --env-file .env.prod up -d --build
+          else
+            echo "🧪 Deploying STAGING..."
+            docker compose --env-file .env.staging -f docker-compose-staging.yml down || true
+            docker compose --env-file .env.staging -f docker-compose-staging.yml up -d --build
+          fi
 
-      - name: Wait for backend to be healthy
+      - name: Health Check
         run: |
-          $maxRetries = 30
-          $delaySeconds = 5
-          $url = "http://localhost:$env:BACKEND_PORT/health"
-
-          Write-Host "Checking health endpoint at $url"
-
-          for ($i = 1; $i -le $maxRetries; $i++) {
-            try {
-              $response = curl.exe -s -o NUL -w "%{http_code}" $url
-              if ($response -eq "200") {
-                Write-Host "Backend is healthy (HTTP 200)."
-                exit 0
-              } else {
-                Write-Host "Attempt $i/$maxRetries: Received HTTP $response. Retrying in $delaySeconds seconds..."
-              }
-            } catch {
-              Write-Host "Attempt $i/$maxRetries: Health check failed. Retrying in $delaySeconds seconds..."
-            }
-
-            Start-Sleep -Seconds $delaySeconds
-          }
-
-          Write-Error "Backend health check failed after $maxRetries attempts."
+          echo "⏳ Waiting for backend to start..."
+          sleep 30
+          
+          MAX_RETRIES=30
+          RETRY=0
+          
+          while [ $RETRY -lt $MAX_RETRIES ]; do
+            if curl -f http://localhost:${{ steps.env.outputs.BACKEND_PORT }}/health > /dev/null 2>&1; then
+              echo "✅ Backend is healthy!"
+              exit 0
+            fi
+            echo "Attempt $((RETRY+1))/$MAX_RETRIES failed, retrying..."
+            sleep 5
+            RETRY=$((RETRY+1))
+          done
+          
+          echo "❌ Health check failed after $MAX_RETRIES attempts"
           exit 1
-

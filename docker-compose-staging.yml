@@ -29,7 +29,7 @@ services:
 
   backend:
     build:
-      context: ../backend
+      context: ./backend
       dockerfile: Dockerfile
       network: host
     container_name: rms-backend-staging
@@ -47,7 +47,7 @@ services:
 
   frontend:
     build:
-      context: ../frontend
+      context: ./frontend
       dockerfile: Dockerfile
       network: host
       args:
@@ -67,4 +67,3 @@ services:
 networks:
   rms-network-staging:
     driver: bridge
-
