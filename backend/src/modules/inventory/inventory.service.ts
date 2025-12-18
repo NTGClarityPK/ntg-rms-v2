@@ -15,6 +15,7 @@ import { TransferStockDto } from './dto/transfer-stock.dto';
 import { CreateRecipeDto } from './dto/create-recipe.dto';
 import { UpdateRecipeDto } from './dto/update-recipe.dto';
 import { InventoryReportsQueryDto } from './dto/inventory-reports.dto';
+import { PaginationParams, PaginatedResponse, getPaginationParams, createPaginatedResponse } from '../../common/dto/pagination.dto';
 
 @Injectable()
 export class InventoryService {
@@ -27,8 +28,19 @@ export class InventoryService {
   /**
    * Get all ingredients for a tenant
    */
-  async getIngredients(tenantId: string, filters?: { category?: string; isActive?: boolean }) {
+  async getIngredients(
+    tenantId: string,
+    filters?: { category?: string; isActive?: boolean },
+    pagination?: PaginationParams,
+  ): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Build count query
+    let countQuery = supabase
+      .from('ingredients')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
 
     let query = supabase
       .from('ingredients')
@@ -39,10 +51,21 @@ export class InventoryService {
 
     if (filters?.category) {
       query = query.eq('category', filters.category);
+      countQuery = countQuery.eq('category', filters.category);
     }
 
     if (filters?.isActive !== undefined) {
       query = query.eq('is_active', filters.isActive);
+      countQuery = countQuery.eq('is_active', filters.isActive);
+    }
+
+    // Get total count
+    const { count: totalCount } = await countQuery;
+
+    // Apply pagination if provided
+    if (pagination) {
+      const { offset, limit } = getPaginationParams(pagination.page, pagination.limit);
+      query = query.range(offset, offset + limit - 1);
     }
 
     const { data, error } = await query;
@@ -52,7 +75,7 @@ export class InventoryService {
     }
 
     // Transform snake_case to camelCase
-    return (data || []).map((ing: any) => ({
+    const transformedData = (data || []).map((ing: any) => ({
       id: ing.id,
       tenantId: ing.tenant_id,
       name: ing.name,
@@ -67,6 +90,13 @@ export class InventoryService {
       updatedAt: ing.updated_at,
       deletedAt: ing.deleted_at,
     }));
+
+    // Return paginated response if pagination is requested
+    if (pagination) {
+      return createPaginatedResponse(transformedData, totalCount || 0, pagination.page || 1, pagination.limit || 10);
+    }
+
+    return transformedData;
   }
 
   /**
@@ -602,8 +632,18 @@ export class InventoryService {
   /**
    * Get stock transactions
    */
-  async getStockTransactions(tenantId: string, filters?: InventoryReportsQueryDto) {
+  async getStockTransactions(
+    tenantId: string,
+    filters?: InventoryReportsQueryDto,
+    pagination?: PaginationParams,
+  ): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Build count query
+    let countQuery = supabase
+      .from('stock_transactions')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId);
 
     let query = supabase
       .from('stock_transactions')
@@ -620,18 +660,31 @@ export class InventoryService {
 
     if (filters?.branchId) {
       query = query.eq('branch_id', filters.branchId);
+      countQuery = countQuery.eq('branch_id', filters.branchId);
     }
 
     if (filters?.ingredientId) {
       query = query.eq('ingredient_id', filters.ingredientId);
+      countQuery = countQuery.eq('ingredient_id', filters.ingredientId);
     }
 
     if (filters?.startDate) {
       query = query.gte('transaction_date', filters.startDate);
+      countQuery = countQuery.gte('transaction_date', filters.startDate);
     }
 
     if (filters?.endDate) {
       query = query.lte('transaction_date', filters.endDate);
+      countQuery = countQuery.lte('transaction_date', filters.endDate);
+    }
+
+    // Get total count
+    const { count: totalCount } = await countQuery;
+
+    // Apply pagination if provided
+    if (pagination) {
+      const { offset, limit } = getPaginationParams(pagination.page, pagination.limit);
+      query = query.range(offset, offset + limit - 1);
     }
 
     const { data, error } = await query;
@@ -643,7 +696,7 @@ export class InventoryService {
     }
 
     // Transform snake_case to camelCase
-    return (data || []).map((tx: any) => ({
+    const transformedData = (data || []).map((tx: any) => ({
       id: tx.id,
       tenantId: tx.tenant_id,
       branchId: tx.branch_id,
@@ -672,7 +725,20 @@ export class InventoryService {
             name: tx.branch.name,
           }
         : undefined,
+      createdByUser: tx.created_by_user
+        ? {
+            id: tx.created_by_user.id,
+            name: tx.created_by_user.name,
+          }
+        : undefined,
     }));
+
+    // Return paginated response if pagination is requested
+    if (pagination) {
+      return createPaginatedResponse(transformedData, totalCount || 0, pagination.page || 1, pagination.limit || 10);
+    }
+
+    return transformedData;
   }
 
   // ============================================
@@ -682,8 +748,17 @@ export class InventoryService {
   /**
    * Get all recipes for a tenant
    */
-  async getRecipes(tenantId: string, foodItemId?: string) {
+  async getRecipes(
+    tenantId: string,
+    foodItemId?: string,
+    pagination?: PaginationParams,
+  ): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Build count query (simplified - count all recipes for tenant)
+    let countQuery = supabase
+      .from('recipes')
+      .select('*', { count: 'exact', head: true });
 
     let query = supabase
       .from('recipes')
@@ -698,6 +773,7 @@ export class InventoryService {
 
     if (foodItemId) {
       query = query.eq('food_item_id', foodItemId);
+      countQuery = countQuery.eq('food_item_id', foodItemId);
     } else {
       // Filter by tenant through food_items
       const { data: foodItems } = await supabase
@@ -709,9 +785,19 @@ export class InventoryService {
       if (foodItems && foodItems.length > 0) {
         const foodItemIds = foodItems.map((fi) => fi.id);
         query = query.in('food_item_id', foodItemIds);
+        countQuery = countQuery.in('food_item_id', foodItemIds);
       } else {
-        return [];
+        return pagination ? createPaginatedResponse([], 0, pagination.page || 1, pagination.limit || 10) : [];
       }
+    }
+
+    // Get total count
+    const { count: totalCount } = await countQuery;
+
+    // Apply pagination if provided
+    if (pagination) {
+      const { offset, limit } = getPaginationParams(pagination.page, pagination.limit);
+      query = query.range(offset, offset + limit - 1);
     }
 
     const { data, error } = await query;
@@ -721,7 +807,7 @@ export class InventoryService {
     }
 
     // Transform snake_case to camelCase
-    return (data || []).map((recipe: any) => ({
+    const transformedData = (data || []).map((recipe: any) => ({
       id: recipe.id,
       foodItemId: recipe.food_item_id,
       ingredientId: recipe.ingredient_id,

@@ -27,6 +27,7 @@ import { CreateAddOnDto } from './dto/create-add-on.dto';
 import { UpdateAddOnDto } from './dto/update-add-on.dto';
 import { CreateMenuDto } from './dto/create-menu.dto';
 import { UpdateMenuDto } from './dto/update-menu.dto';
+import { PaginationDto } from '../../common/dto/pagination.dto';
 
 @ApiTags('menu')
 @Controller('menu')
@@ -44,8 +45,11 @@ export class MenuController {
 
   @Get('categories')
   @ApiOperation({ summary: 'Get all categories with subcategories' })
-  getCategories(@CurrentUser() user: any) {
-    return this.menuService.getCategories(user.tenantId);
+  getCategories(
+    @CurrentUser() user: any,
+    @Query() paginationDto?: PaginationDto,
+  ) {
+    return this.menuService.getCategories(user.tenantId, paginationDto);
   }
 
   @Get('categories/:id')
@@ -115,8 +119,9 @@ export class MenuController {
   getFoodItems(
     @CurrentUser() user: any,
     @Query('categoryId') categoryId?: string,
+    @Query() paginationDto?: PaginationDto,
   ) {
-    return this.menuService.getFoodItems(user.tenantId, categoryId);
+    return this.menuService.getFoodItems(user.tenantId, categoryId, paginationDto);
   }
 
   @Get('food-items/:id')
@@ -183,8 +188,11 @@ export class MenuController {
 
   @Get('add-on-groups')
   @ApiOperation({ summary: 'Get all add-on groups' })
-  getAddOnGroups(@CurrentUser() user: any) {
-    return this.menuService.getAddOnGroups(user.tenantId);
+  getAddOnGroups(
+    @CurrentUser() user: any,
+    @Query() paginationDto?: PaginationDto,
+  ) {
+    return this.menuService.getAddOnGroups(user.tenantId, paginationDto);
   }
 
   @Get('add-on-groups/:id')
@@ -275,8 +283,11 @@ export class MenuController {
 
   @Get('menus')
   @ApiOperation({ summary: 'Get all menus (grouped by menu type)' })
-  getMenus(@CurrentUser() user: any) {
-    return this.menuService.getMenus(user.tenantId);
+  getMenus(
+    @CurrentUser() user: any,
+    @Query() paginationDto?: PaginationDto,
+  ) {
+    return this.menuService.getMenus(user.tenantId, paginationDto);
   }
 
   @Get('menus/:menuType/items')

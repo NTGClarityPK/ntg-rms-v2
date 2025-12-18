@@ -23,6 +23,7 @@ import { TransferStockDto } from './dto/transfer-stock.dto';
 import { CreateRecipeDto } from './dto/create-recipe.dto';
 import { UpdateRecipeDto } from './dto/update-recipe.dto';
 import { InventoryReportsQueryDto } from './dto/inventory-reports.dto';
+import { PaginationDto } from '../../common/dto/pagination.dto';
 
 @ApiTags('inventory')
 @Controller('inventory')
@@ -43,11 +44,12 @@ export class InventoryController {
     @CurrentUser() user: any,
     @Query('category') category?: string,
     @Query('isActive') isActive?: string,
+    @Query() paginationDto?: PaginationDto,
   ) {
     const filters: any = {};
     if (category) filters.category = category;
     if (isActive !== undefined) filters.isActive = isActive === 'true';
-    return this.inventoryService.getIngredients(user.tenantId, filters);
+    return this.inventoryService.getIngredients(user.tenantId, filters, paginationDto);
   }
 
   @Get('ingredients/:id')
@@ -126,8 +128,12 @@ export class InventoryController {
   @Get('recipes')
   @ApiOperation({ summary: 'Get all recipes' })
   @ApiQuery({ name: 'foodItemId', required: false, type: String })
-  getRecipes(@CurrentUser() user: any, @Query('foodItemId') foodItemId?: string) {
-    return this.inventoryService.getRecipes(user.tenantId, foodItemId);
+  getRecipes(
+    @CurrentUser() user: any,
+    @Query('foodItemId') foodItemId?: string,
+    @Query() paginationDto?: PaginationDto,
+  ) {
+    return this.inventoryService.getRecipes(user.tenantId, foodItemId, paginationDto);
   }
 
   @Get('recipes/food-item/:foodItemId')

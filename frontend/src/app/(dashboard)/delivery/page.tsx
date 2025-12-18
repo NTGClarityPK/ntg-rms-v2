@@ -58,6 +58,9 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { useDateFormat } from '@/lib/hooks/use-date-format';
 import { useSuccessColor } from '@/lib/hooks/use-theme-colors';
+import { usePagination } from '@/lib/hooks/use-pagination';
+import { PaginationControls } from '@/components/common/PaginationControls';
+import { isPaginatedResponse } from '@/lib/types/pagination.types';
 
 dayjs.extend(relativeTime);
 
@@ -70,6 +73,7 @@ export default function DeliveryPage() {
   const errorColor = useThemeColor();
   const successColor = useSuccessColor();
   const infoColor = getInfoColor();
+  const pagination = usePagination<DeliveryOrder>({ initialPage: 1, initialLimit: 10 });
   const [activeTab, setActiveTab] = useState<DeliveryTab>('all');
   const [deliveries, setDeliveries] = useState<DeliveryOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,12 +118,17 @@ export default function DeliveryPage() {
     }
     try {
       const status = activeTab === 'all' ? undefined : (activeTab as DeliveryStatus);
-      const data = await deliveryApi.getDeliveryOrders({
+      const response = await deliveryApi.getDeliveryOrders({
         status,
         branchId: selectedBranch || undefined,
         deliveryPersonId: selectedDeliveryPerson || undefined,
+        ...pagination.paginationParams,
       });
-      setDeliveries(data);
+      
+      const deliveryData = pagination.extractData(response);
+      pagination.extractPagination(response);
+      
+      setDeliveries(deliveryData);
     } catch (error: any) {
       if (!silent) {
       notifications.show({
@@ -133,7 +142,7 @@ export default function DeliveryPage() {
         setLoading(false);
       }
     }
-  }, [activeTab, selectedBranch, selectedDeliveryPerson, language]);
+  }, [activeTab, selectedBranch, selectedDeliveryPerson, language, pagination]);
 
   useEffect(() => {
     loadBranches();
@@ -145,7 +154,8 @@ export default function DeliveryPage() {
 
   useEffect(() => {
     loadDeliveries();
-  }, [loadDeliveries]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, selectedBranch, selectedDeliveryPerson, pagination.page, pagination.limit]);
 
   const handleAssignDelivery = async () => {
     if (!selectedDelivery || !selectedPersonnelId) {
@@ -507,6 +517,23 @@ export default function DeliveryPage() {
                   </Card>
                 ))}
               </Stack>
+            )}
+            
+            {/* Pagination Controls */}
+            {pagination.total > 0 && (
+              <PaginationControls
+                page={pagination.page}
+                totalPages={pagination.totalPages}
+                limit={pagination.limit}
+                total={pagination.total}
+                onPageChange={(page) => {
+                  pagination.setPage(page);
+                }}
+                onLimitChange={(newLimit) => {
+                  pagination.setLimit(newLimit);
+                  pagination.setPage(1);
+                }}
+              />
             )}
           </Box>
         </Tabs>

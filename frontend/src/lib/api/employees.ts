@@ -1,5 +1,6 @@
 import apiClient from './client';
 import { API_ENDPOINTS } from '../constants/api';
+import { PaginationParams, PaginatedResponse } from '../types/pagination.types';
 
 export interface Role {
   id: string;
@@ -70,13 +71,18 @@ export interface UpdateEmployeeDto {
 }
 
 export const employeesApi = {
-  getEmployees: async (filters?: { branchId?: string; role?: string; status?: string }): Promise<Employee[]> => {
+  getEmployees: async (
+    filters?: { branchId?: string; role?: string; status?: string },
+    pagination?: PaginationParams,
+  ): Promise<Employee[] | PaginatedResponse<Employee>> => {
     const params = new URLSearchParams();
     if (filters?.branchId) params.append('branchId', filters.branchId);
     if (filters?.role) params.append('role', filters.role);
     if (filters?.status) params.append('status', filters.status);
+    if (pagination?.page) params.append('page', pagination.page.toString());
+    if (pagination?.limit) params.append('limit', pagination.limit.toString());
 
-    const response = await apiClient.get<Employee[]>(
+    const response = await apiClient.get<Employee[] | PaginatedResponse<Employee>>(
       `${API_ENDPOINTS.EMPLOYEES}${params.toString() ? `?${params.toString()}` : ''}`,
     );
     return response.data;

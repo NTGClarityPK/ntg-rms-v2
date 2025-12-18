@@ -48,6 +48,10 @@ import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hoo
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { usePermissions } from '@/lib/hooks/use-permissions';
 import { PermissionGuard } from '@/components/common/PermissionGuard';
+import { usePagination } from '@/lib/hooks/use-pagination';
+import { PaginationControls } from '@/components/common/PaginationControls';
+import { isPaginatedResponse } from '@/lib/types/pagination.types';
+import { Fragment } from 'react';
 import '@mantine/dates/styles.css';
 
 const EMPLOYMENT_TYPES = [
@@ -64,6 +68,7 @@ export function EmployeesPage() {
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
+  const pagination = usePagination<Employee>({ initialPage: 1, initialLimit: 10 });
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [branches, setBranches] = useState<Array<{ id: string; name: string }>>([]);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -134,58 +139,149 @@ export function EmployeesPage() {
       setLoading(true);
       setError(null);
 
+      // If online, fetch from server first (with pagination)
       if (navigator.onLine) {
         try {
           const filters: any = {};
           if (roleFilter) filters.role = roleFilter;
           if (statusFilter) filters.status = statusFilter;
 
-          const serverEmployees = await employeesApi.getEmployees(filters);
-          console.log('Server employees with roles:', serverEmployees.map(emp => ({
+          // Fetch paginated data from server
+          const serverEmployeesResponse = await employeesApi.getEmployees(filters, pagination.paginationParams);
+          // Handle both paginated and non-paginated responses
+          const serverEmployees: Employee[] = pagination.extractData(serverEmployeesResponse);
+          const paginationInfo = pagination.extractPagination(serverEmployeesResponse);
+          
+          // If response is not paginated, set total from array length
+          if (!paginationInfo) {
+            pagination.setTotal(serverEmployees.length);
+            pagination.setTotalPages(Math.ceil(serverEmployees.length / pagination.limit));
+            pagination.setHasNext(false);
+            pagination.setHasPrev(false);
+          }
+
+          console.log('Server employees with roles:', serverEmployees.map((emp: Employee) => ({
             name: emp.name,
             roles: emp.roles,
             role: emp.role
           })));
           setEmployees(serverEmployees);
 
-          // Update IndexedDB
-          const employeesToStore = serverEmployees.map((emp) => ({
-            id: emp.id,
-            tenantId: user.tenantId,
-            supabaseAuthId: emp.supabaseAuthId,
-            email: emp.email,
-            name: emp.name || (emp as any).nameEn || (emp as any).nameAr || '',
-            phone: emp.phone,
-            role: emp.role, // Keep for backward compatibility
-            roles: emp.roles || [], // Store roles array
-            employeeId: emp.employeeId,
-            photoUrl: emp.photoUrl,
-            nationalId: emp.nationalId,
-            dateOfBirth: emp.dateOfBirth,
-            employmentType: emp.employmentType,
-            joiningDate: emp.joiningDate,
-            salary: emp.salary,
-            isActive: emp.isActive,
-            lastLoginAt: emp.lastLoginAt,
-            createdAt: emp.createdAt,
-            updatedAt: emp.updatedAt,
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced' as const,
-          }));
+          // Fetch ALL employees (without pagination and without filters) in the background to update IndexedDB
+          // This ensures IndexedDB has all employees for offline use, regardless of current filters
+          // Do this asynchronously so it doesn't block the UI
+          (async () => {
+            try {
+              // Fetch all employees without any filters to ensure IndexedDB has complete data
+              const allEmployeesResponse = await employeesApi.getEmployees({});
+              const allEmployees: Employee[] = Array.isArray(allEmployeesResponse) 
+                ? allEmployeesResponse 
+                : (allEmployeesResponse?.data || []);
+              
+              // Update IndexedDB with ALL employees (not just the paginated page)
+              const employeesToStore = allEmployees.map((emp: Employee) => ({
+                id: emp.id,
+                tenantId: user.tenantId,
+                supabaseAuthId: emp.supabaseAuthId,
+                email: emp.email,
+                name: emp.name || (emp as any).nameEn || (emp as any).nameAr || '',
+                phone: emp.phone,
+                role: emp.role, // Keep for backward compatibility
+                roles: emp.roles || [], // Store roles array
+                employeeId: emp.employeeId,
+                photoUrl: emp.photoUrl,
+                nationalId: emp.nationalId,
+                dateOfBirth: emp.dateOfBirth,
+                employmentType: emp.employmentType,
+                joiningDate: emp.joiningDate,
+                salary: emp.salary,
+                isActive: emp.isActive,
+                lastLoginAt: emp.lastLoginAt,
+                createdAt: emp.createdAt,
+                updatedAt: emp.updatedAt,
+                lastSynced: new Date().toISOString(),
+                syncStatus: 'synced' as const,
+              }));
 
-          if (employeesToStore.length > 0) {
-            await db.employees.bulkPut(employeesToStore as any);
-          }
+              if (employeesToStore.length > 0) {
+                await db.employees.bulkPut(employeesToStore as any);
+                console.log(`[EmployeesPage] Updated IndexedDB with ${employeesToStore.length} employees (background sync)`);
+              }
+            } catch (allEmployeesError) {
+              console.warn('Failed to fetch all employees for IndexedDB update:', allEmployeesError);
+              // Don't block the UI if background sync fails
+            }
+          })();
         } catch (err: any) {
           console.error('Failed to load employees from server:', err);
           // Fall back to IndexedDB
-          const localEmployees = await db.employees.where('tenantId').equals(user.tenantId).toArray();
-          setEmployees(localEmployees as unknown as Employee[]);
+          const localEmployees = await db.employees
+            .where('tenantId')
+            .equals(user.tenantId)
+            .toArray();
+          
+          // Apply filters to local employees
+          let filteredLocalEmployees = localEmployees;
+          if (roleFilter) {
+            filteredLocalEmployees = filteredLocalEmployees.filter(emp => {
+              const empAny = emp as any;
+              return emp.role === roleFilter || empAny.roles?.some((r: any) => r.name === roleFilter);
+            });
+          }
+          if (statusFilter) {
+            filteredLocalEmployees = filteredLocalEmployees.filter(emp => 
+              statusFilter === 'active' ? emp.isActive : !emp.isActive
+            );
+          }
+
+          // Apply local pagination
+          const totalItems = filteredLocalEmployees.length;
+          const startIndex = (pagination.page - 1) * pagination.limit;
+          const endIndex = startIndex + pagination.limit;
+          const paginatedLocalEmployees = filteredLocalEmployees.slice(startIndex, endIndex);
+
+          // Set pagination info for local pagination
+          pagination.setTotal(totalItems);
+          pagination.setTotalPages(Math.ceil(totalItems / pagination.limit));
+          pagination.setHasNext(endIndex < totalItems);
+          pagination.setHasPrev(pagination.page > 1);
+
+          setEmployees(paginatedLocalEmployees as unknown as Employee[]);
         }
       } else {
         // Load from IndexedDB when offline
-        const localEmployees = await db.employees.where('tenantId').equals(user.tenantId).toArray();
-        setEmployees(localEmployees as unknown as Employee[]);
+        const localEmployees = await db.employees
+          .where('tenantId')
+          .equals(user.tenantId)
+          .toArray();
+
+        // Apply filters to local employees
+        let filteredLocalEmployees = localEmployees;
+        if (roleFilter) {
+          filteredLocalEmployees = filteredLocalEmployees.filter(emp => {
+            const empAny = emp as any;
+            return emp.role === roleFilter || empAny.roles?.some((r: any) => r.name === roleFilter);
+          });
+        }
+        if (statusFilter) {
+          filteredLocalEmployees = filteredLocalEmployees.filter(emp => 
+            statusFilter === 'active' ? emp.isActive : !emp.isActive
+          );
+        }
+
+        // Apply local pagination
+        const totalItems = filteredLocalEmployees.length;
+        const startIndex = (pagination.page - 1) * pagination.limit;
+        const endIndex = startIndex + pagination.limit;
+        const paginatedLocalEmployees = filteredLocalEmployees.slice(startIndex, endIndex);
+
+        // Set pagination info for local pagination
+        pagination.setTotal(totalItems);
+        pagination.setTotalPages(Math.ceil(totalItems / pagination.limit));
+        pagination.setHasNext(endIndex < totalItems);
+        pagination.setHasPrev(pagination.page > 1);
+
+        setEmployees(paginatedLocalEmployees as unknown as Employee[]);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to load employees');
@@ -198,7 +294,7 @@ export function EmployeesPage() {
     } finally {
       setLoading(false);
     }
-  }, [user?.tenantId, roleFilter, statusFilter, language, notificationColors.error]);
+  }, [user?.tenantId, roleFilter, statusFilter, pagination, language, notificationColors.error]);
 
   useEffect(() => {
     loadBranches();
@@ -567,103 +663,122 @@ export function EmployeesPage() {
       </Paper>
 
       <Paper withBorder>
-        <Table.ScrollContainer minWidth={800}>
-          <Table>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{t('employees.name', language)}</Table.Th>
-                <Table.Th>{t('employees.email', language)}</Table.Th>
-                <Table.Th>{t('employees.roleLabel', language)}</Table.Th>
-                <Table.Th>{t('employees.phone', language)}</Table.Th>
-                <Table.Th>{t('employees.employmentTypeLabel', language)}</Table.Th>
-                <Table.Th>{t('common.status' as any, language)}</Table.Th>
-                <Table.Th>{t('common.actions' as any, language)}</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {filteredEmployees.length === 0 ? (
+        <Fragment>
+          <Table.ScrollContainer minWidth={800}>
+            <Table>
+              <Table.Thead>
                 <Table.Tr>
-                  <Table.Td colSpan={7} ta="center" py="xl">
-                    <Text c="dimmed">{t('employees.noEmployees', language)}</Text>
-                  </Table.Td>
+                  <Table.Th>{t('employees.name', language)}</Table.Th>
+                  <Table.Th>{t('employees.email', language)}</Table.Th>
+                  <Table.Th>{t('employees.roleLabel', language)}</Table.Th>
+                  <Table.Th>{t('employees.phone', language)}</Table.Th>
+                  <Table.Th>{t('employees.employmentTypeLabel', language)}</Table.Th>
+                  <Table.Th>{t('common.status' as any, language)}</Table.Th>
+                  <Table.Th>{t('common.actions' as any, language)}</Table.Th>
                 </Table.Tr>
-              ) : (
-                filteredEmployees.map((employee) => (
-                  <Table.Tr key={employee.id}>
-                    <Table.Td>
-                      <Text fw={500}>
-                        {employee.name}
-                      </Text>
-                      {employee.employeeId && (
-                        <Text size="xs" c="dimmed">
-                          {t('employees.employeeId', language)}: {employee.employeeId}
-                        </Text>
-                      )}
-                    </Table.Td>
-                    <Table.Td>{employee.email}</Table.Td>
-                    <Table.Td>
-                      <Group gap="xs">
-                        {(() => {
-                          // Debug: log employee roles
-                          if (employee.name === 'Lingo' || employee.email === 'lingo@gmail.com') {
-                            console.log('Lingo employee data:', {
-                              name: employee.name,
-                              roles: employee.roles,
-                              role: employee.role,
-                              fullEmployee: employee
-                            });
-                          }
-                          
-                          // Display multiple roles if available
-                          if (employee.roles && Array.isArray(employee.roles) && employee.roles.length > 0) {
-                            return employee.roles.map((role) => (
-                              <Badge key={role.id || role.name} color={primaryColor} variant="light">
-                                {getRoleLabel(role.name)}
-                              </Badge>
-                            ));
-                          }
-                          // Fallback to single role
-                          return (
-                            <Badge color={primaryColor} variant="light">
-                              {getRoleLabel(employee.role)}
-                            </Badge>
-                          );
-                        })()}
-                      </Group>
-                    </Table.Td>
-                    <Table.Td>{employee.phone || '-'}</Table.Td>
-                    <Table.Td>{getEmploymentTypeLabel(employee.employmentType)}</Table.Td>
-                    <Table.Td>
-                      <Badge
-                        color={employee.isActive ? successColor : errorColor}
-                        variant="light"
-                        leftSection={employee.isActive ? <IconCircleCheck size={12} /> : <IconCircleX size={12} />}
-                      >
-                        {employee.isActive
-                          ? (t('common.active' as any, language) || 'Active')
-                          : (t('common.inactive' as any, language) || 'Inactive')}
-                      </Badge>
-                    </Table.Td>
-                    <Table.Td>
-                      <Group gap="xs">
-                        <PermissionGuard resource="employees" action="update">
-                          <ActionIcon variant="subtle" color={primaryColor} onClick={() => handleOpenModal(employee)}>
-                            <IconEdit size={16} />
-                          </ActionIcon>
-                        </PermissionGuard>
-                        <PermissionGuard resource="employees" action="delete">
-                          <ActionIcon variant="subtle" color={errorColor} onClick={() => handleDelete(employee)}>
-                            <IconTrash size={16} />
-                          </ActionIcon>
-                        </PermissionGuard>
-                      </Group>
+              </Table.Thead>
+              <Table.Tbody>
+                {filteredEmployees.length === 0 ? (
+                  <Table.Tr>
+                    <Table.Td colSpan={7} ta="center" py="xl">
+                      <Text c="dimmed">{t('employees.noEmployees', language)}</Text>
                     </Table.Td>
                   </Table.Tr>
-                ))
-              )}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
+                ) : (
+                  filteredEmployees.map((employee) => (
+                    <Table.Tr key={employee.id}>
+                      <Table.Td>
+                        <Text fw={500}>
+                          {employee.name}
+                        </Text>
+                        {employee.employeeId && (
+                          <Text size="xs" c="dimmed">
+                            {t('employees.employeeId', language)}: {employee.employeeId}
+                          </Text>
+                        )}
+                      </Table.Td>
+                      <Table.Td>{employee.email}</Table.Td>
+                      <Table.Td>
+                        <Group gap="xs">
+                          {(() => {
+                            // Debug: log employee roles
+                            if (employee.name === 'Lingo' || employee.email === 'lingo@gmail.com') {
+                              console.log('Lingo employee data:', {
+                                name: employee.name,
+                                roles: employee.roles,
+                                role: employee.role,
+                                fullEmployee: employee
+                              });
+                            }
+                            
+                            // Display multiple roles if available
+                            if (employee.roles && Array.isArray(employee.roles) && employee.roles.length > 0) {
+                              return employee.roles.map((role) => (
+                                <Badge key={role.id || role.name} color={primaryColor} variant="light">
+                                  {getRoleLabel(role.name)}
+                                </Badge>
+                              ));
+                            }
+                            // Fallback to single role
+                            return (
+                              <Badge color={primaryColor} variant="light">
+                                {getRoleLabel(employee.role)}
+                              </Badge>
+                            );
+                          })()}
+                        </Group>
+                      </Table.Td>
+                      <Table.Td>{employee.phone || '-'}</Table.Td>
+                      <Table.Td>{getEmploymentTypeLabel(employee.employmentType)}</Table.Td>
+                      <Table.Td>
+                        <Badge
+                          color={employee.isActive ? successColor : errorColor}
+                          variant="light"
+                          leftSection={employee.isActive ? <IconCircleCheck size={12} /> : <IconCircleX size={12} />}
+                        >
+                          {employee.isActive
+                            ? (t('common.active' as any, language) || 'Active')
+                            : (t('common.inactive' as any, language) || 'Inactive')}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap="xs">
+                          <PermissionGuard resource="employees" action="update">
+                            <ActionIcon variant="subtle" color={primaryColor} onClick={() => handleOpenModal(employee)}>
+                              <IconEdit size={16} />
+                            </ActionIcon>
+                          </PermissionGuard>
+                          <PermissionGuard resource="employees" action="delete">
+                            <ActionIcon variant="subtle" color={errorColor} onClick={() => handleDelete(employee)}>
+                              <IconTrash size={16} />
+                            </ActionIcon>
+                          </PermissionGuard>
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))
+                )}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+          
+          {/* Pagination Controls */}
+          {pagination.total > 0 && (
+            <PaginationControls
+              page={pagination.page}
+              totalPages={pagination.totalPages}
+              limit={pagination.limit}
+              total={pagination.total}
+              onPageChange={(page) => {
+                pagination.setPage(page);
+              }}
+              onLimitChange={(newLimit) => {
+                pagination.setLimit(newLimit);
+                pagination.setPage(1);
+              }}
+            />
+          )}
+        </Fragment>
       </Paper>
 
       <Modal

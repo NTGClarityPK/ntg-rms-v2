@@ -42,6 +42,8 @@ import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { onMenuDataUpdate, notifyMenuDataUpdate } from '@/lib/utils/menu-events';
+import { usePagination } from '@/lib/hooks/use-pagination';
+import { PaginationControls } from '@/components/common/PaginationControls';
 
 export function AddOnGroupsPage() {
   const { language } = useLanguageStore();
@@ -49,6 +51,7 @@ export function AddOnGroupsPage() {
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
+  const pagination = usePagination<AddOnGroup>({ initialPage: 1, initialLimit: 10 });
   const [addOnGroups, setAddOnGroups] = useState<AddOnGroup[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<AddOnGroup | null>(null);
   const [addOns, setAddOns] = useState<AddOn[]>([]);
@@ -90,32 +93,26 @@ export function AddOnGroupsPage() {
       setLoading(true);
       setError(null);
 
-      // Load from IndexedDB first
+      // Load from IndexedDB first (for offline mode)
       const localGroups = await db.addOnGroups
         .where('tenantId')
         .equals(user.tenantId)
         .filter((group) => !group.deletedAt)
         .toArray();
 
-      setAddOnGroups(localGroups.map((group) => ({
-        id: group.id,
-        name: (group as any).name || (group as any).nameEn || (group as any).nameAr || '',
-        selectionType: group.selectionType,
-        isRequired: group.isRequired,
-        minSelections: group.minSelections,
-        maxSelections: group.maxSelections,
-        displayOrder: group.displayOrder,
-        isActive: group.isActive,
-        createdAt: group.createdAt,
-        updatedAt: group.updatedAt,
-        addOns: [],
-      })));
-
       // Sync from server if online
       if (navigator.onLine) {
         try {
-          const serverGroups = await menuApi.getAddOnGroups();
+          const serverGroupsResponse = await menuApi.getAddOnGroups(pagination.paginationParams);
+          const serverGroups = pagination.extractData(serverGroupsResponse);
+          pagination.extractPagination(serverGroupsResponse);
           setAddOnGroups(serverGroups);
+
+          // If no groups on current page but we have total, reset to page 1
+          if (serverGroups.length === 0 && pagination.total > 0 && pagination.page > 1) {
+            pagination.setPage(1);
+            return; // Will reload with page 1
+          }
 
           // Update IndexedDB
           for (const group of serverGroups) {
@@ -137,7 +134,50 @@ export function AddOnGroupsPage() {
           }
         } catch (err) {
           console.warn('Failed to sync add-on groups from server:', err);
+          // Fallback: use IndexedDB data with local pagination
+          const startIndex = (pagination.page - 1) * pagination.limit;
+          const endIndex = startIndex + pagination.limit;
+          const paginatedGroups = localGroups.slice(startIndex, endIndex).map((group) => ({
+            id: group.id,
+            name: (group as any).name || '',
+            selectionType: group.selectionType,
+            isRequired: group.isRequired,
+            minSelections: group.minSelections,
+            maxSelections: group.maxSelections,
+            displayOrder: group.displayOrder,
+            isActive: group.isActive,
+            createdAt: group.createdAt,
+            updatedAt: group.updatedAt,
+            addOns: [],
+          }));
+          setAddOnGroups(paginatedGroups);
+          pagination.setTotal(localGroups.length);
+          pagination.setTotalPages(Math.ceil(localGroups.length / pagination.limit));
+          pagination.setHasNext(endIndex < localGroups.length);
+          pagination.setHasPrev(pagination.page > 1);
         }
+      } else {
+        // Offline mode - apply local pagination
+        const startIndex = (pagination.page - 1) * pagination.limit;
+        const endIndex = startIndex + pagination.limit;
+        const paginatedGroups = localGroups.slice(startIndex, endIndex).map((group) => ({
+          id: group.id,
+          name: (group as any).name || '',
+          selectionType: group.selectionType,
+          isRequired: group.isRequired,
+          minSelections: group.minSelections,
+          maxSelections: group.maxSelections,
+          displayOrder: group.displayOrder,
+          isActive: group.isActive,
+          createdAt: group.createdAt,
+          updatedAt: group.updatedAt,
+          addOns: [],
+        }));
+        setAddOnGroups(paginatedGroups);
+        pagination.setTotal(localGroups.length);
+        pagination.setTotalPages(Math.ceil(localGroups.length / pagination.limit));
+        pagination.setHasNext(endIndex < localGroups.length);
+        pagination.setHasPrev(pagination.page > 1);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to load add-on groups');
@@ -145,7 +185,7 @@ export function AddOnGroupsPage() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.tenantId, language]);
+  }, [user?.tenantId, language, pagination.page, pagination.limit]);
 
   const loadAddOns = useCallback(async (groupId: string) => {
     try {
@@ -542,6 +582,21 @@ export function AddOnGroupsPage() {
                 ))
               )}
             </Stack>
+            {pagination.total > 0 && (
+              <PaginationControls
+                page={pagination.page}
+                totalPages={pagination.totalPages}
+                limit={pagination.limit}
+                total={pagination.total}
+                onPageChange={(page) => {
+                  pagination.setPage(page);
+                }}
+                onLimitChange={(newLimit) => {
+                  pagination.setLimit(newLimit);
+                  pagination.setPage(1);
+                }}
+              />
+            )}
           </Paper>
         </Grid.Col>
 

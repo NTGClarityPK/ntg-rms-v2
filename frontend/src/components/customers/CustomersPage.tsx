@@ -47,6 +47,10 @@ import { useCurrency } from '@/lib/hooks/use-currency';
 import { DateInput } from '@mantine/dates';
 import '@mantine/dates/styles.css';
 import { getInfoColor } from '@/lib/utils/theme';
+import { usePagination } from '@/lib/hooks/use-pagination';
+import { PaginationControls } from '@/components/common/PaginationControls';
+import { isPaginatedResponse } from '@/lib/types/pagination.types';
+import { Fragment } from 'react';
 const LOYALTY_TIERS = {
   regular: { label: 'Regular', color: 'gray', discount: 0 },
   silver: { label: 'Silver', color: 'gray', discount: 5 },
@@ -63,6 +67,7 @@ export function CustomersPage() {
   const primaryColor = useThemeColor();
   const infoColor = getInfoColor();
   const currency = useCurrency();
+  const pagination = usePagination<Customer>({ initialPage: 1, initialLimit: 10 });
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
@@ -101,12 +106,55 @@ export function CustomersPage() {
       setLoading(true);
       setError(null);
 
+      // Load from IndexedDB first
+      const localCustomers = await db.customers
+        .where('tenantId')
+        .equals(user.tenantId)
+        .toArray();
+
+      // Apply filters to local customers
+      let filteredLocalCustomers = localCustomers;
+      if (searchQuery) {
+        filteredLocalCustomers = filteredLocalCustomers.filter(cust => 
+          cust.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          cust.phone?.includes(searchQuery) ||
+          cust.email?.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+      }
+
+      // Apply local pagination
+      const totalItems = filteredLocalCustomers.length;
+      const startIndex = (pagination.page - 1) * pagination.limit;
+      const endIndex = startIndex + pagination.limit;
+      const paginatedLocalCustomers = filteredLocalCustomers.slice(startIndex, endIndex);
+
+      // Set pagination info for local pagination (as fallback, will be updated from server if online)
+      pagination.setTotal(totalItems);
+      pagination.setTotalPages(Math.ceil(totalItems / pagination.limit));
+      pagination.setHasNext(endIndex < totalItems);
+      pagination.setHasPrev(pagination.page > 1);
+
+      setCustomers(paginatedLocalCustomers as unknown as Customer[]);
+
+      // Sync from server if online
       if (navigator.onLine) {
         try {
           const filters: any = {};
           if (searchQuery) filters.search = searchQuery;
 
-          const serverCustomers = await customersApi.getCustomers(filters);
+          const serverCustomersResponse = await customersApi.getCustomers(filters, pagination.paginationParams);
+          // Handle both paginated and non-paginated responses
+          const serverCustomers: Customer[] = pagination.extractData(serverCustomersResponse);
+          const paginationInfo = pagination.extractPagination(serverCustomersResponse);
+          
+          // If response is not paginated, set total from array length
+          if (!paginationInfo) {
+            pagination.setTotal(serverCustomers.length);
+            pagination.setTotalPages(Math.ceil(serverCustomers.length / pagination.limit));
+            pagination.setHasNext(false);
+            pagination.setHasPrev(false);
+          }
+
           setCustomers(serverCustomers);
 
           // Update IndexedDB
@@ -135,14 +183,8 @@ export function CustomersPage() {
           }
         } catch (err: any) {
           console.error('Failed to load customers from server:', err);
-          // Fall back to IndexedDB
-          const localCustomers = await db.customers.where('tenantId').equals(user.tenantId).toArray();
-          setCustomers(localCustomers as unknown as Customer[]);
+          // Keep using IndexedDB data that was already set
         }
-      } else {
-        // Load from IndexedDB when offline
-        const localCustomers = await db.customers.where('tenantId').equals(user.tenantId).toArray();
-        setCustomers(localCustomers as unknown as Customer[]);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to load customers');
@@ -155,7 +197,7 @@ export function CustomersPage() {
     } finally {
       setLoading(false);
     }
-  }, [user?.tenantId, searchQuery, language, notificationColors.error]);
+  }, [user?.tenantId, searchQuery, pagination, language, notificationColors.error]);
 
   useEffect(() => {
     loadCustomers();
@@ -383,14 +425,8 @@ export function CustomersPage() {
     }
   };
 
-  const filteredCustomers = customers.filter((cust) => {
-    const matchesSearch =
-      !searchQuery ||
-      cust.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      cust.phone?.includes(searchQuery) ||
-      cust.email?.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesSearch;
-  });
+  // Use customers directly since server-side pagination handles filtering
+  const filteredCustomers = customers;
 
   const getLoyaltyTierInfo = (tier: string) => {
     // Normalize tier to lowercase for lookup
@@ -450,85 +486,104 @@ export function CustomersPage() {
       </Paper>
 
       <Paper withBorder>
-        <Table.ScrollContainer minWidth={800}>
-          <Table>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{t('customers.name', language)}</Table.Th>
-                <Table.Th>{t('common.phone' as any, language)}</Table.Th>
-                <Table.Th>{t('customers.totalOrders', language)}</Table.Th>
-                <Table.Th>{t('customers.totalSpent', language)}</Table.Th>
-                <Table.Th>{t('customers.loyaltyTierLabel', language)}</Table.Th>
-                <Table.Th>{t('customers.lastOrder', language)}</Table.Th>
-                <Table.Th>{t('common.actions' as any, language)}</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {filteredCustomers.length === 0 ? (
+        <Fragment>
+          <Table.ScrollContainer minWidth={800}>
+            <Table>
+              <Table.Thead>
                 <Table.Tr>
-                  <Table.Td colSpan={7} ta="center" py="xl">
-                    <Text c="dimmed">{t('customers.noCustomers', language)}</Text>
-                  </Table.Td>
+                  <Table.Th>{t('customers.name', language)}</Table.Th>
+                  <Table.Th>{t('common.phone' as any, language)}</Table.Th>
+                  <Table.Th>{t('customers.totalOrders', language)}</Table.Th>
+                  <Table.Th>{t('customers.totalSpent', language)}</Table.Th>
+                  <Table.Th>{t('customers.loyaltyTierLabel', language)}</Table.Th>
+                  <Table.Th>{t('customers.lastOrder', language)}</Table.Th>
+                  <Table.Th>{t('common.actions' as any, language)}</Table.Th>
                 </Table.Tr>
-              ) : (
-                filteredCustomers.map((customer) => {
-                  const tierInfo = getLoyaltyTierInfo(customer.loyaltyTier);
-                  return (
-                    <Table.Tr key={customer.id}>
-                      <Table.Td>
-                        <Text fw={500}>
-                          {customer.name || ''}
-                        </Text>
-                        {customer.email && (
-                          <Text size="xs" c="dimmed">
-                            {customer.email}
+              </Table.Thead>
+              <Table.Tbody>
+                {filteredCustomers.length === 0 ? (
+                  <Table.Tr>
+                    <Table.Td colSpan={7} ta="center" py="xl">
+                      <Text c="dimmed">{t('customers.noCustomers', language)}</Text>
+                    </Table.Td>
+                  </Table.Tr>
+                ) : (
+                  filteredCustomers.map((customer) => {
+                    const tierInfo = getLoyaltyTierInfo(customer.loyaltyTier);
+                    return (
+                      <Table.Tr key={customer.id}>
+                        <Table.Td>
+                          <Text fw={500}>
+                            {customer.name || ''}
                           </Text>
-                        )}
-                      </Table.Td>
-                      <Table.Td>{customer.phone}</Table.Td>
-                      <Table.Td>
-                        <Badge color={primaryColor} variant="light">
-                          {customer.totalOrders}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text fw={500}>
-                          {currency}
-                          {customer.totalSpent.toFixed(2)}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Badge color={tierInfo.color} variant="light" leftSection={<IconTrophy size={12} />}>
-                          {tierInfo.label}
-                          {tierInfo.discount > 0 && ` (${tierInfo.discount}%)`}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        {customer.lastOrderDate
-                          ? new Date(customer.lastOrderDate).toLocaleDateString(language === 'ar' ? 'ar' : 'en')
-                          : '-'}
-                      </Table.Td>
-                      <Table.Td>
-                        <Group gap="xs">
-                          <ActionIcon
-                            variant="subtle"
-                            color={primaryColor}
-                            onClick={() => handleViewProfile(customer)}
-                          >
-                            <IconUser size={16} />
-                          </ActionIcon>
-                          <ActionIcon variant="subtle" color={primaryColor} onClick={() => handleOpenModal(customer)}>
-                            <IconEdit size={16} />
-                          </ActionIcon>
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
-                  );
-                })
-              )}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
+                          {customer.email && (
+                            <Text size="xs" c="dimmed">
+                              {customer.email}
+                            </Text>
+                          )}
+                        </Table.Td>
+                        <Table.Td>{customer.phone}</Table.Td>
+                        <Table.Td>
+                          <Badge color={primaryColor} variant="light">
+                            {customer.totalOrders}
+                          </Badge>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text fw={500}>
+                            {currency}
+                            {customer.totalSpent.toFixed(2)}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Badge color={tierInfo.color} variant="light" leftSection={<IconTrophy size={12} />}>
+                            {tierInfo.label}
+                            {tierInfo.discount > 0 && ` (${tierInfo.discount}%)`}
+                          </Badge>
+                        </Table.Td>
+                        <Table.Td>
+                          {customer.lastOrderDate
+                            ? new Date(customer.lastOrderDate).toLocaleDateString(language === 'ar' ? 'ar' : 'en')
+                            : '-'}
+                        </Table.Td>
+                        <Table.Td>
+                          <Group gap="xs">
+                            <ActionIcon
+                              variant="subtle"
+                              color={primaryColor}
+                              onClick={() => handleViewProfile(customer)}
+                            >
+                              <IconUser size={16} />
+                            </ActionIcon>
+                            <ActionIcon variant="subtle" color={primaryColor} onClick={() => handleOpenModal(customer)}>
+                              <IconEdit size={16} />
+                            </ActionIcon>
+                          </Group>
+                        </Table.Td>
+                      </Table.Tr>
+                    );
+                  })
+                )}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+          
+          {/* Pagination Controls */}
+          {pagination.total > 0 && (
+            <PaginationControls
+              page={pagination.page}
+              totalPages={pagination.totalPages}
+              limit={pagination.limit}
+              total={pagination.total}
+              onPageChange={(page) => {
+                pagination.setPage(page);
+              }}
+              onLimitChange={(newLimit) => {
+                pagination.setLimit(newLimit);
+                pagination.setPage(1);
+              }}
+            />
+          )}
+        </Fragment>
       </Paper>
 
       {/* Create/Edit Modal */}

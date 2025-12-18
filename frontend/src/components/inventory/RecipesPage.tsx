@@ -45,6 +45,9 @@ import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { useInventoryRefresh } from '@/lib/contexts/inventory-refresh-context';
+import { isPaginatedResponse } from '@/lib/types/pagination.types';
+import { usePagination } from '@/lib/hooks/use-pagination';
+import { PaginationControls } from '@/components/common/PaginationControls';
 
 interface RecipeIngredient {
   ingredientId: string;
@@ -60,6 +63,7 @@ export function RecipesPage() {
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
+  const foodItemsPagination = usePagination<FoodItem>({ initialPage: 1, initialLimit: 10 });
   const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
@@ -80,44 +84,95 @@ export function RecipesPage() {
     if (!user?.tenantId) return;
 
     try {
-      // Load from IndexedDB first
-      const localFoodItems = await db.foodItems
-        .where('tenantId')
-        .equals(user.tenantId)
-        .filter((item) => !item.deletedAt && item.isActive)
-        .toArray();
-
-      setFoodItems(localFoodItems.map((item) => ({
-        id: item.id,
-        name: (item as any).name || (item as any).nameEn || (item as any).nameAr || '',
-        description: (item as any).description || (item as any).descriptionEn || (item as any).descriptionAr || undefined,
-        imageUrl: item.imageUrl,
-        categoryId: item.categoryId,
-        basePrice: item.basePrice,
-        stockType: item.stockType,
-        stockQuantity: item.stockQuantity,
-        menuType: item.menuType,
-        menuTypes: item.menuTypes,
-        ageLimit: item.ageLimit,
-        displayOrder: item.displayOrder,
-        isActive: item.isActive,
-        createdAt: item.createdAt,
-        updatedAt: item.updatedAt,
-      })));
-
-      // Sync from server if online
+      // Load from server if online
       if (navigator.onLine) {
         try {
-          const serverFoodItems = await menuApi.getFoodItems();
+          const serverFoodItemsResponse = await menuApi.getFoodItems(undefined, foodItemsPagination.paginationParams);
+          // Handle both paginated and non-paginated responses
+          const serverFoodItems = foodItemsPagination.extractData(serverFoodItemsResponse);
+          foodItemsPagination.extractPagination(serverFoodItemsResponse);
           setFoodItems(serverFoodItems);
         } catch (err: any) {
           console.warn('Failed to sync food items from server:', err);
+          // Fallback to IndexedDB
+          const localFoodItems = await db.foodItems
+            .where('tenantId')
+            .equals(user.tenantId)
+            .filter((item) => !item.deletedAt && item.isActive)
+            .toArray();
+          
+          // Apply local pagination for IndexedDB
+          const totalItems = localFoodItems.length;
+          const startIndex = (foodItemsPagination.page - 1) * foodItemsPagination.limit;
+          const endIndex = startIndex + foodItemsPagination.limit;
+          const paginatedFoodItems = localFoodItems.slice(startIndex, endIndex);
+          
+          setFoodItems(paginatedFoodItems.map((item) => ({
+            id: item.id,
+            name: (item as any).name || (item as any).nameEn || (item as any).nameAr || '',
+            description: (item as any).description || (item as any).descriptionEn || (item as any).descriptionAr || undefined,
+            imageUrl: item.imageUrl,
+            categoryId: item.categoryId,
+            basePrice: item.basePrice,
+            stockType: item.stockType,
+            stockQuantity: item.stockQuantity,
+            menuType: item.menuType,
+            menuTypes: item.menuTypes,
+            ageLimit: item.ageLimit,
+            displayOrder: item.displayOrder,
+            isActive: item.isActive,
+            createdAt: item.createdAt,
+            updatedAt: item.updatedAt,
+          })));
+          
+          // Update pagination info for local pagination
+          foodItemsPagination.setTotal(totalItems);
+          foodItemsPagination.setTotalPages(Math.ceil(totalItems / foodItemsPagination.limit));
+          foodItemsPagination.setHasNext(endIndex < totalItems);
+          foodItemsPagination.setHasPrev(foodItemsPagination.page > 1);
         }
+      } else {
+        // Load from IndexedDB when offline
+        const localFoodItems = await db.foodItems
+          .where('tenantId')
+          .equals(user.tenantId)
+          .filter((item) => !item.deletedAt && item.isActive)
+          .toArray();
+        
+        // Apply local pagination for IndexedDB
+        const totalItems = localFoodItems.length;
+        const startIndex = (foodItemsPagination.page - 1) * foodItemsPagination.limit;
+        const endIndex = startIndex + foodItemsPagination.limit;
+        const paginatedFoodItems = localFoodItems.slice(startIndex, endIndex);
+        
+        setFoodItems(paginatedFoodItems.map((item) => ({
+          id: item.id,
+          name: (item as any).name || (item as any).nameEn || (item as any).nameAr || '',
+          description: (item as any).description || (item as any).descriptionEn || (item as any).descriptionAr || undefined,
+          imageUrl: item.imageUrl,
+          categoryId: item.categoryId,
+          basePrice: item.basePrice,
+          stockType: item.stockType,
+          stockQuantity: item.stockQuantity,
+          menuType: item.menuType,
+          menuTypes: item.menuTypes,
+          ageLimit: item.ageLimit,
+          displayOrder: item.displayOrder,
+          isActive: item.isActive,
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt,
+        })));
+        
+        // Update pagination info for local pagination
+        foodItemsPagination.setTotal(totalItems);
+        foodItemsPagination.setTotalPages(Math.ceil(totalItems / foodItemsPagination.limit));
+        foodItemsPagination.setHasNext(endIndex < totalItems);
+        foodItemsPagination.setHasPrev(foodItemsPagination.page > 1);
       }
     } catch (err: any) {
       console.error('Failed to load food items:', err);
     }
-  }, [user?.tenantId]);
+  }, [user?.tenantId, foodItemsPagination]);
 
   const loadIngredients = useCallback(async () => {
     if (!user?.tenantId) return;
@@ -166,10 +221,14 @@ export function RecipesPage() {
       // Sync from server if online
       if (navigator.onLine) {
         try {
-          const serverIngredients = await inventoryApi.getIngredients({ isActive: true });
+          const serverIngredientsResponse = await inventoryApi.getIngredients({ isActive: true });
+          // Handle both paginated and non-paginated responses
+          const serverIngredients: Ingredient[] = Array.isArray(serverIngredientsResponse) 
+            ? serverIngredientsResponse 
+            : (serverIngredientsResponse?.data || []);
           
           // Deduplicate server ingredients
-          const serverById = new Map(serverIngredients.map(ing => [ing.id, ing]));
+          const serverById = new Map(serverIngredients.map((ing: Ingredient) => [ing.id, ing]));
           const serverByName = new Map<string, Ingredient>();
           
           for (const ing of Array.from(serverById.values())) {
@@ -239,7 +298,11 @@ export function RecipesPage() {
       // Sync from server if online
       if (navigator.onLine) {
         try {
-          const serverRecipes = await inventoryApi.getRecipes();
+          const serverRecipesResponse = await inventoryApi.getRecipes();
+          // Handle both paginated and non-paginated responses
+          const serverRecipes = Array.isArray(serverRecipesResponse) 
+            ? serverRecipesResponse 
+            : (serverRecipesResponse?.data || []);
           setRecipes(serverRecipes);
 
           // Update IndexedDB
@@ -272,7 +335,8 @@ export function RecipesPage() {
       setLoading(false);
     };
     loadData();
-  }, [loadFoodItems, loadIngredients, refreshKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [foodItemsPagination.page, foodItemsPagination.limit, refreshKey]);
 
   useEffect(() => {
     if (foodItems.length > 0) {
@@ -539,85 +603,104 @@ export function RecipesPage() {
           </Text>
         </Paper>
       ) : (
-        <Table.ScrollContainer minWidth={800}>
-          <Table striped highlightOnHover>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{t('inventory.foodItem', language)}</Table.Th>
-                <Table.Th>{t('inventory.ingredients', language)}</Table.Th>
-                <Table.Th>{t('inventory.recipeCost', language) || 'Recipe Cost'}</Table.Th>
-                <Table.Th>{t('common.actions' as any, language) || 'Actions'}</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {filteredFoodItems.map((item) => {
-                const itemRecipes = getRecipesForFoodItem(item.id);
-                const recipeCost = calculateRecipeCost(item.id);
-                return (
-                  <Table.Tr key={item.id}>
-                    <Table.Td>
-                      <Text fw={500}>
-                        {item.name}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
-                      {itemRecipes.length > 0 ? (
-                        <Stack gap="xs">
-                          {itemRecipes.map((rec) => {
-                            const ingredient = ingredients.find((ing) => ing.id === rec.ingredientId);
-                            return (
-                              <Group key={rec.id} gap="xs">
-                                <Text size="sm">
-                                  {ingredient
-                                    ? ingredient.name
-                                    : 'Unknown'}
-                                </Text>
-                                <Badge variant="light" color={primaryColor} size="sm">
-                                  {rec.quantity} {rec.unit}
-                                </Badge>
-                              </Group>
-                            );
-                          })}
-                        </Stack>
-                      ) : (
-                        <Text size="sm" c="dimmed">
-                          {t('inventory.noRecipe', language)}
+        <>
+          <Table.ScrollContainer minWidth={800}>
+            <Table striped highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{t('inventory.foodItem', language)}</Table.Th>
+                  <Table.Th>{t('inventory.ingredients', language)}</Table.Th>
+                  <Table.Th>{t('inventory.recipeCost', language) || 'Recipe Cost'}</Table.Th>
+                  <Table.Th>{t('common.actions' as any, language) || 'Actions'}</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {filteredFoodItems.map((item) => {
+                  const itemRecipes = getRecipesForFoodItem(item.id);
+                  const recipeCost = calculateRecipeCost(item.id);
+                  return (
+                    <Table.Tr key={item.id}>
+                      <Table.Td>
+                        <Text fw={500}>
+                          {item.name}
                         </Text>
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      {recipeCost > 0 ? (
-                        <Text fw={500}>{recipeCost.toFixed(2)}</Text>
-                      ) : (
-                        <Text size="sm" c="dimmed">-</Text>
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      <Group gap="xs">
-                        <ActionIcon
-                          variant="light"
-                          color={primaryColor}
-                          onClick={() => handleOpenModal(item)}
-                        >
-                          <IconPlus size={16} />
-                        </ActionIcon>
-                        {itemRecipes.length > 0 && (
+                      </Table.Td>
+                      <Table.Td>
+                        {itemRecipes.length > 0 ? (
+                          <Stack gap="xs">
+                            {itemRecipes.map((rec) => {
+                              const ingredient = ingredients.find((ing) => ing.id === rec.ingredientId);
+                              return (
+                                <Group key={rec.id} gap="xs">
+                                  <Text size="sm">
+                                    {ingredient
+                                      ? ingredient.name
+                                      : 'Unknown'}
+                                  </Text>
+                                  <Badge variant="light" color={primaryColor} size="sm">
+                                    {rec.quantity} {rec.unit}
+                                  </Badge>
+                                </Group>
+                              );
+                            })}
+                          </Stack>
+                        ) : (
+                          <Text size="sm" c="dimmed">
+                            {t('inventory.noRecipe', language)}
+                          </Text>
+                        )}
+                      </Table.Td>
+                      <Table.Td>
+                        {recipeCost > 0 ? (
+                          <Text fw={500}>{recipeCost.toFixed(2)}</Text>
+                        ) : (
+                          <Text size="sm" c="dimmed">-</Text>
+                        )}
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap="xs">
                           <ActionIcon
                             variant="light"
-                            color={errorColor}
-                            onClick={() => handleDelete(item)}
+                            color={primaryColor}
+                            onClick={() => handleOpenModal(item)}
                           >
-                            <IconTrash size={16} />
+                            <IconPlus size={16} />
                           </ActionIcon>
-                        )}
-                      </Group>
-                    </Table.Td>
-                  </Table.Tr>
-                );
-              })}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
+                          {itemRecipes.length > 0 && (
+                            <ActionIcon
+                              variant="light"
+                              color={errorColor}
+                              onClick={() => handleDelete(item)}
+                            >
+                              <IconTrash size={16} />
+                            </ActionIcon>
+                          )}
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  );
+                })}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+          
+          {/* Pagination Controls */}
+          {foodItemsPagination.total > 0 && (
+            <PaginationControls
+              page={foodItemsPagination.page}
+              totalPages={foodItemsPagination.totalPages}
+              limit={foodItemsPagination.limit}
+              total={foodItemsPagination.total}
+              onPageChange={(page) => {
+                foodItemsPagination.setPage(page);
+              }}
+              onLimitChange={(newLimit) => {
+                foodItemsPagination.setLimit(newLimit);
+                foodItemsPagination.setPage(1);
+              }}
+            />
+          )}
+        </>
       )}
 
       {/* Create/Edit Recipe Modal */}

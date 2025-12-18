@@ -1,5 +1,6 @@
 import apiClient from './client';
 import { API_ENDPOINTS } from '../constants/api';
+import { PaginationParams, PaginatedResponse } from '../types/pagination.types';
 
 export type OrderStatus = 'pending' | 'preparing' | 'ready' | 'served' | 'completed' | 'cancelled';
 export type OrderType = 'dine_in' | 'takeaway' | 'delivery';
@@ -98,6 +99,7 @@ export interface GetOrdersParams {
   endDate?: string;
   limit?: number;
   offset?: number;
+  page?: number;
   includeItems?: boolean;
 }
 
@@ -166,7 +168,7 @@ export const ordersApi = {
     return response.data;
   },
 
-  async getOrders(params?: GetOrdersParams): Promise<Order[]> {
+  async getOrders(params?: GetOrdersParams): Promise<Order[] | PaginatedResponse<Order>> {
     // Convert status array to comma-separated string for query parameter
     const queryParams: any = { ...params };
     if (params?.status && Array.isArray(params.status)) {
@@ -176,7 +178,7 @@ export const ordersApi = {
     if (params?.includeItems !== undefined) {
       queryParams.includeItems = params.includeItems.toString();
     }
-    const response = await apiClient.get(API_ENDPOINTS.ORDERS, { params: queryParams });
+    const response = await apiClient.get<Order[] | PaginatedResponse<Order>>(API_ENDPOINTS.ORDERS, { params: queryParams });
     return response.data;
   },
 

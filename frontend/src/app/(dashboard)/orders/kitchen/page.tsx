@@ -31,6 +31,7 @@ import {
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { ordersApi, Order, OrderStatus } from '@/lib/api/orders';
+import { isPaginatedResponse } from '@/lib/types/pagination.types';
 import { notifications } from '@mantine/notifications';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getSuccessColor, getErrorColor, getWarningColor, getInfoColor, getStatusColor } from '@/lib/utils/theme';
@@ -172,10 +173,15 @@ export default function KitchenDisplayPage() {
     try {
       // Fetch pending and preparing orders in a single call with items included
       // This reduces API calls from 2 + N (where N = number of orders) to just 1
-      const allOrders = await ordersApi.getOrders({
+      const allOrdersResponse = await ordersApi.getOrders({
         status: ['pending', 'preparing'],
         includeItems: true,
       });
+      
+      // Handle both paginated and non-paginated responses
+      const allOrders: Order[] = isPaginatedResponse(allOrdersResponse) 
+        ? allOrdersResponse.data 
+        : allOrdersResponse;
       
       // Sort by order date (newest first)
       allOrders.sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());

@@ -1,5 +1,6 @@
 import apiClient from './client';
 import { API_ENDPOINTS } from '../constants/api';
+import { PaginationParams, PaginatedResponse } from '../types/pagination.types';
 
 export interface Customer {
   id: string;
@@ -75,17 +76,22 @@ export interface UpdateCustomerDto {
 }
 
 export const customersApi = {
-  getCustomers: async (filters?: {
-    search?: string;
-    minOrders?: number;
-    minSpent?: number;
-  }): Promise<Customer[]> => {
+  getCustomers: async (
+    filters?: {
+      search?: string;
+      minOrders?: number;
+      minSpent?: number;
+    },
+    pagination?: PaginationParams,
+  ): Promise<Customer[] | PaginatedResponse<Customer>> => {
     const params = new URLSearchParams();
     if (filters?.search) params.append('search', filters.search);
     if (filters?.minOrders) params.append('minOrders', filters.minOrders.toString());
     if (filters?.minSpent) params.append('minSpent', filters.minSpent.toString());
+    if (pagination?.page) params.append('page', pagination.page.toString());
+    if (pagination?.limit) params.append('limit', pagination.limit.toString());
 
-    const response = await apiClient.get<Customer[]>(
+    const response = await apiClient.get<Customer[] | PaginatedResponse<Customer>>(
       `${API_ENDPOINTS.CUSTOMERS}${params.toString() ? `?${params.toString()}` : ''}`,
     );
     return response.data;

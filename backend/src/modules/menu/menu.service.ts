@@ -16,6 +16,7 @@ import { CreateAddOnDto } from './dto/create-add-on.dto';
 import { UpdateAddOnDto } from './dto/update-add-on.dto';
 import { CreateMenuDto } from './dto/create-menu.dto';
 import { UpdateMenuDto } from './dto/update-menu.dto';
+import { PaginationParams, PaginatedResponse, getPaginationParams, createPaginatedResponse } from '../../common/dto/pagination.dto';
 
 @Injectable()
 export class MenuService {
@@ -30,15 +31,30 @@ export class MenuService {
   // CATEGORY MANAGEMENT
   // ============================================
 
-  async getCategories(tenantId: string) {
+  async getCategories(tenantId: string, pagination?: PaginationParams): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
     
-    const { data: categories, error } = await supabase
+    // Get total count for pagination
+    const { count: totalCount } = await supabase
+      .from('categories')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+
+    let query = supabase
       .from('categories')
       .select('*')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
       .order('display_order', { ascending: true });
+
+    // Apply pagination if provided
+    if (pagination) {
+      const { offset, limit } = getPaginationParams(pagination.page, pagination.limit);
+      query = query.range(offset, offset + limit - 1);
+    }
+
+    const { data: categories, error } = await query;
 
     if (error) {
       throw new BadRequestException(`Failed to fetch categories: ${error.message}`);
@@ -76,6 +92,11 @@ export class MenuService {
         rootCategories.push(category);
       }
     });
+
+    // Return paginated response if pagination is requested
+    if (pagination) {
+      return createPaginatedResponse(rootCategories, totalCount || 0, pagination.page || 1, pagination.limit || 10);
+    }
 
     return rootCategories;
   }
@@ -308,7 +329,7 @@ export class MenuService {
   // FOOD ITEM MANAGEMENT
   // ============================================
 
-  async getFoodItems(tenantId: string, categoryId?: string) {
+  async getFoodItems(tenantId: string, categoryId?: string, pagination?: PaginationParams): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
     
     // First, get all active menu types
@@ -320,7 +341,7 @@ export class MenuService {
 
     const activeMenuTypes = activeMenus?.map((m: any) => m.menu_type) || [];
 
-    // Get food items that are active
+    // Get food items that are active (without pagination first to get accurate count)
     let query = supabase
       .from('food_items')
       .select('*')
@@ -332,7 +353,7 @@ export class MenuService {
       query = query.eq('category_id', categoryId);
     }
 
-    const { data: foodItems, error } = await query.order('display_order', { ascending: true });
+    const { data: allFoodItems, error } = await query.order('display_order', { ascending: true });
 
     if (error) {
       throw new BadRequestException(`Failed to fetch food items: ${error.message}`);
@@ -341,30 +362,40 @@ export class MenuService {
     // Filter food items to only include those in active menus
     // If no active menus exist, return empty array
     if (activeMenuTypes.length === 0) {
-      return [];
+      return pagination ? createPaginatedResponse([], 0, pagination.page || 1, pagination.limit || 10) : [];
     }
 
     // Get menu_items for all food items to check which menus they belong to
-    const foodItemIds = foodItems.map((item: any) => item.id);
-    const { data: menuItems } = await supabase
+    const allFoodItemIds = allFoodItems.map((item: any) => item.id);
+    const { data: allMenuItems } = await supabase
       .from('menu_items')
       .select('food_item_id, menu_type')
-      .in('food_item_id', foodItemIds)
+      .in('food_item_id', allFoodItemIds)
       .in('menu_type', activeMenuTypes);
 
     // Create a set of food item IDs that belong to active menus
     const foodItemsInActiveMenus = new Set(
-      menuItems?.map((mi: any) => mi.food_item_id) || []
+      allMenuItems?.map((mi: any) => mi.food_item_id) || []
     );
 
     // Filter food items to only include those in active menus
-    const filteredFoodItems = foodItems.filter((item: any) =>
+    const filteredFoodItems = allFoodItems.filter((item: any) =>
       foodItemsInActiveMenus.has(item.id)
     );
 
+    // Get accurate total count of filtered items
+    const totalCount = filteredFoodItems.length;
+
+    // Apply pagination to filtered items
+    let paginatedFoodItems = filteredFoodItems;
+    if (pagination) {
+      const { offset, limit } = getPaginationParams(pagination.page, pagination.limit);
+      paginatedFoodItems = filteredFoodItems.slice(offset, offset + limit);
+    }
+
     // Get variations, labels, and add-on groups for each item
     const itemsWithDetails = await Promise.all(
-      filteredFoodItems.map(async (item) => {
+      paginatedFoodItems.map(async (item) => {
         const [variations, labels, addOnGroups, discounts, menuItems] = await Promise.all([
           supabase
             .from('food_item_variations')
@@ -428,6 +459,12 @@ export class MenuService {
         };
       })
     );
+
+    // Return paginated response if pagination is requested
+    if (pagination) {
+      // Use the accurate total count of filtered items
+      return createPaginatedResponse(itemsWithDetails, totalCount, pagination.page || 1, pagination.limit || 10);
+    }
 
     return itemsWithDetails;
   }
@@ -999,15 +1036,30 @@ export class MenuService {
   // ADD-ON GROUP MANAGEMENT
   // ============================================
 
-  async getAddOnGroups(tenantId: string) {
+  async getAddOnGroups(tenantId: string, pagination?: PaginationParams): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
     
-    const { data: addOnGroups, error } = await supabase
+    // Get total count for pagination
+    const { count: totalCount } = await supabase
+      .from('add_on_groups')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+
+    let query = supabase
       .from('add_on_groups')
       .select('*')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
       .order('display_order', { ascending: true });
+
+    // Apply pagination if provided
+    if (pagination) {
+      const { offset, limit } = getPaginationParams(pagination.page, pagination.limit);
+      query = query.range(offset, offset + limit - 1);
+    }
+
+    const { data: addOnGroups, error } = await query;
 
     if (error) {
       throw new BadRequestException(`Failed to fetch add-on groups: ${error.message}`);
@@ -1044,6 +1096,11 @@ export class MenuService {
         };
       })
     );
+
+    // Return paginated response if pagination is requested
+    if (pagination) {
+      return createPaginatedResponse(groupsWithAddOns, totalCount || 0, pagination.page || 1, pagination.limit || 10);
+    }
 
     return groupsWithAddOns;
   }
@@ -1502,7 +1559,7 @@ export class MenuService {
   // and their menu_type field. A proper menus table can be added later.
   // ============================================
 
-  async getMenus(tenantId: string) {
+  async getMenus(tenantId: string, pagination?: PaginationParams): Promise<PaginatedResponse<any> | any[]> {
     // Get menus from menu_items junction table
     const supabase = this.supabaseService.getServiceRoleClient();
     
@@ -1522,6 +1579,13 @@ export class MenuService {
     // Include default menu types if they don't exist yet
     const defaultMenuTypes = ['all_day', 'breakfast', 'lunch', 'dinner', 'kids_special'];
     const allMenuTypes = [...new Set([...defaultMenuTypes, ...uniqueMenuTypes])];
+    
+    // Apply pagination if provided
+    let paginatedMenuTypes = allMenuTypes;
+    if (pagination) {
+      const { offset, limit } = getPaginationParams(pagination.page, pagination.limit);
+      paginatedMenuTypes = allMenuTypes.slice(offset, offset + limit);
+    }
 
     // Get active food items to filter counts
     const foodItemIds = menuItems.map((mi) => mi.food_item_id);
@@ -1557,7 +1621,7 @@ export class MenuService {
     }
 
     // Group by menu_type and count all items (not just active ones)
-    const menus = allMenuTypes.map((menuType) => {
+    const menus = paginatedMenuTypes.map((menuType) => {
       const itemsInMenu = menuItems.filter((mi) => mi.menu_type === menuType);
       
       // Use stored name if available, otherwise generate from menu_type
@@ -1576,6 +1640,11 @@ export class MenuService {
         itemCount: itemsInMenu.length, // Count all items, not just active ones
       };
     });
+
+    // Return paginated response if pagination is requested
+    if (pagination) {
+      return createPaginatedResponse(menus, allMenuTypes.length, pagination.page || 1, pagination.limit || 10);
+    }
 
     return menus;
   }

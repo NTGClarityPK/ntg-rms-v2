@@ -7,6 +7,7 @@ import {
 import { SupabaseService } from '../../database/supabase.service';
 import { AssignDeliveryDto } from './dto/assign-delivery.dto';
 import { UpdateDeliveryStatusDto } from './dto/update-delivery-status.dto';
+import { PaginationParams, PaginatedResponse, getPaginationParams, createPaginatedResponse } from '../../common/dto/pagination.dto';
 
 export type DeliveryStatus = 'pending' | 'assigned' | 'out_for_delivery' | 'delivered' | 'cancelled';
 
@@ -25,8 +26,11 @@ export class DeliveryService {
       branchId?: string;
       startDate?: string;
       endDate?: string;
+      page?: number;
+      limit?: number;
+      offset?: number;
     },
-  ) {
+  ): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Build query for deliveries
@@ -101,6 +105,19 @@ export class DeliveryService {
       query = query.lte('created_at', filters.endDate);
     }
 
+    // Apply pagination
+    const page = filters?.page;
+    const limit = filters?.limit || 10;
+    
+    if (page !== undefined) {
+      const { offset } = getPaginationParams(page, limit);
+      query = query.range(offset, offset + limit - 1);
+    } else if (filters?.offset !== undefined || filters?.limit !== undefined) {
+      // Support legacy offset/limit for backward compatibility
+      const offset = filters.offset || 0;
+      query = query.range(offset, offset + limit - 1);
+    }
+
     const { data: deliveries, error } = await query;
 
     if (error) {
@@ -126,20 +143,57 @@ export class DeliveryService {
     }
 
     // Transform to camelCase and ensure we have tenant isolation
-    // We need to verify tenant_id through order, so let's do a more efficient query
-    const { data: orders } = await supabase
+    // First, get all tenant order IDs (to filter deliveries by tenant)
+    const { data: tenantOrders } = await supabase
       .from('orders')
-      .select('id, tenant_id, branch_id')
+      .select('id, branch_id')
       .eq('tenant_id', tenantId)
-      .in(
-        'id',
-        filteredDeliveries.map((d: any) => d.order_id).filter(Boolean),
-      );
+      .is('deleted_at', null);
+    
+    const tenantOrderIds = tenantOrders?.map((o: any) => o.id) || [];
+    
+    // Filter by branch if specified
+    let validOrderIds = tenantOrderIds;
+    if (filters?.branchId) {
+      const branchOrderIds = tenantOrders
+        ?.filter((o: any) => o.branch_id === filters.branchId)
+        .map((o: any) => o.id) || [];
+      validOrderIds = branchOrderIds;
+    }
+    
+    // Get total count - count deliveries that match filters AND belong to tenant orders
+    let countQuery = supabase
+      .from('deliveries')
+      .select('order_id', { count: 'exact', head: true });
+    
+    if (validOrderIds.length > 0) {
+      countQuery = countQuery.in('order_id', validOrderIds);
+    } else {
+      // No valid orders, return 0 count
+      countQuery = countQuery.eq('id', '00000000-0000-0000-0000-000000000000'); // Impossible ID
+    }
+    
+    if (filters?.status) {
+      countQuery = countQuery.eq('status', filters.status);
+    }
+    if (filters?.deliveryPersonId) {
+      countQuery = countQuery.eq('delivery_person_id', filters.deliveryPersonId);
+    }
+    if (filters?.startDate) {
+      countQuery = countQuery.gte('created_at', filters.startDate);
+    }
+    if (filters?.endDate) {
+      countQuery = countQuery.lte('created_at', filters.endDate);
+    }
+    
+    const { count: totalCount } = await countQuery;
+    
+    // Now filter deliveries by valid order IDs
+    const orderIds = filteredDeliveries.map((d: any) => d.order_id).filter(Boolean);
+    const validOrderIdSet = new Set(validOrderIds);
 
-    const validOrderIds = new Set(orders?.map((o: any) => o.id) || []);
-
-    return filteredDeliveries
-      .filter((delivery: any) => validOrderIds.has(delivery.order_id))
+    const transformedDeliveries = filteredDeliveries
+      .filter((delivery: any) => validOrderIdSet.has(delivery.order_id))
       .map((delivery: any) => ({
         id: delivery.id,
         orderId: delivery.order_id,
@@ -216,6 +270,13 @@ export class DeliveryService {
             }
           : null,
       }));
+
+    // Return paginated response if pagination params were provided
+    if (page !== undefined || filters?.offset !== undefined) {
+      return createPaginatedResponse(transformedDeliveries, totalCount || 0, page || 1, limit);
+    }
+
+    return transformedDeliveries;
   }
 
   /**

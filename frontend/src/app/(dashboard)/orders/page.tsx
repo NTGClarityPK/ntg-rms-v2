@@ -43,6 +43,9 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 import { IconEye } from '@tabler/icons-react';
 import { supabase } from '@/lib/supabase/client';
 import { useDateFormat } from '@/lib/hooks/use-date-format';
+import { usePagination } from '@/lib/hooks/use-pagination';
+import { PaginationControls } from '@/components/common/PaginationControls';
+import { isPaginatedResponse } from '@/lib/types/pagination.types';
 
 dayjs.extend(relativeTime);
 
@@ -54,6 +57,7 @@ export default function OrdersPage() {
   const primary = useThemeColor();
   const { user } = useAuthStore();
   const { formatDateTime } = useDateFormat();
+  const pagination = usePagination<Order>({ initialPage: 1, initialLimit: 10 });
   const [activeTab, setActiveTab] = useState<OrderTab>('all');
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,11 +99,15 @@ export default function OrdersPage() {
         branchId: selectedBranch || undefined,
         orderType: selectedOrderType as OrderType | undefined,
         paymentStatus: selectedPaymentStatus as PaymentStatus | undefined,
+        ...pagination.paginationParams,
       };
       
       let backendOrders: Order[] = [];
+      let backendResponse: Order[] | any = null;
       try {
-        backendOrders = await ordersApi.getOrders(params);
+        backendResponse = await ordersApi.getOrders(params);
+        backendOrders = pagination.extractData(backendResponse);
+        pagination.extractPagination(backendResponse);
       } catch (error: any) {
         console.error('Failed to load orders from backend:', error);
         // Continue to load from IndexedDB even if backend fails
@@ -121,8 +129,10 @@ export default function OrdersPage() {
               orderType: selectedOrderType as OrderType | undefined,
               paymentStatus: selectedPaymentStatus as PaymentStatus | undefined,
               // No status filter - get all orders
+              // Don't paginate this query - we need all orders for exclusion check
             };
-            allBackendOrders = await ordersApi.getOrders(allBackendParams);
+            const allBackendResponse = await ordersApi.getOrders(allBackendParams);
+            allBackendOrders = Array.isArray(allBackendResponse) ? allBackendResponse : (allBackendResponse?.data || []);
           } catch (error: any) {
             console.error('Failed to load all orders from backend for exclusion check:', error);
             // If this fails, we'll just use the filtered backendOrders
@@ -241,9 +251,44 @@ export default function OrdersPage() {
           new Date(b.orderDate || b.createdAt).getTime() - new Date(a.orderDate || a.createdAt).getTime()
         );
 
-        setOrders(allOrders);
+        // Apply local pagination for IndexedDB orders (when offline or when combining with backend)
+        // If we got a paginated response from backend, we should use that pagination info
+        // Otherwise, apply local pagination
+        if (!isPaginatedResponse(backendResponse)) {
+          const totalItems = allOrders.length;
+          const startIndex = (pagination.page - 1) * pagination.limit;
+          const endIndex = startIndex + pagination.limit;
+          const paginatedOrders = allOrders.slice(startIndex, endIndex);
+          
+          setOrders(paginatedOrders);
+          
+          // Update pagination info for local pagination
+          pagination.setTotal(totalItems);
+          pagination.setTotalPages(Math.ceil(totalItems / pagination.limit));
+          pagination.setHasNext(endIndex < totalItems);
+          pagination.setHasPrev(pagination.page > 1);
+        } else {
+          // Backend provided pagination, use the orders as-is
+          setOrders(allOrders);
+        }
       } else {
-        setOrders(backendOrders);
+        // No IndexedDB - just use backend orders
+        if (!isPaginatedResponse(backendResponse)) {
+          // Backend didn't return paginated response, apply local pagination
+          const totalItems = backendOrders.length;
+          const startIndex = (pagination.page - 1) * pagination.limit;
+          const endIndex = startIndex + pagination.limit;
+          const paginatedOrders = backendOrders.slice(startIndex, endIndex);
+          
+          setOrders(paginatedOrders);
+          
+          pagination.setTotal(totalItems);
+          pagination.setTotalPages(Math.ceil(totalItems / pagination.limit));
+          pagination.setHasNext(endIndex < totalItems);
+          pagination.setHasPrev(pagination.page > 1);
+        } else {
+          setOrders(backendOrders);
+        }
       }
     } catch (error: any) {
       if (!silent) {
@@ -258,7 +303,7 @@ export default function OrdersPage() {
         setLoading(false);
       }
     }
-  }, [activeTab, selectedBranch, selectedOrderType, selectedPaymentStatus, language, user?.tenantId]);
+  }, [activeTab, selectedBranch, selectedOrderType, selectedPaymentStatus, language, user?.tenantId, pagination]);
 
   // Update ref whenever loadOrders changes
   useEffect(() => {
@@ -274,7 +319,7 @@ export default function OrdersPage() {
   useEffect(() => {
     loadOrders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, selectedBranch, selectedOrderType, selectedPaymentStatus]);
+  }, [activeTab, selectedBranch, selectedOrderType, selectedPaymentStatus, pagination.page, pagination.limit]);
 
   // Set up Supabase Realtime subscription for cross-browser updates
   useEffect(() => {
@@ -629,6 +674,23 @@ export default function OrdersPage() {
                   </Card>
                 ))}
               </Stack>
+            )}
+            
+            {/* Pagination Controls */}
+            {pagination.total > 0 && (
+              <PaginationControls
+                page={pagination.page}
+                totalPages={pagination.totalPages}
+                limit={pagination.limit}
+                total={pagination.total}
+                onPageChange={(page) => {
+                  pagination.setPage(page);
+                }}
+                onLimitChange={(newLimit) => {
+                  pagination.setLimit(newLimit);
+                  pagination.setPage(1);
+                }}
+              />
             )}
           </Box>
         </Tabs>

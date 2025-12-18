@@ -20,12 +20,15 @@ import { IconSearch, IconShoppingCart } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { db } from '@/lib/indexeddb/database';
-import { FoodItem } from '@/lib/indexeddb/database';
+import { FoodItem as IndexedDBFoodItem } from '@/lib/indexeddb/database';
 import { useThemeColor, useThemeColorShade } from '@/lib/hooks/use-theme-color';
 import { getErrorColor, getWarningColor } from '@/lib/utils/theme';
 import { ItemSelectionModal } from './ItemSelectionModal';
 import { useCurrency } from '@/lib/hooks/use-currency';
-import { menuApi } from '@/lib/api/menu';
+import { menuApi, FoodItem } from '@/lib/api/menu';
+import { usePagination } from '@/lib/hooks/use-pagination';
+import { PaginationControls } from '@/components/common/PaginationControls';
+import { isPaginatedResponse } from '@/lib/types/pagination.types';
 
 interface FoodItemsGridProps {
   tenantId: string;
@@ -48,6 +51,7 @@ export function FoodItemsGrid({
   const primaryColor = useThemeColor();
   const primaryShade = useThemeColorShade(6);
   const currency = useCurrency();
+  const pagination = usePagination<FoodItem>({ initialPage: 1, initialLimit: 24 }); // 24 items for grid (6x4 or 4x6)
   const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,7 +61,7 @@ export function FoodItemsGrid({
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, selectedCategoryId, searchQuery]);
+  }, [tenantId, selectedCategoryId, searchQuery, pagination.page, pagination.limit]);
 
   const loadData = async () => {
     try {
@@ -76,7 +80,9 @@ export function FoodItemsGrid({
       let activeMenuTypes: string[] = [];
       try {
         if (navigator.onLine) {
-          const menus = await menuApi.getMenus();
+          const menusResponse = await menuApi.getMenus();
+          // Handle both paginated and non-paginated responses
+          const menus = Array.isArray(menusResponse) ? menusResponse : (menusResponse?.data || []);
           activeMenuTypes = menus
             .filter((menu) => menu.isActive)
             .map((menu) => menu.menuType)
@@ -104,47 +110,135 @@ export function FoodItemsGrid({
         // Continue with empty array - will show no items if no active menus
       }
 
-      // Load food items
-      let itemsQuery = db.foodItems
-        .where('tenantId')
-        .equals(tenantId)
-        .filter((item) => item.isActive && !item.deletedAt);
-
-      if (selectedCategoryId) {
-        itemsQuery = itemsQuery.filter((item) => item.categoryId === selectedCategoryId);
-      }
-
-      const items = await itemsQuery.toArray();
-
-      // Filter food items to only include those in active menus
-      let filteredItems = items;
-      if (activeMenuTypes.length > 0) {
-        filteredItems = items.filter((item) => {
-          // Check if item belongs to at least one active menu
-          const itemMenuTypes = item.menuTypes || (item.menuType ? [item.menuType] : []);
-          return itemMenuTypes.some((menuType: string) => activeMenuTypes.includes(menuType));
-        });
+      // Load food items - use server pagination if online, otherwise use IndexedDB with local pagination
+      if (navigator.onLine) {
+        try {
+          // Load from server with pagination
+          const serverItemsResponse = await menuApi.getFoodItems(
+            selectedCategoryId || undefined,
+            pagination.paginationParams
+          );
+          const serverItems = pagination.extractData(serverItemsResponse);
+          pagination.extractPagination(serverItemsResponse);
+          
+          // Filter by search query on client side (since backend doesn't support search yet)
+          let filteredItems = serverItems;
+          if (searchQuery.trim()) {
+            const query = searchQuery.toLowerCase();
+            filteredItems = serverItems.filter(
+              (item) =>
+                item.name?.toLowerCase().includes(query) ||
+                item.description?.toLowerCase().includes(query),
+            );
+          }
+          
+          setFoodItems(filteredItems);
+          
+          // Update IndexedDB cache (but don't wait for it)
+          serverItems.forEach((item) => {
+            db.foodItems.put({
+              id: item.id,
+              tenantId,
+              name: item.name,
+              description: item.description,
+              imageUrl: item.imageUrl,
+              categoryId: item.categoryId,
+              basePrice: item.basePrice,
+              stockType: item.stockType,
+              stockQuantity: item.stockQuantity,
+              menuType: item.menuType || 'all_day',
+              menuTypes: item.menuTypes || (item.menuType ? [item.menuType] : []),
+              ageLimit: item.ageLimit,
+              displayOrder: item.displayOrder,
+              isActive: item.isActive,
+              createdAt: item.createdAt,
+              updatedAt: item.updatedAt,
+            } as any).catch(console.error);
+          });
+        } catch (error) {
+          console.error('Failed to load food items from server, falling back to IndexedDB:', error);
+          // Fall through to IndexedDB loading
+          await loadFromIndexedDB(activeMenuTypes);
+        }
       } else {
-        // If no active menus, show no items
-        filteredItems = [];
+        // Offline: load from IndexedDB with local pagination
+        await loadFromIndexedDB(activeMenuTypes);
       }
-
-      // Filter by search query
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
-        filteredItems = filteredItems.filter(
-          (item) =>
-            item.name?.toLowerCase().includes(query) ||
-            item.description?.toLowerCase().includes(query),
-        );
-      }
-
-      setFoodItems(filteredItems);
     } catch (error) {
       console.error('Failed to load food items:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadFromIndexedDB = async (activeMenuTypes: string[]) => {
+    // Load food items from IndexedDB
+    let itemsQuery = db.foodItems
+      .where('tenantId')
+      .equals(tenantId)
+      .filter((item) => item.isActive && !item.deletedAt);
+
+    if (selectedCategoryId) {
+      itemsQuery = itemsQuery.filter((item) => item.categoryId === selectedCategoryId);
+    }
+
+    const items = await itemsQuery.toArray();
+
+    // Filter food items to only include those in active menus
+    let filteredItems = items;
+    if (activeMenuTypes.length > 0) {
+      filteredItems = items.filter((item) => {
+        // Check if item belongs to at least one active menu
+        const itemMenuTypes = item.menuTypes || (item.menuType ? [item.menuType] : []);
+        return itemMenuTypes.some((menuType: string) => activeMenuTypes.includes(menuType));
+      });
+    } else {
+      // If no active menus, show no items
+      filteredItems = [];
+    }
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filteredItems = filteredItems.filter(
+        (item) =>
+          item.name?.toLowerCase().includes(query) ||
+          item.description?.toLowerCase().includes(query),
+      );
+    }
+
+    // Convert IndexedDB items to API FoodItem format
+    const convertedItems: FoodItem[] = filteredItems.map((item) => ({
+      id: item.id,
+      name: item.name || '',
+      description: item.description,
+      imageUrl: item.imageUrl,
+      categoryId: item.categoryId,
+      basePrice: item.basePrice,
+      stockType: item.stockType,
+      stockQuantity: item.stockQuantity,
+      menuType: item.menuType,
+      menuTypes: item.menuTypes || (item.menuType ? [item.menuType] : []),
+      ageLimit: item.ageLimit,
+      displayOrder: item.displayOrder,
+      isActive: item.isActive,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+    }));
+
+    // Apply local pagination
+    const totalItems = convertedItems.length;
+    const startIndex = (pagination.page - 1) * pagination.limit;
+    const endIndex = startIndex + pagination.limit;
+    const paginatedItems = convertedItems.slice(startIndex, endIndex);
+
+    setFoodItems(paginatedItems);
+    
+    // Set pagination info
+    pagination.setTotal(totalItems);
+    pagination.setTotalPages(Math.ceil(totalItems / pagination.limit));
+    pagination.setHasNext(endIndex < totalItems);
+    pagination.setHasPrev(pagination.page > 1);
   };
 
   const handleItemClick = (item: FoodItem) => {
@@ -304,6 +398,24 @@ export function FoodItemsGrid({
                 );
               })}
             </Grid>
+          )}
+          
+          {/* Pagination Controls */}
+          {pagination.total > 0 && (
+            <PaginationControls
+              page={pagination.page}
+              totalPages={pagination.totalPages}
+              limit={pagination.limit}
+              total={pagination.total}
+              onPageChange={(page) => {
+                pagination.setPage(page);
+              }}
+              onLimitChange={(newLimit) => {
+                pagination.setLimit(newLimit);
+                pagination.setPage(1);
+              }}
+              limitOptions={[12, 24, 48, 96]}
+            />
           )}
         </Box>
       </ScrollArea>

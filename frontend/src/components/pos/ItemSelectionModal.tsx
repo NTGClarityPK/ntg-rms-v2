@@ -19,7 +19,8 @@ import {
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { db } from '@/lib/indexeddb/database';
-import { FoodItem, CartItem } from '@/lib/indexeddb/database';
+import { CartItem } from '@/lib/indexeddb/database';
+import { FoodItem } from '@/lib/api/menu';
 import { useThemeColor, useThemeColorShade } from '@/lib/hooks/use-theme-color';
 import { getErrorColor, getSuccessColor } from '@/lib/utils/theme';
 import { useCurrency } from '@/lib/hooks/use-currency';

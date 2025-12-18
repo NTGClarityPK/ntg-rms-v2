@@ -20,6 +20,9 @@ export class DeliveryController {
   @ApiQuery({ name: 'branchId', required: false, type: String })
   @ApiQuery({ name: 'startDate', required: false, type: String })
   @ApiQuery({ name: 'endDate', required: false, type: String })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'offset', required: false, type: Number })
   getDeliveryOrders(
     @CurrentUser() user: any,
     @Query('status') status?: string,
@@ -27,6 +30,9 @@ export class DeliveryController {
     @Query('branchId') branchId?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
   ) {
     return this.deliveryService.getDeliveryOrders(user.tenantId, {
       status: status as any,
@@ -34,6 +40,9 @@ export class DeliveryController {
       branchId,
       startDate,
       endDate,
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+      offset: offset ? parseInt(offset, 10) : undefined,
     });
   }
 
