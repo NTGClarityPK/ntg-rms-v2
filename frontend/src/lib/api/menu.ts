@@ -81,10 +81,15 @@ export interface AddOnGroup {
   addOns?: AddOn[];
 }
 
+import { PaginationParams, PaginatedResponse, isPaginatedResponse } from '../types/pagination.types';
+
 export const menuApi = {
   // Categories
-  getCategories: async (): Promise<Category[]> => {
-    const { data } = await apiClient.get('/menu/categories');
+  getCategories: async (pagination?: PaginationParams): Promise<Category[] | PaginatedResponse<Category>> => {
+    const params = new URLSearchParams();
+    if (pagination?.page) params.append('page', pagination.page.toString());
+    if (pagination?.limit) params.append('limit', pagination.limit.toString());
+    const { data } = await apiClient.get(`/menu/categories${params.toString() ? `?${params.toString()}` : ''}`);
     return data;
   },
 
@@ -119,9 +124,12 @@ export const menuApi = {
   },
 
   // Food Items
-  getFoodItems: async (categoryId?: string): Promise<FoodItem[]> => {
-    const params = categoryId ? { categoryId } : {};
-    const { data } = await apiClient.get('/menu/food-items', { params });
+  getFoodItems: async (categoryId?: string, pagination?: PaginationParams): Promise<FoodItem[] | PaginatedResponse<FoodItem>> => {
+    const params = new URLSearchParams();
+    if (categoryId) params.append('categoryId', categoryId);
+    if (pagination?.page) params.append('page', pagination.page.toString());
+    if (pagination?.limit) params.append('limit', pagination.limit.toString());
+    const { data } = await apiClient.get(`/menu/food-items${params.toString() ? `?${params.toString()}` : ''}`);
     return data;
   },
 
@@ -156,8 +164,11 @@ export const menuApi = {
   },
 
   // Add-on Groups
-  getAddOnGroups: async (): Promise<AddOnGroup[]> => {
-    const { data } = await apiClient.get('/menu/add-on-groups');
+  getAddOnGroups: async (pagination?: PaginationParams): Promise<AddOnGroup[] | PaginatedResponse<AddOnGroup>> => {
+    const params = new URLSearchParams();
+    if (pagination?.page) params.append('page', pagination.page.toString());
+    if (pagination?.limit) params.append('limit', pagination.limit.toString());
+    const { data } = await apiClient.get(`/menu/add-on-groups${params.toString() ? `?${params.toString()}` : ''}`);
     return data;
   },
 
@@ -206,8 +217,11 @@ export const menuApi = {
   },
 
   // Menus
-  getMenus: async (): Promise<any[]> => {
-    const { data } = await apiClient.get('/menu/menus');
+  getMenus: async (pagination?: PaginationParams): Promise<any[] | PaginatedResponse<any>> => {
+    const params = new URLSearchParams();
+    if (pagination?.page) params.append('page', pagination.page.toString());
+    if (pagination?.limit) params.append('limit', pagination.limit.toString());
+    const { data } = await apiClient.get(`/menu/menus${params.toString() ? `?${params.toString()}` : ''}`);
     return data;
   },
 

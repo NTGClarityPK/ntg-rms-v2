@@ -1,5 +1,6 @@
 import apiClient from './client';
 import { API_ENDPOINTS } from '../constants/api';
+import { PaginationParams, PaginatedResponse } from '../types/pagination.types';
 
 export type DeliveryStatus = 'pending' | 'assigned' | 'out_for_delivery' | 'delivered' | 'cancelled';
 
@@ -102,15 +103,17 @@ export const deliveryApi = {
     branchId?: string;
     startDate?: string;
     endDate?: string;
-  }): Promise<DeliveryOrder[]> {
+  } & PaginationParams): Promise<DeliveryOrder[] | PaginatedResponse<DeliveryOrder>> {
     const params = new URLSearchParams();
     if (filters?.status) params.append('status', filters.status);
     if (filters?.deliveryPersonId) params.append('deliveryPersonId', filters.deliveryPersonId);
     if (filters?.branchId) params.append('branchId', filters.branchId);
     if (filters?.startDate) params.append('startDate', filters.startDate);
     if (filters?.endDate) params.append('endDate', filters.endDate);
+    if (filters?.page) params.append('page', filters.page.toString());
+    if (filters?.limit) params.append('limit', filters.limit.toString());
 
-    const response = await apiClient.get<DeliveryOrder[]>(
+    const response = await apiClient.get<DeliveryOrder[] | PaginatedResponse<DeliveryOrder>>(
       `${API_ENDPOINTS.DELIVERY}/orders?${params.toString()}`,
     );
     return response.data;

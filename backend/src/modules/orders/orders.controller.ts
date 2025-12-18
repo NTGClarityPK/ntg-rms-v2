@@ -21,6 +21,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdatePaymentStatusDto } from './dto/update-payment-status.dto';
+import { PaginationDto } from '../../common/dto/pagination.dto';
 
 @ApiTags('orders')
 @Controller('orders')
@@ -42,6 +43,7 @@ export class OrdersController {
   @ApiQuery({ name: 'endDate', required: false, type: String })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'offset', required: false, type: Number })
+  @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'includeItems', required: false, type: Boolean, description: 'Include order items in response' })
   getOrders(
     @CurrentUser() user: any,
@@ -53,6 +55,7 @@ export class OrdersController {
     @Query('endDate') endDate?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
+    @Query('page') page?: string,
     @Query('includeItems') includeItems?: string,
   ) {
     // Parse status: support comma-separated values like "pending,preparing"
@@ -67,6 +70,7 @@ export class OrdersController {
       endDate,
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined,
+      page: page ? parseInt(page, 10) : undefined,
       includeItems: includeItems === 'true' || includeItems === '1',
     });
   }

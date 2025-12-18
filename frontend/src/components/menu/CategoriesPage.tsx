@@ -100,7 +100,8 @@ export function CategoriesPage() {
       // Sync from server if online
       if (navigator.onLine) {
         try {
-          const serverCategories = await menuApi.getCategories();
+          const serverCategoriesResponse = await menuApi.getCategories();
+          const serverCategories = Array.isArray(serverCategoriesResponse) ? serverCategoriesResponse : (serverCategoriesResponse?.data || []);
           setCategories(serverCategories);
 
           // Update IndexedDB

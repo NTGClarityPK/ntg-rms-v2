@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useForm } from '@mantine/form';
 import {
   Container,
@@ -54,6 +54,9 @@ import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hoo
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { Branch } from '@/lib/indexeddb/database';
+import { usePagination } from '@/lib/hooks/use-pagination';
+import { PaginationControls } from '@/components/common/PaginationControls';
+import { isPaginatedResponse } from '@/lib/types/pagination.types';
 
 // Transaction types for adding stock
 const ADD_STOCK_REASONS = [
@@ -77,6 +80,7 @@ export function StockManagementPage() {
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
+  const transactionsPagination = usePagination<StockTransaction>({ initialPage: 1, initialLimit: 10 });
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
 
   // Helper function to get deduplicated ingredient options for Select dropdowns
@@ -217,10 +221,14 @@ export function StockManagementPage() {
       // Sync from server if online
       if (navigator.onLine) {
         try {
-          const serverIngredients = await inventoryApi.getIngredients({ isActive: true });
+          const serverIngredientsResponse = await inventoryApi.getIngredients({ isActive: true });
+          // Handle both paginated and non-paginated responses
+          const serverIngredients: Ingredient[] = Array.isArray(serverIngredientsResponse) 
+            ? serverIngredientsResponse 
+            : (serverIngredientsResponse?.data || []);
           
           // Deduplicate server ingredients
-          const serverById = new Map(serverIngredients.map(ing => [ing.id, ing]));
+          const serverById = new Map(serverIngredients.map((ing: Ingredient) => [ing.id, ing]));
           const serverByName = new Map<string, Ingredient>();
           
           for (const ing of Array.from(serverById.values())) {
@@ -314,7 +322,34 @@ export function StockManagementPage() {
 
       const ingredientMap = new Map(allIngredients.map(ing => [ing.id, ing]));
 
-      setTransactions(localTransactions.map((tx) => {
+      // Apply filters to local transactions
+      let filteredTransactions = localTransactions;
+      if (ingredientFilter) {
+        filteredTransactions = filteredTransactions.filter(tx => tx.ingredientId === ingredientFilter);
+      }
+      if (selectedBranchId) {
+        filteredTransactions = filteredTransactions.filter(tx => tx.branchId === selectedBranchId);
+      }
+      if (startDate) {
+        filteredTransactions = filteredTransactions.filter(tx => {
+          const txDate = new Date(tx.transactionDate);
+          return txDate >= startDate;
+        });
+      }
+      if (endDate) {
+        filteredTransactions = filteredTransactions.filter(tx => {
+          const txDate = new Date(tx.transactionDate);
+          return txDate <= endDate;
+        });
+      }
+
+      // Apply local pagination
+      const totalItems = filteredTransactions.length;
+      const startIndex = (transactionsPagination.page - 1) * transactionsPagination.limit;
+      const endIndex = startIndex + transactionsPagination.limit;
+      const paginatedTransactions = filteredTransactions.slice(startIndex, endIndex);
+
+      setTransactions(paginatedTransactions.map((tx) => {
         const ingredient = ingredientMap.get(tx.ingredientId);
         return {
           id: tx.id,
@@ -335,6 +370,12 @@ export function StockManagementPage() {
           ingredient: ingredient as Ingredient | undefined,
         };
       }));
+      
+      // Update pagination info for local pagination (as fallback, will be updated from server if online)
+      transactionsPagination.setTotal(totalItems);
+      transactionsPagination.setTotalPages(Math.ceil(totalItems / transactionsPagination.limit));
+      transactionsPagination.setHasNext(endIndex < totalItems);
+      transactionsPagination.setHasPrev(transactionsPagination.page > 1);
 
       // Sync from server if online
       if (navigator.onLine) {
@@ -345,7 +386,19 @@ export function StockManagementPage() {
           if (startDate) filters.startDate = startDate.toISOString().split('T')[0];
           if (endDate) filters.endDate = endDate.toISOString().split('T')[0];
 
-          const serverTransactions = await inventoryApi.getStockTransactions(filters);
+          const serverTransactionsResponse = await inventoryApi.getStockTransactions(filters, transactionsPagination.paginationParams);
+          // Handle both paginated and non-paginated responses
+          const serverTransactions = transactionsPagination.extractData(serverTransactionsResponse);
+          const paginationInfo = transactionsPagination.extractPagination(serverTransactionsResponse);
+          
+          // If response is not paginated, set total from array length
+          if (!paginationInfo) {
+            transactionsPagination.setTotal(serverTransactions.length);
+            transactionsPagination.setTotalPages(Math.ceil(serverTransactions.length / transactionsPagination.limit));
+            transactionsPagination.setHasNext(false);
+            transactionsPagination.setHasPrev(false);
+          }
+          
           setTransactions(serverTransactions);
 
           // Update IndexedDB
@@ -379,7 +432,7 @@ export function StockManagementPage() {
     } finally {
       setTransactionsLoading(false);
     }
-  }, [user?.tenantId, ingredientFilter, selectedBranchId, startDate, endDate]);
+  }, [user?.tenantId, ingredientFilter, selectedBranchId, startDate, endDate, transactionsPagination]);
 
   useEffect(() => {
     loadIngredients();
@@ -389,7 +442,8 @@ export function StockManagementPage() {
 
   useEffect(() => {
     loadTransactions();
-  }, [loadTransactions, refreshKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ingredientFilter, selectedBranchId, startDate, endDate, transactionsPagination.page, transactionsPagination.limit, refreshKey]);
 
   const handleOpenModal = (type: 'add' | 'deduct' | 'adjust' | 'transfer') => {
     setTransactionType(type);
@@ -914,76 +968,95 @@ export function StockManagementPage() {
           </Text>
         </Paper>
       ) : (
-        <Table.ScrollContainer minWidth={1000}>
-          <Table striped highlightOnHover>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{t('inventory.transactionDate', language)}</Table.Th>
-                <Table.Th>{t('inventory.ingredient', language)}</Table.Th>
-                <Table.Th>{t('inventory.transactionType', language)}</Table.Th>
-                <Table.Th>{t('inventory.quantity', language)}</Table.Th>
-                <Table.Th>{t('inventory.unitCost', language)}</Table.Th>
-                <Table.Th>{t('inventory.totalCost', language)}</Table.Th>
-                <Table.Th>{t('inventory.reason', language)}</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {filteredTransactions.map((tx) => (
-                <Table.Tr key={tx.id}>
-                  <Table.Td>
-                    <Text size="sm">
-                      {new Date(tx.transactionDate).toLocaleDateString(language === 'ar' ? 'ar' : 'en')}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    {tx.ingredient ? (
-                      <Text fw={500}>
-                        {tx.ingredient.name}
-                      </Text>
-                    ) : (
-                      <Text size="sm" c="dimmed">-</Text>
-                    )}
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge
-                      color={
-                        tx.transactionType === 'purchase' || tx.transactionType === 'transfer_in'
-                          ? successColor
-                          : tx.transactionType === 'usage' || tx.transactionType === 'transfer_out' || tx.transactionType === 'waste' || tx.transactionType === 'damaged' || tx.transactionType === 'expired'
-                          ? errorColor
-                          : primaryColor
-                      }
-                    >
-                      {getTransactionTypeLabel(tx.transactionType)}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text fw={tx.quantity > 0 ? 500 : undefined} c={tx.quantity < 0 ? errorColor : undefined}>
-                      {tx.quantity > 0 ? '+' : ''}{tx.quantity}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    {tx.unitCost ? (
-                      <Text>{tx.unitCost.toFixed(2)}</Text>
-                    ) : (
-                      <Text size="sm" c="dimmed">-</Text>
-                    )}
-                  </Table.Td>
-                  <Table.Td>
-                    {tx.totalCost ? (
-                      <Text fw={500}>{tx.totalCost.toFixed(2)}</Text>
-                    ) : (
-                      <Text size="sm" c="dimmed">-</Text>
-                    )}
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm">{tx.reason || '-'}</Text>
-                  </Table.Td>
+        <Fragment>
+          <Table.ScrollContainer minWidth={1000}>
+            <Table striped highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{t('inventory.transactionDate', language)}</Table.Th>
+                  <Table.Th>{t('inventory.ingredient', language)}</Table.Th>
+                  <Table.Th>{t('inventory.transactionType', language)}</Table.Th>
+                  <Table.Th>{t('inventory.quantity', language)}</Table.Th>
+                  <Table.Th>{t('inventory.unitCost', language)}</Table.Th>
+                  <Table.Th>{t('inventory.totalCost', language)}</Table.Th>
+                  <Table.Th>{t('inventory.reason', language)}</Table.Th>
                 </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
+              </Table.Thead>
+              <Table.Tbody>
+                {filteredTransactions.map((tx) => (
+                  <Table.Tr key={tx.id}>
+                    <Table.Td>
+                      <Text size="sm">
+                        {new Date(tx.transactionDate).toLocaleDateString(language === 'ar' ? 'ar' : 'en')}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      {tx.ingredient ? (
+                        <Text fw={500}>
+                          {tx.ingredient.name}
+                        </Text>
+                      ) : (
+                        <Text size="sm" c="dimmed">-</Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge
+                        color={
+                          tx.transactionType === 'purchase' || tx.transactionType === 'transfer_in'
+                            ? successColor
+                            : tx.transactionType === 'usage' || tx.transactionType === 'transfer_out' || tx.transactionType === 'waste' || tx.transactionType === 'damaged' || tx.transactionType === 'expired'
+                            ? errorColor
+                            : primaryColor
+                        }
+                      >
+                        {getTransactionTypeLabel(tx.transactionType)}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text fw={tx.quantity > 0 ? 500 : undefined} c={tx.quantity < 0 ? errorColor : undefined}>
+                        {tx.quantity > 0 ? '+' : ''}{tx.quantity}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      {tx.unitCost ? (
+                        <Text>{tx.unitCost.toFixed(2)}</Text>
+                      ) : (
+                        <Text size="sm" c="dimmed">-</Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      {tx.totalCost ? (
+                        <Text fw={500}>{tx.totalCost.toFixed(2)}</Text>
+                      ) : (
+                        <Text size="sm" c="dimmed">-</Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm">{tx.reason || '-'}</Text>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+          
+          {/* Pagination Controls */}
+          {transactionsPagination.total > 0 && (
+            <PaginationControls
+              page={transactionsPagination.page}
+              totalPages={transactionsPagination.totalPages}
+              limit={transactionsPagination.limit}
+              total={transactionsPagination.total}
+              onPageChange={(page) => {
+                transactionsPagination.setPage(page);
+              }}
+              onLimitChange={(newLimit) => {
+                transactionsPagination.setLimit(newLimit);
+                transactionsPagination.setPage(1);
+              }}
+            />
+          )}
+        </Fragment>
       )}
 
       {/* Add Stock Modal */}

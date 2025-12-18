@@ -17,6 +17,7 @@ import { DeliveryService } from '../delivery/delivery.service';
 import { TaxesService } from '../taxes/taxes.service';
 import { SettingsService } from '../settings/settings.service';
 import { OrdersSseService } from './orders-sse.service';
+import { PaginationParams, PaginatedResponse, getPaginationParams, createPaginatedResponse } from '../../common/dto/pagination.dto';
 
 @Injectable()
 export class OrdersService {
@@ -786,60 +787,82 @@ export class OrdersService {
       endDate?: string;
       limit?: number;
       offset?: number;
+      page?: number;
       includeItems?: boolean;
     } = {},
-  ) {
+  ): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Fetch orders without joins to avoid relationship errors
-    // Supabase PostgREST has a default limit (usually 1000, but can be configured lower)
-    // Set a high default limit to ensure all orders are returned when no limit is specified
-    const defaultLimit = filters.limit || 10000;
-    
+    // Build base query for counting
+    let countQuery = supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+
+    // Build query for fetching data
     let query = supabase
       .from('orders')
       .select('*')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(defaultLimit); // Always set a limit to avoid PostgREST default limit issues
+      .order('created_at', { ascending: false });
 
-    // Support multiple statuses (array) or single status (string)
-    if (filters.status) {
-      if (Array.isArray(filters.status) && filters.status.length > 0) {
-        query = query.in('status', filters.status);
-      } else if (typeof filters.status === 'string') {
-        query = query.eq('status', filters.status);
+    // Apply filters to both count and data queries
+    const applyFilters = (q: any) => {
+      // Support multiple statuses (array) or single status (string)
+      if (filters.status) {
+        if (Array.isArray(filters.status) && filters.status.length > 0) {
+          q = q.in('status', filters.status);
+        } else if (typeof filters.status === 'string') {
+          q = q.eq('status', filters.status);
+        }
       }
-    }
 
-    if (filters.branchId) {
-      query = query.eq('branch_id', filters.branchId);
-    }
+      if (filters.branchId) {
+        q = q.eq('branch_id', filters.branchId);
+      }
 
-    if (filters.orderType) {
-      query = query.eq('order_type', filters.orderType);
-    }
+      if (filters.orderType) {
+        q = q.eq('order_type', filters.orderType);
+      }
 
-    if (filters.paymentStatus) {
-      query = query.eq('payment_status', filters.paymentStatus);
-    }
+      if (filters.paymentStatus) {
+        q = q.eq('payment_status', filters.paymentStatus);
+      }
 
-    if (filters.startDate) {
-      query = query.gte('order_date', filters.startDate);
-    }
+      if (filters.startDate) {
+        q = q.gte('order_date', filters.startDate);
+      }
 
-    if (filters.endDate) {
-      query = query.lte('order_date', filters.endDate);
-    }
+      if (filters.endDate) {
+        q = q.lte('order_date', filters.endDate);
+      }
 
-    // Re-apply limit if explicitly provided (overrides default)
-    if (filters.limit) {
-      query = query.limit(filters.limit);
-    }
+      return q;
+    };
 
-    if (filters.offset) {
-      query = query.range(filters.offset, filters.offset + (filters.limit || 100) - 1);
+    countQuery = applyFilters(countQuery);
+    query = applyFilters(query);
+
+    // Get total count
+    const { count: totalCount } = await countQuery;
+
+    // Apply pagination
+    const usePagination = filters.page !== undefined || filters.limit !== undefined;
+    if (usePagination) {
+      const page = filters.page || 1;
+      const limit = filters.limit || 10;
+      const { offset } = getPaginationParams(page, limit);
+      query = query.range(offset, offset + limit - 1);
+    } else if (filters.offset !== undefined || filters.limit !== undefined) {
+      // Support legacy offset/limit for backward compatibility
+      const offset = filters.offset || 0;
+      const limit = filters.limit || 100;
+      query = query.range(offset, offset + limit - 1);
+    } else {
+      // Default limit if no pagination specified
+      query = query.limit(100);
     }
 
     const { data: orders, error } = await query;
@@ -1114,6 +1137,13 @@ export class OrdersService {
         };
       }),
     );
+
+    // Return paginated response if pagination is used
+    if (usePagination) {
+      const page = filters.page || 1;
+      const limit = filters.limit || 10;
+      return createPaginatedResponse(ordersWithItemCount, totalCount || 0, page, limit);
+    }
 
     return ordersWithItemCount;
   }

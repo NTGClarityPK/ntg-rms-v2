@@ -1,4 +1,5 @@
 import apiClient from './client';
+import { PaginationParams, PaginatedResponse } from '../types/pagination.types';
 
 // Types
 export interface Ingredient {
@@ -124,12 +125,17 @@ export interface CreateRecipeDto {
 // API Functions
 export const inventoryApi = {
   // Ingredients
-  getIngredients: async (filters?: { category?: string; isActive?: boolean }): Promise<Ingredient[]> => {
+  getIngredients: async (
+    filters?: { category?: string; isActive?: boolean },
+    pagination?: PaginationParams,
+  ): Promise<Ingredient[] | PaginatedResponse<Ingredient>> => {
     const params = new URLSearchParams();
     if (filters?.category) params.append('category', filters.category);
     if (filters?.isActive !== undefined) params.append('isActive', String(filters.isActive));
+    if (pagination?.page) params.append('page', pagination.page.toString());
+    if (pagination?.limit) params.append('limit', pagination.limit.toString());
     
-    const response = await apiClient.get(`/inventory/ingredients?${params.toString()}`);
+    const response = await apiClient.get<Ingredient[] | PaginatedResponse<Ingredient>>(`/inventory/ingredients?${params.toString()}`);
     return response.data;
   },
 
@@ -173,31 +179,31 @@ export const inventoryApi = {
     return response.data;
   },
 
-  getStockTransactions: async (filters?: {
-    branchId?: string;
-    ingredientId?: string;
-    startDate?: string;
-    endDate?: string;
-  }): Promise<StockTransaction[]> => {
+  getStockTransactions: async (
+    filters?: {
+      branchId?: string;
+      ingredientId?: string;
+      startDate?: string;
+      endDate?: string;
+    },
+    pagination?: PaginationParams,
+  ): Promise<StockTransaction[] | PaginatedResponse<StockTransaction>> => {
     const params = new URLSearchParams();
     if (filters?.branchId) params.append('branchId', filters.branchId);
     if (filters?.ingredientId) params.append('ingredientId', filters.ingredientId);
     if (filters?.startDate) params.append('startDate', filters.startDate);
     if (filters?.endDate) params.append('endDate', filters.endDate);
-    
-    const response = await apiClient.get(`/inventory/stock/transactions?${params.toString()}`);
+    if (pagination?.page) params.append('page', pagination.page.toString());
+    if (pagination?.limit) params.append('limit', pagination.limit.toString());
+    const response = await apiClient.get<StockTransaction[] | PaginatedResponse<StockTransaction>>(`/inventory/stock/transactions?${params.toString()}`);
     return response.data;
   },
-
-  // Recipes
-  getRecipes: async (foodItemId?: string): Promise<Recipe[]> => {
-    const params = foodItemId ? `?foodItemId=${foodItemId}` : '';
-    const response = await apiClient.get(`/inventory/recipes${params}`);
-    return response.data;
-  },
-
-  getRecipeByFoodItemId: async (foodItemId: string): Promise<Recipe[]> => {
-    const response = await apiClient.get(`/inventory/recipes/food-item/${foodItemId}`);
+  getRecipes: async (foodItemId?: string, pagination?: PaginationParams): Promise<Recipe[] | PaginatedResponse<Recipe>> => {
+    const params = new URLSearchParams();
+    if (foodItemId) params.append('foodItemId', foodItemId);
+    if (pagination?.page) params.append('page', pagination.page.toString());
+    if (pagination?.limit) params.append('limit', pagination.limit.toString());
+    const response = await apiClient.get<Recipe[] | PaginatedResponse<Recipe>>(`/inventory/recipes${params.toString() ? `?${params.toString()}` : ''}`);
     return response.data;
   },
 

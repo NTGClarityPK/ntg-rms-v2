@@ -7,6 +7,7 @@ import {
 import { SupabaseService } from '../../database/supabase.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
+import { PaginationParams, PaginatedResponse, getPaginationParams, createPaginatedResponse } from '../../common/dto/pagination.dto';
 
 @Injectable()
 export class CustomersService {
@@ -15,8 +16,19 @@ export class CustomersService {
   /**
    * Get all customers for a tenant
    */
-  async getCustomers(tenantId: string, filters?: { search?: string; minOrders?: number; minSpent?: number }) {
+  async getCustomers(
+    tenantId: string,
+    filters?: { search?: string; minOrders?: number; minSpent?: number },
+    pagination?: PaginationParams,
+  ): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Build count query
+    let countQuery = supabase
+      .from('customers')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
 
     let query = supabase
       .from('customers')
@@ -26,9 +38,18 @@ export class CustomersService {
       .order('created_at', { ascending: false });
 
     if (filters?.search) {
-      query = query.or(
-        `name.ilike.%${filters.search}%,phone.ilike.%${filters.search}%`,
-      );
+      const searchFilter = `name.ilike.%${filters.search}%,phone.ilike.%${filters.search}%`;
+      query = query.or(searchFilter);
+      countQuery = countQuery.or(searchFilter);
+    }
+
+    // Get total count
+    const { count: totalCount } = await countQuery;
+
+    // Apply pagination if provided
+    if (pagination) {
+      const { offset, limit } = getPaginationParams(pagination.page, pagination.limit);
+      query = query.range(offset, offset + limit - 1);
     }
 
     const { data: customers, error } = await query;
@@ -47,7 +68,7 @@ export class CustomersService {
     }
 
     // Transform snake_case to camelCase and calculate loyalty tier
-    return filteredCustomers.map((customer: any) => {
+    const transformedCustomers = filteredCustomers.map((customer: any) => {
       const totalOrders = customer.total_orders || 0;
       const loyaltyTier = this.calculateLoyaltyTier(totalOrders);
 
@@ -69,6 +90,13 @@ export class CustomersService {
         updatedAt: customer.updated_at,
       };
     });
+
+    // Return paginated response if pagination is requested
+    if (pagination) {
+      return createPaginatedResponse(transformedCustomers, totalCount || 0, pagination.page || 1, pagination.limit || 10);
+    }
+
+    return transformedCustomers;
   }
 
   /**

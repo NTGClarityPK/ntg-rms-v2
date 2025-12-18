@@ -110,11 +110,13 @@ export function MenusPage() {
       setError(null);
 
       // Load menus
-      const menuList = await menuApi.getMenus();
+      const menuListResponse = await menuApi.getMenus();
+      const menuList = Array.isArray(menuListResponse) ? menuListResponse : (menuListResponse?.data || []);
       setMenus(menuList);
 
       // Load food items
-      const items = await menuApi.getFoodItems();
+      const itemsResponse = await menuApi.getFoodItems();
+      const items = Array.isArray(itemsResponse) ? itemsResponse : (itemsResponse?.data || []);
       setFoodItems(items.filter((item) => item.isActive));
     } catch (err: any) {
       setError(err.message || 'Failed to load menus');

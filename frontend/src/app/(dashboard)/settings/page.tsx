@@ -41,6 +41,7 @@ import { useDynamicTheme } from '@/lib/hooks/use-dynamic-theme';
 import { taxesApi, Tax, CreateTaxDto } from '@/lib/api/taxes';
 import { menuApi } from '@/lib/api/menu';
 import { db } from '@/lib/indexeddb/database';
+import { isPaginatedResponse } from '@/lib/types/pagination.types';
 
 export default function SettingsPage() {
   const language = useLanguageStore((state) => state.language);
@@ -222,9 +223,11 @@ export default function SettingsPage() {
 
   const loadCategories = useCallback(async () => {
     try {
-      const data = await menuApi.getCategories();
+      const dataResponse = await menuApi.getCategories();
+      // Handle both paginated and non-paginated responses
+      const data: any[] = isPaginatedResponse(dataResponse) ? dataResponse.data : dataResponse;
       setCategories(
-        data.map((cat) => ({
+        data.map((cat: any) => ({
           value: cat.id,
           label: cat.name || '',
         }))
@@ -236,9 +239,11 @@ export default function SettingsPage() {
 
   const loadFoodItems = useCallback(async () => {
     try {
-      const data = await menuApi.getFoodItems();
+      const dataResponse = await menuApi.getFoodItems();
+      // Handle both paginated and non-paginated responses
+      const data: any[] = isPaginatedResponse(dataResponse) ? dataResponse.data : dataResponse;
       setFoodItems(
-        data.map((item) => ({
+        data.map((item: any) => ({
           value: item.id,
           label: item.name,
         }))

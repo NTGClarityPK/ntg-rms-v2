@@ -35,6 +35,9 @@ import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hoo
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getWarningColor } from '@/lib/utils/theme';
 import { useInventoryRefresh } from '@/lib/contexts/inventory-refresh-context';
+import { usePagination } from '@/lib/hooks/use-pagination';
+import { PaginationControls } from '@/components/common/PaginationControls';
+import { isPaginatedResponse } from '@/lib/types/pagination.types';
 
 const CATEGORIES = [
   { value: 'vegetables', label: 'Vegetables' },
@@ -63,6 +66,7 @@ export function IngredientsPage() {
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
+  const pagination = usePagination<Ingredient>({ initialPage: 1, initialLimit: 10 });
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [loading, setLoading] = useState(true);
   const [opened, setOpened] = useState(false);
@@ -103,7 +107,10 @@ export function IngredientsPage() {
           if (categoryFilter) filters.category = categoryFilter;
           if (statusFilter !== null) filters.isActive = statusFilter;
 
-          const serverIngredients = await inventoryApi.getIngredients(filters);
+          const serverIngredientsResponse = await inventoryApi.getIngredients(filters, pagination.paginationParams);
+          // Handle both paginated and non-paginated responses
+          const serverIngredients = pagination.extractData(serverIngredientsResponse);
+          pagination.extractPagination(serverIngredientsResponse);
           
           // Deduplicate by ID first, then by nameEn to catch any duplicates with different IDs
           const byId = new Map(serverIngredients.map(ing => [ing.id, ing]));
@@ -151,11 +158,16 @@ export function IngredientsPage() {
         } catch (err: any) {
           console.warn('Failed to sync ingredients from server:', err);
           // Fallback to IndexedDB if server sync fails
-      const localIngredients = await db.ingredients
-        .where('tenantId')
-        .equals(user.tenantId)
-        .filter((ing) => !ing.deletedAt)
-        .toArray();
+          const localIngredients = await db.ingredients
+            .where('tenantId')
+            .equals(user.tenantId)
+            .filter((ing) => {
+              if (ing.deletedAt) return false;
+              if (categoryFilter && ing.category !== categoryFilter) return false;
+              if (statusFilter !== null && ing.isActive !== statusFilter) return false;
+              return true;
+            })
+            .toArray();
 
           // Deduplicate by ID first, then by nameEn
           const byId = new Map(localIngredients.map(ing => [ing.id, ing]));
@@ -175,27 +187,44 @@ export function IngredientsPage() {
             ? Array.from(byName.values())
             : Array.from(byId.values());
           
-          setIngredients(uniqueIngredients.map((ing) => ({
-        id: ing.id,
-        tenantId: ing.tenantId,
-        name: (ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '',
-        category: ing.category,
-        unitOfMeasurement: ing.unitOfMeasurement,
-        currentStock: ing.currentStock,
-        minimumThreshold: ing.minimumThreshold,
-        costPerUnit: ing.costPerUnit,
-        storageLocation: ing.storageLocation,
-        isActive: ing.isActive,
-        createdAt: ing.createdAt,
-        updatedAt: ing.updatedAt,
-      })));
+          // Apply local pagination
+          const totalItems = uniqueIngredients.length;
+          const startIndex = (pagination.page - 1) * pagination.limit;
+          const endIndex = startIndex + pagination.limit;
+          const paginatedIngredients = uniqueIngredients.slice(startIndex, endIndex);
+          
+          setIngredients(paginatedIngredients.map((ing) => ({
+            id: ing.id,
+            tenantId: ing.tenantId,
+            name: (ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '',
+            category: ing.category,
+            unitOfMeasurement: ing.unitOfMeasurement,
+            currentStock: ing.currentStock,
+            minimumThreshold: ing.minimumThreshold,
+            costPerUnit: ing.costPerUnit,
+            storageLocation: ing.storageLocation,
+            isActive: ing.isActive,
+            createdAt: ing.createdAt,
+            updatedAt: ing.updatedAt,
+          })));
+          
+          // Update pagination info for local pagination
+          pagination.setTotal(totalItems);
+          pagination.setTotalPages(Math.ceil(totalItems / pagination.limit));
+          pagination.setHasNext(endIndex < totalItems);
+          pagination.setHasPrev(pagination.page > 1);
         }
       } else {
         // Load from IndexedDB when offline
         const localIngredients = await db.ingredients
           .where('tenantId')
           .equals(user.tenantId)
-          .filter((ing) => !ing.deletedAt)
+          .filter((ing) => {
+            if (ing.deletedAt) return false;
+            if (categoryFilter && ing.category !== categoryFilter) return false;
+            if (statusFilter !== null && ing.isActive !== statusFilter) return false;
+            return true;
+          })
           .toArray();
 
         // Deduplicate by ID first, then by nameEn
@@ -216,20 +245,32 @@ export function IngredientsPage() {
           ? Array.from(byName.values())
           : Array.from(byId.values());
 
-        setIngredients(uniqueIngredients.map((ing) => ({
-              id: ing.id,
+        // Apply local pagination
+        const totalItems = uniqueIngredients.length;
+        const startIndex = (pagination.page - 1) * pagination.limit;
+        const endIndex = startIndex + pagination.limit;
+        const paginatedIngredients = uniqueIngredients.slice(startIndex, endIndex);
+
+        setIngredients(paginatedIngredients.map((ing) => ({
+          id: ing.id,
           tenantId: ing.tenantId,
-              name: (ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '',
-              category: ing.category,
-              unitOfMeasurement: ing.unitOfMeasurement,
-              currentStock: ing.currentStock,
-              minimumThreshold: ing.minimumThreshold,
-              costPerUnit: ing.costPerUnit,
-              storageLocation: ing.storageLocation,
-              isActive: ing.isActive,
-              createdAt: ing.createdAt,
-              updatedAt: ing.updatedAt,
+          name: (ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '',
+          category: ing.category,
+          unitOfMeasurement: ing.unitOfMeasurement,
+          currentStock: ing.currentStock,
+          minimumThreshold: ing.minimumThreshold,
+          costPerUnit: ing.costPerUnit,
+          storageLocation: ing.storageLocation,
+          isActive: ing.isActive,
+          createdAt: ing.createdAt,
+          updatedAt: ing.updatedAt,
         })));
+        
+        // Update pagination info for local pagination
+        pagination.setTotal(totalItems);
+        pagination.setTotalPages(Math.ceil(totalItems / pagination.limit));
+        pagination.setHasNext(endIndex < totalItems);
+        pagination.setHasPrev(pagination.page > 1);
       }
     } catch (err: any) {
       setError(err.message || t('inventory.loadError', language));
@@ -237,7 +278,7 @@ export function IngredientsPage() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.tenantId, language, categoryFilter, statusFilter]);
+  }, [user?.tenantId, language, categoryFilter, statusFilter, pagination.page, pagination.limit]);
 
   useEffect(() => {
     loadIngredients();
@@ -280,15 +321,15 @@ export function IngredientsPage() {
       if (editingIngredient) {
         // Update
         const updateData: UpdateIngredientDto = {
-        name: values.name,
-        category: values.category || undefined,
-        unitOfMeasurement: values.unitOfMeasurement,
-        currentStock: values.currentStock,
-        minimumThreshold: values.minimumThreshold,
-        costPerUnit: values.costPerUnit,
-        storageLocation: values.storageLocation || undefined,
-        isActive: values.isActive,
-      };
+          name: values.name,
+          category: values.category || undefined,
+          unitOfMeasurement: values.unitOfMeasurement,
+          currentStock: values.currentStock,
+          minimumThreshold: values.minimumThreshold,
+          costPerUnit: values.costPerUnit,
+          storageLocation: values.storageLocation || undefined,
+          isActive: values.isActive,
+        };
 
         savedIngredient = await inventoryApi.updateIngredient(editingIngredient.id, updateData);
         
@@ -494,90 +535,109 @@ export function IngredientsPage() {
           </Text>
         </Paper>
       ) : (
-        <Table.ScrollContainer minWidth={800}>
-          <Table striped highlightOnHover>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{t('inventory.ingredientName', language)}</Table.Th>
-                <Table.Th>{t('inventory.category', language)}</Table.Th>
-                <Table.Th>{t('inventory.currentStock', language)}</Table.Th>
-                <Table.Th>{t('inventory.minimumThreshold', language)}</Table.Th>
-                <Table.Th>{t('inventory.costPerUnit', language)}</Table.Th>
-                <Table.Th>{t('common.status' as any, language) || 'Status'}</Table.Th>
-                <Table.Th>{t('common.actions' as any, language) || 'Actions'}</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {filteredIngredients.map((ingredient) => (
-                <Table.Tr key={ingredient.id}>
-                  <Table.Td>
-                    <Text fw={500}>
-                      {ingredient.name}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    {ingredient.category ? (
-                      <Badge variant="light" color={primaryColor}>
-                        {t(`inventory.${ingredient.category}` as any, language) || ingredient.category}
-                      </Badge>
-                    ) : (
-                      <Text size="sm" c="dimmed">-</Text>
-                    )}
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap="xs">
-                      <Text>{ingredient.currentStock} {ingredient.unitOfMeasurement}</Text>
-                      {isLowStock(ingredient) && (
-                        <Badge color={getWarningColor()} size="sm">
-                          {t('inventory.isLowStock', language)}
-                        </Badge>
-                      )}
-                    </Group>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text>{ingredient.minimumThreshold} {ingredient.unitOfMeasurement}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text>{ingredient.costPerUnit.toFixed(2)}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge
-                      color={ingredient.isActive ? successColor : 'gray'}
-                      variant="light"
-                      leftSection={
-                        ingredient.isActive ? (
-                          <IconCircleCheck size={14} />
-                        ) : (
-                          <IconCircleX size={14} />
-                        )
-                      }
-                    >
-                      {ingredient.isActive ? (t('common.active' as any, language) || 'Active') : (t('common.inactive' as any, language) || 'Inactive')}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap="xs">
-                      <ActionIcon
-                        variant="light"
-                        color={primaryColor}
-                        onClick={() => handleOpenModal(ingredient)}
-                      >
-                        <IconEdit size={16} />
-                      </ActionIcon>
-                      <ActionIcon
-                        variant="light"
-                        color={errorColor}
-                        onClick={() => handleDelete(ingredient)}
-                      >
-                        <IconTrash size={16} />
-                      </ActionIcon>
-                    </Group>
-                  </Table.Td>
+        <>
+          <Table.ScrollContainer minWidth={800}>
+            <Table striped highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{t('inventory.ingredientName', language)}</Table.Th>
+                  <Table.Th>{t('inventory.category', language)}</Table.Th>
+                  <Table.Th>{t('inventory.currentStock', language)}</Table.Th>
+                  <Table.Th>{t('inventory.minimumThreshold', language)}</Table.Th>
+                  <Table.Th>{t('inventory.costPerUnit', language)}</Table.Th>
+                  <Table.Th>{t('common.status' as any, language) || 'Status'}</Table.Th>
+                  <Table.Th>{t('common.actions' as any, language) || 'Actions'}</Table.Th>
                 </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
+              </Table.Thead>
+              <Table.Tbody>
+                {filteredIngredients.map((ingredient) => (
+                  <Table.Tr key={ingredient.id}>
+                    <Table.Td>
+                      <Text fw={500}>
+                        {ingredient.name}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      {ingredient.category ? (
+                        <Badge variant="light" color={primaryColor}>
+                          {t(`inventory.${ingredient.category}` as any, language) || ingredient.category}
+                        </Badge>
+                      ) : (
+                        <Text size="sm" c="dimmed">-</Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap="xs">
+                        <Text>{ingredient.currentStock} {ingredient.unitOfMeasurement}</Text>
+                        {isLowStock(ingredient) && (
+                          <Badge color={getWarningColor()} size="sm">
+                            {t('inventory.isLowStock', language)}
+                          </Badge>
+                        )}
+                      </Group>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text>{ingredient.minimumThreshold} {ingredient.unitOfMeasurement}</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text>{ingredient.costPerUnit.toFixed(2)}</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge
+                        color={ingredient.isActive ? successColor : 'gray'}
+                        variant="light"
+                        leftSection={
+                          ingredient.isActive ? (
+                            <IconCircleCheck size={14} />
+                          ) : (
+                            <IconCircleX size={14} />
+                          )
+                        }
+                      >
+                        {ingredient.isActive ? (t('common.active' as any, language) || 'Active') : (t('common.inactive' as any, language) || 'Inactive')}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap="xs">
+                        <ActionIcon
+                          variant="light"
+                          color={primaryColor}
+                          onClick={() => handleOpenModal(ingredient)}
+                        >
+                          <IconEdit size={16} />
+                        </ActionIcon>
+                        <ActionIcon
+                          variant="light"
+                          color={errorColor}
+                          onClick={() => handleDelete(ingredient)}
+                        >
+                          <IconTrash size={16} />
+                        </ActionIcon>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+          
+          {/* Pagination Controls */}
+          {pagination.total > 0 && (
+            <PaginationControls
+              page={pagination.page}
+              totalPages={pagination.totalPages}
+              limit={pagination.limit}
+              total={pagination.total}
+              onPageChange={(page) => {
+                pagination.setPage(page);
+              }}
+              onLimitChange={(newLimit) => {
+                pagination.setLimit(newLimit);
+                pagination.setPage(1);
+              }}
+            />
+          )}
+        </>
       )}
 
       {/* Create/Edit Modal */}

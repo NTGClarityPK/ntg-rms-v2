@@ -31,6 +31,7 @@ import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getSuccessColor, getErrorColor } from '@/lib/utils/theme';
 import { db } from '@/lib/indexeddb/database';
 import { useSyncStatus } from '@/lib/hooks/use-sync-status';
+import { isPaginatedResponse } from '@/lib/types/pagination.types';
 
 export default function TaxesPage() {
   const language = useLanguageStore((state) => state.language);
@@ -120,9 +121,11 @@ export default function TaxesPage() {
 
   const loadCategories = useCallback(async () => {
     try {
-      const data = await menuApi.getCategories();
+      const dataResponse = await menuApi.getCategories();
+      // Handle both paginated and non-paginated responses
+      const data: any[] = isPaginatedResponse(dataResponse) ? dataResponse.data : dataResponse;
       setCategories(
-        data.map((cat) => ({
+        data.map((cat: any) => ({
           value: cat.id,
           label: cat.name,
         }))
@@ -134,9 +137,11 @@ export default function TaxesPage() {
 
   const loadFoodItems = useCallback(async () => {
     try {
-      const data = await menuApi.getFoodItems();
+      const dataResponse = await menuApi.getFoodItems();
+      // Handle both paginated and non-paginated responses
+      const data: any[] = isPaginatedResponse(dataResponse) ? dataResponse.data : dataResponse;
       setFoodItems(
-        data.map((item) => ({
+        data.map((item: any) => ({
           value: item.id,
           label: item.name,
         }))

@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
+import { PaginationDto } from '../../common/dto/pagination.dto';
 
 @ApiTags('employees')
 @Controller('employees')
@@ -20,8 +21,9 @@ export class EmployeesController {
     @Query('branchId') branchId?: string,
     @Query('role') role?: string,
     @Query('status') status?: string,
+    @Query() paginationDto?: PaginationDto,
   ) {
-    return this.employeesService.getEmployees(user.tenantId, { branchId, role, status });
+    return this.employeesService.getEmployees(user.tenantId, { branchId, role, status }, paginationDto);
   }
 
   @Get(':id')

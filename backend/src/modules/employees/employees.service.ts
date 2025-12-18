@@ -8,6 +8,7 @@ import { SupabaseService } from '../../database/supabase.service';
 import { RolesService } from '../roles/roles.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
+import { PaginationParams, PaginatedResponse, getPaginationParams, createPaginatedResponse } from '../../common/dto/pagination.dto';
 
 @Injectable()
 export class EmployeesService {
@@ -19,10 +20,24 @@ export class EmployeesService {
   /**
    * Get all employees for a tenant
    */
-  async getEmployees(tenantId: string, filters?: { branchId?: string; role?: string; status?: string }) {
+  async getEmployees(
+    tenantId: string,
+    filters?: { branchId?: string; role?: string; status?: string },
+    pagination?: PaginationParams,
+  ): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Query users first without nested relations to avoid Supabase relationship ambiguity
+    // We need to fetch all employees first to apply branch/role filters correctly
+    // Supabase has a default limit of 1000 rows, so we need to fetch in batches or set a high limit
+    // First, get the count to know how many we need to fetch (apply status filter if provided)
+    let countQuery = supabase
+      .from('users')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    // Build main query
     let query = supabase
       .from('users')
       .select('*')
@@ -30,18 +45,36 @@ export class EmployeesService {
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
+    // Apply status filter to both queries if provided
     if (filters?.status) {
       if (filters.status === 'active') {
         query = query.eq('is_active', true);
+        countQuery = countQuery.eq('is_active', true);
       } else if (filters.status === 'inactive') {
         query = query.eq('is_active', false);
+        countQuery = countQuery.eq('is_active', false);
       }
     }
+    
+    const { count: totalCountInDb } = await countQuery;
+    console.log(`[EmployeesService] Total employees in database (after status filter): ${totalCountInDb}`);
+    
+    // Set appropriate limit (add buffer to be safe)
+    const limitToFetch = totalCountInDb ? totalCountInDb + 1000 : 10000;
+    query = query.limit(limitToFetch);
 
+    // Fetch all employees (without pagination) to apply filters correctly
     const { data: employees, error } = await query;
 
     if (error) {
       throw new InternalServerErrorException(`Failed to fetch employees: ${error.message}`);
+    }
+
+    console.log(`[EmployeesService] Fetched ${employees?.length || 0} employees from database (expected: ${totalCountInDb})`);
+    
+    // Verify we got all employees
+    if (totalCountInDb && employees && employees.length < totalCountInDb) {
+      console.warn(`[EmployeesService] WARNING: Expected ${totalCountInDb} employees but only fetched ${employees.length}. Some employees may be missing.`);
     }
 
     if (!employees || employees.length === 0) {
@@ -50,6 +83,7 @@ export class EmployeesService {
 
     // Get all employee IDs
     const employeeIds = employees.map((emp: any) => emp.id);
+    console.log(`[EmployeesService] Employee IDs to fetch roles/branches for: ${employeeIds.length} employees`);
 
     // Fetch user_roles separately
     const { data: userRolesData, error: rolesError } = await supabase
@@ -63,7 +97,9 @@ export class EmployeesService {
       .in('user_id', employeeIds);
 
     if (rolesError) {
-      console.error('Failed to fetch user roles:', rolesError);
+      console.error('[EmployeesService] Failed to fetch user roles:', rolesError);
+    } else {
+      console.log(`[EmployeesService] Fetched ${userRolesData?.length || 0} user_role records`);
     }
 
     // Fetch user_branches separately
@@ -78,7 +114,9 @@ export class EmployeesService {
       .in('user_id', employeeIds);
 
     if (branchesError) {
-      console.error('Failed to fetch user branches:', branchesError);
+      console.error('[EmployeesService] Failed to fetch user branches:', branchesError);
+    } else {
+      console.log(`[EmployeesService] Fetched ${userBranchesData?.length || 0} user_branch records`);
     }
 
     // Group roles and branches by user_id
@@ -113,21 +151,43 @@ export class EmployeesService {
 
     // Filter by branch and role if specified
     let filteredEmployees = employees || [];
+    
+    console.log(`[EmployeesService] Before filtering: ${filteredEmployees.length} employees`);
+    console.log(`[EmployeesService] Filters applied:`, { branchId: filters?.branchId, role: filters?.role, status: filters?.status });
+    
     if (filters?.branchId) {
       filteredEmployees = filteredEmployees.filter((emp: any) => {
         const branches = branchesByUserId.get(emp.id) || [];
         return branches.some((b: any) => b.id === filters.branchId);
       });
+      console.log(`[EmployeesService] After branchId filter: ${filteredEmployees.length} employees`);
     }
     if (filters?.role) {
       filteredEmployees = filteredEmployees.filter((emp: any) => {
         const roles = rolesByUserId.get(emp.id) || [];
         return roles.some((r: any) => r.name === filters.role);
       });
+      console.log(`[EmployeesService] After role filter: ${filteredEmployees.length} employees`);
+    }
+
+    // Calculate total count after filtering (this is the accurate count)
+    const totalCount = filteredEmployees.length;
+    console.log(`[EmployeesService] Final filtered count: ${totalCount} employees`);
+
+    // Apply pagination to filtered results if provided
+    let paginatedEmployees = filteredEmployees;
+    if (pagination) {
+      const { offset, limit } = getPaginationParams(pagination.page, pagination.limit);
+      paginatedEmployees = filteredEmployees.slice(offset, offset + limit);
     }
 
     // Transform snake_case to camelCase
-    return filteredEmployees.map((emp: any) => ({
+    console.log(`[EmployeesService] Transforming ${paginatedEmployees.length} employees for response`);
+    const transformedEmployees = paginatedEmployees.map((emp: any) => {
+      const roles = rolesByUserId.get(emp.id) || [];
+      const branches = branchesByUserId.get(emp.id) || [];
+      console.log(`[EmployeesService] Employee ${emp.id} (${emp.email}): ${roles.length} roles, ${branches.length} branches`);
+      return {
       id: emp.id,
       tenantId: emp.tenant_id,
       supabaseAuthId: emp.supabase_auth_id,
@@ -148,7 +208,17 @@ export class EmployeesService {
       createdAt: emp.created_at,
       updatedAt: emp.updated_at,
       branches: branchesByUserId.get(emp.id) || [],
-    }));
+      };
+    });
+    
+    console.log(`[EmployeesService] Transformed ${transformedEmployees.length} employees. Returning paginated response with total: ${totalCount}`);
+
+    // Return paginated response if pagination is requested
+    if (pagination) {
+      return createPaginatedResponse(transformedEmployees, totalCount || 0, pagination.page || 1, pagination.limit || 10);
+    }
+
+    return transformedEmployees;
   }
 
   /**
