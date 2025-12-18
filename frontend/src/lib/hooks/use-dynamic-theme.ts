@@ -94,8 +94,8 @@ export function useDynamicTheme() {
         }
 
         // Priority 2: If no tenant theme (or no tenantId), try localStorage
-        // This works for both authenticated and unauthenticated users (auth pages)
-        if (!colorToUse) {
+        // Skip localStorage on auth pages (when user is not authenticated)
+        if (!colorToUse && user?.tenantId) {
           const legacyColor = getLegacyThemeColor();
           if (legacyColor) {
             colorToUse = legacyColor;
@@ -108,8 +108,8 @@ export function useDynamicTheme() {
         }
 
         // If theme was fetched from DB, store it in localStorage for future use
-        // (especially useful for auth pages where tenantId might not be available)
-        if (themeFromDb && colorToUse) {
+        // Only store if user is authenticated (skip on auth pages)
+        if (themeFromDb && colorToUse && user?.tenantId) {
           setLegacyThemeColor(colorToUse);
         }
 
@@ -126,8 +126,8 @@ export function useDynamicTheme() {
         }
       } catch (err) {
         console.error('Failed to load theme:', err);
-        // Fallback to localStorage or default
-        const fallbackColor = getLegacyThemeColor() || DEFAULT_THEME_COLOR;
+        // Fallback: use default theme on auth pages, localStorage on authenticated pages
+        const fallbackColor = (user?.tenantId ? getLegacyThemeColor() : null) || DEFAULT_THEME_COLOR;
         setPrimaryColor(fallbackColor);
         setStoreColor(fallbackColor); // Update store to trigger re-renders
         applyThemeColor(fallbackColor);
