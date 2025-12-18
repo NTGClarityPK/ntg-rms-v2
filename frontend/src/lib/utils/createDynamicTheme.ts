@@ -107,6 +107,7 @@ export function createDynamicTheme(
               fontWeight: config.typography.fontWeight.medium,
               '&:hover:not(:disabled)': {
                 backgroundColor: config.components.button.hoverColor,
+                color: config.components.button.hoverTextColor ?? config.components.button.textColor,
               },
             },
           };

@@ -14,6 +14,7 @@ import {
   Paper,
   Grid,
   Skeleton,
+  useMantineTheme,
 } from '@mantine/core';
 import { IconCheck, IconEdit, IconPrinter } from '@tabler/icons-react';
 import { useRouter } from 'next/navigation';
@@ -28,6 +29,7 @@ import { InvoiceGenerator } from '@/lib/utils/invoice-generator';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { useDateFormat } from '@/lib/hooks/use-date-format';
 import { useSettings } from '@/lib/hooks/use-settings';
+import type { ThemeConfig } from '@/lib/theme/themeConfig';
 
 interface OrderDetailsModalProps {
   opened: boolean;
@@ -52,6 +54,8 @@ export function OrderDetailsModal({
   onStatusUpdate,
 }: OrderDetailsModalProps) {
   const { language } = useLanguageStore();
+  const theme = useMantineTheme();
+  const themeConfig = (theme.other as any) as ThemeConfig | undefined;
   const primary = useThemeColor();
   const currency = useCurrency();
   const { formatDateTime } = useDateFormat();
@@ -235,8 +239,8 @@ export function OrderDetailsModal({
       };
 
       const html = template === 'thermal'
-        ? InvoiceGenerator.generateThermal(invoiceData, language)
-        : InvoiceGenerator.generateA4(invoiceData, language);
+        ? InvoiceGenerator.generateThermal(invoiceData, language, themeConfig)
+        : InvoiceGenerator.generateA4(invoiceData, language, themeConfig);
 
       InvoiceGenerator.printInvoice(html);
     } catch (error: any) {

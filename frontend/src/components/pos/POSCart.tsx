@@ -17,6 +17,7 @@ import {
   Paper,
   Modal,
   TextInput,
+  useMantineTheme,
 } from '@mantine/core';
 import {
   IconTrash,
@@ -48,6 +49,7 @@ import { useSettings } from '@/lib/hooks/use-settings';
 import { InvoiceGenerator } from '@/lib/utils/invoice-generator';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { taxesApi, Tax } from '@/lib/api/taxes';
+import type { ThemeConfig } from '@/lib/theme/themeConfig';
 
 interface POSCartProps {
   cartItems: CartItem[];
@@ -87,6 +89,8 @@ export function POSCart({
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
   const { settings } = useSettings();
+  const theme = useMantineTheme();
+  const themeConfig = (theme.other as any) as ThemeConfig | undefined;
   const primaryColor = useThemeColor();
   const primaryShade = useThemeColorShade(6);
   const currency = useCurrency();
@@ -938,8 +942,8 @@ export function POSCart({
 
               const template = settings?.invoice?.receiptTemplate === 'a4' ? 'a4' : 'thermal';
               const html = template === 'a4' 
-                ? InvoiceGenerator.generateA4(invoiceData, language)
-                : InvoiceGenerator.generateThermal(invoiceData, language);
+                ? InvoiceGenerator.generateA4(invoiceData, language, themeConfig)
+                : InvoiceGenerator.generateThermal(invoiceData, language, themeConfig);
               InvoiceGenerator.printInvoice(html);
             } catch (error) {
               console.error('Failed to auto-print invoice:', error);
@@ -1083,13 +1087,14 @@ export function POSCart({
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
+    const primaryFont = themeConfig?.typography.fontFamily.primary || 'var(--font-geist-sans), Arial, Helvetica, sans-serif';
     const invoiceHTML = `
       <!DOCTYPE html>
       <html>
         <head>
           <title>Invoice - ${placedOrder.orderNumber}</title>
           <style>
-            body { font-family: Arial, sans-serif; padding: 20px; }
+            body { font-family: ${primaryFont}; padding: 20px; }
             .header { text-align: center; margin-bottom: 20px; }
             .order-info { margin-bottom: 20px; }
             .items-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }

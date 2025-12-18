@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useMantineTheme } from '@mantine/core';
 import { useDynamicTheme } from '@/lib/hooks/useDynamicTheme';
+import { useLanguageStore } from '@/lib/store/language-store';
 import type { ThemeConfig } from '@/lib/theme/themeConfig';
 
 /**
@@ -16,9 +17,26 @@ import type { ThemeConfig } from '@/lib/theme/themeConfig';
 export function DynamicThemeProvider({ children }: { children: React.ReactNode }) {
   const theme = useMantineTheme();
   const dynamicTheme = useDynamicTheme();
+  const { language } = useLanguageStore();
   
   // Get theme config from Mantine theme
   const themeConfig = (theme.other as any) as ThemeConfig | undefined;
+
+  // Set dir and lang attributes on html element for RTL support
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    
+    const html = document.documentElement;
+    const dir = language === 'ar' ? 'rtl' : 'ltr';
+    const lang = language === 'ar' ? 'ar' : 'en';
+    
+    html.setAttribute('dir', dir);
+    html.setAttribute('lang', lang);
+    
+    return () => {
+      // Cleanup if needed
+    };
+  }, [language]);
 
   useEffect(() => {
     if (typeof document === 'undefined' || !themeConfig) return;
@@ -65,6 +83,23 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
     if (typeof document === 'undefined' || !themeConfig) return;
 
     const config = themeConfig;
+    
+    // Helper function to get button config with fallback to base button config
+    const getButtonConfig = (buttonType: 'actionIcon' | 'headerButton' | 'navButton') => {
+      const base = config.components.button;
+      const specific = config.components[buttonType];
+      return {
+        backgroundColor: specific?.backgroundColor ?? base.backgroundColor,
+        textColor: specific?.textColor ?? base.textColor,
+        hoverColor: specific?.hoverColor ?? base.hoverColor,
+        hoverTextColor: specific?.hoverTextColor ?? base.hoverTextColor ?? base.textColor,
+        disabledOpacity: specific?.disabledOpacity ?? base.disabledOpacity ?? 0.6,
+      };
+    };
+    
+    const actionIconConfig = getButtonConfig('actionIcon');
+    const headerButtonConfig = getButtonConfig('headerButton');
+    const navButtonConfig = getButtonConfig('navButton');
     
     let styleElement = document.getElementById('mantine-theme-override');
     if (!styleElement) {
@@ -139,12 +174,67 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
         }
       }
       
+      /* RTL Support - Title and Subtitle Bars */
+      html[dir="rtl"] .page-title-bar,
+      [dir="rtl"] .page-title-bar {
+        left: 0 !important;
+        right: 250px !important;
+        width: calc(100% - 250px) !important;
+        border-top-left-radius: 0 !important;
+        border-top-right-radius: 12px !important;
+        padding-left: var(--mantine-spacing-md) !important;
+        padding-right: var(--mantine-spacing-md) !important;
+        transition: right 0.3s ease, width 0.3s ease !important;
+      }
+      
+      html[dir="rtl"] .page-sub-title-bar,
+      [dir="rtl"] .page-sub-title-bar {
+        left: 0 !important;
+        right: 250px !important;
+        width: calc(100% - 250px) !important;
+        transition: right 0.3s ease, width 0.3s ease !important;
+      }
+      
+      /* RTL - Collapsed navbar */
+      @media (min-width: 768px) {
+        html[dir="rtl"] body[data-navbar-collapsed="true"] .page-title-bar,
+        [dir="rtl"] body[data-navbar-collapsed="true"] .page-title-bar {
+          right: 70px !important;
+          width: calc(100% - 70px) !important;
+        }
+        
+        html[dir="rtl"] body[data-navbar-collapsed="true"] .page-sub-title-bar,
+        [dir="rtl"] body[data-navbar-collapsed="true"] .page-sub-title-bar {
+          right: 70px !important;
+          width: calc(100% - 70px) !important;
+        }
+      }
+      
+      /* RTL - Mobile */
+      @media (max-width: 767px) {
+        html[dir="rtl"] .page-title-bar,
+        [dir="rtl"] .page-title-bar,
+        html[dir="rtl"] .page-sub-title-bar,
+        [dir="rtl"] .page-sub-title-bar {
+          right: 0 !important;
+          width: 100% !important;
+        }
+      }
+      
       /* Title bar content - left aligned with padding to match content div */
       .page-title-bar .mantine-Title-root {
         margin: 0 !important;
         text-align: left !important;
         padding-left: var(--mantine-spacing-md) !important;
         padding-top: var(--mantine-spacing-sm) !important;
+      }
+      
+      /* RTL - Title bar content alignment */
+      html[dir="rtl"] .page-title-bar .mantine-Title-root,
+      [dir="rtl"] .page-title-bar .mantine-Title-root {
+        text-align: right !important;
+        padding-left: 0 !important;
+        padding-right: var(--mantine-spacing-md) !important;
       }
       
       /* Add top margin to main content to account for title bar */
@@ -165,6 +255,18 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       .page-title-bar ~ * .mantine-Tabs-list {
         padding-left: 0 !important;
         margin-left: 0 !important;
+      }
+      
+      /* RTL - Tabs padding */
+      html[dir="rtl"] .page-title-bar ~ * .mantine-Tabs-root,
+      [dir="rtl"] .page-title-bar ~ * .mantine-Tabs-root {
+        padding-right: 0 !important;
+      }
+      
+      html[dir="rtl"] .page-title-bar ~ * .mantine-Tabs-list,
+      [dir="rtl"] .page-title-bar ~ * .mantine-Tabs-list {
+        padding-right: 0 !important;
+        margin-right: 0 !important;
       }
       
       /* NavLink */
@@ -373,7 +475,7 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       .mantine-Button-root:hover:not(:disabled):not([data-disabled]),
       button.mantine-Button-root:hover:not(:disabled):not([data-disabled]) {
         background-color: ${config.components.button.hoverColor} !important;
-        color: ${config.components.button.textColor} !important;
+        color: ${config.components.button.hoverTextColor ?? config.components.button.textColor} !important;
       }
       
       /* Button Active State */
@@ -385,7 +487,7 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       .mantine-Button-root:disabled,
       button.mantine-Button-root:disabled,
       .mantine-Button-root[data-disabled] {
-        opacity: 0.6 !important;
+        opacity: ${config.components.button.disabledOpacity ?? 0.6} !important;
         background-color: ${config.components.button.backgroundColor} !important;
       }
       
@@ -396,6 +498,179 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       button[style*="color"][class*="mantine-Button"] {
         background-color: ${config.components.button.backgroundColor} !important;
         color: ${config.components.button.textColor} !important;
+      }
+      
+      /* ActionIcon Styles - Inherits from button if not specified */
+      .mantine-ActionIcon-root,
+      button.mantine-ActionIcon-root {
+        background-color: ${actionIconConfig.backgroundColor} !important;
+        color: ${actionIconConfig.textColor} !important;
+        font-family: ${config.typography.fontFamily.primary} !important;
+        border: none !important;
+      }
+      
+      .mantine-ActionIcon-root:hover:not(:disabled):not([data-disabled]),
+      button.mantine-ActionIcon-root:hover:not(:disabled):not([data-disabled]) {
+        background-color: ${actionIconConfig.hoverColor} !important;
+        color: ${actionIconConfig.hoverTextColor} !important;
+      }
+      
+      .mantine-ActionIcon-root:active:not(:disabled):not([data-disabled]) {
+        background-color: ${actionIconConfig.hoverColor} !important;
+      }
+      
+      .mantine-ActionIcon-root:disabled,
+      button.mantine-ActionIcon-root:disabled,
+      .mantine-ActionIcon-root[data-disabled] {
+        opacity: ${actionIconConfig.disabledOpacity} !important;
+        background-color: ${actionIconConfig.backgroundColor} !important;
+      }
+      
+      /* Header Button Styles - Inherits from button if not specified */
+      .mantine-AppShell-header .mantine-Button-root,
+      .mantine-AppShell-header button.mantine-Button-root {
+        background-color: ${headerButtonConfig.backgroundColor} !important;
+        color: ${headerButtonConfig.textColor} !important;
+      }
+      
+      .mantine-AppShell-header .mantine-Button-root:hover:not(:disabled):not([data-disabled]),
+      .mantine-AppShell-header button.mantine-Button-root:hover:not(:disabled):not([data-disabled]) {
+        background-color: ${headerButtonConfig.hoverColor} !important;
+        color: ${headerButtonConfig.hoverTextColor} !important;
+      }
+      
+      .mantine-AppShell-header .mantine-Button-root:active:not(:disabled):not([data-disabled]) {
+        background-color: ${headerButtonConfig.hoverColor} !important;
+      }
+      
+      .mantine-AppShell-header .mantine-Button-root:disabled,
+      .mantine-AppShell-header button.mantine-Button-root:disabled,
+      .mantine-AppShell-header .mantine-Button-root[data-disabled] {
+        opacity: ${headerButtonConfig.disabledOpacity} !important;
+        background-color: ${headerButtonConfig.backgroundColor} !important;
+      }
+      
+      /* Nav Button Styles - Inherits from button if not specified (expand/collapse, etc.) */
+      .mantine-AppShell-navbar .mantine-Button-root,
+      .mantine-AppShell-navbar button.mantine-Button-root,
+      .mantine-AppShell-navbar .mantine-ActionIcon-root,
+      .mantine-AppShell-navbar button.mantine-ActionIcon-root {
+        background-color: ${navButtonConfig.backgroundColor} !important;
+        color: ${navButtonConfig.textColor} !important;
+      }
+      
+      .mantine-AppShell-navbar .mantine-Button-root:hover:not(:disabled):not([data-disabled]),
+      .mantine-AppShell-navbar button.mantine-Button-root:hover:not(:disabled):not([data-disabled]),
+      .mantine-AppShell-navbar .mantine-ActionIcon-root:hover:not(:disabled):not([data-disabled]),
+      .mantine-AppShell-navbar button.mantine-ActionIcon-root:hover:not(:disabled):not([data-disabled]) {
+        background-color: ${navButtonConfig.hoverColor} !important;
+        color: ${navButtonConfig.hoverTextColor} !important;
+      }
+      
+      .mantine-AppShell-navbar .mantine-Button-root:active:not(:disabled):not([data-disabled]),
+      .mantine-AppShell-navbar .mantine-ActionIcon-root:active:not(:disabled):not([data-disabled]) {
+        background-color: ${navButtonConfig.hoverColor} !important;
+      }
+      
+      .mantine-AppShell-navbar .mantine-Button-root:disabled,
+      .mantine-AppShell-navbar button.mantine-Button-root:disabled,
+      .mantine-AppShell-navbar .mantine-Button-root[data-disabled],
+      .mantine-AppShell-navbar .mantine-ActionIcon-root:disabled,
+      .mantine-AppShell-navbar button.mantine-ActionIcon-root:disabled,
+      .mantine-AppShell-navbar .mantine-ActionIcon-root[data-disabled] {
+        opacity: ${navButtonConfig.disabledOpacity} !important;
+        background-color: ${navButtonConfig.backgroundColor} !important;
+      }
+      
+      /* Switch Component Styles */
+      .mantine-Switch-track {
+        background-color: ${config.components.switch.trackColor} !important;
+        border-color: ${config.components.switch.trackColor} !important;
+      }
+      
+      .mantine-Switch-input:checked + .mantine-Switch-track {
+        background-color: ${config.components.switch.checkedTrackColor} !important;
+        border-color: ${config.components.switch.checkedTrackColor} !important;
+      }
+      
+      .mantine-Switch-input:disabled + .mantine-Switch-track,
+      .mantine-Switch-track[data-disabled] {
+        background-color: ${config.components.switch.disabledTrackColor ?? config.components.switch.trackColor} !important;
+        border-color: ${config.components.switch.disabledTrackColor ?? config.components.switch.trackColor} !important;
+        opacity: 0.6 !important;
+      }
+      
+      .mantine-Switch-thumb {
+        background-color: ${config.components.switch.thumbColor} !important;
+        border-color: ${config.components.switch.thumbColor} !important;
+      }
+      
+      .mantine-Switch-input:checked + .mantine-Switch-track .mantine-Switch-thumb {
+        background-color: ${config.components.switch.checkedThumbColor ?? config.components.switch.thumbColor} !important;
+        border-color: ${config.components.switch.checkedThumbColor ?? config.components.switch.thumbColor} !important;
+      }
+      
+      .mantine-Switch-input:disabled + .mantine-Switch-track .mantine-Switch-thumb,
+      .mantine-Switch-track[data-disabled] .mantine-Switch-thumb {
+        background-color: ${config.components.switch.disabledThumbColor ?? config.components.switch.thumbColor} !important;
+        border-color: ${config.components.switch.disabledThumbColor ?? config.components.switch.thumbColor} !important;
+      }
+      
+      .mantine-Switch-label {
+        color: ${config.components.switch.labelColor ?? config.colors.text} !important;
+      }
+      
+      .mantine-Switch-input:disabled ~ .mantine-Switch-label,
+      .mantine-Switch-root[data-disabled] .mantine-Switch-label {
+        color: ${config.components.switch.disabledLabelColor ?? config.components.switch.labelColor ?? config.colors.textMuted} !important;
+      }
+      
+      /* Radio Component Styles */
+      .mantine-Radio-radio {
+        border-color: ${config.components.radio.uncheckedColor} !important;
+        background-color: transparent !important;
+      }
+      
+      .mantine-Radio-input:checked + .mantine-Radio-radio {
+        border-color: ${config.components.radio.checkedColor} !important;
+        background-color: ${config.components.radio.checkedColor} !important;
+      }
+      
+      .mantine-Radio-input:disabled + .mantine-Radio-radio,
+      .mantine-Radio-radio[data-disabled] {
+        border-color: ${config.components.radio.disabledColor ?? config.components.radio.uncheckedColor} !important;
+        background-color: transparent !important;
+        opacity: 0.6 !important;
+      }
+      
+      .mantine-Radio-input:checked:disabled + .mantine-Radio-radio,
+      .mantine-Radio-input:checked + .mantine-Radio-radio[data-disabled] {
+        background-color: ${config.components.radio.disabledColor ?? config.components.radio.checkedColor} !important;
+        opacity: 0.6 !important;
+      }
+      
+      .mantine-Radio-inner {
+        background-color: ${config.components.radio.dotColor ?? config.components.radio.checkedColor} !important;
+      }
+      
+      .mantine-Radio-input:checked + .mantine-Radio-radio .mantine-Radio-inner {
+        background-color: ${config.components.radio.dotColor ?? config.components.radio.checkedColor} !important;
+      }
+      
+      .mantine-Radio-input:disabled + .mantine-Radio-radio .mantine-Radio-inner,
+      .mantine-Radio-input:checked:disabled + .mantine-Radio-radio .mantine-Radio-inner,
+      .mantine-Radio-radio[data-disabled] .mantine-Radio-inner {
+        background-color: ${config.components.radio.disabledColor ?? config.components.radio.dotColor ?? config.components.radio.checkedColor} !important;
+        opacity: 0.6 !important;
+      }
+      
+      .mantine-Radio-label {
+        color: ${config.components.radio.labelColor ?? config.colors.text} !important;
+      }
+      
+      .mantine-Radio-input:disabled ~ .mantine-Radio-label,
+      .mantine-Radio-root[data-disabled] .mantine-Radio-label {
+        color: ${config.components.radio.disabledLabelColor ?? config.components.radio.labelColor ?? config.colors.textMuted} !important;
       }
       
       /* Button Outline Variant - Remove border */

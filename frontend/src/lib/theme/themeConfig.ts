@@ -54,6 +54,29 @@ export interface ThemeConfig {
       backgroundColor: string;
       textColor: string;
       hoverColor: string;
+      hoverTextColor?: string;
+      disabledOpacity?: number;
+    };
+    actionIcon: {
+      backgroundColor?: string;
+      textColor?: string;
+      hoverColor?: string;
+      hoverTextColor?: string;
+      disabledOpacity?: number;
+    };
+    headerButton: {
+      backgroundColor?: string;
+      textColor?: string;
+      hoverColor?: string;
+      hoverTextColor?: string;
+      disabledOpacity?: number;
+    };
+    navButton: {
+      backgroundColor?: string;
+      textColor?: string;
+      hoverColor?: string;
+      hoverTextColor?: string;
+      disabledOpacity?: number;
     };
     table: {
       backgroundColor: string;
@@ -91,6 +114,24 @@ export interface ThemeConfig {
       selectedTextColor: string;
       hoverBackgroundColor: string;
       hoverTextColor: string;
+    };
+    switch: {
+      trackColor: string;
+      checkedTrackColor: string;
+      disabledTrackColor?: string;
+      thumbColor: string;
+      checkedThumbColor?: string;
+      disabledThumbColor?: string;
+      labelColor?: string;
+      disabledLabelColor?: string;
+    };
+    radio: {
+      uncheckedColor: string;
+      checkedColor: string;
+      disabledColor?: string;
+      labelColor?: string;
+      disabledLabelColor?: string;
+      dotColor?: string;
     };
   };
   
@@ -178,9 +219,35 @@ export function generateThemeConfig(
         borderColor: themeColors.border,
       },
       button: {
+        backgroundColor: themeColors.colorDark,
+        textColor: themeColors.colorTextMedium,
+        hoverColor: themeColors.colorDarkHover,
+        hoverTextColor: themeColors.colorCard,
+        disabledOpacity: 0.6,
+      },
+      actionIcon: {
+        // Inherits from button if not specified
         backgroundColor: themeColors.primary,
         textColor: themeColors.colorCard,
         hoverColor: themeColors.colorDarkHover,
+        hoverTextColor: themeColors.colorTextDark,
+        disabledOpacity: 0.6,
+      },
+      headerButton: {
+        // Inherits from button if not specified
+        backgroundColor: themeColors.colorDark,
+        textColor: themeColors.colorTextDark,
+        hoverColor: themeColors.colorDarkHover,
+        hoverTextColor: themeColors.colorTextDark,
+        disabledOpacity: 0.6,
+      },
+      navButton: {
+        // Inherits from button if not specified (for expand/collapse, etc.)
+        backgroundColor: themeColors.primary,
+        textColor: themeColors.colorCard,
+        hoverColor: themeColors.colorDarkHover,
+        hoverTextColor: themeColors.colorTextDark,
+        disabledOpacity: 0.6,
       },
       table: {
         backgroundColor: themeColors.colorCard,
@@ -219,13 +286,31 @@ export function generateThemeConfig(
         hoverBackgroundColor: themeColors.colorDarkHover, // Hover chip background
         hoverTextColor: themeColors.colorCard, // Hover chip text
       },
+      switch: {
+        trackColor: themeColors.colorMedium, // Unchecked track background
+        checkedTrackColor: themeColors.primary, // Checked track background
+        disabledTrackColor: themeColors.colorMedium, // Disabled track background
+        thumbColor: themeColors.colorCard, // Thumb color when unchecked
+        checkedThumbColor: themeColors.colorCard, // Thumb color when checked
+        disabledThumbColor: themeColors.textMuted, // Disabled thumb color
+        labelColor: themeColors.colorTextDark, // Label text color
+        disabledLabelColor: themeColors.textMuted, // Disabled label color
+      },
+      radio: {
+        uncheckedColor: themeColors.border, // Unchecked radio border
+        checkedColor: themeColors.primary, // Checked radio color
+        disabledColor: themeColors.borderLight, // Disabled radio color
+        labelColor: themeColors.colorTextDark, // Label text color
+        disabledLabelColor: themeColors.textMuted, // Disabled label color
+        dotColor: themeColors.colorCard, // Inner dot color when checked
+      },
     },
     
     typography: {
       fontFamily: {
-        primary: 'var(--font-geist-sans), Arial, Helvetica, sans-serif',
-        heading: 'var(--font-geist-sans), Arial, Helvetica, sans-serif',
-        mono: 'var(--font-geist-mono), Monaco, Courier New, monospace',
+        primary: 'var(--font-primary), Arial, Helvetica, sans-serif',
+        heading: 'var(--font-heading), Arial, Helvetica, sans-serif',
+        mono: 'var(--font-mono), Monaco, Courier New, monospace',
       },
       fontSize: {
         xs: '0.75rem',

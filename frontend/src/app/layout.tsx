@@ -1,17 +1,30 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
 import { Providers } from '@/components/providers/Providers';
 import '@/styles/globals.css';
+// import { Audiowide, Saira, JetBrains_Mono } from 'next/font/google';
+import { Rajdhani, Saira, JetBrains_Mono } from 'next/font/google';
 
-const inter = Inter({
+// Primary font: Saira with weights 400, 500, 600, 700
+const primaryFont = Saira({
   subsets: ['latin'],
-  variable: '--font-geist-sans',
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-primary',
   display: 'swap',
 });
 
-const geistMono = Inter({
+// Heading font: Audiowide
+const headingFont = Rajdhani({
   subsets: ['latin'],
-  variable: '--font-geist-mono',
+  weight: '700',
+  variable: '--font-heading',
+  display: 'swap',
+});
+
+// Monospace font: JetBrains Mono with weights 400, 500, 600, 700
+const monoFont = JetBrains_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-mono',
   display: 'swap',
 });
 
@@ -27,7 +40,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} ${geistMono.variable}`}>
+      <body className={`${primaryFont.variable} ${headingFont.variable} ${monoFont.variable}`}>
         <Providers>{children}</Providers>
       </body>
     </html>
