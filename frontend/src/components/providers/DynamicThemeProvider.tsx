@@ -71,6 +71,18 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
     root.style.setProperty('--theme-card-bg', config.components.card.backgroundColor);
     root.style.setProperty('--theme-table-bg', config.components.table.backgroundColor);
     root.style.setProperty('--theme-table-header-bg', config.components.table.headerBackground);
+    
+    // Badge color generation base colors
+    // Detect dark mode from Mantine's color scheme attribute or data-theme
+    const isDark = typeof window !== 'undefined' && (
+      document.documentElement.getAttribute('data-mantine-color-scheme') === 'dark' ||
+      document.documentElement.getAttribute('data-theme') === 'dark' ||
+      document.documentElement.classList.contains('mantine-dark')
+    );
+    const badgeConfig = isDark ? config.components.badge.darkTheme : config.components.badge.lightTheme;
+    root.style.setProperty('--theme-badge-bg-base', badgeConfig.backgroundBase);
+    root.style.setProperty('--theme-badge-text-base', badgeConfig.textBase);
+    root.style.setProperty('--theme-badge-variation-count', String(config.components.badge.variationCount ?? 10));
 
     // 2. Apply body styles
     document.body.style.backgroundColor = config.components.page.backgroundColor;

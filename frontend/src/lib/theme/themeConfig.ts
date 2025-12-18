@@ -133,6 +133,17 @@ export interface ThemeConfig {
       disabledLabelColor?: string;
       dotColor?: string;
     };
+    badge: {
+      lightTheme: {
+        backgroundBase: string; // Base color for generating background variations (primaryLight)
+        textBase: string; // Base color for generating text variations (primaryDark)
+      };
+      darkTheme: {
+        backgroundBase: string; // Base color for generating background variations (primaryDark)
+        textBase: string; // Base color for generating text variations (primaryLight)
+      };
+      variationCount?: number; // Number of color variations to generate (default: 10)
+    };
   };
   
   // Typography Settings
@@ -303,6 +314,17 @@ export function generateThemeConfig(
         labelColor: themeColors.colorTextDark, // Label text color
         disabledLabelColor: themeColors.textMuted, // Disabled label color
         dotColor: themeColors.colorCard, // Inner dot color when checked
+      },
+      badge: {
+        lightTheme: {
+          backgroundBase: themeColors.primaryLight, // Base for background variations
+          textBase: themeColors.primaryDark, // Base for text variations
+        },
+        darkTheme: {
+          backgroundBase: themeColors.primaryDark, // Base for background variations
+          textBase: themeColors.primaryLight, // Base for text variations
+        },
+        variationCount: 10, // Number of color variations to generate
       },
     },
     

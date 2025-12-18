@@ -40,6 +40,7 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
+import { getBadgeColorForText } from '@/lib/utils/theme';
 import { onMenuDataUpdate, notifyMenuDataUpdate } from '@/lib/utils/menu-events';
 
 export function AddOnGroupsPage() {
@@ -582,7 +583,7 @@ export function AddOnGroupsPage() {
                         </Table.Td>
                         <Table.Td>{addOn.price.toFixed(2)}</Table.Td>
                         <Table.Td>
-                          <Badge color={addOn.isActive ? successColor : 'gray'}>
+                          <Badge color={getBadgeColorForText(addOn.isActive ? t('menu.active', language) : t('menu.inactive', language))}>
                             {addOn.isActive ? t('menu.active', language) : t('menu.inactive', language)}
                           </Badge>
                         </Table.Td>

@@ -43,6 +43,7 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
+import { getBadgeColorForText } from '@/lib/utils/theme';
 import { useInventoryRefresh } from '@/lib/contexts/inventory-refresh-context';
 
 interface RecipeIngredient {
@@ -570,7 +571,7 @@ export function RecipesPage() {
                                     ? ingredient.name
                                     : 'Unknown'}
                                 </Text>
-                                <Badge variant="light" color={primaryColor} size="sm">
+                                <Badge variant="light" color={getBadgeColorForText(`${rec.quantity} ${rec.unit}`)} size="sm">
                                   {rec.quantity} {rec.unit}
                                 </Badge>
                               </Group>

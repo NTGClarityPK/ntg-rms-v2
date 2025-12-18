@@ -46,6 +46,7 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
+import { getBadgeColorForText } from '@/lib/utils/theme';
 import { onMenuDataUpdate, notifyMenuDataUpdate } from '@/lib/utils/menu-events';
 
 export function FoodItemsPage() {
@@ -864,37 +865,47 @@ export function FoodItemsPage() {
                       <Table.Td>
                         {item.menuTypes && item.menuTypes.length > 0 ? (
                           <Group gap={4} wrap="wrap" style={{ maxWidth: 200 }}>
-                            {item.menuTypes.map((menuType) => (
-                              <Badge 
-                                key={menuType} 
-                                variant="light" 
-                                size="sm"
-                                style={{ color: primaryColor }}
-                              >
-                                {menuType === 'all_day' ? t('menu.allDay', language) :
+                            {item.menuTypes.map((menuType) => {
+                              const menuTypeLabel = menuType === 'all_day' ? t('menu.allDay', language) :
                                  menuType === 'breakfast' ? t('menu.breakfast', language) :
                                  menuType === 'lunch' ? t('menu.lunch', language) :
                                  menuType === 'dinner' ? t('menu.dinner', language) :
                                  menuType === 'kids_special' ? t('menu.kidsSpecial', language) :
-                                 menuType}
-                              </Badge>
-                            ))}
+                                 menuType;
+                              return (
+                                <Badge 
+                                  key={menuType} 
+                                  variant="light" 
+                                  size="sm"
+                                  color={getBadgeColorForText(menuTypeLabel)}
+                                >
+                                  {menuTypeLabel}
+                                </Badge>
+                              );
+                            })}
                           </Group>
                         ) : item.menuType ? (
-                          <Badge variant="light" size="sm" style={{ color: primaryColor }}>
-                      {item.menuType === 'all_day' ? t('menu.allDay', language) :
-                       item.menuType === 'breakfast' ? t('menu.breakfast', language) :
-                       item.menuType === 'lunch' ? t('menu.lunch', language) :
-                       item.menuType === 'dinner' ? t('menu.dinner', language) :
-                       item.menuType === 'kids_special' ? t('menu.kidsSpecial', language) :
-                       item.menuType}
-                    </Badge>
+                          <Badge variant="light" size="sm" color={getBadgeColorForText(
+                            item.menuType === 'all_day' ? t('menu.allDay', language) :
+                            item.menuType === 'breakfast' ? t('menu.breakfast', language) :
+                            item.menuType === 'lunch' ? t('menu.lunch', language) :
+                            item.menuType === 'dinner' ? t('menu.dinner', language) :
+                            item.menuType === 'kids_special' ? t('menu.kidsSpecial', language) :
+                            item.menuType
+                          )}>
+                            {item.menuType === 'all_day' ? t('menu.allDay', language) :
+                             item.menuType === 'breakfast' ? t('menu.breakfast', language) :
+                             item.menuType === 'lunch' ? t('menu.lunch', language) :
+                             item.menuType === 'dinner' ? t('menu.dinner', language) :
+                             item.menuType === 'kids_special' ? t('menu.kidsSpecial', language) :
+                             item.menuType}
+                          </Badge>
                         ) : (
                           <Text c="dimmed" size="sm">-</Text>
                         )}
                   </Table.Td>
                   <Table.Td>
-                        <Badge color={item.isActive ? successColor : 'gray'} size="sm">
+                        <Badge color={getBadgeColorForText(item.isActive ? t('menu.active', language) : t('menu.inactive', language))} size="sm">
                       {item.isActive ? t('menu.active', language) : t('menu.inactive', language)}
                     </Badge>
                   </Table.Td>

@@ -164,23 +164,148 @@ export function getInfoColor(): string {
 }
 
 /**
+ * Simple hash function to convert string to number
+ * Returns a consistent number between 0 and max-1
+ */
+function hashString(str: string, max: number): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return Math.abs(hash) % max;
+}
+
+/**
+ * Generate color variation from base color
+ * Creates variations by lightening/darkening and slight hue shifts
+ */
+function generateColorVariation(baseColor: string, index: number, totalVariations: number): string {
+  const rgb = hexToRgb(baseColor);
+  if (!rgb) return baseColor;
+  
+  // Create variation by:
+  // 1. Adjusting brightness based on index
+  // 2. Slight hue shift for more variety
+  const brightnessVariation = (index / totalVariations) * 0.4 - 0.2; // -0.2 to +0.2
+  const hueShift = (index / totalVariations) * 30; // 0-30 degrees
+  
+  // Adjust brightness
+  let r = rgb.r;
+  let g = rgb.g;
+  let b = rgb.b;
+  
+  if (brightnessVariation > 0) {
+    // Lighten
+    r = Math.min(255, Math.round(r + (255 - r) * brightnessVariation));
+    g = Math.min(255, Math.round(g + (255 - g) * brightnessVariation));
+    b = Math.min(255, Math.round(b + (255 - b) * brightnessVariation));
+  } else {
+    // Darken
+    r = Math.max(0, Math.round(r * (1 + brightnessVariation)));
+    g = Math.max(0, Math.round(g * (1 + brightnessVariation)));
+    b = Math.max(0, Math.round(b * (1 + brightnessVariation)));
+  }
+  
+  // Apply slight hue shift (rotate RGB values)
+  const shift = Math.floor(hueShift / 120); // 0, 1, or 2
+  if (shift === 1) {
+    [r, g, b] = [g, b, r];
+  } else if (shift === 2) {
+    [r, g, b] = [b, r, g];
+  }
+  
+  return rgbToHex(r, g, b);
+}
+
+/**
+ * Get badge colors based on text content
+ * Uses hash-based color generation from themeConfig badge settings
+ */
+export function getBadgeColors(text: string, isDark: boolean = false): { background: string; text: string } {
+  let backgroundBase: string;
+  let textBase: string;
+  let variationCount = 10;
+  
+  if (typeof window !== 'undefined') {
+    try {
+      // Try to get from CSS custom properties set by DynamicThemeProvider
+      const bgBase = getComputedStyle(document.documentElement)
+        .getPropertyValue('--theme-badge-bg-base')
+        .trim();
+      const txtBase = getComputedStyle(document.documentElement)
+        .getPropertyValue('--theme-badge-text-base')
+        .trim();
+      const varCount = getComputedStyle(document.documentElement)
+        .getPropertyValue('--theme-badge-variation-count')
+        .trim();
+      
+      if (bgBase && txtBase) {
+        backgroundBase = bgBase;
+        textBase = txtBase;
+        if (varCount) {
+          variationCount = parseInt(varCount, 10) || 10;
+        }
+      } else {
+        // Fallback to theme color generation
+        const themeColor = getThemeColor();
+        // Detect dark mode from document
+        const detectedDark = document.documentElement.getAttribute('data-theme') === 'dark' || 
+                            document.documentElement.classList.contains('mantine-dark');
+        const useDark = isDark || detectedDark;
+        backgroundBase = useDark ? mixColors(themeColor, '#000000', 0.3) : mixColors(themeColor, '#ffffff', 0.7);
+        textBase = useDark ? mixColors(themeColor, '#ffffff', 0.7) : mixColors(themeColor, '#000000', 0.3);
+      }
+    } catch {
+      // Fallback
+      const themeColor = getThemeColor();
+      const detectedDark = document.documentElement.getAttribute('data-theme') === 'dark' || 
+                          document.documentElement.classList.contains('mantine-dark');
+      const useDark = isDark || detectedDark;
+      backgroundBase = useDark ? mixColors(themeColor, '#000000', 0.3) : mixColors(themeColor, '#ffffff', 0.7);
+      textBase = useDark ? mixColors(themeColor, '#ffffff', 0.7) : mixColors(themeColor, '#000000', 0.3);
+    }
+  } else {
+    // SSR fallback
+    const themeColor = DEFAULT_THEME_COLOR;
+    backgroundBase = isDark ? mixColors(themeColor, '#000000', 0.3) : mixColors(themeColor, '#ffffff', 0.7);
+    textBase = isDark ? mixColors(themeColor, '#ffffff', 0.7) : mixColors(themeColor, '#000000', 0.3);
+  }
+  
+  // Hash the text to get a consistent index
+  const index = hashString(text.toLowerCase(), variationCount);
+  
+  // Generate colors from base colors
+  const background = generateColorVariation(backgroundBase, index, variationCount);
+  const textColor = generateColorVariation(textBase, index, variationCount);
+  
+  return { background, text: textColor };
+}
+
+/**
  * Get status color based on order status
- * Returns dynamic theme-based color values
+ * Now uses hash-based badge color generation from badge text
  */
 export function getStatusColor(status: string): string {
-  const themeColor = getThemeColor();
-  
-  // Map statuses to semantic colors based on theme
-  const statusMap: Record<string, string> = {
-    pending: getWarningColor(), // Warning - needs attention
-    preparing: getInfoColor(), // Info - in progress
-    ready: getSuccessColor(), // Success - ready
-    served: mixColors(themeColor, '#00bcd4', 0.3), // Cyan-tinted info variant
-    completed: mixColors(themeColor, '#9e9e9e', 0.5), // Neutral gray-tinted
-    cancelled: getErrorColor(), // Error - cancelled
-  };
-  
-  return statusMap[status] || mixColors(themeColor, '#9e9e9e', 0.5);
+  // Use the new badge color system - hash the status text to get consistent color
+  const isDark = typeof window !== 'undefined' && 
+    (document.documentElement.getAttribute('data-theme') === 'dark' ||
+     document.documentElement.classList.contains('mantine-dark'));
+  const colors = getBadgeColors(status, isDark);
+  return colors.background;
+}
+
+/**
+ * Get badge color for any text label (active, inactive, dine-in, etc.)
+ * Use this for badges that display text directly
+ */
+export function getBadgeColorForText(text: string): string {
+  const isDark = typeof window !== 'undefined' && 
+    (document.documentElement.getAttribute('data-theme') === 'dark' ||
+     document.documentElement.classList.contains('mantine-dark'));
+  const colors = getBadgeColors(text, isDark);
+  return colors.background;
 }
 
 /**

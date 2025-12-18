@@ -44,6 +44,7 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
+import { getBadgeColorForText } from '@/lib/utils/theme';
 import '@mantine/dates/styles.css';
 
 const ROLES = [
@@ -558,7 +559,7 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
                     </Table.Td>
                     <Table.Td>{employee.email}</Table.Td>
                     <Table.Td>
-                      <Badge color={primaryColor} variant="light">
+                      <Badge color={getBadgeColorForText(getRoleLabel(employee.role))} variant="light">
                         {getRoleLabel(employee.role)}
                       </Badge>
                     </Table.Td>

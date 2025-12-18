@@ -30,7 +30,7 @@ import { t } from '@/lib/utils/translations';
 import { useInventoryRefresh } from '@/lib/contexts/inventory-refresh-context';
 import { useErrorColor, useSuccessColor, useWarningColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getWarningColor } from '@/lib/utils/theme';
+import { getWarningColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { useCurrency } from '@/lib/hooks/use-currency';
 
 const CATEGORIES = [
@@ -465,7 +465,7 @@ export function InventoryReportsPage() {
                   </Table.Td>
                   <Table.Td>
                     {item.category ? (
-                      <Badge variant="light" color={primaryColor}>
+                      <Badge variant="light" color={getBadgeColorForText(t(`inventory.${item.category}` as any, language) || item.category)}>
                         {t(`inventory.${item.category}` as any, language) || item.category}
                       </Badge>
                     ) : (
@@ -476,7 +476,7 @@ export function InventoryReportsPage() {
                     <Group gap="xs">
                       <Text>{item.currentStock} {item.unitOfMeasurement}</Text>
                       {item.isLowStock && (
-                        <Badge color={warningColor} size="sm">
+                        <Badge variant="light" color={getBadgeColorForText(t('inventory.isLowStock', language))} size="sm">
                           {t('inventory.isLowStock', language)}
                         </Badge>
                       )}
@@ -494,7 +494,7 @@ export function InventoryReportsPage() {
                     </Text>
                   </Table.Td>
                   <Table.Td>
-                    <Badge color={item.isLowStock ? warningColor : successColor}>
+                    <Badge variant="light" color={getBadgeColorForText(item.isLowStock ? t('inventory.isLowStock', language) : (t('common.active' as any, language) || 'Active'))}>
                       {item.isLowStock ? t('inventory.isLowStock', language) : (t('common.active' as any, language) || 'Active')}
                     </Badge>
                   </Table.Td>

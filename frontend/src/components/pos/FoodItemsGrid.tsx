@@ -23,7 +23,7 @@ import { t } from '@/lib/utils/translations';
 import { db } from '@/lib/indexeddb/database';
 import { FoodItem } from '@/lib/indexeddb/database';
 import { useThemeColor, useThemeColorShade } from '@/lib/hooks/use-theme-color';
-import { getErrorColor, getWarningColor } from '@/lib/utils/theme';
+import { getErrorColor, getWarningColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { ItemSelectionModal } from './ItemSelectionModal';
 import { useCurrency } from '@/lib/hooks/use-currency';
 
@@ -79,7 +79,10 @@ export function FoodItemsGrid({
         .filter((item) => item.isActive && !item.deletedAt);
 
       if (selectedCategoryIds.length > 0) {
-        itemsQuery = itemsQuery.filter((item) => item.categoryId && selectedCategoryIds.includes(item.categoryId));
+        itemsQuery = itemsQuery.filter((item) => {
+          const categoryId = item.categoryId;
+          return categoryId !== undefined && categoryId !== null && selectedCategoryIds.includes(categoryId);
+        });
       }
 
       const items = await itemsQuery.toArray();
@@ -215,12 +218,12 @@ export function FoodItemsGrid({
                           </Text>
 
                           {isOutOfStock && (
-                            <Badge color={getErrorColor()} size="sm">
+                            <Badge variant="light" color={getBadgeColorForText(t('pos.outOfStock', language))} size="sm">
                               {t('pos.outOfStock', language)}
                             </Badge>
                           )}
                           {isLimitedStock && (
-                            <Badge color={getWarningColor()} size="sm">
+                            <Badge variant="light" color={getBadgeColorForText(t('pos.limitedStock', language))} size="sm">
                               {t('pos.limitedStock', language)}
                             </Badge>
                           )}

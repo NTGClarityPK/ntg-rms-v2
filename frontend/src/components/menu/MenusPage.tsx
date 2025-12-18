@@ -23,6 +23,7 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
+import { getBadgeColorForText } from '@/lib/utils/theme';
 import { onMenuDataUpdate, notifyMenuDataUpdate } from '@/lib/utils/menu-events';
 
 export function MenusPage() {
@@ -200,7 +201,7 @@ export function MenusPage() {
                     {menu.itemCount} {t('menu.foodItems', language)}
                   </Text>
                 </div>
-                <Badge color={menu.isActive ? successColor : 'gray'}>
+                <Badge color={getBadgeColorForText(menu.isActive ? t('menu.active', language) : t('menu.inactive', language))}>
                   {menu.isActive ? t('menu.active', language) : t('menu.inactive', language)}
                 </Badge>
               </Group>

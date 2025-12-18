@@ -45,7 +45,7 @@ import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { DateInput } from '@mantine/dates';
 import '@mantine/dates/styles.css';
-import { getInfoColor } from '@/lib/utils/theme';
+import { getInfoColor, getBadgeColorForText } from '@/lib/utils/theme';
 const LOYALTY_TIERS = {
   regular: { label: 'Regular', color: 'gray', discount: 0 },
   silver: { label: 'Silver', color: 'gray', discount: 5 },
@@ -491,7 +491,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
                       </Table.Td>
                       <Table.Td>{customer.phone}</Table.Td>
                       <Table.Td>
-                        <Badge color={primaryColor} variant="light">
+                        <Badge color={getBadgeColorForText(String(customer.totalOrders))} variant="light">
                           {customer.totalOrders}
                         </Badge>
                       </Table.Td>
@@ -502,7 +502,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
                         </Text>
                       </Table.Td>
                       <Table.Td>
-                        <Badge color={tierInfo.color} variant="light" leftSection={<IconTrophy size={12} />}>
+                        <Badge color={getBadgeColorForText(tierInfo.label)} variant="light" leftSection={<IconTrophy size={12} />}>
                           {tierInfo.label}
                           {tierInfo.discount > 0 && ` (${tierInfo.discount}%)`}
                         </Badge>
@@ -651,7 +651,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
                       {(() => {
                         const tierInfo = getLoyaltyTierInfo(selectedCustomer.loyaltyTier);
                         return (
-                          <Badge color={tierInfo.color} variant="light" size="lg" leftSection={<IconTrophy size={14} />}>
+                          <Badge color={getBadgeColorForText(tierInfo.label)} variant="light" size="lg" leftSection={<IconTrophy size={14} />}>
                             {tierInfo.label}
                             {tierInfo.discount > 0 && ` (${tierInfo.discount}% ${t('customers.discount', language)})`}
                           </Badge>
@@ -764,7 +764,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
                               </Table.Td>
                               <Table.Td>
                                 {currentTier === 'regular' && (
-                                  <Badge color={infoColor} variant="light" size="sm">
+                                  <Badge color={getBadgeColorForText(t('customers.current', language) || 'Current')} variant="light" size="sm">
                                     {t('customers.current', language) || 'Current'}
                                   </Badge>
                                 )}
@@ -787,7 +787,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
                               </Table.Td>
                               <Table.Td>
                                 {currentTier === 'silver' && (
-                                  <Badge color={infoColor} variant="light" size="sm">
+                                  <Badge color={getBadgeColorForText(t('customers.current', language) || 'Current')} variant="light" size="sm">
                                     {t('customers.current', language) || 'Current'}
                                   </Badge>
                                 )}
@@ -810,7 +810,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
                               </Table.Td>
                               <Table.Td>
                                 {currentTier === 'gold' && (
-                                  <Badge color={infoColor} variant="light" size="sm">
+                                  <Badge color={getBadgeColorForText(t('customers.current', language) || 'Current')} variant="light" size="sm">
                                     {t('customers.current', language) || 'Current'}
                                   </Badge>
                                 )}
@@ -833,7 +833,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
                               </Table.Td>
                               <Table.Td>
                                 {currentTier === 'platinum' && (
-                                  <Badge color={infoColor} variant="light" size="sm">
+                                  <Badge color={getBadgeColorForText(t('customers.current', language) || 'Current')} variant="light" size="sm">
                                     {t('customers.current', language) || 'Current'}
                                   </Badge>
                                 )}
@@ -865,19 +865,13 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
                       <Table.Tr key={order.id}>
                         <Table.Td>{order.orderNumber}</Table.Td>
                         <Table.Td>
-                          <Badge color={primaryColor} variant="light">
+                          <Badge color={getBadgeColorForText(t(`orders.orderType.${order.orderType}` as any, language) || order.orderType)} variant="light">
                             {t(`orders.orderType.${order.orderType}` as any, language) || order.orderType}
                           </Badge>
                         </Table.Td>
                         <Table.Td>
                           <Badge
-                            color={
-                              order.status === 'completed'
-                                ? successColor
-                                : order.status === 'cancelled'
-                                  ? errorColor
-                                  : primaryColor
-                            }
+                            color={getBadgeColorForText(t(`orders.status.${order.status}` as any, language) || order.status)}
                             variant="light"
                           >
                             {t(`orders.status.${order.status}` as any, language) || order.status}
@@ -918,7 +912,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
                         <Text fw={500}>
                           {address.addressLabel ? t(`customers.addressLabel.${address.addressLabel}` as any, language) || address.addressLabel : t('customers.address', language)}
                           {address.isDefault && (
-                            <Badge color={successColor} variant="light" ml="xs" size="xs">
+                            <Badge color={getBadgeColorForText(t('customers.default', language))} variant="light" ml="xs" size="xs">
                               {t('customers.default', language)}
                             </Badge>
                           )}

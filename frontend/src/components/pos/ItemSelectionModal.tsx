@@ -21,7 +21,7 @@ import { t } from '@/lib/utils/translations';
 import { db } from '@/lib/indexeddb/database';
 import { FoodItem, CartItem } from '@/lib/indexeddb/database';
 import { useThemeColor, useThemeColorShade } from '@/lib/hooks/use-theme-color';
-import { getErrorColor, getSuccessColor } from '@/lib/utils/theme';
+import { getErrorColor, getSuccessColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { useCurrency } from '@/lib/hooks/use-currency';
 
 interface ItemSelectionModalProps {
@@ -563,7 +563,9 @@ export function ItemSelectionModal({
                   </Text>
                 </Group>
                 <Group justify="space-between">
-                  <Badge color={getSuccessColor()} variant="light">
+                  <Badge color={getBadgeColorForText(activeDiscount.discountType === 'percentage'
+                    ? `${activeDiscount.discountValue}% ${t('pos.discount', language) || 'OFF'}`
+                    : `${discountAmount.toFixed(2)} ${currency} ${t('pos.discount', language) || 'OFF'}`)} variant="light">
                     {activeDiscount.discountType === 'percentage'
                       ? `${activeDiscount.discountValue}% ${t('pos.discount', language) || 'OFF'}`
                       : `${discountAmount.toFixed(2)} ${currency} ${t('pos.discount', language) || 'OFF'}`}

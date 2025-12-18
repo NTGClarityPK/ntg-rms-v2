@@ -32,7 +32,7 @@ import { useLanguageStore } from '@/lib/store/language-store';
 import { useSyncStatus } from '@/lib/hooks/use-sync-status';
 import { t } from '@/lib/utils/translations';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getSuccessColor, getErrorColor } from '@/lib/utils/theme';
+import { getSuccessColor, getErrorColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { DATE_FORMATS, INVOICE_FORMATS } from '@/lib/utils/date-formatter';
 import Link from 'next/link';
 import { useAuthStore } from '@/lib/store/auth-store';
@@ -747,7 +747,9 @@ export default function SettingsPage() {
                                 : t('taxes.itemWise' as any, language) || 'Item'}
                             </Table.Td>
                             <Table.Td>
-                              <Badge color={tax.isActive ? 'green' : 'gray'}>
+                              <Badge variant="light" color={getBadgeColorForText(tax.isActive
+                                ? (t('common.active' as any, language) || 'Active')
+                                : (t('common.inactive' as any, language) || 'Inactive'))}>
                                 {tax.isActive
                                   ? t('common.active' as any, language) || 'Active'
                                   : t('common.inactive' as any, language) || 'Inactive'}

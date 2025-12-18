@@ -19,7 +19,7 @@ import { useCurrency } from '@/lib/hooks/use-currency';
 import { dashboardApi, DashboardData } from '@/lib/api/dashboard';
 import { useSyncStatus } from '@/lib/hooks/use-sync-status';
 import { notifications } from '@mantine/notifications';
-import { getErrorColor } from '@/lib/utils/theme';
+import { getErrorColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { IconX } from '@tabler/icons-react';
 
 export default function DashboardPage() {
@@ -203,10 +203,10 @@ export default function DashboardPage() {
                         {(alert as any).name || (alert as any).nameEn || (alert as any).nameAr || 'Unknown'}
                       </Text>
                       <Group gap="xs" mt="xs">
-                        <Badge color="red" variant="light">
+                        <Badge color={getBadgeColorForText(`${t('dashboard.stock' as any, language) || 'Stock'}: ${alert.currentStock}`)} variant="light">
                           {t('dashboard.stock' as any, language) || 'Stock'}: {alert.currentStock}
                         </Badge>
-                        <Badge color="orange" variant="light">
+                        <Badge color={getBadgeColorForText(`${t('dashboard.threshold' as any, language) || 'Threshold'}: ${alert.minimumThreshold}`)} variant="light">
                           {t('dashboard.threshold' as any, language) || 'Threshold'}: {alert.minimumThreshold}
                         </Badge>
                       </Group>
@@ -284,7 +284,7 @@ export default function DashboardPage() {
                             : type}
                         </Table.Td>
                         <Table.Td>
-                          <Badge color={primary} variant="light">{count}</Badge>
+                          <Badge color={getBadgeColorForText(String(count))} variant="light">{count}</Badge>
                         </Table.Td>
                       </Table.Tr>
                     ))}

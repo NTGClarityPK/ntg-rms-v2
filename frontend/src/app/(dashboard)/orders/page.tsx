@@ -34,7 +34,7 @@ import { notifications } from '@mantine/notifications';
 import { useDisclosure } from '@mantine/hooks';
 import { OrderDetailsModal } from '@/components/orders/OrderDetailsModal';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getStatusColor, getSuccessColor, getErrorColor } from '@/lib/utils/theme';
+import { getStatusColor, getSuccessColor, getErrorColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { db } from '@/lib/indexeddb/database';
@@ -589,10 +589,10 @@ export default function OrdersPage() {
                               {t('pos.tokenNumber', language)}: {order.tokenNumber}
                             </Text>
                           )}
-                          <Badge color={getStatusColorForBadge(order.status)}>
+                          <Badge variant="light" color={getStatusColorForBadge(order.status)}>
                             {t(`orders.status.${order.status}`, language)}
                           </Badge>
-                          <Badge variant="light" color={primary}>
+                          <Badge variant="light" color={getBadgeColorForText(getOrderTypeLabel(order.orderType))}>
                             {getOrderTypeLabel(order.orderType)}
                           </Badge>
                         </Group>

@@ -32,7 +32,7 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getWarningColor } from '@/lib/utils/theme';
+import { getWarningColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { useInventoryRefresh } from '@/lib/contexts/inventory-refresh-context';
 
 const CATEGORIES = [
@@ -518,7 +518,7 @@ export function IngredientsPage() {
                   </Table.Td>
                   <Table.Td>
                     {ingredient.category ? (
-                      <Badge variant="light" color={primaryColor}>
+                      <Badge variant="light" color={getBadgeColorForText(t(`inventory.${ingredient.category}` as any, language) || ingredient.category)}>
                         {t(`inventory.${ingredient.category}` as any, language) || ingredient.category}
                       </Badge>
                     ) : (
