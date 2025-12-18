@@ -15,6 +15,7 @@ import {
   Stack,
   Skeleton,
   Button,
+  Paper,
 } from '@mantine/core';
 import { IconSearch, IconShoppingCart } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
@@ -78,7 +79,7 @@ export function FoodItemsGrid({
         .filter((item) => item.isActive && !item.deletedAt);
 
       if (selectedCategoryIds.length > 0) {
-        itemsQuery = itemsQuery.filter((item) => selectedCategoryIds.includes(item.categoryId));
+        itemsQuery = itemsQuery.filter((item) => item.categoryId && selectedCategoryIds.includes(item.categoryId));
       }
 
       const items = await itemsQuery.toArray();
@@ -117,43 +118,41 @@ export function FoodItemsGrid({
   );
 
   return (
-    <Box style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* Header with Search and Categories */}
-      <Box p="md" style={{ borderBottom: `1px solid var(--mantine-color-gray-3)` }}>
-        <Stack gap="md">
-          {/* Search */}
-          <TextInput
-            placeholder={t('pos.searchItems', language)}
-            leftSection={<IconSearch size={16} />}
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-          />
+    <Stack gap="md">
+      {/* Search */}
+      <Paper p="md" withBorder>
+        <TextInput
+          placeholder={t('pos.searchItems', language)}
+          leftSection={<IconSearch size={16} />}
+          value={searchQuery}
+          onChange={(e) => onSearchChange(e.target.value)}
+        />
+      </Paper>
 
-          {/* Categories */}
-          <ScrollArea>
-            <Group gap="xs" wrap="wrap" className="filter-chip-group">
-              <Chip
-                checked={selectedCategoryIds.length === 0}
-                onChange={() => onCategoryChange([])}
-                variant="filled"
-              >
-                {t('pos.allCategories', language)}
-              </Chip>
-              <Chip.Group multiple value={selectedCategoryIds} onChange={onCategoryChange}>
-                {categories.map((category) => (
-                  <Chip key={category.id} value={category.id} variant="filled">
-                    {category.name}
-                  </Chip>
-                ))}
-              </Chip.Group>
-            </Group>
-          </ScrollArea>
-        </Stack>
-      </Box>
+      {/* Categories */}
+      <Paper p="sm" withBorder>
+        <ScrollArea>
+          <Group gap="xs" wrap="wrap" className="filter-chip-group">
+            <Chip
+              checked={selectedCategoryIds.length === 0}
+              onChange={() => onCategoryChange([])}
+              variant="filled"
+            >
+              {t('pos.allCategories', language)}
+            </Chip>
+            <Chip.Group multiple value={selectedCategoryIds} onChange={onCategoryChange}>
+              {categories.map((category) => (
+                <Chip key={category.id} value={category.id} variant="filled">
+                  {category.name}
+                </Chip>
+              ))}
+            </Chip.Group>
+          </Group>
+        </ScrollArea>
+      </Paper>
 
       {/* Food Items Grid */}
-      <ScrollArea style={{ flex: 1 }}>
-        <Box p="md">
+      <Box>
           {loading ? (
             <Grid>
               {[...Array(12)].map((_, i) => (
@@ -251,8 +250,7 @@ export function FoodItemsGrid({
               })}
             </Grid>
           )}
-        </Box>
-      </ScrollArea>
+      </Box>
 
       {/* Item Selection Modal */}
       {selectedItem && (
@@ -266,7 +264,7 @@ export function FoodItemsGrid({
           onItemSelected={handleItemSelected}
         />
       )}
-    </Box>
+    </Stack>
   );
 }
 

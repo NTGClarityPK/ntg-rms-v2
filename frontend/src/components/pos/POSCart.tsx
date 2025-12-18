@@ -1668,13 +1668,11 @@ export function POSCart({
                   {t('pos.paymentMethod', language)}
                 </Text>
                 <SegmentedControl
+                  className="order-type-selector"
                   fullWidth
                   value={paymentMethod || ''}
                   onChange={(value) => setPaymentMethod(value as any)}
                   data={enabledPaymentMethods}
-                  style={{
-                    '--sc-color': primaryShade,
-                  } as any}
                 />
               </Box>
 
