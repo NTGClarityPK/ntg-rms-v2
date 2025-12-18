@@ -1465,7 +1465,7 @@ async function seedOrders(
   console.log('\n📦 Seeding orders...');
 
   const orderStatuses = ['pending', 'preparing', 'ready', 'served', 'completed'];
-  const paymentStatuses = ['unpaid', 'paid', 'partial'];
+  const paymentStatuses = ['unpaid', 'paid'];
   const orderTypes = ['dine_in', 'takeaway', 'delivery'];
   const paymentMethods = ['cash', 'card', 'mobile_wallet'];
 

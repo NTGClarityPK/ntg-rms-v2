@@ -191,7 +191,6 @@ export function getPaymentStatusColor(status: string): string {
   const statusMap: Record<string, string> = {
     paid: getSuccessColor(), // Success
     unpaid: getWarningColor(), // Warning
-    partial: mixColors(getWarningColor(), '#ff9800', 0.5), // Orange-tinted warning variant
   };
   
   return statusMap[status] || mixColors(getThemeColor(), '#9e9e9e', 0.5);

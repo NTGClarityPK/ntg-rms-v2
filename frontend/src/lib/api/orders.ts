@@ -3,7 +3,7 @@ import { API_ENDPOINTS } from '../constants/api';
 
 export type OrderStatus = 'pending' | 'preparing' | 'ready' | 'served' | 'completed' | 'cancelled';
 export type OrderType = 'dine_in' | 'takeaway' | 'delivery';
-export type PaymentStatus = 'unpaid' | 'paid' | 'partial';
+export type PaymentStatus = 'unpaid' | 'paid';
 
 export interface OrderItem {
   id: string;

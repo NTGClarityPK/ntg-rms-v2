@@ -245,7 +245,7 @@ export class InvoiceGenerator {
   <div class="section">
     <div class="section-title">${isRTL ? 'معلومات الدفع' : 'PAYMENT INFORMATION'}</div>
     ${(order as any).paymentMethod ? `<div class="info"><strong>${isRTL ? 'طريقة الدفع' : 'Payment Method'}:</strong> ${(order as any).paymentMethod === 'cash' ? (isRTL ? 'نقدي' : 'Cash') : (order as any).paymentMethod === 'card' ? (isRTL ? 'بطاقة' : 'Card') : (order as any).paymentMethod === 'zainCash' ? 'ZainCash' : (order as any).paymentMethod === 'asiaHawala' ? 'Asia Hawala' : (order as any).paymentMethod === 'bankTransfer' ? (isRTL ? 'تحويل بنكي' : 'Bank Transfer') : (order as any).paymentMethod.toUpperCase()}</div>` : ''}
-    <div class="info"><strong>${isRTL ? 'حالة الدفع' : 'Payment Status'}:</strong> ${order.paymentStatus === 'paid' ? (isRTL ? 'تم الدفع' : 'PAID') : order.paymentStatus === 'partial' ? (isRTL ? 'دفع جزئي' : 'PARTIAL') : (isRTL ? 'غير مدفوع' : 'UNPAID')}</div>
+    <div class="info"><strong>${isRTL ? 'حالة الدفع' : 'Payment Status'}:</strong> ${order.paymentStatus === 'paid' ? (isRTL ? 'تم الدفع' : 'PAID') : (isRTL ? 'غير مدفوع' : 'UNPAID')}</div>
   </div>
 
   ${showVatNumber && tenant.vatNumber && order.taxAmount ? `
@@ -538,7 +538,7 @@ export class InvoiceGenerator {
     <div class="section-title">${isRTL ? 'معلومات الدفع' : 'PAYMENT INFORMATION'}</div>
     <div class="info">
       ${(order as any).paymentMethod ? `<strong>${isRTL ? 'طريقة الدفع' : 'Payment Method'}:</strong> ${(order as any).paymentMethod === 'cash' ? (isRTL ? 'نقدي' : 'Cash') : (order as any).paymentMethod === 'card' ? (isRTL ? 'بطاقة' : 'Card') : (order as any).paymentMethod === 'zainCash' ? 'ZainCash' : (order as any).paymentMethod === 'asiaHawala' ? 'Asia Hawala' : (order as any).paymentMethod === 'bankTransfer' ? (isRTL ? 'تحويل بنكي' : 'Bank Transfer') : (order as any).paymentMethod.toUpperCase()}<br>` : ''}
-      <strong>${isRTL ? 'حالة الدفع' : 'Payment Status'}:</strong> ${order.paymentStatus === 'paid' ? (isRTL ? 'تم الدفع' : 'PAID') : order.paymentStatus === 'partial' ? (isRTL ? 'دفع جزئي' : 'PARTIAL') : (isRTL ? 'غير مدفوع' : 'UNPAID')}
+      <strong>${isRTL ? 'حالة الدفع' : 'Payment Status'}:</strong> ${order.paymentStatus === 'paid' ? (isRTL ? 'تم الدفع' : 'PAID') : (isRTL ? 'غير مدفوع' : 'UNPAID')}
     </div>
   </div>
 
