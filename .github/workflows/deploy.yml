@@ -10,7 +10,7 @@ on:
 jobs:
   deploy:
     name: Deploy
-    runs-on: [self-hosted, ntg-server]
+    runs-on: self-hosted
 
     steps:
       - name: Determine Environment
