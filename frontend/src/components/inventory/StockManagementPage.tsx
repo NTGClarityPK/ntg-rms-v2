@@ -51,6 +51,7 @@ import { t } from '@/lib/utils/translations';
 import { useInventoryRefresh } from '@/lib/contexts/inventory-refresh-context';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
+import { getBadgeColorForText } from '@/lib/utils/theme';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { Branch } from '@/lib/indexeddb/database';
 
@@ -944,13 +945,8 @@ export function StockManagementPage() {
                   </Table.Td>
                   <Table.Td>
                     <Badge
-                      color={
-                        tx.transactionType === 'purchase' || tx.transactionType === 'transfer_in'
-                          ? successColor
-                          : tx.transactionType === 'usage' || tx.transactionType === 'transfer_out' || tx.transactionType === 'waste' || tx.transactionType === 'damaged' || tx.transactionType === 'expired'
-                          ? errorColor
-                          : primaryColor
-                      }
+                      variant="light"
+                      color={getBadgeColorForText(getTransactionTypeLabel(tx.transactionType))}
                     >
                       {getTransactionTypeLabel(tx.transactionType)}
                     </Badge>

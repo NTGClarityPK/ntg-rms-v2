@@ -210,114 +210,111 @@ export function generateThemeConfig(
   return {
     colors: themeColors,
     
-    // Component-specific overrides - modify these to customize individual components
+    // Component-specific overrides - Modern UI/UX principles applied
     components: {
       navbar: {
-        backgroundColor: themeColors.colorMedium, // Change this to customize navbar
+        backgroundColor: themeColors.colorCard, // Pure white/dark surface
         borderColor: 'transparent',
-        textColor: themeColors.colorTextMedium,
-        hoverBackground: themeColors.colorDarkHover, // Navbar menu hover background
-        hoverTextColor: themeColors.colorTextDark, // Navbar menu hover text
-        activeBackground: themeColors.colorDark, // Navbar menu selected/active background
-        activeTextColor: themeColors.colorTextDark, // Navbar menu selected/active text color - customize this
-        },
+        textColor: themeColors.colorTextDark,
+        hoverBackground: themeColors.colorMedium, // Subtle surface variant
+        hoverTextColor: themeColors.primary, // Primary color on hover
+        activeBackground: themeColors.primaryLightest, // Lightest primary for subtle active state
+        activeTextColor: themeColors.primary, // Primary color for active
+      },
       header: {
-        backgroundColor: themeColors.colorMedium, // Change this to customize header
+        backgroundColor: themeColors.colorCard, // Same as navbar for consistency
         borderColor: 'transparent',
-        textColor: themeColors.colorTextLight,
+        textColor: themeColors.colorTextDark,
       },
       page: {
-        backgroundColor: themeColors.colorLight, // Page background color - customize this
+        backgroundColor: themeColors.colorLight, // Subtle background
       },
       card: {
         backgroundColor: themeColors.colorCard,
-        borderColor: themeColors.border,
+        borderColor: themeColors.borderLight,
       },
       button: {
-        backgroundColor: themeColors.colorDark,
-        textColor: themeColors.colorTextMedium,
-        hoverColor: themeColors.colorDarkHover,
-        hoverTextColor: themeColors.colorCard,
-        disabledOpacity: 0.6,
+        backgroundColor: themeColors.primary,
+        textColor: isDark ? themeColors.pureBlack : themeColors.pureWhite, // High contrast
+        hoverColor: themeColors.primaryDark,
+        hoverTextColor: isDark ? themeColors.pureBlack : themeColors.pureWhite,
+        disabledOpacity: 0.38, // WCAG compliant
       },
       actionIcon: {
-        // Inherits from button if not specified
-        backgroundColor: themeColors.primary,
-        textColor: themeColors.colorCard,
-        hoverColor: themeColors.colorDarkHover,
-        hoverTextColor: themeColors.colorTextDark,
-        disabledOpacity: 0.6,
+        backgroundColor: 'transparent',
+        textColor: themeColors.colorTextMedium,
+        hoverColor: themeColors.primaryLightest, // Subtle primary tint
+        hoverTextColor: themeColors.primary,
+        disabledOpacity: 0.38,
       },
       headerButton: {
-        // Inherits from button if not specified
-        backgroundColor: themeColors.colorDark,
+        backgroundColor: themeColors.colorLight,
         textColor: themeColors.colorTextDark,
-        hoverColor: themeColors.colorDarkHover,
+        hoverColor: themeColors.colorMedium, // Subtle background
         hoverTextColor: themeColors.colorTextDark,
-        disabledOpacity: 0.6,
+        disabledOpacity: 0.38,
       },
       navButton: {
-        // Inherits from button if not specified (for expand/collapse, etc.)
-        backgroundColor: themeColors.primary,
-        textColor: themeColors.colorCard,
-        hoverColor: themeColors.colorDarkHover,
-        hoverTextColor: themeColors.colorTextDark,
-        disabledOpacity: 0.6,
+        backgroundColor: 'transparent',
+        textColor: themeColors.colorTextMedium,
+        hoverColor: themeColors.colorMedium,
+        hoverTextColor: themeColors.primary,
+        disabledOpacity: 0.38,
       },
       table: {
         backgroundColor: themeColors.colorCard,
-        headerBackground: themeColors.colorDark,
-        headerHoverBackground: themeColors.colorDarkHover, // Table header hover
-        borderColor: themeColors.border,
+        headerBackground: themeColors.colorLight, // Subtle header
+        headerHoverBackground: themeColors.colorMedium,
+        borderColor: themeColors.borderLight,
         textColor: themeColors.colorTextDark,
-        hoverBackground: themeColors.colorDarkHover,
-        hoverTextColor: themeColors.colorTextDark, // Table row hover text color - customize this
+        hoverBackground: themeColors.colorLight, // Very subtle row hover
+        hoverTextColor: themeColors.colorTextDark,
       },
       input: {
         backgroundColor: themeColors.colorCard,
         borderColor: themeColors.border,
-        textColor: themeColors.colorTextMedium,
+        textColor: themeColors.colorTextDark,
       },
-      tabs: { //controls tabs and also the filter buttons in select date range in Reports page
-        backgroundColor: themeColors.colorMedium,
-        borderColor: themeColors.border,
+      tabs: {
+        backgroundColor: 'transparent',
+        borderColor: themeColors.borderLight,
         textColor: themeColors.colorTextMedium,
-        selectedTabFontColor: themeColors.colorCard, // Selected tab font color - customize this
-        selectedTabBackgroundColor: themeColors.primary, // Selected tab background
-        hoverTabFontColor: themeColors.colorTextDark, // Tab hover font color
-        hoverTabBackgroundColor: themeColors.colorDark, // Tab hover background
+        selectedTabFontColor: themeColors.primary,
+        selectedTabBackgroundColor: 'transparent',
+        hoverTabFontColor: themeColors.colorTextDark,
+        hoverTabBackgroundColor: themeColors.colorLight,
       },
       titleBar: {
-        backgroundColor: themeColors.colorLight, // Title bar background color - customize this
+        backgroundColor: themeColors.colorLight,
       },
       subTitleBar: {
-        backgroundColor: themeColors.colorMedium, // Sub title bar background color - customize this
+        backgroundColor: themeColors.colorCard, // Slightly different
       },
       filterChip: {
-        backgroundColor: themeColors.colorMedium, // Unselected chip background
-        textColor: themeColors.colorTextDark, // Unselected chip text
-        selectedBackgroundColor: themeColors.primary, // Selected chip background
-        selectedTextColor: themeColors.colorCard, // Selected chip text
-        hoverBackgroundColor: themeColors.colorDarkHover, // Hover chip background
-        hoverTextColor: themeColors.colorCard, // Hover chip text
+        backgroundColor: 'transparent',
+        textColor: themeColors.colorTextDark,
+        selectedBackgroundColor: themeColors.primary,
+        selectedTextColor: isDark ? themeColors.pureBlack : themeColors.pureWhite,
+        hoverBackgroundColor: themeColors.colorMedium,
+        hoverTextColor: themeColors.colorTextDark,
       },
       switch: {
-        trackColor: themeColors.colorMedium, // Unchecked track background
-        checkedTrackColor: themeColors.primary, // Checked track background
-        disabledTrackColor: themeColors.colorMedium, // Disabled track background
-        thumbColor: themeColors.colorCard, // Thumb color when unchecked
-        checkedThumbColor: themeColors.colorCard, // Thumb color when checked
-        disabledThumbColor: themeColors.textMuted, // Disabled thumb color
-        labelColor: themeColors.colorTextDark, // Label text color
-        disabledLabelColor: themeColors.textMuted, // Disabled label color
+        trackColor: themeColors.colorDark, // Unchecked
+        checkedTrackColor: themeColors.primary,
+        disabledTrackColor: themeColors.borderLight,
+        thumbColor: themeColors.pureWhite, // White thumb
+        checkedThumbColor: themeColors.pureWhite,
+        disabledThumbColor: themeColors.textMuted,
+        labelColor: themeColors.colorTextDark,
+        disabledLabelColor: themeColors.textMuted,
       },
       radio: {
-        uncheckedColor: themeColors.border, // Unchecked radio border
-        checkedColor: themeColors.primary, // Checked radio color
-        disabledColor: themeColors.borderLight, // Disabled radio color
-        labelColor: themeColors.colorTextDark, // Label text color
-        disabledLabelColor: themeColors.textMuted, // Disabled label color
-        dotColor: themeColors.colorCard, // Inner dot color when checked
+        uncheckedColor: themeColors.border,
+        checkedColor: themeColors.primary,
+        disabledColor: themeColors.borderLight,
+        labelColor: themeColors.colorTextDark,
+        disabledLabelColor: themeColors.textMuted,
+        dotColor: themeColors.pureWhite, // White dot for contrast
       },
       badge: {
         lightTheme: {
@@ -331,8 +328,8 @@ export function generateThemeConfig(
         variationCount: 10, // Number of color variations to generate
       },
       avatar: {
-        backgroundColor: themeColors.colorCard, // Avatar background color
-        textColor: themeColors.primary, // Avatar text color (white/light)
+        backgroundColor: themeColors.primary,
+        textColor: isDark ? themeColors.pureBlack : themeColors.pureWhite,
       },
     },
     

@@ -83,15 +83,21 @@ export function generateThemeColors(primaryColor: string, isDark: boolean = fals
     border: isDark ? '#373a40' : '#dee2e6',
     borderLight: isDark ? '#2c2e33' : '#e9ecef',
 
-    //custom colors
-    colorLight: isDark ? '#1B1717' : '#F9F7F7',
-    colorMedium: isDark ? '#2B2424' : '#EBE7E7',
-    colorDark: isDark ? '#3B2F2F' : '#D6CCCC',
-    colorDarkHover: isDark ? '#4B3B3B' : '#CCBFBF',
-    colorCard: isDark ? '#241F1F#' : '#FFFFFF',
-    colorTextDark: isDark ? '#E6D9D9' : '#4A4342',
-    colorTextMedium: isDark ? '#C6B9B9' : '#6B6059',
-    colorTextLight: isDark ? '#A69999' : '#8C7E77',
+    // Modern neutral grays (replacing brown/beige tones)
+    colorLight: isDark ? '#1a1b1e' : '#f8f9fa',      // Background level
+    colorMedium: isDark ? '#25262b' : '#e9ecef',    // Surface variant
+    colorDark: isDark ? '#373a40' : '#dee2e6',      // Border/hover base
+    colorDarkHover: isDark ? '#424449' : '#ced4da', // Hover state
+    colorCard: isDark ? '#25262b' : '#ffffff',      // Card/surface (pure white in light)
+    colorTextDark: isDark ? '#ffffff' : '#212529',   // Primary text (pure white/black)
+    colorTextMedium: isDark ? '#c1c2c5' : '#495057', // Secondary text
+    colorTextLight: isDark ? '#909296' : '#6c757d',  // Muted text
+    
+    // Utility colors for overlays and interactions
+    overlayLight: isDark ? '#ffffff' : '#000000',    // For creating overlay effects
+    overlayDark: isDark ? '#000000' : '#ffffff',     // Inverse overlay
+    pureWhite: '#ffffff',                             // Pure white (works in both themes)
+    pureBlack: '#000000',                             // Pure black (works in both themes)
 
   };
 }

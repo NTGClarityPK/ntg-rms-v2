@@ -557,13 +557,8 @@ export function InventoryReportsPage() {
                   </Table.Td>
                   <Table.Td>
                     <Badge
-                      color={
-                        tx.transactionType === 'purchase' || tx.transactionType === 'transfer_in'
-                          ? successColor
-                          : tx.transactionType === 'usage' || tx.transactionType === 'transfer_out'
-                          ? errorColor
-                          : primaryColor
-                      }
+                      variant="light"
+                      color={getBadgeColorForText(getTransactionTypeLabel(tx.transactionType))}
                     >
                       {getTransactionTypeLabel(tx.transactionType)}
                     </Badge>

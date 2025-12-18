@@ -151,7 +151,7 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
         z-index: 100 !important;
         display: flex !important;
         align-items: center !important;
-        border-bottom: 1px solid ${config.components.header.borderColor} !important;
+        border-bottom: none !important;
         transition: left 0.3s ease !important;
         border-top-left-radius: 12px !important; /* Rounded top-left corner */
         overflow: hidden !important;
