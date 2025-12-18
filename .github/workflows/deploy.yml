@@ -1,0 +1,103 @@
+name: Deploy RMS (Staging & Production)
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+env:
+  PROJECT_NAME: ntg-rms-v2
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: [self-hosted, ntg-server]
+
+    env:
+      GIT_BRANCH: ${{ github.ref_name }}
+
+    steps:
+      - name: Determine environment
+        id: env
+        run: |
+          echo "Git branch: $env:GIT_BRANCH"
+
+          if ($env:GIT_BRANCH -eq "main") {
+            echo "ENVIRONMENT=production" >> $env:GITHUB_ENV
+            echo "DEPLOY_PATH=/home/dev/production/${env:PROJECT_NAME}/project" >> $env:GITHUB_ENV
+            echo "BACKEND_PORT=5001" >> $env:GITHUB_ENV
+            echo "FRONTEND_PORT=5000" >> $env:GITHUB_ENV
+            echo "COMPOSE_FILE=docker-compose.yml" >> $env:GITHUB_ENV
+            echo "ENV_FILE=.env.prod" >> $env:GITHUB_ENV
+            echo "COMPOSE_CMD=docker compose --env-file .env.prod up -d --build" >> $env:GITHUB_ENV
+          }
+          elseif ($env:GIT_BRANCH -eq "dev") {
+            echo "ENVIRONMENT=staging" >> $env:GITHUB_ENV
+            echo "DEPLOY_PATH=/home/dev/staging/${env:PROJECT_NAME}/project" >> $env:GITHUB_ENV
+            echo "BACKEND_PORT=8001" >> $env:GITHUB_ENV
+            echo "FRONTEND_PORT=8000" >> $env:GITHUB_ENV
+            echo "COMPOSE_FILE=docker-compose-staging.yml" >> $env:GITHUB_ENV
+            echo "ENV_FILE=.env.staging" >> $env:GITHUB_ENV
+            echo "COMPOSE_CMD=docker compose --env-file .env.staging -f docker-compose-staging.yml up -d --build" >> $env:GITHUB_ENV
+          }
+          else {
+            Write-Error "Unsupported branch '$env:GIT_BRANCH'. This workflow only supports 'main' and 'dev'."
+            exit 1
+          }
+
+          Get-Content $env:GITHUB_ENV
+
+      - name: Show deployment configuration
+        run: |
+          echo "Environment: $env:ENVIRONMENT"
+          echo "Deploy path: $env:DEPLOY_PATH"
+          echo "Compose file: $env:COMPOSE_FILE"
+          echo "Env file: $env:ENV_FILE"
+          echo "Backend port: $env:BACKEND_PORT"
+          echo "Frontend port: $env:FRONTEND_PORT"
+
+      - name: Checkout repository metadata
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update code on server
+        run: |
+          cd "$env:DEPLOY_PATH"
+          git fetch origin
+          git reset --hard "origin/$env:GIT_BRANCH"
+
+      - name: Build and start services with Docker Compose
+        run: |
+          cd "$env:DEPLOY_PATH"
+          $env:COMPOSE_CMD
+
+      - name: Wait for backend to be healthy
+        run: |
+          $maxRetries = 30
+          $delaySeconds = 5
+          $url = "http://localhost:$env:BACKEND_PORT/health"
+
+          Write-Host "Checking health endpoint at $url"
+
+          for ($i = 1; $i -le $maxRetries; $i++) {
+            try {
+              $response = curl.exe -s -o NUL -w "%{http_code}" $url
+              if ($response -eq "200") {
+                Write-Host "Backend is healthy (HTTP 200)."
+                exit 0
+              } else {
+                Write-Host "Attempt $i/$maxRetries: Received HTTP $response. Retrying in $delaySeconds seconds..."
+              }
+            } catch {
+              Write-Host "Attempt $i/$maxRetries: Health check failed. Retrying in $delaySeconds seconds..."
+            }
+
+            Start-Sleep -Seconds $delaySeconds
+          }
+
+          Write-Error "Backend health check failed after $maxRetries attempts."
+          exit 1
+
