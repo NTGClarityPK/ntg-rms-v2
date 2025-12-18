@@ -298,7 +298,7 @@ CREATE TABLE orders (
     token_number VARCHAR(50),
     order_type VARCHAR(50) NOT NULL, -- dine_in, takeaway, delivery
     status VARCHAR(50) DEFAULT 'pending', -- pending, preparing, ready, served, completed, cancelled
-    payment_status VARCHAR(50) DEFAULT 'unpaid', -- unpaid, paid, partial
+    payment_status VARCHAR(50) DEFAULT 'unpaid', -- unpaid, paid
     payment_timing VARCHAR(50) DEFAULT 'pay_first', -- pay_first, pay_after
     subtotal DECIMAL(12, 2) NOT NULL DEFAULT 0,
     discount_amount DECIMAL(12, 2) DEFAULT 0,

@@ -37,7 +37,7 @@ export class OrdersController {
   @ApiQuery({ name: 'status', required: false, description: 'Order status(es). Can be comma-separated for multiple values: pending,preparing' })
   @ApiQuery({ name: 'branchId', required: false, type: String })
   @ApiQuery({ name: 'orderType', required: false, enum: ['dine_in', 'takeaway', 'delivery'] })
-  @ApiQuery({ name: 'paymentStatus', required: false, enum: ['unpaid', 'paid', 'partial'] })
+  @ApiQuery({ name: 'paymentStatus', required: false, enum: ['unpaid', 'paid'] })
   @ApiQuery({ name: 'startDate', required: false, type: String })
   @ApiQuery({ name: 'endDate', required: false, type: String })
   @ApiQuery({ name: 'limit', required: false, type: Number })

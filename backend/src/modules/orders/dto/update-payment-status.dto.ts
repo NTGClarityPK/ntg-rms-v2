@@ -4,7 +4,6 @@ import { IsEnum, IsOptional, IsNumber, Min } from 'class-validator';
 export enum PaymentStatus {
   UNPAID = 'unpaid',
   PAID = 'paid',
-  PARTIAL = 'partial',
 }
 
 export class UpdatePaymentStatusDto {

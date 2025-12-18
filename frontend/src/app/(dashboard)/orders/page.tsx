@@ -34,7 +34,7 @@ import { notifications } from '@mantine/notifications';
 import { useDisclosure } from '@mantine/hooks';
 import { OrderDetailsModal } from '@/components/orders/OrderDetailsModal';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getStatusColor, getSuccessColor, getErrorColor } from '@/lib/utils/theme';
+import { getStatusColor, getPaymentStatusColor, getSuccessColor, getErrorColor } from '@/lib/utils/theme';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { db } from '@/lib/indexeddb/database';
@@ -431,6 +431,14 @@ export default function OrdersPage() {
     return labels[type] || type;
   };
 
+  const getPaymentStatusLabel = (status: PaymentStatus): string => {
+    const labels: Record<PaymentStatus, string> = {
+      paid: t('orders.paymentPaid', language),
+      unpaid: t('orders.paymentUnpaid', language),
+    };
+    return labels[status] || status;
+  };
+
   return (
     <Container size="xl" py="md">
       <Stack gap="md">
@@ -498,7 +506,6 @@ export default function OrdersPage() {
                 data={[
                   { value: 'unpaid', label: t('orders.paymentUnpaid', language) },
                   { value: 'paid', label: t('orders.paymentPaid', language) },
-                  { value: 'partial', label: t('orders.paymentPartial', language) },
                 ]}
                 value={selectedPaymentStatus}
                 onChange={setSelectedPaymentStatus}
@@ -562,6 +569,9 @@ export default function OrdersPage() {
                           </Badge>
                           <Badge variant="light" color={primary}>
                             {getOrderTypeLabel(order.orderType)}
+                          </Badge>
+                          <Badge color={getPaymentStatusColor(order.paymentStatus)}>
+                            {getPaymentStatusLabel(order.paymentStatus)}
                           </Badge>
                         </Group>
                         <Group gap="md" align="flex-start">
