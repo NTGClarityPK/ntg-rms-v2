@@ -50,7 +50,7 @@ export default function KitchenDisplayPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [processingOrderId, setProcessingOrderId] = useState<string | null>(null);
+  const [processingOrderIds, setProcessingOrderIds] = useState<Set<string>>(new Set());
   const audioContextRef = useRef<AudioContext | null>(null);
   const previousOrderIdsRef = useRef<Set<string>>(new Set());
   const audioResumedRef = useRef<boolean>(false);
@@ -329,9 +329,14 @@ export default function KitchenDisplayPage() {
   }, []); // Empty deps - only set up once, use ref for latest function
 
   const handleMarkAsReady = async (order: Order) => {
-    setProcessingOrderId(order.id);
+    // Optimistic update: remove order immediately (before API call)
+    const previousOrders = orders;
+    setOrders(prevOrders => prevOrders.filter(o => o.id !== order.id));
+    setProcessingOrderIds(prev => new Set(prev).add(order.id));
+    
     try {
       await ordersApi.updateOrderStatus(order.id, { status: 'ready' });
+      
       notifications.show({
         title: t('common.success' as any, language),
         message: t('orders.markedAsReady', language),
@@ -340,27 +345,39 @@ export default function KitchenDisplayPage() {
       
       // Notify same-browser screens about the status change (for immediate UI update)
       notifyOrderUpdate('order-status-changed', order.id);
-      
-      // Reload orders for immediate local update
-      // Smart polling will also pick up changes automatically
-      if (loadOrdersRef.current) {
-        loadOrdersRef.current();
-      }
     } catch (error: any) {
+      // Revert optimistic update on error
+      setOrders(previousOrders);
+      
       notifications.show({
         title: t('common.error' as any, language),
         message: error?.response?.data?.message || t('orders.updateError', language),
         color: getErrorColor(),
       });
     } finally {
-      setProcessingOrderId(null);
+      setProcessingOrderIds(prev => {
+        const next = new Set(prev);
+        next.delete(order.id);
+        return next;
+      });
     }
   };
 
   const handleStartPreparing = async (order: Order) => {
-    setProcessingOrderId(order.id);
+    // Optimistic update: change status immediately (before API call)
+    const previousOrders = orders;
+    setOrders(prevOrders => 
+      prevOrders.map(o => 
+        o.id === order.id 
+          ? { ...o, status: 'preparing' as OrderStatus, updatedAt: new Date().toISOString() }
+          : o
+      )
+    );
+    setProcessingOrderIds(prev => new Set(prev).add(order.id));
+    
     try {
       await ordersApi.updateOrderStatus(order.id, { status: 'preparing' });
+      
       notifications.show({
         title: t('common.success' as any, language),
         message: t('orders.startedPreparing', language),
@@ -369,20 +386,21 @@ export default function KitchenDisplayPage() {
       
       // Notify same-browser screens about the status change (for immediate UI update)
       notifyOrderUpdate('order-status-changed', order.id);
-      
-      // Reload orders for immediate local update
-      // Smart polling will also pick up changes automatically
-      if (loadOrdersRef.current) {
-        loadOrdersRef.current();
-      }
     } catch (error: any) {
+      // Revert optimistic update on error
+      setOrders(previousOrders);
+      
       notifications.show({
         title: t('common.error' as any, language),
         message: error?.response?.data?.message || t('orders.updateError', language),
         color: getErrorColor(),
       });
     } finally {
-      setProcessingOrderId(null);
+      setProcessingOrderIds(prev => {
+        const next = new Set(prev);
+        next.delete(order.id);
+        return next;
+      });
     }
   };
 
@@ -536,7 +554,7 @@ export default function KitchenDisplayPage() {
                                       primary={primary}
                                       onMarkAsReady={() => handleStartPreparing(order)}
                                       onStartPreparing={() => handleStartPreparing(order)}
-                                      processing={processingOrderId === order.id}
+                                      processing={processingOrderIds.has(order.id)}
                                       getPriorityColor={getPriorityColor}
                                       getOrderAge={getOrderAge}
                                     />
@@ -579,7 +597,7 @@ export default function KitchenDisplayPage() {
                                       primary={primary}
                                       onMarkAsReady={() => handleMarkAsReady(order)}
                                       onStartPreparing={() => handleStartPreparing(order)}
-                                      processing={processingOrderId === order.id}
+                                      processing={processingOrderIds.has(order.id)}
                                       getPriorityColor={getPriorityColor}
                                       getOrderAge={getOrderAge}
                                       showReadyButton

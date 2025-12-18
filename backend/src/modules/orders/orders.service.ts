@@ -1750,22 +1750,7 @@ export class OrdersService {
       throw new NotFoundException('Order not found');
     }
 
-    // Validate status transition
-    const validTransitions: Record<string, string[]> = {
-      pending: ['preparing', 'cancelled'],
-      preparing: ['ready', 'cancelled'],
-      ready: ['served', 'cancelled'],
-      served: ['completed', 'cancelled'],
-      completed: [],
-      cancelled: [],
-    };
-
-    const allowedStatuses = validTransitions[order.status] || [];
-    if (!allowedStatuses.includes(updateDto.status)) {
-      throw new BadRequestException(
-        `Cannot transition from ${order.status} to ${updateDto.status}. Allowed transitions: ${allowedStatuses.join(', ')}`,
-      );
-    }
+    // No status transition constraints - allow any status to change to any other status
 
     // Prepare update data
     const updateData: any = {
