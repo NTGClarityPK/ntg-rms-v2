@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useForm } from '@mantine/form';
 import {
   Container,
@@ -65,15 +65,11 @@ export default function BranchesPage() {
     validate: {
       name: (value) => (!value ? t('common.required', language) || 'Name is required' : null),
       code: (value) => (!value ? t('common.required', language) || 'Code is required' : null),
-      email: (value) => (value && !/^\S+@\S+$/.test(value) ? t('common.invalidEmail', language) || 'Invalid email' : null),
+      email: (value) => (value && value.trim() && !/^\S+@\S+$/.test(value) ? t('common.invalidEmail', language) || 'Invalid email' : null),
     },
   });
 
-  useEffect(() => {
-    loadBranches();
-  }, []);
-
-  const loadBranches = async () => {
+  const loadBranches = useCallback(async () => {
     if (!user?.tenantId) return;
 
     try {
@@ -133,7 +129,11 @@ export default function BranchesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.tenantId, language]);
+
+  useEffect(() => {
+    loadBranches();
+  }, [loadBranches]);
 
   const handleOpenModal = (branch?: Branch) => {
     if (branch) {
@@ -244,13 +244,22 @@ export default function BranchesPage() {
           syncStatus: 'pending',
         } as any);
 
-        // Queue sync
-        await syncService.queueChange('branches', 'CREATE', newId, values);
+        // Queue sync - exclude isActive from create payload and clean empty strings
+        const { isActive, ...createData } = values;
+        const cleanedData: CreateBranchDto = {
+          ...createData,
+          email: createData.email?.trim() || undefined,
+          phone: createData.phone?.trim() || undefined,
+          address: createData.address?.trim() || undefined,
+          city: createData.city?.trim() || undefined,
+          state: createData.state?.trim() || undefined,
+        };
+        await syncService.queueChange('branches', 'CREATE', newId, cleanedData);
 
         // Try to sync immediately if online
         if (navigator.onLine) {
           try {
-            const created = await restaurantApi.createBranch(values);
+            const created = await restaurantApi.createBranch(cleanedData);
             await db.branches.update(newId, {
               id: created.id,
               tenantId: created.tenantId,
