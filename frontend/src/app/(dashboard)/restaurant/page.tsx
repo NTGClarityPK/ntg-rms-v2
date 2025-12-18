@@ -21,7 +21,7 @@ import {
   Grid,
   Box,
 } from '@mantine/core';
-import { IconUpload, IconCheck, IconAlertCircle, IconPalette, IconBuilding, IconToolsKitchen2 } from '@tabler/icons-react';
+import { IconUpload, IconCheck, IconAlertCircle, IconPalette, IconBuilding, IconToolsKitchen2, IconMapPin } from '@tabler/icons-react';
 import { restaurantApi, UpdateRestaurantInfoDto } from '@/lib/api/restaurant';
 import { db } from '@/lib/indexeddb/database';
 import { syncService } from '@/lib/sync/sync-service';
@@ -36,6 +36,8 @@ import { useErrorColor } from '@/lib/hooks/use-theme-colors';
 import { notifications } from '@mantine/notifications';
 import { DEFAULT_THEME_COLOR, getLegacyThemeColor } from '@/lib/utils/theme';
 import { ColorInput } from '@mantine/core';
+import { BranchesTab } from '@/components/restaurant/BranchesTab';
+import { PermissionGuard } from '@/components/common/PermissionGuard';
 
 // Common timezones list with GMT offsets
 const TIMEZONE_DATA = [
@@ -506,6 +508,11 @@ export default function RestaurantPage() {
             <Tabs.Tab value="branding" leftSection={<IconPalette size={16} />}>
               {t('restaurant.brandingTheme', language)}
             </Tabs.Tab>
+            <PermissionGuard resource="restaurant" action="view">
+              <Tabs.Tab value="branches" leftSection={<IconMapPin size={16} />}>
+                {t('restaurant.branches', language)}
+              </Tabs.Tab>
+            </PermissionGuard>
           </Tabs.List>
 
           <Tabs.Panel value="business" pt="md">
@@ -679,6 +686,12 @@ export default function RestaurantPage() {
               </Paper>
             </Stack>
           </Tabs.Panel>
+
+          <PermissionGuard resource="restaurant" action="view">
+            <Tabs.Panel value="branches" pt="md">
+              <BranchesTab />
+            </Tabs.Panel>
+          </PermissionGuard>
         </Tabs>
 
         <Group justify="flex-end" mt="xl">

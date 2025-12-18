@@ -182,7 +182,7 @@ export default function DashboardPage() {
           <Paper p="md" withBorder h={'100%'}>
             <Stack gap="md">
               <Group>
-                <IconAlertTriangle size={24} color="red" />
+                <IconAlertTriangle size={24} color={primary} />
                 <Title order={3}>{t('dashboard.lowStockAlerts' as any, language) || 'Low Stock Alerts'}</Title>
               </Group>
               {loading ? (
@@ -195,7 +195,7 @@ export default function DashboardPage() {
                         {(alert as any).name || (alert as any).nameEn || (alert as any).nameAr || 'Unknown'}
                       </Text>
                       <Group gap="xs" mt="xs">
-                        <Badge color="red" variant="light">
+                        <Badge color={primary} variant="light">
                           {t('dashboard.stock' as any, language) || 'Stock'}: {alert.currentStock}
                         </Badge>
                         <Badge color="orange" variant="light">

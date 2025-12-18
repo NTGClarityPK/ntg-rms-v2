@@ -1,15 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useForm } from '@mantine/form';
 import {
-  Container,
-  Title,
   Button,
   Stack,
   Modal,
   TextInput,
-  Select,
   Switch,
   Table,
   Group,
@@ -34,7 +31,7 @@ import { useNotificationColors } from '@/lib/hooks/use-theme-colors';
 import { useErrorColor, useSuccessColor, useInfoColor } from '@/lib/hooks/use-theme-colors';
 import { PermissionGuard } from '@/components/common/PermissionGuard';
 
-export default function BranchesPage() {
+export function BranchesTab() {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
   const notificationColors = useNotificationColors();
@@ -69,11 +66,7 @@ export default function BranchesPage() {
     },
   });
 
-  useEffect(() => {
-    loadBranches();
-  }, []);
-
-  const loadBranches = async () => {
+  const loadBranches = useCallback(async () => {
     if (!user?.tenantId) return;
 
     try {
@@ -116,7 +109,10 @@ export default function BranchesPage() {
               code: branch.code,
               address: branch.address || '',
               city: branch.city,
+              state: branch.state,
+              country: branch.country,
               phone: branch.phone,
+              email: branch.email,
               isActive: branch.isActive,
               createdAt: branch.createdAt,
               updatedAt: branch.updatedAt,
@@ -133,7 +129,11 @@ export default function BranchesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.tenantId, language]);
+
+  useEffect(() => {
+    loadBranches();
+  }, [loadBranches]);
 
   const handleOpenModal = (branch?: Branch) => {
     if (branch) {
@@ -157,6 +157,12 @@ export default function BranchesPage() {
       form.reset();
     }
     setOpened(true);
+  };
+
+  const handleCloseModal = () => {
+    setOpened(false);
+    setEditingBranch(null);
+    form.reset();
   };
 
   const handleSubmit = async (values: typeof form.values) => {
@@ -279,9 +285,8 @@ export default function BranchesPage() {
         }
       }
 
-      setOpened(false);
-      form.reset();
-      loadBranches();
+      handleCloseModal();
+      await loadBranches();
     } catch (err: any) {
       const errorMsg = err.response?.data?.error?.message || err.message || t('restaurant.branchManagement', language) || 'Failed to save branch';
       setError(errorMsg);
@@ -344,7 +349,7 @@ export default function BranchesPage() {
             });
           }
 
-          loadBranches();
+          await loadBranches();
         } catch (err: any) {
           notifications.show({
             title: t('common.error', language) || 'Error',
@@ -357,13 +362,14 @@ export default function BranchesPage() {
     });
   };
 
-
   return (
-    <Container size="xl" py="xl">
-      <Group justify="space-between" mb="xl">
-        <Title order={2}>{t('restaurant.branchManagement', language)}</Title>
+    <Stack gap="md">
+      <Group justify="space-between">
+        <Text size="sm" c="dimmed">
+          {t('restaurant.branchManagement', language)}
+        </Text>
         <PermissionGuard resource="restaurant" action="create">
-          <Button leftSection={<IconPlus size={16} />} onClick={() => handleOpenModal()}>
+          <Button leftSection={<IconPlus size={16} />} onClick={() => handleOpenModal()} size="sm">
             {t('restaurant.addBranch', language)}
           </Button>
         </PermissionGuard>
@@ -372,11 +378,7 @@ export default function BranchesPage() {
       {error && (
         <Alert 
           icon={<IconAlertCircle size={16} />} 
-          style={{
-            backgroundColor: `${errorColor}15`,
-            borderColor: errorColor,
-            color: errorColor,
-          }}
+          color={errorColor}
           mb="md"
         >
           {error}
@@ -397,7 +399,7 @@ export default function BranchesPage() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {[1, 2, 3, 4, 5].map((i) => (
+              {[1, 2, 3].map((i) => (
                 <Table.Tr key={i}>
                   <Table.Td><Skeleton height={16} width={150} /></Table.Td>
                   <Table.Td><Skeleton height={16} width={80} /></Table.Td>
@@ -430,68 +432,65 @@ export default function BranchesPage() {
             </Table.Thead>
             <Table.Tbody>
               {branches.length === 0 ? (
-              <Table.Tr>
-                <Table.Td colSpan={6} style={{ textAlign: 'center' }}>
-                  <Text c="dimmed" py="xl">
-                    {t('restaurant.noBranches', language)}
-                  </Text>
-                </Table.Td>
-              </Table.Tr>
-            ) : (
-              branches.map((branch) => (
-                <Table.Tr key={branch.id}>
-                  <Table.Td>
-                    <Text fw={500}>{branch.name}</Text>
-                  </Table.Td>
-                  <Table.Td>{branch.code}</Table.Td>
-                  <Table.Td>{branch.city || '-'}</Table.Td>
-                  <Table.Td>{branch.phone || '-'}</Table.Td>
-                  <Table.Td>
-                    <Badge 
-                      color={branch.isActive ? successColor : errorColor}
-                      variant="light"
-                    >
-                      {branch.isActive
-                        ? (t('common.active', language) || 'Active')
-                        : (t('common.inactive', language) || 'Inactive')}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap="xs">
-                      <PermissionGuard resource="restaurant" action="update">
-                        <ActionIcon
-                          variant="subtle"
-                          style={{ color: infoColor }}
-                          onClick={() => handleOpenModal(branch)}
-                        >
-                          <IconEdit size={16} />
-                        </ActionIcon>
-                      </PermissionGuard>
-                      <PermissionGuard resource="restaurant" action="delete">
-                        <ActionIcon
-                          variant="subtle"
-                          style={{ color: errorColor }}
-                          onClick={() => handleDelete(branch)}
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
-                      </PermissionGuard>
-                    </Group>
+                <Table.Tr>
+                  <Table.Td colSpan={6} style={{ textAlign: 'center' }}>
+                    <Text c="dimmed" py="xl">
+                      {t('restaurant.noBranches', language)}
+                    </Text>
                   </Table.Td>
                 </Table.Tr>
-              ))
-            )}
-          </Table.Tbody>
-        </Table>
-      </Paper>
+              ) : (
+                branches.map((branch) => (
+                  <Table.Tr key={branch.id}>
+                    <Table.Td>
+                      <Text fw={500}>{branch.name}</Text>
+                    </Table.Td>
+                    <Table.Td>{branch.code}</Table.Td>
+                    <Table.Td>{branch.city || '-'}</Table.Td>
+                    <Table.Td>{branch.phone || '-'}</Table.Td>
+                    <Table.Td>
+                      <Badge 
+                        color={branch.isActive ? successColor : errorColor}
+                        variant="light"
+                      >
+                        {branch.isActive
+                          ? (t('common.active', language) || 'Active')
+                          : (t('common.inactive', language) || 'Inactive')}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap="xs">
+                        <PermissionGuard resource="restaurant" action="update">
+                          <ActionIcon
+                            variant="subtle"
+                            color={infoColor}
+                            onClick={() => handleOpenModal(branch)}
+                          >
+                            <IconEdit size={16} />
+                          </ActionIcon>
+                        </PermissionGuard>
+                        <PermissionGuard resource="restaurant" action="delete">
+                          <ActionIcon
+                            variant="subtle"
+                            color={errorColor}
+                            onClick={() => handleDelete(branch)}
+                          >
+                            <IconTrash size={16} />
+                          </ActionIcon>
+                        </PermissionGuard>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                ))
+              )}
+            </Table.Tbody>
+          </Table>
+        </Paper>
       )}
 
       <Modal
         opened={opened}
-        onClose={() => {
-          setOpened(false);
-          form.reset();
-        }}
+        onClose={handleCloseModal}
         title={editingBranch ? t('restaurant.editBranch', language) : t('restaurant.createBranch', language)}
         size="lg"
       >
@@ -548,10 +547,7 @@ export default function BranchesPage() {
             <Group justify="flex-end">
               <Button
                 variant="subtle"
-                onClick={() => {
-                  setOpened(false);
-                  form.reset();
-                }}
+                onClick={handleCloseModal}
               >
                 {t('common.cancel', language) || 'Cancel'}
               </Button>
@@ -560,7 +556,6 @@ export default function BranchesPage() {
           </Stack>
         </form>
       </Modal>
-    </Container>
+    </Stack>
   );
 }
-

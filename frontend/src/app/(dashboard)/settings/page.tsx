@@ -116,7 +116,7 @@ export default function SettingsPage() {
   const [taxModalOpened, setTaxModalOpened] = useState(false);
   const [editingTax, setEditingTax] = useState<Tax | null>(null);
   const [deletingTax, setDeletingTax] = useState<string | null>(null);
-
+  const primary = useThemeColor();
   const taxFormModal = useForm<CreateTaxDto>({
     initialValues: {
       name: '',
@@ -734,7 +734,7 @@ export default function SettingsPage() {
                                 : t('taxes.itemWise' as any, language) || 'Item'}
                             </Table.Td>
                             <Table.Td>
-                              <Badge color={tax.isActive ? 'green' : 'gray'}>
+                              <Badge color={tax.isActive ? primary : 'gray'}>
                                 {tax.isActive
                                   ? t('common.active' as any, language) || 'Active'
                                   : t('common.inactive' as any, language) || 'Inactive'}
@@ -751,7 +751,7 @@ export default function SettingsPage() {
                                 </ActionIcon>
                                 <ActionIcon
                                   variant="light"
-                                  color="red"
+                                  color={primary}
                                   onClick={() => setDeletingTax(tax.id)}
                                 >
                                   <IconTrash size={16} />
@@ -851,7 +851,7 @@ export default function SettingsPage() {
                     <Button variant="subtle" onClick={() => setDeletingTax(null)}>
                       {t('common.cancel' as any, language) || 'Cancel'}
                     </Button>
-                    <Button color="red" onClick={() => deletingTax && handleDeleteTax(deletingTax)}>
+                    <Button color={primary} onClick={() => deletingTax && handleDeleteTax(deletingTax)}>
                       {t('common.delete' as any, language) || 'Delete'}
                     </Button>
                   </Group>

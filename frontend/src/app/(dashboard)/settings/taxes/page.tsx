@@ -43,7 +43,7 @@ export default function TaxesPage() {
   const [opened, setOpened] = useState(false);
   const [editingTax, setEditingTax] = useState<Tax | null>(null);
   const [deletingTax, setDeletingTax] = useState<string | null>(null);
-
+  const primary = useThemeColor();
   const form = useForm<CreateTaxDto>({
     initialValues: {
       name: '',
@@ -287,7 +287,7 @@ export default function TaxesPage() {
                         : t('taxes.itemWise' as any, language) || 'Item'}
                     </Table.Td>
                     <Table.Td>
-                      <Badge color={tax.isActive ? 'green' : 'gray'}>
+                      <Badge color={tax.isActive ? primary : 'gray'}>
                         {tax.isActive
                           ? t('common.active' as any, language) || 'Active'
                           : t('common.inactive' as any, language) || 'Inactive'}
@@ -304,7 +304,7 @@ export default function TaxesPage() {
                         </ActionIcon>
                         <ActionIcon
                           variant="light"
-                          color="red"
+                          color={primary}
                           onClick={() => setDeletingTax(tax.id)}
                         >
                           <IconTrash size={16} />
@@ -401,7 +401,7 @@ export default function TaxesPage() {
               <Button variant="subtle" onClick={() => setDeletingTax(null)}>
                 {t('common.cancel' as any, language) || 'Cancel'}
               </Button>
-              <Button color="red" onClick={() => deletingTax && handleDelete(deletingTax)}>
+              <Button color={primary} onClick={() => deletingTax && handleDelete(deletingTax)}>
                 {t('common.delete' as any, language) || 'Delete'}
               </Button>
             </Group>
