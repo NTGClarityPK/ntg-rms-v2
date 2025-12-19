@@ -18,3 +18,4 @@ export function usePermissions() {
     canDelete: (resource: string) => canDelete(permissions, resource),
   };
 }
+

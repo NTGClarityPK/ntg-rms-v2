@@ -96,3 +96,4 @@ AND NOT EXISTS (
     WHERE ur.user_id = u.id AND ur.role_id = r.id
 )
 ON CONFLICT (user_id, role_id) DO NOTHING;
+

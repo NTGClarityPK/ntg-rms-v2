@@ -24,3 +24,4 @@ CREATE INDEX IF NOT EXISTS idx_menus_tenant_menu_type ON menus(tenant_id, menu_t
 --   FOR ALL
 --   USING (true)
 --   WITH CHECK (true);
+

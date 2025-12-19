@@ -41,3 +41,4 @@ export class RolesController {
     return this.rolesService.getUserPermissions(userId);
   }
 }
+

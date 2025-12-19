@@ -9,3 +9,4 @@ WHERE payment_status = 'partial';
 -- SELECT COUNT(*) as remaining_partial_orders 
 -- FROM orders 
 -- WHERE payment_status = 'partial';
+

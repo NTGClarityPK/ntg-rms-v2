@@ -56,3 +56,4 @@ export function getResourcePermissions(
 
   return userPermissions.filter((perm) => perm.resource === resource);
 }
+
