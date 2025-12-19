@@ -456,8 +456,17 @@ export default function KitchenDisplayPage() {
   }, [searchQuery]);
 
   const filteredOrders = filterOrders(orders);
-  const pendingOrders = filteredOrders.filter((o) => o.status === 'pending');
-  const preparingOrders = filteredOrders.filter((o) => o.status === 'preparing');
+  // Filter out orders that only contain buffets (no food items or combo meals)
+  const ordersWithoutBuffetsOnly = filteredOrders.filter((order) => {
+    if (!order.items || order.items.length === 0) return false; // Don't show orders with no items
+    // Check if order has any non-buffet items (food items or combo meals)
+    const hasNonBuffetItems = order.items.some(
+      (item) => !item.buffetId && !item.buffet && (item.foodItemId || item.foodItem || item.comboMealId || item.comboMeal)
+    );
+    return hasNonBuffetItems; // Only keep orders that have at least one non-buffet item
+  });
+  const pendingOrders = ordersWithoutBuffetsOnly.filter((o) => o.status === 'pending');
+  const preparingOrders = ordersWithoutBuffetsOnly.filter((o) => o.status === 'preparing');
 
   return (
     <Box
@@ -764,43 +773,75 @@ function OrderCard({
         <Box>
           {order.items && order.items.length > 0 ? (
             <Stack gap={0}>
-              {order.items.map((item) => (
-                <Paper key={item.id} >
-                  <Group justify="space-between" wrap="nowrap" style={{ padding: '2px 2px' }}>
-                    <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-                      <Text fw={500} size="md" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
-                        {item.quantity}x{' '}
-                        {item.foodItem
-                          ? (item.foodItem.name || t('pos.item', language))
-                          : t('pos.item', language) + ` #${item.foodItemId || item.id}`}
-                      </Text>
-                      {item.variation && item.variation.variationName && (
-                        <Text size="xs" c="dimmed">
-                          {item.variation.variationGroup}: {item.variation.variationName}
-                        </Text>
-                      )}
-                      {item.addOns && item.addOns.length > 0 && item.addOns.some(a => a.addOn) && (
-                        <Text size="xs" c="dimmed">
-                          {t('pos.addOns', language)}:{' '}
-                          {item.addOns
-                            .filter(addOn => addOn.addOn)
-                            .map(
-                              (addOn) =>
-                                addOn.addOn?.name || ''
-                            )
-                            .filter(Boolean)
-                            .join(', ') || '-'}
-                        </Text>
-                      )}
-                      {item.specialInstructions && (
-                        <Text size="xs" c="dimmed" fs="italic">
-                          {t('pos.specialInstructions', language)}: {item.specialInstructions}
-                        </Text>
-                      )}
-                    </Stack>
-                  </Group>
-                </Paper>
-              ))}
+              {order.items
+                .filter((item) => !item.buffetId && !item.buffet) // Filter out buffets from kitchen display
+                .map((item) => {
+                  // For combo meals, show constituent food items
+                  if (item.comboMealId && item.comboMeal) {
+                    return (
+                      <Paper key={item.id}>
+                        <Stack gap={4} style={{ padding: '4px 2px' }}>
+                          <Text fw={600} size="md" c="blue" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+                            {item.quantity}x {item.comboMeal.name || t('pos.comboMeal', language)}
+                          </Text>
+                          {item.comboMeal.foodItems && item.comboMeal.foodItems.length > 0 && (
+                            <Stack gap={2} style={{ paddingLeft: 12, borderLeft: '2px solid var(--mantine-color-blue-3)' }}>
+                              {item.comboMeal.foodItems.map((foodItem, idx) => (
+                                <Text key={idx} size="sm" c="dimmed" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+                                  • {foodItem.name || t('pos.item', language)}
+                                </Text>
+                              ))}
+                            </Stack>
+                          )}
+                          {item.specialInstructions && (
+                            <Text size="xs" c="dimmed" fs="italic">
+                              {t('pos.specialInstructions', language)}: {item.specialInstructions}
+                            </Text>
+                          )}
+                        </Stack>
+                      </Paper>
+                    );
+                  }
+                  
+                  // Regular food items
+                  return (
+                    <Paper key={item.id}>
+                      <Group justify="space-between" wrap="nowrap" style={{ padding: '2px 2px' }}>
+                        <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+                          <Text fw={500} size="md" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+                            {item.quantity}x{' '}
+                            {item.foodItem
+                              ? (item.foodItem.name || t('pos.item', language))
+                              : t('pos.item', language) + ` #${item.foodItemId || item.id}`}
+                          </Text>
+                          {item.variation && item.variation.variationName && (
+                            <Text size="xs" c="dimmed">
+                              {item.variation.variationGroup}: {item.variation.variationName}
+                            </Text>
+                          )}
+                          {item.addOns && item.addOns.length > 0 && item.addOns.some(a => a.addOn) && (
+                            <Text size="xs" c="dimmed">
+                              {t('pos.addOns', language)}:{' '}
+                              {item.addOns
+                                .filter(addOn => addOn.addOn)
+                                .map(
+                                  (addOn) =>
+                                    addOn.addOn?.name || ''
+                                )
+                                .filter(Boolean)
+                                .join(', ') || '-'}
+                            </Text>
+                          )}
+                          {item.specialInstructions && (
+                            <Text size="xs" c="dimmed" fs="italic">
+                              {t('pos.specialInstructions', language)}: {item.specialInstructions}
+                            </Text>
+                          )}
+                        </Stack>
+                      </Group>
+                    </Paper>
+                  );
+                })}
             </Stack>
           ) : (
             <Text size="sm" c="dimmed" p="xs">

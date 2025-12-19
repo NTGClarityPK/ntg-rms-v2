@@ -7,7 +7,9 @@ export type MenuDataEventType =
   | 'categories-updated'
   | 'food-items-updated'
   | 'add-on-groups-updated'
-  | 'menus-updated';
+  | 'menus-updated'
+  | 'buffets-updated'
+  | 'combo-meals-updated';
 
 /**
  * Dispatch an event to notify all menu tabs that data has been updated

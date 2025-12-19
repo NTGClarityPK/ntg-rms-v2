@@ -15,17 +15,20 @@ import {
   Stack,
   SegmentedControl,
   Skeleton,
+  Modal,
+  NumberInput,
 } from '@mantine/core';
-import { IconSearch, IconShoppingCart } from '@tabler/icons-react';
+import { IconSearch, IconShoppingCart, IconChefHat, IconShoppingBag } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { db } from '@/lib/indexeddb/database';
 import { FoodItem as IndexedDBFoodItem } from '@/lib/indexeddb/database';
 import { useThemeColor, useThemeColorShade } from '@/lib/hooks/use-theme-color';
 import { getErrorColor, getWarningColor } from '@/lib/utils/theme';
+import { useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { ItemSelectionModal } from './ItemSelectionModal';
 import { useCurrency } from '@/lib/hooks/use-currency';
-import { menuApi, FoodItem } from '@/lib/api/menu';
+import { menuApi, FoodItem, Buffet, ComboMeal } from '@/lib/api/menu';
 import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
@@ -37,6 +40,8 @@ interface FoodItemsGridProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onAddToCart: (item: any) => void;
+  orderType?: 'dine_in' | 'takeaway' | 'delivery';
+  onItemTypeChange?: (itemType: 'food-items' | 'buffets' | 'combo-meals') => void;
 }
 
 export function FoodItemsGrid({
@@ -46,22 +51,54 @@ export function FoodItemsGrid({
   searchQuery,
   onSearchChange,
   onAddToCart,
+  orderType = 'dine_in',
+  onItemTypeChange,
 }: FoodItemsGridProps) {
   const { language } = useLanguageStore();
   const primaryColor = useThemeColor();
   const primaryShade = useThemeColorShade(6);
+  const successColor = useSuccessColor();
   const currency = useCurrency();
-  const pagination = usePagination<FoodItem>({ initialPage: 1, initialLimit: 24 }); // 24 items for grid (6x4 or 4x6)
+  
+  // Separate pagination for each item type
+  const foodItemsPagination = usePagination<FoodItem>({ initialPage: 1, initialLimit: 24 });
+  const buffetsPagination = usePagination<Buffet>({ initialPage: 1, initialLimit: 24 });
+  const comboMealsPagination = usePagination<ComboMeal>({ initialPage: 1, initialLimit: 24 });
+  
+  const [itemType, setItemType] = useState<'food-items' | 'buffets' | 'combo-meals'>('food-items');
   const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
+  const [buffets, setBuffets] = useState<Buffet[]>([]);
+  const [comboMeals, setComboMeals] = useState<ComboMeal[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedItem, setSelectedItem] = useState<FoodItem | null>(null);
+  const [selectedItem, setSelectedItem] = useState<FoodItem | Buffet | ComboMeal | null>(null);
   const [modalOpened, setModalOpened] = useState(false);
+
+  // Get current pagination based on item type
+  const currentPagination = itemType === 'buffets' 
+    ? buffetsPagination 
+    : itemType === 'combo-meals' 
+    ? comboMealsPagination 
+    : foodItemsPagination;
+
+  // Switch away from buffets tab if order type is not dine-in
+  useEffect(() => {
+    if (itemType === 'buffets' && orderType !== 'dine_in') {
+      setItemType('food-items');
+    }
+  }, [orderType, itemType]);
+
+  // Notify parent when item type changes
+  useEffect(() => {
+    if (onItemTypeChange) {
+      onItemTypeChange(itemType);
+    }
+  }, [itemType, onItemTypeChange]);
 
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, selectedCategoryId, searchQuery, pagination.page, pagination.limit]);
+  }, [tenantId, selectedCategoryId, searchQuery, foodItemsPagination.page, foodItemsPagination.limit, buffetsPagination.page, buffetsPagination.limit, comboMealsPagination.page, comboMealsPagination.limit, itemType, orderType]);
 
   const loadData = async () => {
     try {
@@ -110,59 +147,71 @@ export function FoodItemsGrid({
         // Continue with empty array - will show no items if no active menus
       }
 
-      // Load food items - use server pagination if online, otherwise use IndexedDB with local pagination
-      if (navigator.onLine) {
-        try {
-          // Load from server with pagination
-          const serverItemsResponse = await menuApi.getFoodItems(
-            selectedCategoryId || undefined,
-            pagination.paginationParams
-          );
-          const serverItems = pagination.extractData(serverItemsResponse);
-          pagination.extractPagination(serverItemsResponse);
-          
-          // Filter by search query on client side (since backend doesn't support search yet)
-          let filteredItems = serverItems;
-          if (searchQuery.trim()) {
-            const query = searchQuery.toLowerCase();
-            filteredItems = serverItems.filter(
-              (item) =>
-                item.name?.toLowerCase().includes(query) ||
-                item.description?.toLowerCase().includes(query),
+      // Load items based on selected type
+      // Buffets are only available for dine-in orders
+      if (itemType === 'buffets') {
+        if (orderType === 'dine_in') {
+          await loadBuffets(activeMenuTypes);
+        } else {
+          setBuffets([]);
+        }
+      } else if (itemType === 'combo-meals') {
+        await loadComboMeals(activeMenuTypes);
+      } else {
+        // Load food items - use server pagination if online, otherwise use IndexedDB with local pagination
+        if (navigator.onLine) {
+          try {
+            // Load from server with pagination
+            const serverItemsResponse = await menuApi.getFoodItems(
+              selectedCategoryId || undefined,
+              foodItemsPagination.paginationParams
             );
+            const serverItems: FoodItem[] = foodItemsPagination.extractData(serverItemsResponse) as FoodItem[];
+            foodItemsPagination.extractPagination(serverItemsResponse);
+            
+            // Filter by search query on client side (since backend doesn't support search yet)
+            let filteredItems: FoodItem[] = serverItems;
+            if (searchQuery.trim()) {
+              const query = searchQuery.toLowerCase();
+              filteredItems = serverItems.filter(
+                (item) =>
+                  item.name?.toLowerCase().includes(query) ||
+                  item.description?.toLowerCase().includes(query),
+              );
+            }
+            
+            setFoodItems(filteredItems);
+            
+            // Update IndexedDB cache (but don't wait for it)
+            serverItems.forEach((item: FoodItem) => {
+              db.foodItems.put({
+                id: item.id,
+                tenantId,
+                name: item.name,
+                description: item.description,
+                imageUrl: item.imageUrl,
+                categoryId: item.categoryId,
+                basePrice: item.basePrice,
+                stockType: item.stockType,
+                stockQuantity: item.stockQuantity,
+                menuType: item.menuType || 'all_day',
+                menuTypes: item.menuTypes || (item.menuType ? [item.menuType] : []),
+                ageLimit: item.ageLimit,
+                displayOrder: item.displayOrder,
+                isActive: item.isActive,
+                createdAt: item.createdAt,
+                updatedAt: item.updatedAt,
+              } as any).catch(console.error);
+            });
+          } catch (error) {
+            console.error('Failed to load food items from server, falling back to IndexedDB:', error);
+            // Fall through to IndexedDB loading
+            await loadFromIndexedDB(activeMenuTypes);
           }
-          
-          setFoodItems(filteredItems);
-          
-          // Update IndexedDB cache (but don't wait for it)
-          serverItems.forEach((item) => {
-            db.foodItems.put({
-              id: item.id,
-              tenantId,
-              name: item.name,
-              description: item.description,
-              imageUrl: item.imageUrl,
-              categoryId: item.categoryId,
-              basePrice: item.basePrice,
-              stockType: item.stockType,
-              stockQuantity: item.stockQuantity,
-              menuType: item.menuType || 'all_day',
-              menuTypes: item.menuTypes || (item.menuType ? [item.menuType] : []),
-              ageLimit: item.ageLimit,
-              displayOrder: item.displayOrder,
-              isActive: item.isActive,
-              createdAt: item.createdAt,
-              updatedAt: item.updatedAt,
-            } as any).catch(console.error);
-          });
-        } catch (error) {
-          console.error('Failed to load food items from server, falling back to IndexedDB:', error);
-          // Fall through to IndexedDB loading
+        } else {
+          // Offline: load from IndexedDB with local pagination
           await loadFromIndexedDB(activeMenuTypes);
         }
-      } else {
-        // Offline: load from IndexedDB with local pagination
-        await loadFromIndexedDB(activeMenuTypes);
       }
     } catch (error) {
       console.error('Failed to load food items:', error);
@@ -228,20 +277,92 @@ export function FoodItemsGrid({
 
     // Apply local pagination
     const totalItems = convertedItems.length;
-    const startIndex = (pagination.page - 1) * pagination.limit;
-    const endIndex = startIndex + pagination.limit;
+    const startIndex = (foodItemsPagination.page - 1) * foodItemsPagination.limit;
+    const endIndex = startIndex + foodItemsPagination.limit;
     const paginatedItems = convertedItems.slice(startIndex, endIndex);
 
     setFoodItems(paginatedItems);
     
     // Set pagination info
-    pagination.setTotal(totalItems);
-    pagination.setTotalPages(Math.ceil(totalItems / pagination.limit));
-    pagination.setHasNext(endIndex < totalItems);
-    pagination.setHasPrev(pagination.page > 1);
+    foodItemsPagination.setTotal(totalItems);
+    foodItemsPagination.setTotalPages(Math.ceil(totalItems / foodItemsPagination.limit));
+    foodItemsPagination.setHasNext(endIndex < totalItems);
+    foodItemsPagination.setHasPrev(foodItemsPagination.page > 1);
   };
 
-  const handleItemClick = (item: FoodItem) => {
+  const loadBuffets = async (activeMenuTypes: string[]) => {
+    try {
+      if (navigator.onLine) {
+        const response = await menuApi.getBuffets(buffetsPagination.paginationParams);
+        const serverBuffets: Buffet[] = buffetsPagination.extractData(response) as Buffet[];
+        buffetsPagination.extractPagination(response);
+        
+        // Filter by active menus and search
+        let filtered: Buffet[] = serverBuffets.filter((buffet) => buffet.isActive);
+        
+        if (activeMenuTypes.length > 0) {
+          filtered = filtered.filter((buffet) => {
+            const buffetMenuTypes = buffet.menuTypes || [];
+            return buffetMenuTypes.some((mt) => activeMenuTypes.includes(mt));
+          });
+        }
+        
+        if (searchQuery.trim()) {
+          const query = searchQuery.toLowerCase();
+          filtered = filtered.filter(
+            (buffet) =>
+              buffet.name?.toLowerCase().includes(query) ||
+              buffet.description?.toLowerCase().includes(query),
+          );
+        }
+        
+        setBuffets(filtered);
+      } else {
+        setBuffets([]);
+      }
+    } catch (error) {
+      console.error('Failed to load buffets:', error);
+      setBuffets([]);
+    }
+  };
+
+  const loadComboMeals = async (activeMenuTypes: string[]) => {
+    try {
+      if (navigator.onLine) {
+        const response = await menuApi.getComboMeals(comboMealsPagination.paginationParams);
+        const serverComboMeals: ComboMeal[] = comboMealsPagination.extractData(response) as ComboMeal[];
+        comboMealsPagination.extractPagination(response);
+        
+        // Filter by active menus and search
+        let filtered: ComboMeal[] = serverComboMeals.filter((combo) => combo.isActive);
+        
+        if (activeMenuTypes.length > 0) {
+          filtered = filtered.filter((combo) => {
+            const comboMenuTypes = combo.menuTypes || [];
+            return comboMenuTypes.some((mt) => activeMenuTypes.includes(mt));
+          });
+        }
+        
+        if (searchQuery.trim()) {
+          const query = searchQuery.toLowerCase();
+          filtered = filtered.filter(
+            (combo) =>
+              combo.name?.toLowerCase().includes(query) ||
+              combo.description?.toLowerCase().includes(query),
+          );
+        }
+        
+        setComboMeals(filtered);
+      } else {
+        setComboMeals([]);
+      }
+    } catch (error) {
+      console.error('Failed to load combo meals:', error);
+      setComboMeals([]);
+    }
+  };
+
+  const handleItemClick = (item: FoodItem | Buffet | ComboMeal) => {
     setSelectedItem(item);
     setModalOpened(true);
   };
@@ -255,11 +376,43 @@ export function FoodItemsGrid({
     [onAddToCart],
   );
 
+  const currentItems = itemType === 'buffets' ? buffets : itemType === 'combo-meals' ? comboMeals : foodItems;
+
   return (
     <Box style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Header with Search and Categories */}
       <Box p="md" style={{ borderBottom: `1px solid var(--mantine-color-gray-3)` }}>
         <Stack gap="md">
+          {/* Item Type Selector */}
+          <SegmentedControl
+            value={itemType}
+            onChange={(value) => {
+              const newItemType = value as 'food-items' | 'buffets' | 'combo-meals';
+              setItemType(newItemType);
+              // Reset pagination for the selected type
+              if (newItemType === 'food-items') {
+                foodItemsPagination.setPage(1);
+              } else if (newItemType === 'buffets') {
+                buffetsPagination.setPage(1);
+              } else if (newItemType === 'combo-meals') {
+                comboMealsPagination.setPage(1);
+              }
+              // Notify parent immediately
+              if (onItemTypeChange) {
+                onItemTypeChange(newItemType);
+              }
+            }}
+            data={[
+              { label: t('menu.foodItems', language) || 'Food Items', value: 'food-items' },
+              // Buffets are only available for dine-in orders
+              ...(orderType === 'dine_in' 
+                ? [{ label: t('menu.buffets', language) || 'Buffets', value: 'buffets' }]
+                : []),
+              { label: t('menu.comboMeals', language) || 'Combo Meals', value: 'combo-meals' },
+            ]}
+            fullWidth
+          />
+
           {/* Search */}
           <TextInput
             placeholder={t('pos.searchItems', language)}
@@ -268,34 +421,36 @@ export function FoodItemsGrid({
             onChange={(e) => onSearchChange(e.target.value)}
           />
 
-          {/* Categories */}
-          <ScrollArea>
-            <Group gap="xs">
-              <Button
-                variant={selectedCategoryId === null ? 'filled' : 'light'}
-                size="sm"
-                onClick={() => onCategoryChange(null)}
-                style={{
-                  backgroundColor: selectedCategoryId === null ? primaryShade : undefined,
-                }}
-              >
-                {t('pos.allCategories', language)}
-              </Button>
-              {categories.map((category) => (
+          {/* Categories - Only show for food items */}
+          {itemType === 'food-items' && (
+            <ScrollArea>
+              <Group gap="xs">
                 <Button
-                  key={category.id}
-                  variant={selectedCategoryId === category.id ? 'filled' : 'light'}
+                  variant={selectedCategoryId === null ? 'filled' : 'light'}
                   size="sm"
-                  onClick={() => onCategoryChange(category.id)}
+                  onClick={() => onCategoryChange(null)}
                   style={{
-                    backgroundColor: selectedCategoryId === category.id ? primaryShade : undefined,
+                    backgroundColor: selectedCategoryId === null ? primaryShade : undefined,
                   }}
                 >
-                  {category.name}
+                  {t('pos.allCategories', language)}
                 </Button>
-              ))}
-            </Group>
-          </ScrollArea>
+                {categories.map((category) => (
+                  <Button
+                    key={category.id}
+                    variant={selectedCategoryId === category.id ? 'filled' : 'light'}
+                    size="sm"
+                    onClick={() => onCategoryChange(category.id)}
+                    style={{
+                      backgroundColor: selectedCategoryId === category.id ? primaryShade : undefined,
+                    }}
+                  >
+                    {category.name}
+                  </Button>
+                ))}
+              </Group>
+            </ScrollArea>
+          )}
         </Stack>
       </Box>
 
@@ -310,7 +465,7 @@ export function FoodItemsGrid({
                 </Grid.Col>
               ))}
             </Grid>
-          ) : foodItems.length === 0 ? (
+          ) : currentItems.length === 0 ? (
             <Box style={{ textAlign: 'center', padding: '4rem 2rem' }}>
               <Text c="dimmed" size="lg">
                 {t('pos.noItemsFound', language)}
@@ -318,9 +473,22 @@ export function FoodItemsGrid({
             </Box>
           ) : (
             <Grid>
-              {foodItems.map((item) => {
-                const isOutOfStock = item.stockType === 'limited' && item.stockQuantity === 0;
-                const isLimitedStock = item.stockType === 'limited' && item.stockQuantity > 0 && item.stockQuantity < 10;
+              {currentItems.map((item) => {
+                // Handle different item types
+                const isFoodItem = 'stockType' in item;
+                const isBuffet = 'pricePerPerson' in item && !('stockType' in item);
+                const isComboMeal = 'foodItemIds' in item && !isBuffet && !isFoodItem;
+                
+                const isOutOfStock = isFoodItem && (item as FoodItem).stockType === 'limited' && (item as FoodItem).stockQuantity === 0;
+                const isLimitedStock = isFoodItem && (item as FoodItem).stockType === 'limited' && (item as FoodItem).stockQuantity > 0 && (item as FoodItem).stockQuantity < 10;
+                const price = isBuffet 
+                  ? (item as Buffet).pricePerPerson 
+                  : isComboMeal 
+                    ? (item as ComboMeal).basePrice
+                    : (item as FoodItem).basePrice;
+                const displayPrice = isBuffet 
+                  ? `${price.toFixed(2)}/${t('menu.perPerson', language) || 'person'}` 
+                  : `${price.toFixed(2)}`;
 
                 return (
                   <Grid.Col key={item.id} span={{ base: 6, sm: 4, md: 3 }}>
@@ -345,12 +513,37 @@ export function FoodItemsGrid({
                           alt={item.name || ''}
                           fit="cover"
                         />
+                        {(isBuffet || isComboMeal) && (
+                          <Box
+                            style={{
+                              position: 'absolute',
+                              top: 8,
+                              right: 8,
+                              backgroundColor: 'rgba(0,0,0,0.7)',
+                              borderRadius: 4,
+                              padding: '4px 8px',
+                            }}
+                          >
+                            {isBuffet ? (
+                              <IconChefHat size={16} color="white" />
+                            ) : (
+                              <IconShoppingBag size={16} color="white" />
+                            )}
+                          </Box>
+                        )}
                       </Card.Section>
 
                       <Stack gap="xs" mt="md" style={{ flex: 1 }}>
-                        <Text fw={500} size="sm" lineClamp={2}>
-                          {item.name}
-                        </Text>
+                        <Group gap="xs">
+                          <Text fw={500} size="sm" lineClamp={2} style={{ flex: 1 }}>
+                            {item.name}
+                          </Text>
+                          {isComboMeal && (item as ComboMeal).discountPercentage && (
+                            <Badge color={successColor} size="sm" variant="light">
+                              {(item as ComboMeal).discountPercentage?.toFixed(0)}% {t('menu.off', language) || 'off'}
+                            </Badge>
+                          )}
+                        </Group>
 
                         {item.description && (
                           <Text size="xs" c="dimmed" lineClamp={2}>
@@ -358,9 +551,21 @@ export function FoodItemsGrid({
                           </Text>
                         )}
 
+                        {isBuffet && (
+                          <Text size="xs" c="dimmed">
+                            {(item as Buffet).pricePerPerson.toFixed(2)} {currency} {t('menu.perPerson', language) || 'per person'}
+                          </Text>
+                        )}
+
+                        {isComboMeal && (
+                          <Text size="xs" c="dimmed">
+                            {(item as ComboMeal).foodItemIds?.length || 0} {t('menu.itemsIncluded', language)}
+                          </Text>
+                        )}
+
                         <Group justify="space-between" mt="auto">
                           <Text fw={700} size="lg" c={primaryColor}>
-                            {item.basePrice.toFixed(2)} {currency}
+                            {displayPrice} {currency}
                           </Text>
 
                           {isOutOfStock && (
@@ -401,18 +606,18 @@ export function FoodItemsGrid({
           )}
           
           {/* Pagination Controls */}
-          {pagination.total > 0 && (
+          {currentPagination.total > 0 && (
             <PaginationControls
-              page={pagination.page}
-              totalPages={pagination.totalPages}
-              limit={pagination.limit}
-              total={pagination.total}
+              page={currentPagination.page}
+              totalPages={currentPagination.totalPages}
+              limit={currentPagination.limit}
+              total={currentPagination.total}
               onPageChange={(page) => {
-                pagination.setPage(page);
+                currentPagination.setPage(page);
               }}
               onLimitChange={(newLimit) => {
-                pagination.setLimit(newLimit);
-                pagination.setPage(1);
+                currentPagination.setLimit(newLimit);
+                currentPagination.setPage(1);
               }}
               limitOptions={[12, 24, 48, 96]}
             />
@@ -420,17 +625,104 @@ export function FoodItemsGrid({
         </Box>
       </ScrollArea>
 
-      {/* Item Selection Modal */}
-      {selectedItem && (
+      {/* Item Selection Modal - Only for food items */}
+      {selectedItem && 'stockType' in selectedItem && !('pricePerPerson' in selectedItem) && (
         <ItemSelectionModal
           opened={modalOpened}
           onClose={() => {
             setModalOpened(false);
             setSelectedItem(null);
           }}
-          foodItem={selectedItem}
+          foodItem={selectedItem as FoodItem}
           onItemSelected={handleItemSelected}
         />
+      )}
+      
+      {/* Direct add to cart for buffets and combo meals */}
+      {selectedItem && (('pricePerPerson' in selectedItem) || ('foodItemIds' in selectedItem && !('pricePerPerson' in selectedItem))) && modalOpened && (
+        <Modal
+          opened={modalOpened}
+          onClose={() => {
+            setModalOpened(false);
+            setSelectedItem(null);
+          }}
+          title={selectedItem.name}
+          size="md"
+        >
+          <Stack gap="md">
+            {selectedItem.description && <Text size="sm">{selectedItem.description}</Text>}
+            {('pricePerPerson' in selectedItem && !('stockType' in selectedItem)) && (
+              <Stack gap="xs">
+                <Text size="sm" fw={500}>{t('menu.buffetDetails', language)}</Text>
+                <Text size="xs">{t('menu.pricePerPerson', language)}: {(selectedItem as Buffet).pricePerPerson.toFixed(2)} {currency}</Text>
+                <NumberInput
+                  label={t('menu.numberOfPersons', language)}
+                  min={1}
+                  defaultValue={1}
+                  id="buffet-persons"
+                />
+              </Stack>
+            )}
+            <Group justify="flex-end">
+              <Button
+                variant="subtle"
+                onClick={() => {
+                  setModalOpened(false);
+                  setSelectedItem(null);
+                }}
+              >
+                {t('common.cancel', language)}
+              </Button>
+              <Button
+                style={{ backgroundColor: primaryColor }}
+                onClick={() => {
+                  let quantity = 1;
+                  if ('pricePerPerson' in selectedItem) {
+                    const personsInput = document.getElementById('buffet-persons') as HTMLInputElement;
+                    quantity = personsInput ? parseInt(personsInput.value) || 1 : 1;
+                  }
+                  // Type guards - check properties to determine item type
+                  const hasStockType = 'stockType' in selectedItem;
+                  const hasPricePerPerson = 'pricePerPerson' in selectedItem;
+                  const hasFoodItemIds = 'foodItemIds' in selectedItem;
+                  
+                  let finalPrice: number;
+                  
+                  if (hasPricePerPerson && !hasStockType) {
+                    // It's a Buffet
+                    finalPrice = (selectedItem as Buffet).pricePerPerson * quantity;
+                  } else if (hasFoodItemIds && !hasPricePerPerson && !hasStockType) {
+                    // It's a ComboMeal
+                    finalPrice = (selectedItem as ComboMeal).basePrice;
+                  } else if (hasStockType) {
+                    // It's a FoodItem - cast through unknown as TypeScript suggests
+                    finalPrice = (selectedItem as unknown as FoodItem).basePrice;
+                  } else {
+                    // Fallback - should not happen
+                    finalPrice = 0;
+                  }
+                  
+                  const itemType = (hasPricePerPerson && !hasStockType) 
+                    ? 'buffet' 
+                    : (hasFoodItemIds && !hasPricePerPerson && !hasStockType)
+                      ? 'combo-meal'
+                      : 'food-item';
+                  
+                  onAddToCart({
+                    ...selectedItem,
+                    type: itemType,
+                    quantity,
+                    price: finalPrice,
+                  });
+                  setModalOpened(false);
+                  setSelectedItem(null);
+                }}
+              >
+                {t('pos.addToCart', language)}
+              </Button>
+            </Group>
+          </Stack>
+        </Modal>
       )}
     </Box>
   );

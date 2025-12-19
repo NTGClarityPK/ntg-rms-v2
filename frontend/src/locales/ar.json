@@ -48,6 +48,10 @@
     "inactive": "غير نشط",
     "actions": "الإجراءات",
     "english": "الإنجليزية",
+    "nameRequired": "الاسم مطلوب",
+    "optional": "اختياري",
+    "and": "و",
+    "more": "المزيد",
     "arabic": "العربية"
   },
   "auth": {
@@ -303,7 +307,7 @@
     "lunch": "الغداء",
     "dinner": "العشاء",
     "kidsSpecial": "خاص بالأطفال",
-    "unlimited": "غير محدود",
+      
     "limited": "محدود",
     "dailyLimited": "محدود يومي",
     "single": "واحد",
@@ -339,7 +343,50 @@
     "menuName": "اسم القائمة",
     "menuNameDescription": "أدخل اسماً لقائمتك. سيتم إنشاء معرف فريد تلقائياً.",
     "selectFoodItemsForMenu": "اختر الأصناف لإضافتها إلى هذه القائمة (اختياري)",
-    "deleteMenuConfirm": "هل أنت متأكد من حذف هذه القائمة؟ سيتم إزالة جميع الأصناف من هذه القائمة."
+    "deleteMenuConfirm": "هل أنت متأكد من حذف هذه القائمة؟ سيتم إزالة جميع الأصناف من هذه القائمة.",
+    "buffets": "البوفيهات",
+    "comboMeals": "الوجبات المركبة",
+    "buffetManagement": "إدارة البوفيهات",
+    "createBuffet": "إنشاء بوفيه",
+    "editBuffet": "تعديل بوفيه",
+    "buffetName": "اسم البوفيه",
+    "pricePerPerson": "السعر للشخص الواحد",
+    "perPerson": "للشخص الواحد",
+    "maximumPersons": "الحد الأقصى للأشخاص",
+    "capacity": "السعة",
+    "unlimited": "غير محدود",
+    "duration": "المدة",
+    "durationDescription": "مدة توفر خدمة البوفيه (مثلاً: 120 لدقيقتين)",
+    "availableFoodItems": "الأصناف المتاحة",
+    "availableFoodItemsDescription": "سيتم تضمين جميع الأصناف من القوائم المحددة تلقائياً في هذا البوفيه",
+    "buffetDetails": "تفاصيل البوفيه",
+    "numberOfPersons": "عدد الأشخاص",
+    "comboMealManagement": "إدارة الوجبات المركبة",
+    "createComboMeal": "إنشاء وجبة مركبة",
+    "editComboMeal": "تعديل وجبة مركبة",
+    "comboMealName": "اسم الوجبة المركبة",
+    "comboPrice": "سعر الوجبة المركبة",
+    "discountPercentage": "نسبة الخصم",
+    "itemsIncluded": "أصناف مدمجة",
+    "priceCalculation": "حساب السعر",
+    "individualItemsTotal": "إجمالي الأصناف الفردية",
+    "savings": "التوفير",
+    "noBuffetsFound": "لم يتم العثور على بوفيهات. قم بإنشاء أول بوفيه للبدء.",
+    "noComboMealsFound": "لم يتم العثور على وجبات مركبة. قم بإنشاء أول وجبة مركبة للبدء.",
+    "upTo": "حتى",
+    "items": "أصناف",
+    "pricePerPersonDescription": "السعر المطلوب لكل شخص للبوفيه",
+    "maximumPersonsDescription": "الحد الأقصى لسعة هذا البوفيه. اتركه فارغاً لسعة غير محدودة.",
+    "deleteBuffetConfirm": "هل أنت متأكد من حذف هذا البوفيه؟",
+    "deleteComboMealConfirm": "هل أنت متأكد من حذف هذه الوجبة المركبة؟",
+    "selectFoodItemsForCombo": "اختر الأصناف المضمنة في هذه الوجبة المركبة",
+    "discountAutoCalculated": "يتم حسابه تلقائياً إذا لم يتم توفيره",
+    "off": "خصم",
+    "pricePerPersonRequired": "يجب أن يكون السعر للشخص الواحد أكبر من 0",
+    "menuTypesRequired": "يجب اختيار نوع قائمة واحد على الأقل",
+    "basePriceRequired": "يجب أن يكون السعر الأساسي أكبر من 0",
+    "foodItemsRequired": "يجب اختيار صنف واحد على الأقل",
+    "minutes": "دقائق"
   },
   "pos": {
     "title": "نقطة البيع",
@@ -433,7 +480,9 @@
     "loyaltyDiscount": "خصم الولاء",
     "originalPrice": "السعر الأصلي",
     "updateOrder": "تحديث الطلب",
-    "totalAmount": "المبلغ الإجمالي"
+    "totalAmount": "المبلغ الإجمالي",
+    "buffet": "بوفيه",
+    "comboMeal": "وجبة كومبو"
   },
   "orders": {
     "title": "إدارة الطلبات",
@@ -921,6 +970,11 @@
     "addPrinter": "إضافة طابعة",
     "manageTaxes": "إدارة الضرائب",
     "printerConfigNote": "تكوين الطابعات للإيصالات وتذاكر المطبخ والفواتير."
+  },
+  "pagination": {
+    "showing": "عرض",
+    "of": "من",
+    "itemsPerPage": "عناصر في الصفحة"
   }
 
 }

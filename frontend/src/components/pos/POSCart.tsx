@@ -65,6 +65,7 @@ interface POSCartProps {
   tenantId: string;
   branchId: string;
   editingOrderId?: string | null;
+  isBuffetMode?: boolean; // When true, only show dine-in option
 }
 
 export function POSCart({
@@ -83,6 +84,7 @@ export function POSCart({
   tenantId,
   branchId,
   editingOrderId,
+  isBuffetMode = false,
 }: POSCartProps) {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
@@ -315,11 +317,27 @@ export function POSCart({
   };
 
   const handleEditItem = async (index: number, item: CartItem) => {
-    // Load food item details
-    const foodItem = await db.foodItems.get(item.foodItemId);
-    if (foodItem) {
-      setEditingItem({ ...foodItem, cartItemIndex: index });
+    // Check if item is a buffet or combo meal (these typically can't be edited in the same way)
+    if (item.buffetId || item.comboMealId) {
+      // For buffets and combo meals, we can still allow editing quantity and special instructions
+      // but we don't need to load from IndexedDB
+      setEditingItem({ 
+        ...item, 
+        cartItemIndex: index,
+        isBuffet: !!item.buffetId,
+        isComboMeal: !!item.comboMealId,
+      });
       setEditingItemIndex(index);
+      return;
+    }
+    
+    // Load food item details only if it's a food item
+    if (item.foodItemId) {
+      const foodItem = await db.foodItems.get(item.foodItemId);
+      if (foodItem) {
+        setEditingItem({ ...foodItem, cartItemIndex: index });
+        setEditingItemIndex(index);
+      }
     }
   };
 
@@ -429,7 +447,10 @@ export function POSCart({
   };
 
   const calculateSubtotal = useCallback(() => {
-    return cartItems.reduce((sum, item) => sum + item.subtotal, 0);
+    return cartItems.reduce((sum, item) => {
+      const subtotal = item.subtotal ?? (item.unitPrice ?? 0) * (item.quantity ?? 1);
+      return sum + subtotal;
+    }, 0);
   }, [cartItems]);
 
   const getLoyaltyTierDiscount = useCallback(() => {
@@ -445,7 +466,10 @@ export function POSCart({
     const discountPercent = tierDiscounts[selectedCustomerData.loyaltyTier] || 0;
     if (discountPercent === 0) return 0;
     
-    const subtotal = cartItems.reduce((sum, item) => sum + item.subtotal, 0);
+    const subtotal = cartItems.reduce((sum, item) => {
+      const itemSubtotal = item.subtotal ?? (item.unitPrice ?? 0) * (item.quantity ?? 1);
+      return sum + itemSubtotal;
+    }, 0);
     return (subtotal * discountPercent) / 100;
   }, [selectedCustomerData?.loyaltyTier, cartItems]);
 
@@ -479,14 +503,16 @@ export function POSCart({
       const serviceCharge = 0; // Not implemented yet
 
       // Prepare order items for tax calculation with categoryId
-      const orderItemsForTax = await Promise.all(
-        cartItems.map(async (item) => {
+      // Only include food items (exclude buffets and combo meals)
+      const foodItemsOnly = cartItems.filter((item) => item.foodItemId && !item.buffetId && !item.comboMealId);
+      const validOrderItemsForTax = await Promise.all(
+        foodItemsOnly.map(async (item) => {
           // Fetch food item to get categoryId
-          const foodItem = await db.foodItems.get(item.foodItemId);
+          const foodItem = item.foodItemId ? await db.foodItems.get(item.foodItemId) : null;
           return {
-            foodItemId: item.foodItemId,
+            foodItemId: item.foodItemId!,
             categoryId: foodItem?.categoryId,
-            subtotal: item.subtotal,
+            subtotal: item.subtotal ?? (item.unitPrice ?? 0) * (item.quantity ?? 1),
           };
         })
       );
@@ -504,13 +530,16 @@ export function POSCart({
         } else if (tax.appliesTo === 'category') {
           // Apply only to items in specified categories
           const categoryIds = tax.categoryIds || [];
-          taxBaseAmount = orderItemsForTax
+          taxBaseAmount = validOrderItemsForTax
             .filter((item) => item.categoryId && categoryIds.includes(item.categoryId))
-            .reduce((sum, item) => sum + item.subtotal, 0);
+            .reduce((sum, item) => {
+              const itemSubtotal = item.subtotal ?? 0;
+              return sum + itemSubtotal;
+            }, 0);
         } else if (tax.appliesTo === 'item') {
           // Apply only to specified items
           const foodItemIds = tax.foodItemIds || [];
-          taxBaseAmount = orderItemsForTax
+          taxBaseAmount = validOrderItemsForTax
             .filter((item) => foodItemIds.includes(item.foodItemId))
             .reduce((sum, item) => sum + item.subtotal, 0);
         }
@@ -630,7 +659,10 @@ export function POSCart({
       }
       
       // Validate minimum delivery order amount
-      const subtotal = cartItems.reduce((sum, item) => sum + item.subtotal, 0);
+      const subtotal = cartItems.reduce((sum, item) => {
+        const itemSubtotal = item.subtotal ?? (item.unitPrice ?? 0) * (item.quantity ?? 1);
+        return sum + itemSubtotal;
+      }, 0);
       if (minimumDeliveryOrderAmount > 0 && subtotal < minimumDeliveryOrderAmount) {
         return t('pos.minimumDeliveryAmount' as any, language) || 
                `Minimum delivery order amount is ${minimumDeliveryOrderAmount.toFixed(2)} ${currency}`;
@@ -731,16 +763,23 @@ export function POSCart({
       }
 
       // Create order items for API
-      const orderItemsForApi = cartItems.map((item) => ({
-        foodItemId: item.foodItemId,
-        quantity: item.quantity,
-        variationId: item.variationId,
-        addOns: item.addOns?.map((addOn) => ({
-          addOnId: addOn.addOnId,
-          quantity: addOn.quantity || 1,
-        })),
-        specialInstructions: item.specialInstructions,
-      }));
+      const orderItemsForApi = cartItems.map((item) => {
+        const isBuffet = !!item.buffetId;
+        const isComboMeal = !!item.comboMealId;
+        
+        return {
+          ...(isBuffet ? { buffetId: item.buffetId } : {}),
+          ...(isComboMeal ? { comboMealId: item.comboMealId } : {}),
+          ...(!isBuffet && !isComboMeal ? { foodItemId: item.foodItemId } : {}),
+          quantity: item.quantity,
+          variationId: item.variationId,
+          addOns: item.addOns?.map((addOn) => ({
+            addOnId: addOn.addOnId,
+            quantity: addOn.quantity || 1,
+          })),
+          specialInstructions: item.specialInstructions,
+        };
+      });
 
       // Prepare order DTO for API
       const createOrderDto = {
@@ -829,12 +868,14 @@ export function POSCart({
             id: `order-item-${Date.now()}-${index}`,
             orderId,
             foodItemId: item.foodItemId,
+            buffetId: item.buffetId,
+            comboMealId: item.comboMealId,
             variationId: item.variationId,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
             discountAmount: 0,
             taxAmount: 0,
-            subtotal: item.subtotal,
+            subtotal: item.subtotal ?? (item.unitPrice ?? 0) * (item.quantity ?? 1),
             specialInstructions: item.specialInstructions,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
@@ -1022,12 +1063,14 @@ export function POSCart({
         id: `order-item-${Date.now()}-${index}`,
         orderId,
         foodItemId: item.foodItemId,
+        buffetId: item.buffetId,
+        comboMealId: item.comboMealId,
         variationId: item.variationId,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         discountAmount: 0,
         taxAmount: 0,
-        subtotal: item.subtotal,
+        subtotal: item.subtotal ?? (item.unitPrice ?? 0) * (item.quantity ?? 1),
         specialInstructions: item.specialInstructions,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -1134,7 +1177,7 @@ export function POSCart({
               addOnName: a.addOnName || (a as any).addOnNameEn || (a as any).addOnNameAr || '',
             })) || [],
             quantity: item.quantity,
-            subtotal: item.subtotal,
+            subtotal: item.subtotal ?? (item.unitPrice ?? 0) * (item.quantity ?? 1),
           })),
         } as any,
         tenant: {
@@ -1198,8 +1241,11 @@ export function POSCart({
               onChange={(value) => onOrderTypeChange(value as 'dine_in' | 'takeaway' | 'delivery')}
               data={[
                 { label: t('pos.dineIn', language), value: 'dine_in' },
-                { label: t('pos.takeaway', language), value: 'takeaway' },
-                ...(enableDeliveryManagement ? [{ label: t('pos.delivery', language), value: 'delivery' }] : []),
+                // Hide takeaway and delivery when in buffet mode
+                ...(isBuffetMode ? [] : [
+                  { label: t('pos.takeaway', language), value: 'takeaway' },
+                  ...(enableDeliveryManagement ? [{ label: t('pos.delivery', language), value: 'delivery' }] : []),
+                ]),
               ]}
               style={{
                 '--sc-color': primaryShade,
@@ -1467,7 +1513,9 @@ export function POSCart({
                             size="sm"
                             onClick={() => {
                               if (item.quantity > 1) {
-                                onUpdateItem(index, { ...item, quantity: item.quantity - 1, subtotal: item.unitPrice * (item.quantity - 1) });
+                                const unitPrice = item.unitPrice ?? 0;
+                                const newQuantity = item.quantity - 1;
+                                onUpdateItem(index, { ...item, quantity: newQuantity, subtotal: unitPrice * newQuantity });
                               }
                             }}
                           >
@@ -1480,7 +1528,9 @@ export function POSCart({
                             variant="subtle"
                             size="sm"
                             onClick={() => {
-                              onUpdateItem(index, { ...item, quantity: item.quantity + 1, subtotal: item.unitPrice * (item.quantity + 1) });
+                              const unitPrice = item.unitPrice ?? 0;
+                              const newQuantity = item.quantity + 1;
+                              onUpdateItem(index, { ...item, quantity: newQuantity, subtotal: unitPrice * newQuantity });
                             }}
                           >
                             <IconPlus size={14} />
@@ -1489,7 +1539,7 @@ export function POSCart({
 
                         <Group gap="xs">
                           <Text size="sm" fw={600} c={primaryColor}>
-                            {item.subtotal.toFixed(2)} {currency}
+                            {(item.subtotal ?? (item.unitPrice ?? 0) * (item.quantity ?? 1)).toFixed(2)} {currency}
                           </Text>
                           <Button
                             variant="subtle"

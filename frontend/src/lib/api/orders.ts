@@ -9,11 +9,29 @@ export type PaymentStatus = 'unpaid' | 'paid';
 export interface OrderItem {
   id: string;
   orderId: string;
-  foodItemId: string;
+  foodItemId?: string;
   foodItem?: {
     id: string;
     name: string;
     imageUrl?: string;
+  };
+  buffetId?: string;
+  buffet?: {
+    id: string;
+    name: string;
+    imageUrl?: string;
+  };
+  comboMealId?: string;
+  comboMeal?: {
+    id: string;
+    name: string;
+    imageUrl?: string;
+    foodItemIds?: string[];
+    foodItems?: {
+      id: string;
+      name: string;
+      imageUrl?: string;
+    }[];
   };
   variationId?: string;
   variation?: {
@@ -115,7 +133,9 @@ export interface UpdatePaymentStatusDto {
 }
 
 export interface CreateOrderItemDto {
-  foodItemId: string;
+  foodItemId?: string;
+  buffetId?: string;
+  comboMealId?: string;
   quantity: number;
   variationId?: string;
   addOns?: {

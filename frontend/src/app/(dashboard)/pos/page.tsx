@@ -32,6 +32,7 @@ export default function POSPage() {
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [loadingBranches, setLoadingBranches] = useState(true);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [currentItemType, setCurrentItemType] = useState<'food-items' | 'buffets' | 'combo-meals'>('food-items');
 
   // Update order type when settings change (only on initial load, not when editing)
   useEffect(() => {
@@ -75,12 +76,12 @@ export default function POSPage() {
             order.items.map(async (item) => {
               // Use food item from API response, or load from IndexedDB as fallback
               let foodItem: any = item.foodItem;
-              if (!foodItem) {
+              if (!foodItem && item.foodItemId) {
                 foodItem = await db.foodItems.get(item.foodItemId);
               }
               
               // If still not found, try to fetch from API
-              if (!foodItem && navigator.onLine) {
+              if (!foodItem && item.foodItemId && navigator.onLine) {
                 try {
                   const { menuApi } = await import('@/lib/api/menu');
                   foodItem = await menuApi.getFoodItemById(item.foodItemId);
@@ -99,10 +100,24 @@ export default function POSPage() {
               // Get variation info from API response
               const variation = item.variation;
               
+              // Handle buffets and combo meals
+              const isBuffet = !!(item.buffetId || item.buffet);
+              const isComboMeal = !!(item.comboMealId || item.comboMeal);
+              
               return {
-                foodItemId: item.foodItemId,
-                foodItemName: foodItem?.name || item.foodItem?.name || 'Unknown Item',
-                foodItemImageUrl: foodItem?.imageUrl || item.foodItem?.imageUrl,
+                foodItemId: isBuffet || isComboMeal ? undefined : item.foodItemId,
+                buffetId: isBuffet ? (item.buffetId || item.buffet?.id) : undefined,
+                comboMealId: isComboMeal ? (item.comboMealId || item.comboMeal?.id) : undefined,
+                foodItemName: isBuffet 
+                  ? (item.buffet?.name || 'Buffet')
+                  : isComboMeal
+                  ? (item.comboMeal?.name || 'Combo Meal')
+                  : (foodItem?.name || item.foodItem?.name || 'Unknown Item'),
+                foodItemImageUrl: isBuffet
+                  ? item.buffet?.imageUrl
+                  : isComboMeal
+                  ? item.comboMeal?.imageUrl
+                  : (foodItem?.imageUrl || item.foodItem?.imageUrl),
                 variationId: item.variationId,
                 variationGroup: variation?.variationGroup || item.variation?.variationGroup,
                 variationName: variation?.variationName || item.variation?.variationName,
@@ -113,6 +128,8 @@ export default function POSPage() {
                 specialInstructions: item.specialInstructions,
                 addOns: addOns.length > 0 ? addOns : undefined,
                 foodItem: foodItem, // Keep for compatibility
+                buffet: item.buffet,
+                comboMeal: item.comboMeal,
               };
             })
           );
@@ -246,14 +263,40 @@ export default function POSPage() {
 
   const handleAddToCart = useCallback((item: any) => {
     setCartItems((prev) => {
+      // Determine item type
+      const itemType = item.type || (item.id && !item.foodItemId ? 'unknown' : 'food-item');
+      const isBuffet = itemType === 'buffet' || ('pricePerPerson' in item && !('stockType' in item));
+      const isComboMeal = itemType === 'combo-meal' || ('foodItemIds' in item && !isBuffet && !('stockType' in item));
+      
+      // Normalize the item to ensure it has unitPrice and subtotal
+      const normalizedItem = {
+        ...item,
+        // Use price if provided, otherwise use unitPrice, otherwise use basePrice, otherwise 0
+        unitPrice: item.unitPrice ?? item.price ?? item.basePrice ?? 0,
+        // Calculate subtotal: unitPrice * quantity
+        subtotal: (item.unitPrice ?? item.price ?? item.basePrice ?? 0) * (item.quantity || 1),
+        // Ensure quantity is set
+        quantity: item.quantity || 1,
+        // Map IDs based on item type
+        foodItemId: isBuffet || isComboMeal ? undefined : (item.foodItemId || item.id || ''),
+        buffetId: isBuffet ? (item.id || item.buffetId) : undefined,
+        comboMealId: isComboMeal ? (item.id || item.comboMealId) : undefined,
+        // Map foodItemName from name if needed
+        foodItemName: item.foodItemName || item.name || '',
+        // Map foodItemImageUrl from imageUrl if needed
+        foodItemImageUrl: item.foodItemImageUrl || item.imageUrl,
+        // Store item type
+        type: itemType,
+      };
+      
       // Find if an identical item already exists
-      const existingIndex = prev.findIndex((existingItem) => areItemsIdentical(existingItem, item));
+      const existingIndex = prev.findIndex((existingItem) => areItemsIdentical(existingItem, normalizedItem));
       
       if (existingIndex !== -1) {
         // Item already exists, increment quantity
         const updatedItems = [...prev];
         const existingItem = updatedItems[existingIndex];
-        const newQuantity = existingItem.quantity + item.quantity;
+        const newQuantity = existingItem.quantity + normalizedItem.quantity;
         updatedItems[existingIndex] = {
           ...existingItem,
           quantity: newQuantity,
@@ -261,8 +304,9 @@ export default function POSPage() {
         };
         return updatedItems;
       } else {
-        // New item, add to cart
-        return [...prev, item];
+        // New item, add to cart (remove price property if it exists, keep only unitPrice)
+        const { price, ...itemWithoutPrice } = normalizedItem;
+        return [...prev, itemWithoutPrice];
       }
     });
   }, []);
@@ -282,6 +326,21 @@ export default function POSPage() {
   const handleClearCart = useCallback(() => {
     setCartItems([]);
   }, []);
+
+  const handleItemTypeChange = useCallback((itemType: 'food-items' | 'buffets' | 'combo-meals') => {
+    setCurrentItemType((previousItemType) => {
+      // Clear cart when switching to/from buffet tab
+      if (previousItemType === 'buffets' || itemType === 'buffets') {
+        handleClearCart();
+      }
+      return itemType;
+    });
+
+    // When switching to buffet, set order type to dine_in
+    if (itemType === 'buffets') {
+      setOrderType('dine_in');
+    }
+  }, [handleClearCart]);
 
   // Ensure a branch is always selected
   useEffect(() => {
@@ -340,6 +399,8 @@ export default function POSPage() {
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
             onAddToCart={handleAddToCart}
+            orderType={orderType}
+            onItemTypeChange={handleItemTypeChange}
           />
         </Grid.Col>
 
@@ -352,12 +413,17 @@ export default function POSPage() {
             onClearCart={handleClearCart}
             orderType={orderType}
             onOrderTypeChange={(type) => {
+              // Prevent switching away from dine_in when on buffet tab
+              if (currentItemType === 'buffets' && type !== 'dine_in') {
+                return;
+              }
               // Prevent switching to delivery if delivery management is disabled
               if (type === 'delivery' && !settings?.general?.enableDeliveryManagement) {
                 return;
               }
               setOrderType(type);
             }}
+            isBuffetMode={currentItemType === 'buffets'}
             selectedTableId={selectedTableId}
             onTableChange={setSelectedTableId}
             selectedCustomerId={selectedCustomerId}

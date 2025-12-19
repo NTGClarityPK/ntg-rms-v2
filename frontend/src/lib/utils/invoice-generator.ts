@@ -191,7 +191,11 @@ export class InvoiceGenerator {
     <div class="section-title">${isRTL ? 'العناصر' : 'ITEMS'}</div>
     <div class="items">
       ${((order as any).items || []).map((item: any) => {
-        const itemName = item.foodItemName || item.foodItem?.name || 'Item';
+        const itemName = (item.buffetId || item.buffet)
+          ? (item.buffet?.name?.trim() || (item.buffetId ? `Buffet #${item.buffetId.substring(0, 8)}...` : 'Buffet'))
+          : (item.comboMealId || item.comboMeal)
+          ? (item.comboMeal?.name?.trim() || (item.comboMealId ? `Combo Meal #${item.comboMealId.substring(0, 8)}...` : 'Combo Meal'))
+          : (item.foodItemName || item.foodItem?.name || 'Item');
         const variationName = item.variationName || item.variation?.variationName;
         const addOns = item.addOns || [];
         const addOnNames = addOns.map((a: any) => {
@@ -479,7 +483,11 @@ export class InvoiceGenerator {
       </thead>
       <tbody>
         ${((order as any).items || []).map((item: any) => {
-          const itemName = item.foodItemName || item.foodItem?.name || 'Item';
+          const itemName = (item.buffetId || item.buffet)
+            ? (item.buffet?.name?.trim() || (item.buffetId ? `Buffet #${item.buffetId.substring(0, 8)}...` : 'Buffet'))
+            : (item.comboMealId || item.comboMeal)
+            ? (item.comboMeal?.name?.trim() || (item.comboMealId ? `Combo Meal #${item.comboMealId.substring(0, 8)}...` : 'Combo Meal'))
+            : (item.foodItemName || item.foodItem?.name || 'Item');
           const variationName = item.variationName || item.variation?.variationName;
           const addOns = item.addOns || [];
           const addOnNames = addOns.map((a: any) => {

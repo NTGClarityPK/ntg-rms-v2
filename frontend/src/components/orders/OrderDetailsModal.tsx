@@ -28,6 +28,7 @@ import { InvoiceGenerator } from '@/lib/utils/invoice-generator';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { useDateFormat } from '@/lib/hooks/use-date-format';
 import { useSettings } from '@/lib/hooks/use-settings';
+import { menuApi } from '@/lib/api/menu';
 
 interface OrderDetailsModalProps {
   opened: boolean;
@@ -78,6 +79,52 @@ export function OrderDetailsModal({
     setLoading(true);
     try {
       const data = await ordersApi.getOrderById(order.id);
+      
+      // Fetch missing buffet and combo meal names if needed
+      if (data.items) {
+        const itemsWithNames = await Promise.all(
+          data.items.map(async (item) => {
+            // If buffetId exists but buffet object is missing or has no name, fetch it
+            if (item.buffetId && (!item.buffet || !item.buffet.name)) {
+              try {
+                const buffet = await menuApi.getBuffetById(item.buffetId);
+                return {
+                  ...item,
+                  buffet: {
+                    id: buffet.id,
+                    name: buffet.name,
+                    imageUrl: buffet.imageUrl,
+                  },
+                };
+              } catch (error) {
+                console.error('Failed to fetch buffet:', error);
+                return item;
+              }
+            }
+            // If comboMealId exists but comboMeal object is missing or has no name, fetch it
+            if (item.comboMealId && (!item.comboMeal || !item.comboMeal.name)) {
+              try {
+                const comboMeal = await menuApi.getComboMealById(item.comboMealId);
+                return {
+                  ...item,
+                  comboMeal: {
+                    id: comboMeal.id,
+                    name: comboMeal.name,
+                    imageUrl: comboMeal.imageUrl,
+                    foodItemIds: comboMeal.foodItemIds || [],
+                  },
+                };
+              } catch (error) {
+                console.error('Failed to fetch combo meal:', error);
+                return item;
+              }
+            }
+            return item;
+          })
+        );
+        data.items = itemsWithNames;
+      }
+      
       setOrderDetails(data);
       setNewStatus(data.status);
     } catch (error: any) {
@@ -109,10 +156,8 @@ export function OrderDetailsModal({
     if (opened && order) {
       setOrderDetails(order);
       setNewStatus(order.status);
-      // Fetch full order details if needed
-      if (!order.items) {
-        loadOrderDetails();
-      }
+      // Always reload order details to ensure we have latest data including buffet/combo meal info
+      loadOrderDetails();
       // Load tenant and branch info for invoice
       loadInvoiceData();
     }
@@ -213,7 +258,11 @@ export function OrderDetailsModal({
           paymentMethod: paymentMethod,
           items: orderDetails.items?.map(item => ({
             ...item,
-            foodItemName: item.foodItem?.name || '',
+            foodItemName: (item.buffetId || item.buffet) 
+              ? (item.buffet?.name?.trim() || (item.buffetId ? `Buffet #${item.buffetId.substring(0, 8)}...` : 'Buffet'))
+              : (item.comboMealId || item.comboMeal)
+              ? (item.comboMeal?.name?.trim() || (item.comboMealId ? `Combo Meal #${item.comboMealId.substring(0, 8)}...` : 'Combo Meal'))
+              : (item.foodItem?.name || ''),
             variationName: item.variation?.variationName || '',
             addOns: item.addOns?.map(a => ({
               addOnName: a.addOn?.name || '',
@@ -532,8 +581,12 @@ export function OrderDetailsModal({
                       <Table.Td>
                         <Stack gap={4}>
                           <Text fw={500}>
-                            {item.foodItem
-                              ? (item.foodItem.name || t('pos.item', language))
+                            {(item.buffetId || item.buffet)
+                              ? (item.buffet?.name?.trim() || (item.buffetId ? `Buffet #${item.buffetId.substring(0, 8)}...` : 'Buffet'))
+                              : (item.comboMealId || item.comboMeal)
+                              ? (item.comboMeal?.name?.trim() || (item.comboMealId ? `Combo Meal #${item.comboMealId.substring(0, 8)}...` : 'Combo Meal'))
+                              : (item.foodItemId || item.foodItem)
+                              ? (item.foodItem?.name || t('pos.item', language))
                               : t('pos.item', language) + ` #${item.foodItemId || item.id}`}
                           </Text>
                           {item.variation && item.variation.variationName && (

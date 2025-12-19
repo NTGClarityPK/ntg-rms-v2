@@ -2,13 +2,15 @@
 
 import { useState } from 'react';
 import { Tabs } from '@mantine/core';
-import { IconCategory, IconToolsKitchen2, IconPlus, IconMenu2 } from '@tabler/icons-react';
+import { IconCategory, IconToolsKitchen2, IconPlus, IconMenu2, IconChefHat, IconShoppingBag } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { CategoriesPage } from '@/components/menu/CategoriesPage';
 import { FoodItemsPage } from '@/components/menu/FoodItemsPage';
 import { AddOnGroupsPage } from '@/components/menu/AddOnGroupsPage';
 import { MenusPage } from '@/components/menu/MenusPage';
+import { BuffetPage } from '@/components/menu/BuffetPage';
+import { ComboMealPage } from '@/components/menu/ComboMealPage';
 
 export default function MenuPage() {
   const { language } = useLanguageStore();
@@ -35,6 +37,12 @@ export default function MenuPage() {
         <Tabs.Tab value="menus" leftSection={<IconMenu2 size={16} />}>
           {t('menu.menus', language)}
         </Tabs.Tab>
+        <Tabs.Tab value="buffets" leftSection={<IconChefHat size={16} />}>
+          {t('menu.buffets', language)}
+        </Tabs.Tab>
+        <Tabs.Tab value="combo-meals" leftSection={<IconShoppingBag size={16} />}>
+          {t('menu.comboMeals', language)}
+        </Tabs.Tab>
       </Tabs.List>
 
       <Tabs.Panel value="categories" pt="md">
@@ -51,6 +59,14 @@ export default function MenuPage() {
 
       <Tabs.Panel value="menus" pt="md">
         <MenusPage />
+      </Tabs.Panel>
+
+      <Tabs.Panel value="buffets" pt="md">
+        <BuffetPage />
+      </Tabs.Panel>
+
+      <Tabs.Panel value="combo-meals" pt="md">
+        <ComboMealPage />
       </Tabs.Panel>
     </Tabs>
   );

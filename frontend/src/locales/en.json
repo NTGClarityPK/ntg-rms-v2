@@ -34,7 +34,11 @@
     "actions": "Actions",
     "english": "English",
     "required": "This field is required",
-    "invalidEmail": "Invalid email address"
+    "invalidEmail": "Invalid email address",
+    "nameRequired": "Name is required",
+    "optional": "Optional",
+    "and": "and",
+    "more": "more"
   },
   "auth": {
     "loginTitle": "Welcome Back",
@@ -316,7 +320,6 @@
     "lunch": "Lunch",
     "dinner": "Dinner",
     "kidsSpecial": "Kids Special",
-    "unlimited": "Unlimited",
     "limited": "Limited",
     "dailyLimited": "Daily Limited",
     "single": "Single",
@@ -352,7 +355,50 @@
     "deleteSuccess": "Item deleted successfully",
     "saveSuccess": "Item saved successfully",
     "uploadSuccess": "Image uploaded successfully",
-    "selectAddOnGroup": "Select an add-on group to view its items"
+    "selectAddOnGroup": "Select an add-on group to view its items",
+    "buffets": "Buffets",
+    "comboMeals": "Combo Meals",
+    "buffetManagement": "Buffet Management",
+    "createBuffet": "Create Buffet",
+    "editBuffet": "Edit Buffet",
+    "buffetName": "Buffet Name",
+    "pricePerPerson": "Price Per Person",
+    "perPerson": "per person",
+    "maximumPersons": "Maximum Persons",
+    "capacity": "Capacity",
+    "unlimited": "Unlimited",
+    "duration": "Duration",
+    "durationDescription": "How long the buffet service is available (e.g., 120 for 2 hours)",
+    "availableFoodItems": "Available Food Items",
+    "availableFoodItemsDescription": "All food items from the selected menus will automatically be included in this buffet",
+    "buffetDetails": "Buffet Details",
+    "numberOfPersons": "Number of Persons",
+    "comboMealManagement": "Combo Meal Management",
+    "createComboMeal": "Create Combo Meal",
+    "editComboMeal": "Edit Combo Meal",
+    "comboMealName": "Combo Meal Name",
+    "comboPrice": "Combo Price",
+    "discountPercentage": "Discount Percentage",
+    "itemsIncluded": "items included",
+    "priceCalculation": "Price Calculation",
+    "individualItemsTotal": "Individual items total",
+    "savings": "Savings",
+    "noBuffetsFound": "No buffets found. Create your first buffet to get started.",
+    "noComboMealsFound": "No combo meals found. Create your first combo meal to get started.",
+    "upTo": "Up to",
+    "items": "items",
+    "pricePerPersonDescription": "Price charged per person for the buffet",
+    "maximumPersonsDescription": "Maximum capacity for this buffet. Leave empty for unlimited capacity.",
+    "deleteBuffetConfirm": "Are you sure you want to delete this buffet?",
+    "deleteComboMealConfirm": "Are you sure you want to delete this combo meal?",
+    "selectFoodItemsForCombo": "Select food items included in this combo",
+    "discountAutoCalculated": "Auto-calculated if not provided",
+    "off": "off",
+    "pricePerPersonRequired": "Price per person must be greater than 0",
+    "menuTypesRequired": "At least one menu type is required",
+    "basePriceRequired": "Base price must be greater than 0",
+    "foodItemsRequired": "At least one food item is required",
+    "minutes": "minutes"
   },
   "pos": {
     "title": "Point of Sale",
@@ -446,7 +492,9 @@
     "loyaltyDiscount": "Loyalty Discount",
     "originalPrice": "Original Price",
     "updateOrder": "Update Order",
-    "totalAmount": "Total Amount"
+    "totalAmount": "Total Amount",
+    "buffet": "Buffet",
+    "comboMeal": "Combo Meal"
   },
   "orders": {
     "title": "Order Management",
@@ -935,6 +983,11 @@
     "addPrinter": "Add Printer",
     "manageTaxes": "Manage Taxes",
     "printerConfigNote": "Configure printers for receipts, kitchen tickets, and invoices."
+  },
+  "pagination": {
+    "showing": "Showing",
+    "of": "of",
+    "itemsPerPage": "Items per page"
   }
 
 }

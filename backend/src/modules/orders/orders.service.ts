@@ -120,33 +120,77 @@ export class OrdersService {
     let itemDiscounts = 0;
 
     // Calculate subtotal and item-level discounts
-    const orderItemsForTax: Array<{ foodItemId: string; categoryId?: string; subtotal: number }> = [];
+    const orderItemsForTax: Array<{ foodItemId?: string; categoryId?: string; subtotal: number }> = [];
     
     for (const item of items) {
-      // Get food item details
-      const { data: foodItem } = await supabase
-        .from('food_items')
-        .select('base_price, stock_type, stock_quantity, category_id')
-        .eq('id', item.foodItemId)
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .single();
+      let unitPrice = 0;
+      let categoryId: string | undefined;
+      let foodItemId: string | undefined;
 
-      if (!foodItem) {
-        throw new NotFoundException(`Food item ${item.foodItemId} not found`);
+      // Handle different item types
+      if (item.buffetId) {
+        // Handle buffet
+        const { data: buffet } = await supabase
+          .from('buffets')
+          .select('price_per_person')
+          .eq('id', item.buffetId)
+          .eq('tenant_id', tenantId)
+          .is('deleted_at', null)
+          .single();
+
+        if (!buffet) {
+          throw new NotFoundException(`Buffet ${item.buffetId} not found`);
+        }
+
+        // For buffets, quantity represents number of persons
+        unitPrice = buffet.price_per_person;
+        // Buffets don't have categoryId for tax calculation
+      } else if (item.comboMealId) {
+        // Handle combo meal
+        const { data: comboMeal } = await supabase
+          .from('combo_meals')
+          .select('base_price')
+          .eq('id', item.comboMealId)
+          .eq('tenant_id', tenantId)
+          .is('deleted_at', null)
+          .single();
+
+        if (!comboMeal) {
+          throw new NotFoundException(`Combo meal ${item.comboMealId} not found`);
+        }
+
+        unitPrice = comboMeal.base_price;
+        // Combo meals don't have categoryId for tax calculation
+      } else if (item.foodItemId) {
+        // Handle regular food item
+        const { data: foodItem } = await supabase
+          .from('food_items')
+          .select('base_price, stock_type, stock_quantity, category_id')
+          .eq('id', item.foodItemId)
+          .eq('tenant_id', tenantId)
+          .is('deleted_at', null)
+          .single();
+
+        if (!foodItem) {
+          throw new NotFoundException(`Food item ${item.foodItemId} not found`);
+        }
+
+        // Check stock availability
+        if (foodItem.stock_type === 'limited' && foodItem.stock_quantity < item.quantity) {
+          throw new BadRequestException(
+            `Insufficient stock for food item ${item.foodItemId}. Available: ${foodItem.stock_quantity}, Requested: ${item.quantity}`,
+          );
+        }
+
+        unitPrice = foodItem.base_price;
+        categoryId = foodItem.category_id;
+        foodItemId = item.foodItemId;
+      } else {
+        throw new BadRequestException('Order item must have either foodItemId, buffetId, or comboMealId');
       }
 
-      // Check stock availability
-      if (foodItem.stock_type === 'limited' && foodItem.stock_quantity < item.quantity) {
-        throw new BadRequestException(
-          `Insufficient stock for food item ${item.foodItemId}. Available: ${foodItem.stock_quantity}, Requested: ${item.quantity}`,
-        );
-      }
-
-      let unitPrice = foodItem.base_price;
-
-      // Get variation price adjustment if applicable
-      if (item.variationId) {
+      // Get variation price adjustment if applicable (only for food items)
+      if (item.variationId && item.foodItemId) {
         const { data: variation } = await supabase
           .from('food_item_variations')
           .select('price_adjustment')
@@ -158,9 +202,9 @@ export class OrdersService {
         }
       }
 
-      // Get add-on prices
+      // Get add-on prices (only for food items)
       let addOnTotal = 0;
-      if (item.addOns && item.addOns.length > 0) {
+      if (item.addOns && item.addOns.length > 0 && item.foodItemId) {
         const addOnIds = item.addOns.map((a) => a.addOnId);
         const { data: addOns } = await supabase
           .from('add_ons')
@@ -183,22 +227,30 @@ export class OrdersService {
       const itemSubtotal = unitPrice * item.quantity;
       subtotal += itemSubtotal;
       
-      // Store item info for tax calculation
-      orderItemsForTax.push({
-        foodItemId: item.foodItemId,
-        categoryId: foodItem.category_id,
-        subtotal: itemSubtotal,
-      });
+      // Store item info for tax calculation (only for food items with categoryId)
+      if (foodItemId && categoryId) {
+        orderItemsForTax.push({
+          foodItemId,
+          categoryId,
+          subtotal: itemSubtotal,
+        });
+      } else {
+        // For buffets and combo meals, add to tax calculation without category
+        orderItemsForTax.push({
+          subtotal: itemSubtotal,
+        });
+      }
 
-      // Check for active discounts on this food item
-      const now = new Date().toISOString();
-      const { data: discounts } = await supabase
-        .from('food_item_discounts')
-        .select('discount_type, discount_value')
-        .eq('food_item_id', item.foodItemId)
-        .eq('is_active', true)
-        .lte('start_date', now)
-        .gte('end_date', now);
+      // Check for active discounts on this food item (only for food items)
+      if (item.foodItemId) {
+        const now = new Date().toISOString();
+        const { data: discounts } = await supabase
+          .from('food_item_discounts')
+          .select('discount_type, discount_value')
+          .eq('food_item_id', item.foodItemId)
+          .eq('is_active', true)
+          .lte('start_date', now)
+          .gte('end_date', now);
 
       if (discounts && discounts.length > 0) {
         // Apply the first active discount (or highest discount - you can customize this logic)
@@ -211,6 +263,7 @@ export class OrdersService {
         }
         itemDiscounts += discountAmount;
       }
+    }
     }
 
     // Apply extra discount
@@ -260,9 +313,14 @@ export class OrdersService {
     let taxAmount = 0;
     
     if (taxSettings.enableTaxSystem) {
+      // Filter to only include food items with foodItemId for tax calculation
+      const foodItemsForTax = orderItemsForTax.filter((item): item is { foodItemId: string; categoryId?: string; subtotal: number } => 
+        item.foodItemId !== undefined
+      );
+      
       const taxCalculation = await this.taxesService.calculateTaxForOrder(
         tenantId,
-        orderItemsForTax,
+        foodItemsForTax,
         taxableAmount,
         deliveryCharge,
         0 // serviceCharge (not implemented yet)
@@ -489,70 +547,120 @@ export class OrdersService {
       // Create order items
       const orderItems = [];
       for (const item of createDto.items) {
-        // Get food item price
-        const { data: foodItem } = await supabase
-          .from('food_items')
-          .select('base_price')
-          .eq('id', item.foodItemId)
-          .single();
+        let unitPrice = 0;
+        let foodItemId: string | null = null;
+        let buffetId: string | null = null;
+        let comboMealId: string | null = null;
 
-        let unitPrice = foodItem?.base_price || 0;
-
-        // Get variation price adjustment (if variation exists)
-        // Note: variationId can be any value, so we only apply price if variation exists
-        if (item.variationId) {
-          const { data: variation } = await supabase
-            .from('food_item_variations')
-            .select('price_adjustment')
-            .eq('id', item.variationId)
+        // Handle different item types
+        if (item.buffetId) {
+          // Handle buffet
+          const { data: buffet } = await supabase
+            .from('buffets')
+            .select('price_per_person')
+            .eq('id', item.buffetId)
+            .eq('tenant_id', tenantId)
+            .is('deleted_at', null)
             .single();
 
-          if (variation) {
-            unitPrice += variation.price_adjustment;
+          if (!buffet) {
+            throw new NotFoundException(`Buffet ${item.buffetId} not found`);
           }
-          // If variation doesn't exist, that's okay - we allow any variation ID
-        }
 
-        // Calculate add-on prices
-        let addOnTotal = 0;
-        if (item.addOns && item.addOns.length > 0) {
-          const addOnIds = item.addOns.map((a) => a.addOnId);
-          const { data: addOns } = await supabase
-            .from('add_ons')
-            .select('id, price')
-            .in('id', addOnIds)
-            .is('deleted_at', null);
+          unitPrice = buffet.price_per_person;
+          buffetId = item.buffetId;
+        } else if (item.comboMealId) {
+          // Handle combo meal
+          const { data: comboMeal } = await supabase
+            .from('combo_meals')
+            .select('base_price')
+            .eq('id', item.comboMealId)
+            .eq('tenant_id', tenantId)
+            .is('deleted_at', null)
+            .single();
 
-          if (addOns) {
-            for (const addOn of item.addOns) {
-              const addOnData = addOns.find((a) => a.id === addOn.addOnId);
-              if (addOnData) {
-                addOnTotal += addOnData.price * (addOn.quantity || 1);
+          if (!comboMeal) {
+            throw new NotFoundException(`Combo meal ${item.comboMealId} not found`);
+          }
+
+          unitPrice = comboMeal.base_price;
+          comboMealId = item.comboMealId;
+        } else if (item.foodItemId) {
+          // Handle regular food item
+          const { data: foodItem } = await supabase
+            .from('food_items')
+            .select('base_price')
+            .eq('id', item.foodItemId)
+            .eq('tenant_id', tenantId)
+            .is('deleted_at', null)
+            .single();
+
+          if (!foodItem) {
+            throw new NotFoundException(`Food item ${item.foodItemId} not found`);
+          }
+
+          unitPrice = foodItem.base_price;
+          foodItemId = item.foodItemId;
+
+          // Get variation price adjustment (if variation exists)
+          if (item.variationId) {
+            const { data: variation } = await supabase
+              .from('food_item_variations')
+              .select('price_adjustment')
+              .eq('id', item.variationId)
+              .single();
+
+            if (variation) {
+              unitPrice += variation.price_adjustment;
+            }
+          }
+
+          // Calculate add-on prices (only for food items)
+          let addOnTotal = 0;
+          if (item.addOns && item.addOns.length > 0) {
+            const addOnIds = item.addOns.map((a) => a.addOnId);
+            const { data: addOns } = await supabase
+              .from('add_ons')
+              .select('id, price')
+              .in('id', addOnIds)
+              .eq('tenant_id', tenantId)
+              .is('deleted_at', null);
+
+            if (addOns) {
+              for (const addOn of item.addOns) {
+                const addOnData = addOns.find((a) => a.id === addOn.addOnId);
+                if (addOnData) {
+                  addOnTotal += addOnData.price * (addOn.quantity || 1);
+                }
               }
             }
           }
+
+          unitPrice += addOnTotal;
+        } else {
+          throw new BadRequestException('Order item must have either foodItemId, buffetId, or comboMealId');
         }
 
-        unitPrice += addOnTotal;
-
-        // Calculate item discount
-        const now = new Date().toISOString();
-        const { data: discounts } = await supabase
-          .from('food_item_discounts')
-          .select('discount_type, discount_value')
-          .eq('food_item_id', item.foodItemId)
-          .eq('is_active', true)
-          .lte('start_date', now)
-          .gte('end_date', now);
-
+        // Calculate item discount (only for food items)
         let itemDiscount = 0;
-        if (discounts && discounts.length > 0) {
-          const discount = discounts[0];
-          const itemSubtotal = unitPrice * item.quantity;
-          if (discount.discount_type === 'percentage') {
-            itemDiscount = (itemSubtotal * discount.discount_value) / 100;
-          } else {
-            itemDiscount = discount.discount_value * item.quantity;
+        if (foodItemId) {
+          const now = new Date().toISOString();
+          const { data: discounts } = await supabase
+            .from('food_item_discounts')
+            .select('discount_type, discount_value')
+            .eq('food_item_id', foodItemId)
+            .eq('is_active', true)
+            .lte('start_date', now)
+            .gte('end_date', now);
+
+          if (discounts && discounts.length > 0) {
+            const discount = discounts[0];
+            const itemSubtotal = unitPrice * item.quantity;
+            if (discount.discount_type === 'percentage') {
+              itemDiscount = (itemSubtotal * discount.discount_value) / 100;
+            } else {
+              itemDiscount = discount.discount_value * item.quantity;
+            }
           }
         }
 
@@ -569,7 +677,9 @@ export class OrdersService {
           .from('order_items')
           .insert({
             order_id: order.id,
-            food_item_id: item.foodItemId,
+            food_item_id: foodItemId || null,
+            buffet_id: buffetId || null,
+            combo_meal_id: comboMealId || null,
             variation_id: item.variationId || null,
             quantity: item.quantity,
             unit_price: unitPrice,
@@ -638,10 +748,12 @@ export class OrdersService {
       // Note: Stock was already validated before order creation, so this should not fail
       // But if it does fail (e.g., due to race condition), we need to handle it
       try {
-        const orderItemsForDeduction = createDto.items.map((item) => ({
-          foodItemId: item.foodItemId,
-          quantity: item.quantity,
-        }));
+        const orderItemsForDeduction = createDto.items
+          .filter((item) => item.foodItemId) // Only include food items
+          .map((item) => ({
+            foodItemId: item.foodItemId!,
+            quantity: item.quantity,
+          }));
         await this.inventoryService.deductStockForOrder(
           tenantId,
           userId,
@@ -928,6 +1040,8 @@ export class OrdersService {
     let foodItemMap = new Map<string, any>();
     let variationMap = new Map<string, any>();
     let addOnMap = new Map<string, any>();
+    let buffetMap = new Map<string, any>();
+    let comboMealMap = new Map<string, any>();
 
     if (filters.includeItems && orders && orders.length > 0) {
       const orderIds = orders.map((o: any) => o.id);
@@ -957,9 +1071,11 @@ export class OrdersService {
       // Collect unique IDs for batch fetching related data
       const foodItemIds = [...new Set(allOrderItems?.map((item: any) => item.food_item_id).filter(Boolean) || [])];
       const variationIds = [...new Set(allOrderItems?.map((item: any) => item.variation_id).filter(Boolean) || [])];
+      const buffetIds = [...new Set(allOrderItems?.map((item: any) => item.buffet_id).filter(Boolean) || [])];
+      const comboMealIds = [...new Set(allOrderItems?.map((item: any) => item.combo_meal_id).filter(Boolean) || [])];
 
-      // Batch fetch food items and variations
-      const [foodItemsResult, variationsResult] = await Promise.all([
+      // Batch fetch food items, variations, buffets, and combo meals
+      const [foodItemsResult, variationsResult, buffetsResult, comboMealsResult] = await Promise.all([
         foodItemIds.length > 0
           ? supabase
               .from('food_items')
@@ -971,6 +1087,18 @@ export class OrdersService {
               .from('food_item_variations')
               .select('id, variation_group, variation_name, price_adjustment')
               .in('id', variationIds)
+          : Promise.resolve({ data: [], error: null }),
+        buffetIds.length > 0
+          ? supabase
+              .from('buffets')
+              .select('id, name, image_url, food_item_ids')
+              .in('id', buffetIds)
+          : Promise.resolve({ data: [], error: null }),
+        comboMealIds.length > 0
+          ? supabase
+              .from('combo_meals')
+              .select('id, name, image_url, food_item_ids')
+              .in('id', comboMealIds)
           : Promise.resolve({ data: [], error: null }),
       ]);
 
@@ -984,6 +1112,46 @@ export class OrdersService {
         variationsResult.data.forEach((v: any) => {
           variationMap.set(v.id, v);
         });
+      }
+      
+      if (buffetsResult.data) {
+        buffetsResult.data.forEach((b: any) => {
+          buffetMap.set(b.id, {
+            id: b.id,
+            name: b.name ?? null, // Use nullish coalescing to preserve empty strings
+            imageUrl: b.image_url || null,
+          });
+        });
+      }
+      
+      if (comboMealsResult.data) {
+        comboMealsResult.data.forEach((c: any) => {
+          comboMealMap.set(c.id, {
+            id: c.id,
+            name: c.name || null,
+            imageUrl: c.image_url || null,
+            foodItemIds: c.food_item_ids || [],
+          });
+        });
+      }
+      
+      // Fetch food items for combo meals to show constituent items
+      const comboMealFoodItemIds = [...new Set(
+        comboMealsResult.data?.flatMap((c: any) => c.food_item_ids || []) || []
+      )];
+      if (comboMealFoodItemIds.length > 0) {
+        const { data: comboMealFoodItems } = await supabase
+          .from('food_items')
+          .select('id, name, image_url')
+          .in('id', comboMealFoodItemIds);
+        
+        if (comboMealFoodItems) {
+          comboMealFoodItems.forEach((fi: any) => {
+            if (!foodItemMap.has(fi.id)) {
+              foodItemMap.set(fi.id, fi);
+            }
+          });
+        }
       }
 
       // Batch fetch all add-ons for all order items
@@ -1041,12 +1209,53 @@ export class OrdersService {
           itemsCount = orderItems.length;
           
           // Transform order items with related data
-          items = orderItems.map((item: any) => {
+          items = await Promise.all(orderItems.map(async (item: any) => {
             const foodItemData = item.food_item_id ? foodItemMap.get(item.food_item_id) : null;
             const transformedFoodItem = foodItemData ? {
               id: foodItemData.id,
               name: foodItemData.name || null,
               imageUrl: foodItemData.image_url || null,
+            } : null;
+
+            let buffetData = item.buffet_id ? buffetMap.get(item.buffet_id) : null;
+            // If buffet_id exists but not in map, fetch it individually
+            if (item.buffet_id && !buffetData) {
+              const { data: singleBuffet } = await supabase
+                .from('buffets')
+                .select('id, name, image_url')
+                .eq('id', item.buffet_id)
+                .maybeSingle();
+              if (singleBuffet) {
+                buffetData = {
+                  id: singleBuffet.id,
+                  name: singleBuffet.name ?? null,
+                  imageUrl: singleBuffet.image_url || null,
+                };
+                // Cache it in the map for future use
+                buffetMap.set(singleBuffet.id, buffetData);
+              }
+            }
+            const transformedBuffet = buffetData ? {
+              id: buffetData.id,
+              name: buffetData.name ?? null, // Use nullish coalescing to preserve empty strings
+              imageUrl: buffetData.imageUrl || null,
+            } : null;
+
+            const comboMealData = item.combo_meal_id ? comboMealMap.get(item.combo_meal_id) : null;
+            const transformedComboMeal = comboMealData ? {
+              id: comboMealData.id,
+              name: comboMealData.name || null,
+              imageUrl: comboMealData.imageUrl || null,
+              foodItemIds: comboMealData.foodItemIds || [],
+              // Include constituent food items for combo meals
+              foodItems: (comboMealData.foodItemIds || []).map((foodItemId: string) => {
+                const fi = foodItemMap.get(foodItemId);
+                return fi ? {
+                  id: fi.id,
+                  name: fi.name || null,
+                  imageUrl: fi.image_url || null,
+                } : null;
+              }).filter(Boolean),
             } : null;
 
             const variationData = item.variation_id ? variationMap.get(item.variation_id) : null;
@@ -1077,8 +1286,12 @@ export class OrdersService {
             return {
               id: item.id,
               orderId: item.order_id,
-              foodItemId: item.food_item_id,
+              foodItemId: item.food_item_id || null,
               foodItem: transformedFoodItem,
+              buffetId: item.buffet_id || null,
+              buffet: transformedBuffet,
+              comboMealId: item.combo_meal_id || null,
+              comboMeal: transformedComboMeal,
               variationId: item.variation_id || null,
               variation: transformedVariation,
               quantity: Number(item.quantity) || 0,
@@ -1091,7 +1304,7 @@ export class OrdersService {
               createdAt: item.created_at,
               updatedAt: item.updated_at,
             };
-          });
+          }));
         } else {
           // Only get count if not including items
           const { count } = await supabase
@@ -1294,9 +1507,11 @@ export class OrdersService {
     // Collect unique IDs for batch fetching
     const foodItemIds = [...new Set(orderItems.map((item: any) => item.food_item_id).filter(Boolean))];
     const variationIds = [...new Set(orderItems.map((item: any) => item.variation_id).filter(Boolean))];
+    const buffetIds = [...new Set(orderItems.map((item: any) => item.buffet_id).filter(Boolean))];
+    const comboMealIds = [...new Set(orderItems.map((item: any) => item.combo_meal_id).filter(Boolean))];
 
-    // Fetch food items and variations in batches
-    const [foodItems, variations] = await Promise.all([
+    // Fetch food items, variations, buffets, and combo meals in batches
+    const [foodItems, variations, buffets, comboMeals] = await Promise.all([
       foodItemIds.length > 0
         ? supabase
             .from('food_items')
@@ -1309,11 +1524,74 @@ export class OrdersService {
             .select('id, variation_group, variation_name, price_adjustment')
             .in('id', variationIds)
         : Promise.resolve({ data: [], error: null }),
+      buffetIds.length > 0
+        ? supabase
+            .from('buffets')
+            .select('id, name, image_url, food_item_ids')
+            .in('id', buffetIds)
+        : Promise.resolve({ data: [], error: null }),
+      comboMealIds.length > 0
+        ? supabase
+            .from('combo_meals')
+            .select('id, name, image_url, food_item_ids')
+            .in('id', comboMealIds)
+        : Promise.resolve({ data: [], error: null }),
     ]);
 
     // Create lookup maps
     const foodItemMap = new Map((foodItems.data || []).map((fi: any) => [fi.id, fi]));
     const variationMap = new Map((variations.data || []).map((v: any) => [v.id, v]));
+    
+    const buffetMap = new Map<string, any>();
+    if (buffets.data) {
+      buffets.data.forEach((b: any) => {
+        buffetMap.set(b.id, {
+          id: b.id,
+          name: b.name ?? null, // Use nullish coalescing to preserve empty strings
+          imageUrl: b.image_url || null,
+        });
+      });
+    }
+    
+    const comboMealMap = new Map<string, any>();
+    if (comboMeals.data) {
+      comboMeals.data.forEach((c: any) => {
+        comboMealMap.set(c.id, {
+          id: c.id,
+          name: c.name || null,
+          imageUrl: c.image_url || null,
+          foodItemIds: c.food_item_ids || [],
+          // Include constituent food items for combo meals
+          foodItems: (c.food_item_ids || []).map((foodItemId: string) => {
+            const fi = foodItemMap.get(foodItemId);
+            return fi ? {
+              id: fi.id,
+              name: fi.name || null,
+              imageUrl: fi.image_url || null,
+            } : null;
+          }).filter(Boolean),
+        });
+      });
+    }
+    
+    // Fetch food items for combo meals to show constituent items
+    const comboMealFoodItemIds = [...new Set(
+      comboMeals.data?.flatMap((c: any) => c.food_item_ids || []) || []
+    )];
+    if (comboMealFoodItemIds.length > 0) {
+      const { data: comboMealFoodItems } = await supabase
+        .from('food_items')
+        .select('id, name, image_url')
+        .in('id', comboMealFoodItemIds);
+      
+      if (comboMealFoodItems) {
+        comboMealFoodItems.forEach((fi: any) => {
+          if (!foodItemMap.has(fi.id)) {
+            foodItemMap.set(fi.id, fi);
+          }
+        });
+      }
+    }
 
     // Get add-ons for each order item and transform to camelCase
     const itemsWithAddOns = await Promise.all(
@@ -1342,6 +1620,41 @@ export class OrdersService {
           imageUrl: foodItemData.image_url || null,
         } : null;
 
+        // Transform buffet to camelCase
+        let buffetData = item.buffet_id ? buffetMap.get(item.buffet_id) : null;
+        // If buffet_id exists but not in map, fetch it individually
+        if (item.buffet_id && !buffetData) {
+          const { data: singleBuffet } = await supabase
+            .from('buffets')
+            .select('id, name, image_url')
+            .eq('id', item.buffet_id)
+            .maybeSingle();
+          if (singleBuffet) {
+            buffetData = {
+              id: singleBuffet.id,
+              name: singleBuffet.name ?? null,
+              imageUrl: singleBuffet.image_url || null,
+            };
+            // Cache it in the map for future use
+            buffetMap.set(singleBuffet.id, buffetData);
+          }
+        }
+        const transformedBuffet = buffetData ? {
+          id: buffetData.id,
+          name: buffetData.name ?? null, // Use nullish coalescing to preserve empty strings
+          imageUrl: buffetData.imageUrl || null,
+        } : null;
+
+        // Transform combo meal to camelCase
+        const comboMealData = item.combo_meal_id ? comboMealMap.get(item.combo_meal_id) : null;
+        const transformedComboMeal = comboMealData ? {
+          id: comboMealData.id,
+          name: comboMealData.name || null,
+          imageUrl: comboMealData.imageUrl || null,
+          foodItemIds: comboMealData.foodItemIds || [],
+          foodItems: comboMealData.foodItems || [],
+        } : null;
+
         // Transform variation to camelCase
         const variationData = item.variation_id ? variationMap.get(item.variation_id) : null;
         const transformedVariation = variationData ? {
@@ -1354,8 +1667,12 @@ export class OrdersService {
         return {
           id: item.id,
           orderId: item.order_id,
-          foodItemId: item.food_item_id,
+          foodItemId: item.food_item_id || null,
           foodItem: transformedFoodItem,
+          buffetId: item.buffet_id || null,
+          buffet: transformedBuffet,
+          comboMealId: item.combo_meal_id || null,
+          comboMeal: transformedComboMeal,
           variationId: item.variation_id || null,
           variation: transformedVariation,
           quantity: Number(item.quantity) || 0,
@@ -1432,10 +1749,12 @@ export class OrdersService {
 
     // If items are being updated, validate inventory for new items
     if (updateDto.items && updateDto.items.length > 0) {
-      const orderItemsForValidation = updateDto.items.map((item) => ({
-        foodItemId: item.foodItemId,
-        quantity: item.quantity,
-      }));
+      const orderItemsForValidation = updateDto.items
+        .filter((item) => item.foodItemId) // Only include food items
+        .map((item) => ({
+          foodItemId: item.foodItemId!,
+          quantity: item.quantity,
+        }));
 
       const stockValidation = await this.inventoryService.validateStockForOrder(
         tenantId,
@@ -1649,10 +1968,12 @@ export class OrdersService {
 
       // Deduct stock for new items
       try {
-        const orderItemsForDeduction = updateDto.items.map((item) => ({
-          foodItemId: item.foodItemId,
-          quantity: item.quantity,
-        }));
+        const orderItemsForDeduction = updateDto.items
+          .filter((item) => item.foodItemId) // Only include food items
+          .map((item) => ({
+            foodItemId: item.foodItemId!,
+            quantity: item.quantity,
+          }));
         await this.inventoryService.deductStockForOrder(
           tenantId,
           userId,

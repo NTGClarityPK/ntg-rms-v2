@@ -27,6 +27,10 @@ import { CreateAddOnDto } from './dto/create-add-on.dto';
 import { UpdateAddOnDto } from './dto/update-add-on.dto';
 import { CreateMenuDto } from './dto/create-menu.dto';
 import { UpdateMenuDto } from './dto/update-menu.dto';
+import { CreateBuffetDto } from './dto/create-buffet.dto';
+import { UpdateBuffetDto } from './dto/update-buffet.dto';
+import { CreateComboMealDto } from './dto/create-combo-meal.dto';
+import { UpdateComboMealDto } from './dto/update-combo-meal.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 
 @ApiTags('menu')
@@ -329,5 +333,133 @@ export class MenuController {
   @ApiOperation({ summary: 'Delete a menu type' })
   deleteMenu(@CurrentUser() user: any, @Param('menuType') menuType: string) {
     return this.menuService.deleteMenu(user.tenantId, menuType);
+  }
+
+  // ============================================
+  // BUFFET MANAGEMENT
+  // ============================================
+
+  @Get('buffets')
+  @ApiOperation({ summary: 'Get all buffets' })
+  getBuffets(
+    @CurrentUser() user: any,
+    @Query() paginationDto?: PaginationDto,
+  ) {
+    return this.menuService.getBuffets(user.tenantId, paginationDto);
+  }
+
+  @Get('buffets/:id')
+  @ApiOperation({ summary: 'Get buffet by ID' })
+  getBuffetById(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.menuService.getBuffetById(user.tenantId, id);
+  }
+
+  @Post('buffets')
+  @ApiOperation({ summary: 'Create a new buffet' })
+  createBuffet(@CurrentUser() user: any, @Body() createDto: CreateBuffetDto) {
+    return this.menuService.createBuffet(user.tenantId, createDto);
+  }
+
+  @Put('buffets/:id')
+  @ApiOperation({ summary: 'Update buffet' })
+  updateBuffet(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() updateDto: UpdateBuffetDto,
+  ) {
+    return this.menuService.updateBuffet(user.tenantId, id, updateDto);
+  }
+
+  @Delete('buffets/:id')
+  @ApiOperation({ summary: 'Delete buffet (soft delete)' })
+  deleteBuffet(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.menuService.deleteBuffet(user.tenantId, id);
+  }
+
+  @Post('buffets/:id/upload-image')
+  @ApiOperation({ summary: 'Upload buffet image to Supabase Storage' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadBuffetImage(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @UploadedFile() file: any,
+  ) {
+    return this.menuService.uploadBuffetImage(user.tenantId, id, file);
+  }
+
+  // ============================================
+  // COMBO MEAL MANAGEMENT
+  // ============================================
+
+  @Get('combo-meals')
+  @ApiOperation({ summary: 'Get all combo meals' })
+  getComboMeals(
+    @CurrentUser() user: any,
+    @Query() paginationDto?: PaginationDto,
+  ) {
+    return this.menuService.getComboMeals(user.tenantId, paginationDto);
+  }
+
+  @Get('combo-meals/:id')
+  @ApiOperation({ summary: 'Get combo meal by ID' })
+  getComboMealById(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.menuService.getComboMealById(user.tenantId, id);
+  }
+
+  @Post('combo-meals')
+  @ApiOperation({ summary: 'Create a new combo meal' })
+  createComboMeal(@CurrentUser() user: any, @Body() createDto: CreateComboMealDto) {
+    return this.menuService.createComboMeal(user.tenantId, createDto);
+  }
+
+  @Put('combo-meals/:id')
+  @ApiOperation({ summary: 'Update combo meal' })
+  updateComboMeal(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() updateDto: UpdateComboMealDto,
+  ) {
+    return this.menuService.updateComboMeal(user.tenantId, id, updateDto);
+  }
+
+  @Delete('combo-meals/:id')
+  @ApiOperation({ summary: 'Delete combo meal (soft delete)' })
+  deleteComboMeal(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.menuService.deleteComboMeal(user.tenantId, id);
+  }
+
+  @Post('combo-meals/:id/upload-image')
+  @ApiOperation({ summary: 'Upload combo meal image to Supabase Storage' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadComboMealImage(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @UploadedFile() file: any,
+  ) {
+    return this.menuService.uploadComboMealImage(user.tenantId, id, file);
   }
 }
