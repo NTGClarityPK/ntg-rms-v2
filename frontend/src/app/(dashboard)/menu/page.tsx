@@ -38,11 +38,11 @@ export default function MenuPage() {
             <Tabs.Tab value="categories" leftSection={<IconCategory size={16} />}>
               {t('menu.categories', language)}
             </Tabs.Tab>
-            <Tabs.Tab value="food-items" leftSection={<IconToolsKitchen2 size={16} />}>
-              {t('menu.foodItems', language)}
-            </Tabs.Tab>
             <Tabs.Tab value="add-ons" leftSection={<IconPlus size={16} />}>
               {t('menu.addOns', language)}
+            </Tabs.Tab>
+            <Tabs.Tab value="food-items" leftSection={<IconToolsKitchen2 size={16} />}>
+              {t('menu.foodItems', language)}
             </Tabs.Tab>
             <Tabs.Tab value="menus" leftSection={<IconMenu2 size={16} />}>
               {t('menu.menus', language)}
@@ -53,12 +53,12 @@ export default function MenuPage() {
             <CategoriesPage />
           </Tabs.Panel>
 
-          <Tabs.Panel value="food-items" pt="md" px="md" pb="md">
-            <FoodItemsPage />
-          </Tabs.Panel>
-
           <Tabs.Panel value="add-ons" pt="md" px="md" pb="md">
             <AddOnGroupsPage />
+          </Tabs.Panel>
+
+          <Tabs.Panel value="food-items" pt="md" px="md" pb="md">
+            <FoodItemsPage />
           </Tabs.Panel>
 
       <Tabs.Panel value="menus" pt="md">
