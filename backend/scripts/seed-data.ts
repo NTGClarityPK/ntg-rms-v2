@@ -969,6 +969,69 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
   return { foodItemIds, foodItemMap };
 }
 
+async function seedMenus(tenantId: string): Promise<void> {
+  console.log('\n📋 Seeding menus...');
+
+  const menus = [
+    {
+      tenant_id: tenantId,
+      menu_type: 'all_day',
+      name: 'All Day Menu',
+      is_active: true,
+    },
+    {
+      tenant_id: tenantId,
+      menu_type: 'breakfast',
+      name: 'Breakfast Menu',
+      is_active: true,
+    },
+    {
+      tenant_id: tenantId,
+      menu_type: 'lunch',
+      name: 'Lunch Menu',
+      is_active: true,
+    },
+    {
+      tenant_id: tenantId,
+      menu_type: 'dinner',
+      name: 'Dinner Menu',
+      is_active: true,
+    },
+    {
+      tenant_id: tenantId,
+      menu_type: 'kids_special',
+      name: 'Kids Special Menu',
+      is_active: true,
+    },
+  ];
+
+  for (const menu of menus) {
+    // Check if menu already exists
+    const { data: existing } = await supabase
+      .from('menus')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('menu_type', menu.menu_type)
+      .maybeSingle();
+
+    if (existing) {
+      console.log(`   ⏭️  Menu "${menu.name}" already exists`);
+      // Update to ensure it's active
+      await supabase
+        .from('menus')
+        .update({ is_active: true })
+        .eq('id', existing.id);
+    } else {
+      const { error } = await supabase.from('menus').insert(menu);
+      if (error) {
+        console.error(`   ❌ Failed to create menu "${menu.name}":`, error.message);
+      } else {
+        console.log(`   ✅ Created menu: ${menu.name}`);
+      }
+    }
+  }
+}
+
 async function seedCustomers(tenantId: string): Promise<string[]> {
   console.log('\n👥 Seeding customers...');
 
@@ -1465,17 +1528,33 @@ async function seedOrders(
   console.log('\n📦 Seeding orders...');
 
   const orderStatuses = ['pending', 'preparing', 'ready', 'served', 'completed'];
+  const activeStatuses = ['pending', 'preparing', 'ready']; // Active order statuses
   const paymentStatuses = ['unpaid', 'paid'];
   const orderTypes = ['dine_in', 'takeaway', 'delivery'];
   const paymentMethods = ['cash', 'card', 'mobile_wallet'];
 
+  // Get current time and calculate 2 hours ago for active orders
+  const now = new Date();
+  const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000); // 2 hours in milliseconds
+
   // Create 50 sample orders for vibrant dashboard
   for (let i = 0; i < 50; i++) {
-    const orderDate = new Date();
-    orderDate.setDate(orderDate.getDate() - Math.floor(Math.random() * 30)); // Random date in last 30 days
-    orderDate.setHours(8 + Math.floor(Math.random() * 14), Math.floor(Math.random() * 60), 0, 0);
-
     const status = orderStatuses[Math.floor(Math.random() * orderStatuses.length)];
+    const isActiveOrder = activeStatuses.includes(status);
+    
+    const orderDate = new Date();
+    
+    if (isActiveOrder) {
+      // Active orders: within the last 2 hours from current time
+      // Generate random time between 2 hours ago and now
+      const timeRange = now.getTime() - twoHoursAgo.getTime(); // Should be 2 hours in milliseconds
+      const randomOffset = Math.floor(Math.random() * timeRange);
+      orderDate.setTime(twoHoursAgo.getTime() + randomOffset);
+    } else {
+      // Completed/served orders: random date in last 30 days
+      orderDate.setDate(orderDate.getDate() - Math.floor(Math.random() * 30));
+      orderDate.setHours(8 + Math.floor(Math.random() * 14), Math.floor(Math.random() * 60), 0, 0);
+    }
     const paymentStatus = paymentStatuses[Math.floor(Math.random() * paymentStatuses.length)];
     const orderType = orderTypes[Math.floor(Math.random() * orderTypes.length)];
     const customerId = seedData.customerIds[Math.floor(Math.random() * seedData.customerIds.length)];
@@ -1639,6 +1718,9 @@ async function seedData() {
 
     // Seed food items
     const { foodItemIds, foodItemMap } = await seedFoodItems(tenantId, categoryIds);
+
+    // Seed menus (must be after food items to ensure menu_items can reference them)
+    await seedMenus(tenantId);
 
     // Seed ingredients
     const { ingredientIds, ingredientMap } = await seedIngredients(tenantId);
