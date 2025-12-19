@@ -33,6 +33,8 @@ services:
       dockerfile: Dockerfile
       network: host
     container_name: rms-backend-staging
+    environment:
+      - PORT=8001
     env_file:
       - .env.staging
     depends_on:
