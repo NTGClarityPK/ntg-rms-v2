@@ -9,9 +9,28 @@ import * as compression from 'compression';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Security
-  app.use(helmet());
-  // Disable compression for SSE (text/event-stream) to avoid buffering
+  // CORS - MUST come before helmet
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  app.enableCors({
+    origin: frontendUrl,
+    credentials: true,
+  });
+
+  // Security - Configure helmet to allow Swagger
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          scriptSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:', 'https:'],
+        },
+      },
+    }),
+  );
+
+  // Compression - Disable for SSE
   app.use(
     compression({
       filter: (req, res) => {
@@ -23,13 +42,6 @@ async function bootstrap() {
       },
     }),
   );
-
-  // CORS
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-  app.enableCors({
-    origin: frontendUrl,
-    credentials: true,
-  });
 
   // Global prefix
   app.setGlobalPrefix('api/v1');
@@ -79,13 +91,16 @@ async function bootstrap() {
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  SwaggerModule.setup('api/docs', app, document, {
+    swaggerOptions: {
+      persistAuthorization: true,
+    },
+  });
 
-  const port = process.env.PORT || 3001;
+  const port = process.env.PORT || 8001;  // ✅ Changed default to 8001
   await app.listen(port, '0.0.0.0');
   console.log(`Application is running on: http://0.0.0.0:${port}`);
   console.log(`Swagger documentation: http://0.0.0.0:${port}/api/docs`);
 }
 
 bootstrap();
-
