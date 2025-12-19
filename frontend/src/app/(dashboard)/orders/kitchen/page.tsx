@@ -34,7 +34,7 @@ import { ordersApi, Order, OrderStatus } from '@/lib/api/orders';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
 import { notifications } from '@mantine/notifications';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getSuccessColor, getErrorColor, getWarningColor, getInfoColor, getStatusColor } from '@/lib/utils/theme';
+import { getSuccessColor, getErrorColor, getWarningColor, getInfoColor, getStatusColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { onOrderUpdate, notifyOrderUpdate } from '@/lib/utils/order-events';
 import { useKitchenSse, OrderUpdateEvent } from '@/lib/hooks/use-kitchen-sse';
@@ -748,7 +748,7 @@ function OrderCard({
         {/* Order Header */}
         <Group gap="xs" align="center">
           {order.tokenNumber && (
-            <Badge color={primary} variant="light" size="lg">
+            <Badge color={getBadgeColorForText(`Token: ${order.tokenNumber}`)} variant="light" size="lg">
               Token: {order.tokenNumber}
             </Badge>
           )}

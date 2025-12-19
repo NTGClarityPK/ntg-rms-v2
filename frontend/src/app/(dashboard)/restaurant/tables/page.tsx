@@ -280,7 +280,7 @@ export default function TablesPage() {
   return (
     <Container size="xl" py="xl">
       <Group justify="space-between" mb="xl">
-        <Title order={2}>Table Management</Title>
+        <Title order={1}>Table Management</Title>
         <Button leftSection={<IconPlus size={16} />} onClick={() => handleOpenModal()}>
           Add Table
         </Button>

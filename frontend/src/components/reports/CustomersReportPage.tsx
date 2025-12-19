@@ -9,8 +9,9 @@ import { reportsApi, CustomerReport, ReportQueryParams } from '@/lib/api/reports
 import { ReportFilters } from './ReportFilters';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getThemeColorShade, getSuccessColor, getInfoColor, getWarningColor, getErrorColor } from '@/lib/utils/theme';
+import { getThemeColorShade, getSuccessColor, getInfoColor, getWarningColor, getErrorColor, getChartColors } from '@/lib/utils/theme';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { notifications } from '@mantine/notifications';
 import { db } from '@/lib/indexeddb/database';
 import { useSyncStatus } from '@/lib/hooks/use-sync-status';
@@ -90,7 +91,8 @@ export default function CustomersReportPage() {
   };
   const handlePrint = () => window.print();
 
-  const chartColors = [themeColor, getSuccessColor(), getInfoColor(), getWarningColor()];
+  // Generate chart colors dynamically - pie chart has 4 loyalty tiers
+  const chartColors = getChartColors(4); // regular, silver, gold, platinum
 
   if (loading) return <Stack gap="md"><Skeleton height={200} /><Skeleton height={400} /></Stack>;
   if (!report) return <Paper p="md" withBorder><Text c="dimmed">{t('reports.noData' as any, language) || 'No data available'}</Text></Paper>;
@@ -108,15 +110,15 @@ export default function CustomersReportPage() {
       <Grid>
         <Grid.Col span={{ base: 12, sm: 6, md: 3 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.totalCustomers' as any, language)}</Text><Text size="xl" fw={700} style={{ color: themeColor }}>{report.summary.totalCustomers}</Text></Card></Grid.Col>
         <Grid.Col span={{ base: 12, sm: 6, md: 3 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.activeCustomers' as any, language)}</Text><Text size="xl" fw={700} style={{ color: getSuccessColor() }}>{report.summary.activeCustomers}</Text></Card></Grid.Col>
-        <Grid.Col span={{ base: 12, sm: 6, md: 3 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.totalRevenue' as any, language)}</Text><Text size="xl" fw={700} style={{ color: getInfoColor() }}>{report.summary.totalRevenue.toFixed(2)} {currency}</Text></Card></Grid.Col>
-        <Grid.Col span={{ base: 12, sm: 6, md: 3 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.avgCustomerValue' as any, language)}</Text><Text size="xl" fw={700} style={{ color: getWarningColor() }}>{report.summary.avgCustomerValue.toFixed(2)} {currency}</Text></Card></Grid.Col>
+        <Grid.Col span={{ base: 12, sm: 6, md: 3 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.totalRevenue' as any, language)}</Text><Text size="xl" fw={700} style={{ color: getInfoColor() }}>{formatCurrency(report.summary.totalRevenue, currency)}</Text></Card></Grid.Col>
+        <Grid.Col span={{ base: 12, sm: 6, md: 3 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.avgCustomerValue' as any, language)}</Text><Text size="xl" fw={700} style={{ color: getWarningColor() }}>{formatCurrency(report.summary.avgCustomerValue, currency)}</Text></Card></Grid.Col>
       </Grid>
       <Paper p="md" withBorder>
         <Text fw={600} mb="md" size="lg">{t('reports.loyaltyTierBreakdown' as any, language)}</Text>
         <Box h={300}>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
-              <Pie data={loyaltyData} cx="50%" cy="50%" labelLine={false} label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`} outerRadius={80} fill="#8884d8" dataKey="value">
+              <Pie data={loyaltyData} cx="50%" cy="50%" labelLine={false} label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`} outerRadius={80} fill={chartColors[0]} dataKey="value">
                 {loyaltyData.map((entry, index) => <Cell key={`cell-${index}`} fill={chartColors[index % chartColors.length]} />)}
               </Pie>
               <Tooltip />

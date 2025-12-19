@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useForm } from '@mantine/form';
 import {
-  Container,
   Title,
   Button,
   Stack,
@@ -41,6 +40,7 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
+import { getBadgeColorForText } from '@/lib/utils/theme';
 import { onMenuDataUpdate, notifyMenuDataUpdate } from '@/lib/utils/menu-events';
 import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
@@ -467,9 +467,8 @@ export function AddOnGroupsPage() {
 
 
   return (
-    <Container size="xl" py="xl">
-      <Group justify="space-between" mb="xl">
-        <Title order={2}>{t('menu.addOnGroupManagement', language)}</Title>
+    <Stack gap="md">
+      <Group justify="flex-end">
         <Button
           leftSection={<IconPlus size={16} />}
           onClick={() => handleOpenGroupModal()}
@@ -639,7 +638,7 @@ export function AddOnGroupsPage() {
                         </Table.Td>
                         <Table.Td>{addOn.price.toFixed(2)}</Table.Td>
                         <Table.Td>
-                          <Badge color={addOn.isActive ? successColor : 'gray'}>
+                          <Badge color={getBadgeColorForText(addOn.isActive ? t('menu.active', language) : t('menu.inactive', language))}>
                             {addOn.isActive ? t('menu.active', language) : t('menu.inactive', language)}
                           </Badge>
                         </Table.Td>
@@ -821,7 +820,7 @@ export function AddOnGroupsPage() {
           </Stack>
         </form>
       </Modal>
-    </Container>
+    </Stack>
   );
 }
 

@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useForm } from '@mantine/form';
 import {
-  Container,
   Paper,
   Title,
   TextInput,
@@ -458,7 +457,7 @@ export default function RestaurantPage() {
 
   if (loading) {
     return (
-      <Container size="xl" py="xl">
+      <div style={{ paddingLeft: 'var(--mantine-spacing-md)', paddingRight: 'var(--mantine-spacing-md)', paddingTop: 'var(--mantine-spacing-xl)', paddingBottom: 'var(--mantine-spacing-xl)' }}>
         <Skeleton height={36} width={250} mb="xl" />
         <Tabs defaultValue="basic">
           <Tabs.List mb="xl">
@@ -475,15 +474,21 @@ export default function RestaurantPage() {
             </Stack>
           </Tabs.Panel>
         </Tabs>
-      </Container>
+      </div>
     );
   }
 
   return (
-    <Container size="xl" py="xl">
-      <Title order={2} mb="xl">
-        {t('navigation.restaurant', language)} - {t('restaurant.businessInformation', language)}
-      </Title>
+    <>
+      <div className="page-title-bar">
+        <Title order={1} style={{ margin: 0, textAlign: 'left' }}>
+          {t('navigation.restaurant', language)} - {t('restaurant.businessInformation', language)}
+        </Title>
+      </div>
+
+      <div className="page-sub-title-bar"></div>
+
+      <div style={{ marginTop: '60px', paddingLeft: 'var(--mantine-spacing-md)', paddingRight: 'var(--mantine-spacing-md)', paddingTop: 'var(--mantine-spacing-sm)', paddingBottom: 'var(--mantine-spacing-xl)' }}>
 
       {error && (
         <Alert 
@@ -515,7 +520,7 @@ export default function RestaurantPage() {
             </PermissionGuard>
           </Tabs.List>
 
-          <Tabs.Panel value="business" pt="md">
+          <Tabs.Panel value="business" pt="md" px="md" pb="md">
             <Stack gap="lg">
           <Paper withBorder p="md">
             <Title order={3} mb="md">
@@ -587,7 +592,7 @@ export default function RestaurantPage() {
             </Stack>
           </Tabs.Panel>
 
-          <Tabs.Panel value="branding" pt="md">
+          <Tabs.Panel value="branding" pt="md" px="md" pb="md">
             <Stack gap="lg">
               <Paper withBorder p="md">
                 <Title order={3} mb="md">
@@ -617,7 +622,7 @@ export default function RestaurantPage() {
                         style={{ objectFit: 'contain' }}
                       />
                     ) : (
-                      <IconToolsKitchen2 size={64} stroke={1.5} color="var(--mantine-color-gray-5)" />
+                      <IconToolsKitchen2 size={64} stroke={1.5} color={themeColor} />
                     )}
                   </Box>
                   <FileButton
@@ -700,6 +705,7 @@ export default function RestaurantPage() {
           </Button>
         </Group>
       </form>
-    </Container>
+      </div>
+    </>
   );
 }

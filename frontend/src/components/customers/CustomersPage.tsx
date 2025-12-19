@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useForm } from '@mantine/form';
 import {
-  Container,
   Title,
   Button,
   Stack,
@@ -44,9 +43,10 @@ import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { DateInput } from '@mantine/dates';
 import '@mantine/dates/styles.css';
-import { getInfoColor } from '@/lib/utils/theme';
+import { getInfoColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
@@ -58,7 +58,11 @@ const LOYALTY_TIERS = {
   platinum: { label: 'Platinum', color: 'blue', discount: 15 },
 };
 
-export function CustomersPage() {
+interface CustomersPageProps {
+  addTrigger?: number;
+}
+
+export function CustomersPage({ addTrigger }: CustomersPageProps) {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
   const notificationColors = useNotificationColors();
@@ -202,6 +206,14 @@ export function CustomersPage() {
   useEffect(() => {
     loadCustomers();
   }, [loadCustomers]);
+
+  // Trigger add modal from parent
+  useEffect(() => {
+    if (addTrigger && addTrigger > 0) {
+      handleOpenModal();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addTrigger]);
 
   const handleOpenModal = async (customer?: Customer) => {
     if (customer) {
@@ -451,32 +463,25 @@ export function CustomersPage() {
 
   if (loading && customers.length === 0) {
     return (
-      <Container size="xl" py="xl">
-        <Skeleton height={36} width={250} mb="xl" />
+      <Stack gap="md">
+        <Skeleton height={36} width={250} />
         <Stack gap="md">
           <Skeleton height={40} width="100%" />
           <Skeleton height={300} width="100%" />
         </Stack>
-      </Container>
+      </Stack>
     );
   }
 
   return (
-    <Container size="xl" py="xl">
-      <Group justify="space-between" mb="xl">
-        <Title order={2}>{t('customers.title', language)}</Title>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => handleOpenModal()}>
-          {t('customers.addCustomer', language)}
-        </Button>
-      </Group>
-
+    <Stack gap="md">
       {error && (
         <Alert icon={<IconAlertCircle size={16} />} color={errorColor} mb="md">
           {error}
         </Alert>
       )}
 
-      <Paper withBorder p="md" mb="md">
+      <Paper withBorder p="md">
         <TextInput
           placeholder={t('customers.searchPlaceholder', language)}
           leftSection={<IconSearch size={16} />}
@@ -524,22 +529,22 @@ export function CustomersPage() {
                         </Table.Td>
                         <Table.Td>{customer.phone}</Table.Td>
                         <Table.Td>
-                          <Badge color={primaryColor} variant="light">
-                            {customer.totalOrders}
-                          </Badge>
-                        </Table.Td>
-                        <Table.Td>
-                          <Text fw={500}>
-                            {currency}
-                            {customer.totalSpent.toFixed(2)}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td>
-                          <Badge color={tierInfo.color} variant="light" leftSection={<IconTrophy size={12} />}>
-                            {tierInfo.label}
-                            {tierInfo.discount > 0 && ` (${tierInfo.discount}%)`}
-                          </Badge>
-                        </Table.Td>
+                        <Badge color={getBadgeColorForText(String(customer.totalOrders))} variant="light">
+                          {customer.totalOrders}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text fw={500}>
+                          {formatCurrency(customer.totalSpent, currency)}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Badge color={getBadgeColorForText(tierInfo.label)} variant="light" leftSection={<IconTrophy size={12} />}>
+                          {tierInfo.label}
+                          {tierInfo.discount > 0 && ` (${tierInfo.discount}%)`}
+                        </Badge>
+                      </Table.Td>
+ 
                         <Table.Td>
                           {customer.lastOrderDate
                             ? new Date(customer.lastOrderDate).toLocaleDateString(language === 'ar' ? 'ar' : 'en')
@@ -702,7 +707,7 @@ export function CustomersPage() {
                       {(() => {
                         const tierInfo = getLoyaltyTierInfo(selectedCustomer.loyaltyTier);
                         return (
-                          <Badge color={tierInfo.color} variant="light" size="lg" leftSection={<IconTrophy size={14} />}>
+                          <Badge color={getBadgeColorForText(tierInfo.label)} variant="light" size="lg" leftSection={<IconTrophy size={14} />}>
                             {tierInfo.label}
                             {tierInfo.discount > 0 && ` (${tierInfo.discount}% ${t('customers.discount', language)})`}
                           </Badge>
@@ -726,8 +731,7 @@ export function CustomersPage() {
                         {t('customers.totalSpent', language)}
                       </Text>
                       <Text fw={500} size="xl" c={successColor}>
-                        {currency}
-                        {(selectedCustomer.totalSpent || 0).toFixed(2)}
+                        {formatCurrency(selectedCustomer.totalSpent || 0, currency)}
                       </Text>
                     </Card>
                   </Grid.Col>
@@ -737,12 +741,11 @@ export function CustomersPage() {
                         {t('customers.averageOrderValue', language)}
                       </Text>
                       <Text fw={500} size="xl">
-                        {currency}
                         {(() => {
                           const totalOrders = selectedCustomer.totalOrders || 0;
                           const totalSpent = selectedCustomer.totalSpent || 0;
                           const avgValue = totalOrders > 0 ? totalSpent / totalOrders : 0;
-                          return avgValue.toFixed(2);
+                          return formatCurrency(avgValue, currency);
                         })()}
                       </Text>
                     </Card>
@@ -801,7 +804,7 @@ export function CustomersPage() {
                             <Table.Tr style={{ backgroundColor: currentTier === 'regular' ? 'var(--mantine-color-blue-0)' : undefined }}>
                               <Table.Td>
                                 <Group gap="xs">
-                                  <IconTrophy size={16} color="gray" />
+                                  <IconTrophy size={16} color={primaryColor} />
                                   <Text fw={currentTier === 'regular' ? 600 : 400}>
                                     {t('customers.loyaltyTier.regular' as any, language) || 'Regular'}
                                   </Text>
@@ -815,7 +818,7 @@ export function CustomersPage() {
                               </Table.Td>
                               <Table.Td>
                                 {currentTier === 'regular' && (
-                                  <Badge color={infoColor} variant="light" size="sm">
+                                  <Badge color={getBadgeColorForText(t('customers.current', language) || 'Current')} variant="light" size="sm">
                                     {t('customers.current', language) || 'Current'}
                                   </Badge>
                                 )}
@@ -824,7 +827,7 @@ export function CustomersPage() {
                             <Table.Tr style={{ backgroundColor: currentTier === 'silver' ? 'var(--mantine-color-blue-0)' : undefined }}>
                               <Table.Td>
                                 <Group gap="xs">
-                                  <IconTrophy size={16} color="gray" />
+                                  <IconTrophy size={16} color={primaryColor} />
                                   <Text fw={currentTier === 'silver' ? 600 : 400}>
                                     {t('customers.loyaltyTier.silver' as any, language) || 'Silver'}
                                   </Text>
@@ -838,7 +841,7 @@ export function CustomersPage() {
                               </Table.Td>
                               <Table.Td>
                                 {currentTier === 'silver' && (
-                                  <Badge color={infoColor} variant="light" size="sm">
+                                  <Badge color={getBadgeColorForText(t('customers.current', language) || 'Current')} variant="light" size="sm">
                                     {t('customers.current', language) || 'Current'}
                                   </Badge>
                                 )}
@@ -847,7 +850,7 @@ export function CustomersPage() {
                             <Table.Tr style={{ backgroundColor: currentTier === 'gold' ? 'var(--mantine-color-blue-0)' : undefined }}>
                               <Table.Td>
                                 <Group gap="xs">
-                                  <IconTrophy size={16} color="yellow" />
+                                  <IconTrophy size={16} color={primaryColor} />
                                   <Text fw={currentTier === 'gold' ? 600 : 400}>
                                     {t('customers.loyaltyTier.gold' as any, language) || 'Gold'}
                                   </Text>
@@ -861,7 +864,7 @@ export function CustomersPage() {
                               </Table.Td>
                               <Table.Td>
                                 {currentTier === 'gold' && (
-                                  <Badge color={infoColor} variant="light" size="sm">
+                                  <Badge color={getBadgeColorForText(t('customers.current', language) || 'Current')} variant="light" size="sm">
                                     {t('customers.current', language) || 'Current'}
                                   </Badge>
                                 )}
@@ -870,7 +873,7 @@ export function CustomersPage() {
                             <Table.Tr style={{ backgroundColor: currentTier === 'platinum' ? 'var(--mantine-color-blue-0)' : undefined }}>
                               <Table.Td>
                                 <Group gap="xs">
-                                  <IconTrophy size={16} color={infoColor} />
+                                  <IconTrophy size={16} color={primaryColor} />
                                   <Text fw={currentTier === 'platinum' ? 600 : 400}>
                                     {t('customers.loyaltyTier.platinum' as any, language) || 'Platinum'}
                                   </Text>
@@ -884,7 +887,7 @@ export function CustomersPage() {
                               </Table.Td>
                               <Table.Td>
                                 {currentTier === 'platinum' && (
-                                  <Badge color={infoColor} variant="light" size="sm">
+                                  <Badge color={getBadgeColorForText(t('customers.current', language) || 'Current')} variant="light" size="sm">
                                     {t('customers.current', language) || 'Current'}
                                   </Badge>
                                 )}
@@ -916,19 +919,13 @@ export function CustomersPage() {
                       <Table.Tr key={order.id}>
                         <Table.Td>{order.orderNumber}</Table.Td>
                         <Table.Td>
-                          <Badge color={primaryColor} variant="light">
+                          <Badge color={getBadgeColorForText(t(`orders.orderType.${order.orderType}` as any, language) || order.orderType)} variant="light">
                             {t(`orders.orderType.${order.orderType}` as any, language) || order.orderType}
                           </Badge>
                         </Table.Td>
                         <Table.Td>
                           <Badge
-                            color={
-                              order.status === 'completed'
-                                ? successColor
-                                : order.status === 'cancelled'
-                                  ? errorColor
-                                  : primaryColor
-                            }
+                            color={getBadgeColorForText(t(`orders.status.${order.status}` as any, language) || order.status)}
                             variant="light"
                           >
                             {t(`orders.status.${order.status}` as any, language) || order.status}
@@ -936,8 +933,7 @@ export function CustomersPage() {
                         </Table.Td>
                         <Table.Td>
                           <Text fw={500}>
-                            {currency}
-                            {order.totalAmount.toFixed(2)}
+                            {formatCurrency(order.totalAmount, currency)}
                           </Text>
                         </Table.Td>
                         <Table.Td>
@@ -969,7 +965,7 @@ export function CustomersPage() {
                         <Text fw={500}>
                           {address.addressLabel ? t(`customers.addressLabel.${address.addressLabel}` as any, language) || address.addressLabel : t('customers.address', language)}
                           {address.isDefault && (
-                            <Badge color={successColor} variant="light" ml="xs" size="xs">
+                            <Badge color={getBadgeColorForText(t('customers.default', language))} variant="light" ml="xs" size="xs">
                               {t('customers.default', language)}
                             </Badge>
                           )}
@@ -995,7 +991,7 @@ export function CustomersPage() {
           </Tabs>
         )}
       </Modal>
-    </Container>
+    </Stack>
   );
 }
 

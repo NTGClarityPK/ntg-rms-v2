@@ -1,6 +1,7 @@
 import { Order } from '@/lib/api/orders';
 import { Tenant } from '@/lib/indexeddb/database';
 import { Branch } from '@/lib/indexeddb/database';
+import type { ThemeConfig } from '@/lib/theme/themeConfig';
 
 export interface InvoiceSettings {
   headerText?: string;
@@ -42,7 +43,7 @@ export class InvoiceGenerator {
   /**
    * Generate thermal printer invoice (80mm)
    */
-  static generateThermal(data: InvoiceData, language: 'en' | 'ar' = 'en'): string {
+  static generateThermal(data: InvoiceData, language: 'en' | 'ar' = 'en', themeConfig?: ThemeConfig): string {
     const { order, tenant, branch, customerName, customerPhone, customerAddress, invoiceSettings } = data;
     const isRTL = language === 'ar';
     const dir = isRTL ? 'rtl' : 'ltr';
@@ -54,6 +55,9 @@ export class InvoiceGenerator {
     const headerText = invoiceSettings?.headerText || '';
     const footerText = invoiceSettings?.footerText || tenant.footerText || (isRTL ? 'شكراً لزيارتك!' : 'Thank you for your visit!');
     const termsAndConditions = invoiceSettings?.termsAndConditions || tenant.termsAndConditions || '';
+    
+    // Get fonts from theme config with fallbacks
+    const monoFont = themeConfig?.typography.fontFamily.mono || 'var(--font-geist-mono), Monaco, Courier New, monospace';
 
     let html = `
 <!DOCTYPE html>
@@ -71,7 +75,7 @@ export class InvoiceGenerator {
       body {
         margin: 0;
         padding: 10px;
-        font-family: 'Courier New', monospace;
+        font-family: ${monoFont};
         font-size: 12px;
         width: 80mm;
       }
@@ -79,7 +83,7 @@ export class InvoiceGenerator {
     body {
       margin: 0;
       padding: 10px;
-      font-family: 'Courier New', monospace;
+      font-family: ${monoFont};
       font-size: 12px;
       width: 80mm;
       max-width: 80mm;
@@ -279,7 +283,7 @@ export class InvoiceGenerator {
   /**
    * Generate A4 format invoice
    */
-  static generateA4(data: InvoiceData, language: 'en' | 'ar' = 'en'): string {
+  static generateA4(data: InvoiceData, language: 'en' | 'ar' = 'en', themeConfig?: ThemeConfig): string {
     const { order, tenant, branch, customerName, customerPhone, customerAddress, invoiceSettings } = data;
     const isRTL = language === 'ar';
     const dir = isRTL ? 'rtl' : 'ltr';
@@ -291,6 +295,9 @@ export class InvoiceGenerator {
     const headerText = invoiceSettings?.headerText || '';
     const footerText = invoiceSettings?.footerText || tenant.footerText || (isRTL ? 'شكراً لزيارتك!' : 'Thank you for your visit!');
     const termsAndConditions = invoiceSettings?.termsAndConditions || tenant.termsAndConditions || '';
+    
+    // Get fonts from theme config with fallbacks
+    const primaryFont = themeConfig?.typography.fontFamily.primary || 'var(--font-geist-sans), Arial, Helvetica, sans-serif';
 
     let html = `
 <!DOCTYPE html>
@@ -310,7 +317,7 @@ export class InvoiceGenerator {
       }
     }
     body {
-      font-family: Arial, sans-serif;
+      font-family: ${primaryFont};
       font-size: 12px;
       line-height: 1.6;
       color: #333;

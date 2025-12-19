@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Grid, Box, Select, Group, Text, Stack, Skeleton } from '@mantine/core';
+import { Grid, Box, Select, Group, Text, Stack, Skeleton, Title, Paper } from '@mantine/core';
 import { useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useLanguageStore } from '@/lib/store/language-store';
@@ -19,7 +19,7 @@ export default function POSPage() {
   const { settings } = useSettings();
   const searchParams = useSearchParams();
   const editOrderId = searchParams?.get('editOrder');
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [cartItems, setCartItems] = useState<any[]>([]);
   
@@ -368,74 +368,83 @@ export default function POSPage() {
   }
 
   return (
-    <Box style={{ height: 'auto' }}>
-      {/* Branch Selector */}
-     {branches.length > 1 ? (
-        <Box p="xs" style={{ borderBottom: '1px solid var(--mantine-color-gray-3)' }}>
-          <Group gap="xs">
-            <Text size="sm" fw={500}>
-              {t('restaurant.branch', language) || 'Branch'}:
-            </Text>
-            <Select
-              value={selectedBranchId}
-              onChange={(value) => setSelectedBranchId(value)}
-              data={branches.map((branch) => ({
-                value: branch.id,
-                label: branch.name || '',
-              }))}
-              style={{ width: 200 }}
+    <>
+      <div className="page-title-bar">
+        <Group justify="space-between" align="center" style={{ width: '100%', paddingRight: 'var(--mantine-spacing-md)' }}>
+          <Title order={1} style={{ margin: 0, textAlign: 'left', paddingTop: 'var(--mantine-spacing-sm)' }}>
+            {t('pos.newOrder', language) || 'New Order'}
+          </Title>
+          {branches.length > 1 && (
+            <Group gap="xs">
+              <Text size="sm" fw={500}>
+                {t('restaurant.branch', language) || 'Branch'}:
+              </Text>
+              <Select
+                value={selectedBranchId}
+                onChange={(value) => setSelectedBranchId(value)}
+                data={branches.map((branch) => ({
+                  value: branch.id,
+                  label: branch.name || '',
+                }))}
+                style={{ width: 200 }}
+                size="sm"
+              />
+            </Group>
+          )}
+        </Group>
+      </div>
+
+      <div className="page-sub-title-bar"></div>
+
+      <div style={{ marginTop: '60px', paddingLeft: 'var(--mantine-spacing-md)', paddingRight: 'var(--mantine-spacing-md)', paddingTop: 'var(--mantine-spacing-sm)', paddingBottom: 'var(--mantine-spacing-xl)' }}>
+        <Grid gutter="md">
+          {/* Left Panel - Food Items Grid (60%) */}
+          <Grid.Col span={{ base: 12, md: 7 }}>
+            <FoodItemsGrid
+              tenantId={user.tenantId}
+              selectedCategoryIds={selectedCategoryIds}
+              onCategoryChange={setSelectedCategoryIds}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              onAddToCart={handleAddToCart}
+              orderType={orderType}
+              onItemTypeChange={handleItemTypeChange}
             />
-          </Group>
-        </Box>
-      ) : null}
+          </Grid.Col>
 
-      <Grid gutter={0} style={{ height: (loadingBranches || branches.length > 1) ? 'calc(100% - 50px)' : '100%' }}>
-        {/* Left Panel - Food Items Grid (60%) */}
-        <Grid.Col span={{ base: 12, md: 7 }} style={{ height: '100%', overflow: 'hidden' }}>
-          <FoodItemsGrid
-            tenantId={user.tenantId}
-            selectedCategoryId={selectedCategoryId}
-            onCategoryChange={setSelectedCategoryId}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            onAddToCart={handleAddToCart}
-            orderType={orderType}
-            onItemTypeChange={handleItemTypeChange}
-          />
-        </Grid.Col>
-
-        {/* Right Panel - Cart and Billing (40%) */}
-        <Grid.Col span={{ base: 12, md: 5 }} style={{ height: '100%', overflow: 'hidden' }}>
-          <POSCart
-            cartItems={cartItems}
-            onRemoveItem={handleRemoveFromCart}
-            onUpdateItem={handleUpdateCartItem}
-            onClearCart={handleClearCart}
-            orderType={orderType}
-            onOrderTypeChange={(type) => {
+          {/* Right Panel - Cart and Billing (40%) */}
+          <Grid.Col span={{ base: 12, md: 5 }}>
+            <POSCart
+              cartItems={cartItems}
+              onRemoveItem={handleRemoveFromCart}
+              onUpdateItem={handleUpdateCartItem}
+              onClearCart={handleClearCart}
+              orderType={orderType}
+              onOrderTypeChange={(type) => {
               // Prevent switching away from dine_in when on buffet tab
               if (currentItemType === 'buffets' && type !== 'dine_in') {
                 return;
               }
-              // Prevent switching to delivery if delivery management is disabled
-              if (type === 'delivery' && !settings?.general?.enableDeliveryManagement) {
-                return;
-              }
-              setOrderType(type);
-            }}
+                // Prevent switching to delivery if delivery management is disabled
+                if (type === 'delivery' && !settings?.general?.enableDeliveryManagement) {
+                  return;
+                }
+                setOrderType(type);
+              }}
             isBuffetMode={currentItemType === 'buffets'}
-            selectedTableId={selectedTableId}
-            onTableChange={setSelectedTableId}
-            selectedCustomerId={selectedCustomerId}
-            onCustomerChange={setSelectedCustomerId}
-            numberOfPersons={numberOfPersons}
-            onNumberOfPersonsChange={setNumberOfPersons}
-            tenantId={user.tenantId}
-            branchId={selectedBranchId || (branches.length > 0 ? branches[0].id : '')}
-            editingOrderId={editingOrderId}
-          />
-        </Grid.Col>
-      </Grid>
-    </Box>
+              selectedTableId={selectedTableId}
+              onTableChange={setSelectedTableId}
+              selectedCustomerId={selectedCustomerId}
+              onCustomerChange={setSelectedCustomerId}
+              numberOfPersons={numberOfPersons}
+              onNumberOfPersonsChange={setNumberOfPersons}
+              tenantId={user.tenantId}
+              branchId={selectedBranchId || (branches.length > 0 ? branches[0].id : '')}
+              editingOrderId={editingOrderId}
+            />
+          </Grid.Col>
+        </Grid>
+      </div>
+    </>
   );
 }

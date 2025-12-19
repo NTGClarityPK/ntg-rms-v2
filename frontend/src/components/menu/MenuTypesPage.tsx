@@ -5,6 +5,7 @@ import { IconMenu2 } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
+import { getBadgeColorForText } from '@/lib/utils/theme';
 
 export function MenuTypesPage() {
   const { language } = useLanguageStore();
@@ -38,7 +39,7 @@ export function MenuTypesPage() {
                 <IconMenu2 size={20} color={primaryColor} />
                 <Text fw={500}>{type.label}</Text>
               </Group>
-              <Badge variant="light" style={{ color: primaryColor }}>
+              <Badge variant="light" color={getBadgeColorForText(type.label)}>
                 {type.value}
               </Badge>
             </Group>

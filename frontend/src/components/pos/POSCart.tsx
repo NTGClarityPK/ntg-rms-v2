@@ -17,6 +17,7 @@ import {
   Paper,
   Modal,
   TextInput,
+  useMantineTheme,
 } from '@mantine/core';
 import {
   IconTrash,
@@ -36,6 +37,7 @@ import { CartItem, RestaurantTable } from '@/lib/indexeddb/database';
 import { useThemeColor, useThemeColorShade } from '@/lib/hooks/use-theme-color';
 import { getSuccessColor, getErrorColor } from '@/lib/utils/theme';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { ItemSelectionModal } from './ItemSelectionModal';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { syncService } from '@/lib/sync/sync-service';
@@ -48,6 +50,7 @@ import { useSettings } from '@/lib/hooks/use-settings';
 import { InvoiceGenerator } from '@/lib/utils/invoice-generator';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { taxesApi, Tax } from '@/lib/api/taxes';
+import type { ThemeConfig } from '@/lib/theme/themeConfig';
 
 interface POSCartProps {
   cartItems: CartItem[];
@@ -89,6 +92,8 @@ export function POSCart({
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
   const { settings } = useSettings();
+  const theme = useMantineTheme();
+  const themeConfig = (theme.other as any) as ThemeConfig | undefined;
   const primaryColor = useThemeColor();
   const primaryShade = useThemeColorShade(6);
   const currency = useCurrency();
@@ -607,7 +612,7 @@ export function POSCart({
         setAppliedCouponId(response.data.couponId);
         notifications.show({
           title: t('pos.couponApplied', language) || 'Coupon Applied',
-          message: `${t('pos.discount', language)}: ${response.data.discount.toFixed(2)} ${currency}`,
+          message: `${t('pos.discount', language)}: ${formatCurrency(response.data.discount, currency)}`,
           color: getSuccessColor(),
         });
       }
@@ -665,7 +670,7 @@ export function POSCart({
       }, 0);
       if (minimumDeliveryOrderAmount > 0 && subtotal < minimumDeliveryOrderAmount) {
         return t('pos.minimumDeliveryAmount' as any, language) || 
-               `Minimum delivery order amount is ${minimumDeliveryOrderAmount.toFixed(2)} ${currency}`;
+               `Minimum delivery order amount is ${formatCurrency(minimumDeliveryOrderAmount, currency)}`;
       }
     }
     return null;
@@ -995,8 +1000,8 @@ export function POSCart({
 
               const template = settings?.invoice?.receiptTemplate === 'a4' ? 'a4' : 'thermal';
               const html = template === 'a4' 
-                ? InvoiceGenerator.generateA4(invoiceData, language)
-                : InvoiceGenerator.generateThermal(invoiceData, language);
+                ? InvoiceGenerator.generateA4(invoiceData, language, themeConfig)
+                : InvoiceGenerator.generateThermal(invoiceData, language, themeConfig);
               InvoiceGenerator.printInvoice(html);
             } catch (error) {
               console.error('Failed to auto-print invoice:', error);
@@ -1149,6 +1154,8 @@ export function POSCart({
 
     try {
       // Fetch tenant and branch info for invoice
+      const primaryFont = themeConfig?.typography.fontFamily.primary || 'var(--font-geist-sans), Arial, Helvetica, sans-serif';
+
       const tenant = await restaurantApi.getInfo();
       const branches = await restaurantApi.getBranches();
       const branch = branches.find(b => b.id === placedOrder.branchId);
@@ -1236,6 +1243,7 @@ export function POSCart({
               {t('pos.orderType', language)}
             </Text>
             <SegmentedControl
+              className="order-type-selector"
               fullWidth
               value={orderType}
               onChange={(value) => onOrderTypeChange(value as 'dine_in' | 'takeaway' | 'delivery')}
@@ -1247,9 +1255,6 @@ export function POSCart({
                   ...(enableDeliveryManagement ? [{ label: t('pos.delivery', language), value: 'delivery' }] : []),
                 ]),
               ]}
-              style={{
-                '--sc-color': primaryShade,
-              } as any}
             />
           </Box>
 
@@ -1539,7 +1544,7 @@ export function POSCart({
 
                         <Group gap="xs">
                           <Text size="sm" fw={600} c={primaryColor}>
-                            {(item.subtotal ?? (item.unitPrice ?? 0) * (item.quantity ?? 1)).toFixed(2)} {currency}
+                            {formatCurrency(item.subtotal, currency)}
                           </Text>
                           <Button
                             variant="subtle"
@@ -1570,7 +1575,7 @@ export function POSCart({
               <Group justify="space-between">
                 <Text size="sm">{t('pos.subtotal', language)}:</Text>
                 <Text size="sm" fw={500}>
-                  {calculateSubtotal().toFixed(2)} {currency}
+                  {formatCurrency(calculateSubtotal(), currency)}
                 </Text>
               </Group>
 
@@ -1632,7 +1637,7 @@ export function POSCart({
                             {t('pos.loyaltyDiscount', language) || 'Loyalty Discount'} ({selectedCustomerData?.loyaltyTier ? t(`customers.loyaltyTier.${selectedCustomerData.loyaltyTier}` as any, language) || selectedCustomerData.loyaltyTier : ''}):
                           </Text>
                           <Text size="sm" fw={500} c={getSuccessColor()}>
-                            -{loyaltyDiscount.toFixed(2)} {currency}
+                            -{formatCurrency(loyaltyDiscount, currency)}
                           </Text>
                         </Group>
                       )}
@@ -1642,7 +1647,7 @@ export function POSCart({
                             {t('pos.discount', language)}:
                           </Text>
                           <Text size="sm" fw={500} c={getSuccessColor()}>
-                            -{totalDiscount.toFixed(2)} {currency}
+                            -{formatCurrency(totalDiscount, currency)}
                           </Text>
                         </Group>
                       )}
@@ -1664,7 +1669,7 @@ export function POSCart({
                               {taxItem.name} ({taxItem.rate}%):
                             </Text>
                             <Text size="sm" fw={500}>
-                              {taxItem.amount.toFixed(2)} {currency}
+                              {formatCurrency(taxItem.amount, currency)}
                             </Text>
                           </Group>
                         ))
@@ -1672,7 +1677,7 @@ export function POSCart({
                         <Group justify="space-between">
                           <Text size="sm">{t('pos.tax', language)}:</Text>
                           <Text size="sm" fw={500}>
-                            {tax.toFixed(2)} {currency}
+                            {formatCurrency(tax, currency)}
                           </Text>
                         </Group>
                       )}
@@ -1680,7 +1685,7 @@ export function POSCart({
                         <Group justify="space-between" pt="xs" style={{ borderTop: '1px solid #e0e0e0' }}>
                           <Text size="sm" fw={600}>{t('pos.totalTax' as any, language) || 'Total Tax'}:</Text>
                           <Text size="sm" fw={600}>
-                            {tax.toFixed(2)} {currency}
+                            {formatCurrency(tax, currency)}
                           </Text>
                         </Group>
                       )}
@@ -1715,7 +1720,7 @@ export function POSCart({
                   {t('pos.grandTotal', language)}:
                 </Text>
                 <Text fw={700} size="xl" c={primaryColor}>
-                  {calculateGrandTotal().toFixed(2)} {currency}
+                  {formatCurrency(calculateGrandTotal(), currency)}
                 </Text>
               </Group>
 
@@ -1725,13 +1730,11 @@ export function POSCart({
                   {t('pos.paymentMethod', language)}
                 </Text>
                 <SegmentedControl
+                  className="order-type-selector"
                   fullWidth
                   value={paymentMethod || ''}
                   onChange={(value) => setPaymentMethod(value as any)}
                   data={enabledPaymentMethods}
-                  style={{
-                    '--sc-color': primaryShade,
-                  } as any}
                 />
               </Box>
 
@@ -1861,31 +1864,31 @@ export function POSCart({
             <Stack gap="xs">
               <Group justify="space-between">
                 <Text size="sm">{t('pos.subtotal', language)}:</Text>
-                <Text size="sm">{placedOrder.subtotal.toFixed(2)} {currency}</Text>
+                <Text size="sm">{formatCurrency(placedOrder.subtotal, currency)}</Text>
               </Group>
               {placedOrder.discountAmount > 0 && (
                 <Group justify="space-between">
                   <Text size="sm" c="dimmed">{t('pos.discount', language)}:</Text>
-                  <Text size="sm" c={getSuccessColor()}>-{placedOrder.discountAmount.toFixed(2)} {currency}</Text>
+                  <Text size="sm" c={getSuccessColor()}>-{formatCurrency(placedOrder.discountAmount, currency)}</Text>
                 </Group>
               )}
               {placedOrder.taxAmount > 0 && (
                 <Group justify="space-between">
                   <Text size="sm">{t('pos.tax', language)}:</Text>
-                  <Text size="sm">{placedOrder.taxAmount.toFixed(2)} {currency}</Text>
+                  <Text size="sm">{formatCurrency(placedOrder.taxAmount, currency)}</Text>
                 </Group>
               )}
               {placedOrder.deliveryCharge > 0 && (
                 <Group justify="space-between">
                   <Text size="sm">{t('pos.deliveryCharge', language)}:</Text>
-                  <Text size="sm">{placedOrder.deliveryCharge.toFixed(2)} {currency}</Text>
+                  <Text size="sm">{formatCurrency(placedOrder.deliveryCharge, currency)}</Text>
                 </Group>
               )}
               <Divider />
               <Group justify="space-between">
                 <Text fw={700} size="lg">{t('pos.grandTotal', language)}:</Text>
                 <Text fw={700} size="xl" c={primaryColor}>
-                  {placedOrder.totalAmount.toFixed(2)} {currency}
+                  {formatCurrency(placedOrder.totalAmount, currency)}
                 </Text>
               </Group>
             </Stack>

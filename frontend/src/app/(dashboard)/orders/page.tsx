@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Container,
-  Tabs,
+  Chip,
   TextInput,
   Select,
   Button,
@@ -13,6 +12,7 @@ import {
   Text,
   Badge,
   ActionIcon,
+  Title,
   Menu,
   Paper,
   Box,
@@ -34,9 +34,10 @@ import { notifications } from '@mantine/notifications';
 import { useDisclosure } from '@mantine/hooks';
 import { OrderDetailsModal } from '@/components/orders/OrderDetailsModal';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getStatusColor, getPaymentStatusColor, getSuccessColor, getErrorColor } from '@/lib/utils/theme';
+import { getStatusColor, getPaymentStatusColor, getSuccessColor, getErrorColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { db } from '@/lib/indexeddb/database';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -49,7 +50,9 @@ import { isPaginatedResponse } from '@/lib/types/pagination.types';
 
 dayjs.extend(relativeTime);
 
-type OrderTab = 'all' | 'pending' | 'preparing' | 'ready' | 'served' | 'completed' | 'cancelled';
+// Available order statuses for filtering
+const ORDER_STATUSES = ['pending', 'preparing', 'ready', 'served', 'completed', 'cancelled'] as const;
+type OrderStatusFilter = typeof ORDER_STATUSES[number];
 
 export default function OrdersPage() {
   const { language } = useLanguageStore();
@@ -58,7 +61,7 @@ export default function OrdersPage() {
   const { user } = useAuthStore();
   const { formatDateTime } = useDateFormat();
   const pagination = usePagination<Order>({ initialPage: 1, initialLimit: 10 });
-  const [activeTab, setActiveTab] = useState<OrderTab>('all');
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -92,8 +95,8 @@ export default function OrdersPage() {
       setLoading(true);
     }
     try {
-      // Load orders from backend
-      const status = activeTab === 'all' ? undefined : (activeTab as OrderStatus);
+      // Load orders from backend - no status filter at API level, filter client-side
+      const status = undefined;
       const params = {
         status,
         branchId: selectedBranch || undefined,
@@ -303,7 +306,7 @@ export default function OrdersPage() {
         setLoading(false);
       }
     }
-  }, [activeTab, selectedBranch, selectedOrderType, selectedPaymentStatus, language, user?.tenantId, pagination]);
+  }, [selectedBranch, selectedOrderType, selectedPaymentStatus, language, user?.tenantId, pagination]);
 
   // Update ref whenever loadOrders changes
   useEffect(() => {
@@ -319,7 +322,7 @@ export default function OrdersPage() {
   useEffect(() => {
     loadOrders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, selectedBranch, selectedOrderType, selectedPaymentStatus, pagination.page, pagination.limit]);
+  }, [selectedBranch, selectedOrderType, selectedPaymentStatus, pagination.page, pagination.limit]);
 
   // Set up Supabase Realtime subscription for cross-browser updates
   useEffect(() => {
@@ -436,8 +439,9 @@ export default function OrdersPage() {
   }, [loadOrders]);
 
   const filteredOrders = orders.filter((order) => {
-    // First apply tab filter (status filter)
-    if (activeTab !== 'all' && order.status !== activeTab) {
+    // First apply status filter (multi-select)
+    // If no statuses selected, show all orders
+    if (selectedStatuses.length > 0 && !selectedStatuses.includes(order.status)) {
       return false;
     }
     
@@ -485,34 +489,40 @@ export default function OrdersPage() {
   };
 
   return (
-    <Container size="xl" py="md">
-      <Stack gap="md">
-        {/* Header */}
-        <Group justify="space-between" align="center">
-          <Text size="xl" fw={700}>
+    <>
+      <div className="page-title-bar">
+        <Group justify="space-between" align="center" style={{ width: '100%', height: '100%', paddingRight: 'var(--mantine-spacing-md)' }}>
+          <Title order={1} style={{ margin: 0, textAlign: 'left' }}>
             {t('orders.title', language)}
-          </Text>
-          <Group>
+          </Title>
+          <Group gap="xs">
             <Button
               leftSection={<IconChefHat size={16} />}
               variant="light"
               component="a"
               href="/orders/kitchen"
+              size="sm"
             >
               {t('orders.kitchenDisplay', language)}
             </Button>
-            <Button
-              leftSection={<IconRefresh size={16} />}
+            <ActionIcon
               variant="light"
+              size="lg"
               onClick={() => loadOrders(false)}
               loading={loading}
+              title={t('common.refresh' as any, language)}
             >
-              {t('common.refresh' as any, language)}
-            </Button>
+              <IconRefresh size={18} />
+            </ActionIcon>
           </Group>
         </Group>
+      </div>
 
-        {/* Filters */}
+      <div className="page-sub-title-bar"></div>
+
+      <div style={{ marginTop: '60px', paddingLeft: 'var(--mantine-spacing-md)', paddingRight: 'var(--mantine-spacing-md)', paddingTop: 'var(--mantine-spacing-sm)', paddingBottom: 'var(--mantine-spacing-xl)' }}>
+        <Stack gap="md">
+          {/* Filters */}
         <Paper p="md" withBorder>
           <Grid>
             <Grid.Col span={{ base: 12, sm: 4 }}>
@@ -560,20 +570,43 @@ export default function OrdersPage() {
           </Grid>
         </Paper>
 
-        {/* Tabs */}
-        <Tabs value={activeTab} onChange={(value) => setActiveTab(value as OrderTab)}>
-          <Tabs.List>
-            <Tabs.Tab value="all">{t('orders.allOrders', language)}</Tabs.Tab>
-            <Tabs.Tab value="pending">{t('orders.pending', language)}</Tabs.Tab>
-            <Tabs.Tab value="preparing">{t('orders.preparing', language)}</Tabs.Tab>
-            <Tabs.Tab value="ready">{t('orders.ready', language)}</Tabs.Tab>
-            <Tabs.Tab value="served">{t('orders.served', language)}</Tabs.Tab>
-            <Tabs.Tab value="completed">{t('orders.completed', language)}</Tabs.Tab>
-            <Tabs.Tab value="cancelled">{t('orders.cancelled', language)}</Tabs.Tab>
-          </Tabs.List>
+        {/* Status Filter Chips */}
+        <Paper p="sm" withBorder>
+          <Group gap="xs" wrap="wrap" className="filter-chip-group">
+            <Chip
+              checked={selectedStatuses.length === 0}
+              onChange={() => setSelectedStatuses([])}
+              variant="filled"
+            >
+              {t('orders.allOrders', language)}
+            </Chip>
+            <Chip.Group multiple value={selectedStatuses} onChange={setSelectedStatuses}>
+              <Group gap="xs" wrap="wrap">
+                <Chip value="pending" variant="filled">
+                  {t('orders.pending', language)}
+                </Chip>
+                <Chip value="preparing" variant="filled">
+                  {t('orders.preparing', language)}
+                </Chip>
+                <Chip value="ready" variant="filled">
+                  {t('orders.ready', language)}
+                </Chip>
+                <Chip value="served" variant="filled">
+                  {t('orders.served', language)}
+                </Chip>
+                <Chip value="completed" variant="filled">
+                  {t('orders.completed', language)}
+                </Chip>
+                <Chip value="cancelled" variant="filled">
+                  {t('orders.cancelled', language)}
+                </Chip>
+              </Group>
+            </Chip.Group>
+          </Group>
+        </Paper>
 
-          {/* Orders List */}
-          <Box mt="md">
+        {/* Orders List */}
+        <Box mt="md">
             {loading ? (
               <Stack gap="md">
                 {[1, 2].map((i) => (
@@ -609,10 +642,10 @@ export default function OrdersPage() {
                               {t('pos.tokenNumber', language)}: {order.tokenNumber}
                             </Text>
                           )}
-                          <Badge color={getStatusColorForBadge(order.status)}>
+                          <Badge variant="light" color={getStatusColorForBadge(order.status)}>
                             {t(`orders.status.${order.status}`, language)}
                           </Badge>
-                          <Badge variant="light" color={primary}>
+                          <Badge variant="light" color={getBadgeColorForText(getOrderTypeLabel(order.orderType))}>
                             {getOrderTypeLabel(order.orderType)}
                           </Badge>
                           <Badge color={getPaymentStatusColor(order.paymentStatus)}>
@@ -643,15 +676,15 @@ export default function OrdersPage() {
                         </Group>
                         <Group gap="md">
                           <Text size="sm" fw={500}>
-                            {t('pos.subtotal', language)}: {(order.subtotal || 0).toFixed(2)} {currency}
+                            {t('pos.subtotal', language)}: {formatCurrency(order.subtotal || 0, currency)}
                           </Text>
                           {(order.discountAmount || 0) > 0 && (
                             <Text size="sm" c={getSuccessColor()}>
-                              {t('pos.discount', language)}: -{(order.discountAmount || 0).toFixed(2)} {currency}
+                              {t('pos.discount', language)}: -{formatCurrency(order.discountAmount || 0, currency)}
                             </Text>
                           )}
                           <Text size="sm" fw={600}>
-                            {t('pos.grandTotal', language)}: {(order.totalAmount || 0).toFixed(2)} {currency}
+                            {t('pos.grandTotal', language)}: {formatCurrency(order.totalAmount || 0, currency)}
                           </Text>
                         </Group>
                       </Stack>
@@ -693,8 +726,8 @@ export default function OrdersPage() {
               />
             )}
           </Box>
-        </Tabs>
-      </Stack>
+        </Stack>
+      </div>
 
       {selectedOrder && (
         <OrderDetailsModal
@@ -704,6 +737,6 @@ export default function OrdersPage() {
           onStatusUpdate={handleStatusUpdate}
         />
       )}
-    </Container>
+    </>
   );
 }

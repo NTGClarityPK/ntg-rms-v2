@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Container,
   Title,
   Stack,
   Table,
@@ -31,8 +30,9 @@ import { t } from '@/lib/utils/translations';
 import { useInventoryRefresh } from '@/lib/contexts/inventory-refresh-context';
 import { useErrorColor, useSuccessColor, useWarningColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getWarningColor } from '@/lib/utils/theme';
+import { getWarningColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { formatCurrency } from '@/lib/utils/currency-formatter';
 
 const CATEGORIES = [
   { value: '', label: 'All Categories' },
@@ -324,8 +324,7 @@ export function InventoryReportsPage() {
   };
 
   return (
-    <Container size="xl" py="xl">
-      <Title order={2} mb="xl">{t('inventory.reports', language)}</Title>
+    <Stack gap="md">
 
       {/* Summary Cards */}
       <Grid mb="xl">
@@ -344,7 +343,7 @@ export function InventoryReportsPage() {
             <Stack gap="xs">
               <Text size="sm" c="dimmed">{t('inventory.totalStockValue', language) || 'Total Stock Value'}</Text>
               <Text size="xl" fw={700} style={{ color: successColor }}>
-                {currency}{totalStockValue.toFixed(2)}
+                {formatCurrency(totalStockValue, currency)}
               </Text>
             </Stack>
           </Card>
@@ -467,7 +466,7 @@ export function InventoryReportsPage() {
                   </Table.Td>
                   <Table.Td>
                     {item.category ? (
-                      <Badge variant="light" color={primaryColor}>
+                      <Badge variant="light" color={getBadgeColorForText(t(`inventory.${item.category}` as any, language) || item.category)}>
                         {t(`inventory.${item.category}` as any, language) || item.category}
                       </Badge>
                     ) : (
@@ -478,7 +477,7 @@ export function InventoryReportsPage() {
                     <Group gap="xs">
                       <Text>{item.currentStock} {item.unitOfMeasurement}</Text>
                       {item.isLowStock && (
-                        <Badge color={warningColor} size="sm">
+                        <Badge variant="light" color={getBadgeColorForText(t('inventory.isLowStock', language))} size="sm">
                           {t('inventory.isLowStock', language)}
                         </Badge>
                       )}
@@ -488,15 +487,15 @@ export function InventoryReportsPage() {
                     <Text>{item.minimumThreshold} {item.unitOfMeasurement}</Text>
                   </Table.Td>
                   <Table.Td>
-                    {currency}{(item.costPerUnit || 0).toFixed(2)}
+                    {formatCurrency(item.costPerUnit || 0, currency)}
                   </Table.Td>
                   <Table.Td>
                     <Text fw={500}>
-                      {currency}{(item.stockValue || 0).toFixed(2)}
+                      {formatCurrency(item.stockValue || 0, currency)}
                     </Text>
                   </Table.Td>
                   <Table.Td>
-                    <Badge color={item.isLowStock ? warningColor : successColor}>
+                    <Badge variant="light" color={getBadgeColorForText(item.isLowStock ? t('inventory.isLowStock', language) : (t('common.active' as any, language) || 'Active'))}>
                       {item.isLowStock ? t('inventory.isLowStock', language) : (t('common.active' as any, language) || 'Active')}
                     </Badge>
                   </Table.Td>
@@ -558,13 +557,8 @@ export function InventoryReportsPage() {
                   </Table.Td>
                   <Table.Td>
                     <Badge
-                      color={
-                        tx.transactionType === 'purchase' || tx.transactionType === 'transfer_in'
-                          ? successColor
-                          : tx.transactionType === 'usage' || tx.transactionType === 'transfer_out'
-                          ? errorColor
-                          : primaryColor
-                      }
+                      variant="light"
+                      color={getBadgeColorForText(getTransactionTypeLabel(tx.transactionType))}
                     >
                       {getTransactionTypeLabel(tx.transactionType)}
                     </Badge>
@@ -572,9 +566,9 @@ export function InventoryReportsPage() {
                   <Table.Td>
                     <Group gap="xs">
                       {tx.quantity > 0 ? (
-                        <IconTrendingUp size={14} color={successColor} />
+                        <IconTrendingUp size={14} color={primaryColor} />
                       ) : (
-                        <IconTrendingDown size={14} color={errorColor} />
+                        <IconTrendingDown size={14} color={primaryColor} />
                       )}
                       <Text fw={tx.quantity > 0 ? 500 : undefined} c={tx.quantity < 0 ? errorColor : undefined}>
                         {tx.quantity > 0 ? '+' : ''}{tx.quantity}
@@ -583,7 +577,7 @@ export function InventoryReportsPage() {
                   </Table.Td>
                   <Table.Td>
                     {tx.unitCost ? (
-                      <Text>{currency}{tx.unitCost.toFixed(2)}</Text>
+                      <Text>{formatCurrency(tx.unitCost, currency)}</Text>
                     ) : (
                       <Text size="sm" c="dimmed">-</Text>
                     )}
@@ -591,7 +585,7 @@ export function InventoryReportsPage() {
                   <Table.Td>
                     {tx.totalCost ? (
                       <Text fw={500}>
-                        {currency}{tx.totalCost.toFixed(2)}
+                        {formatCurrency(tx.totalCost, currency)}
                       </Text>
                     ) : (
                       <Text size="sm" c="dimmed">-</Text>
@@ -606,7 +600,7 @@ export function InventoryReportsPage() {
           </Table>
         </Table.ScrollContainer>
       )}
-    </Container>
+    </Stack>
   );
 }
 

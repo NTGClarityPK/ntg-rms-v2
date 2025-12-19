@@ -14,6 +14,7 @@ import {
   Paper,
   Grid,
   Skeleton,
+  useMantineTheme,
 } from '@mantine/core';
 import { IconCheck, IconEdit, IconPrinter } from '@tabler/icons-react';
 import { useRouter } from 'next/navigation';
@@ -24,11 +25,13 @@ import { notifications } from '@mantine/notifications';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getStatusColor, getPaymentStatusColor, getSuccessColor, getErrorColor } from '@/lib/utils/theme';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { InvoiceGenerator } from '@/lib/utils/invoice-generator';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { useDateFormat } from '@/lib/hooks/use-date-format';
 import { useSettings } from '@/lib/hooks/use-settings';
 import { menuApi } from '@/lib/api/menu';
+import type { ThemeConfig } from '@/lib/theme/themeConfig';
 
 interface OrderDetailsModalProps {
   opened: boolean;
@@ -53,6 +56,8 @@ export function OrderDetailsModal({
   onStatusUpdate,
 }: OrderDetailsModalProps) {
   const { language } = useLanguageStore();
+  const theme = useMantineTheme();
+  const themeConfig = (theme.other as any) as ThemeConfig | undefined;
   const primary = useThemeColor();
   const currency = useCurrency();
   const { formatDateTime } = useDateFormat();
@@ -291,8 +296,8 @@ export function OrderDetailsModal({
       };
 
       const html = template === 'thermal'
-        ? InvoiceGenerator.generateThermal(invoiceData, language)
-        : InvoiceGenerator.generateA4(invoiceData, language);
+        ? InvoiceGenerator.generateThermal(invoiceData, language, themeConfig)
+        : InvoiceGenerator.generateA4(invoiceData, language, themeConfig);
 
       InvoiceGenerator.printInvoice(html);
     } catch (error: any) {
@@ -615,8 +620,8 @@ export function OrderDetailsModal({
                         </Stack>
                       </Table.Td>
                       <Table.Td>{item.quantity}</Table.Td>
-                      <Table.Td>{(item.unitPrice || 0).toFixed(2)} {currency}</Table.Td>
-                      <Table.Td>{(item.subtotal || 0).toFixed(2)} {currency}</Table.Td>
+                      <Table.Td>{formatCurrency(item.unitPrice || 0, currency)}</Table.Td>
+                      <Table.Td>{formatCurrency(item.subtotal || 0, currency)}</Table.Td>
                     </Table.Tr>
                   ))}
                 </Table.Tbody>
@@ -637,19 +642,19 @@ export function OrderDetailsModal({
               {(orderDetails.discountAmount || 0) > 0 && (
                 <Group justify="space-between">
                   <Text c={getSuccessColor()}>{t('pos.discount', language)}</Text>
-                  <Text c={getSuccessColor()}>-{(orderDetails.discountAmount || 0).toFixed(2)} {currency}</Text>
+                  <Text c={getSuccessColor()}>-{formatCurrency(orderDetails.discountAmount || 0, currency)}</Text>
                 </Group>
               )}
               {(orderDetails.taxAmount || 0) > 0 && (
                 <Group justify="space-between">
                   <Text>{t('pos.tax', language)}</Text>
-                  <Text>{(orderDetails.taxAmount || 0).toFixed(2)} {currency}</Text>
+                  <Text>{formatCurrency(orderDetails.taxAmount || 0, currency)}</Text>
                 </Group>
               )}
               {(orderDetails.deliveryCharge || 0) > 0 && (
                 <Group justify="space-between">
                   <Text>{t('pos.deliveryCharge', language)}</Text>
-                  <Text>{(orderDetails.deliveryCharge || 0).toFixed(2)} {currency}</Text>
+                  <Text>{formatCurrency(orderDetails.deliveryCharge || 0, currency)}</Text>
                 </Group>
               )}
               <Divider />
@@ -658,7 +663,7 @@ export function OrderDetailsModal({
                   {t('pos.grandTotal', language)}
                 </Text>
                 <Text fw={700} size="lg">
-                  {(orderDetails.totalAmount || 0).toFixed(2)} {currency}
+                  {formatCurrency(orderDetails.totalAmount || 0, currency)}
                 </Text>
               </Group>
             </Stack>

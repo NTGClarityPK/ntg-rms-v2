@@ -6,6 +6,9 @@ import {
   Text,
   Divider,
   ScrollArea,
+  ActionIcon,
+  Tooltip,
+  Box,
 } from '@mantine/core';
 import {
   IconDashboard,
@@ -19,6 +22,8 @@ import {
   IconTruck,
   IconChartBar,
   IconSettings,
+  IconChevronLeft,
+  IconChevronRight,
 } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
@@ -48,9 +53,11 @@ type NavigationKey = `navigation.${NavItemKey}`;
 
 interface SidebarProps {
   onMobileClose?: () => void;
+  collapsed?: boolean;
+  onCollapseChange?: (collapsed: boolean) => void;
 }
 
-export function Sidebar({ onMobileClose }: SidebarProps = {}) {
+export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: SidebarProps = {}) {
   const { language } = useLanguageStore();
   const pathname = usePathname();
   const router = useRouter();
@@ -103,42 +110,88 @@ export function Sidebar({ onMobileClose }: SidebarProps = {}) {
   };
 
   const renderNavItems = (items: Array<typeof navItems[number]>) => {
-    return items.map((item) => (
-      <NavLink
-        key={item.href}
-        component={Link}
-        href={item.href}
-        label={t(`navigation.${item.key}` as any, language)}
-        leftSection={<item.icon size={16} />}
-        active={isActive(item.href)}
-        onClick={() => {
-          onMobileClose?.();
-        }}
-      />
-    ));
+    return items.map((item) => {
+      const label = t(`navigation.${item.key}` as any, language);
+      const navLink = (
+        <NavLink
+          key={item.href}
+          component={Link}
+          href={item.href}
+          label={collapsed ? undefined : label}
+          leftSection={<item.icon size={20} />}
+          active={isActive(item.href)}
+          onClick={() => {
+            onMobileClose?.();
+          }}
+          style={{
+            justifyContent: collapsed ? 'center' : 'flex-start',
+            padding: collapsed ? '0.5rem' : undefined,
+          }}
+        />
+      );
+
+      if (collapsed) {
+        return (
+          <Tooltip key={item.href} label={label} position="right" withArrow>
+            {navLink}
+          </Tooltip>
+        );
+      }
+
+      return navLink;
+    });
   };
 
   return (
-    <ScrollArea h="100%">
-      <Stack gap="xs" p="md">
-        {/* Main Navigation */}
-        <Text size="xs" tt="uppercase" fw={700} c="dimmed" mb="xs">
-          {t('dashboard.navigation', language)}
-        </Text>
-        {renderNavItems(mainItems)}
-
-        {/* Management Section */}
-        {managementItems.length > 0 && (
-          <>
-            <Divider my="sm" />
+    <Stack h="100%" justify="space-between">
+      <ScrollArea h="100%" style={{ flex: 1 }}>
+        <Stack gap="xs" p={collapsed ? "xs" : "md"}>
+          {/* Main Navigation */}
+          {!collapsed && (
             <Text size="xs" tt="uppercase" fw={700} c="dimmed" mb="xs">
-              {t('dashboard.management', language)}
+              {t('dashboard.navigation', language)}
             </Text>
-            {renderNavItems(managementItems)}
-          </>
-        )}
-      </Stack>
-    </ScrollArea>
+          )}
+          {renderNavItems(mainItems)}
+
+          {/* Management Section */}
+          {managementItems.length > 0 && (
+            <>
+              {!collapsed && <Divider my="sm" />}
+              {!collapsed && (
+                <Text size="xs" tt="uppercase" fw={700} c="dimmed" mb="xs">
+                  {t('dashboard.management', language)}
+                </Text>
+              )}
+              {renderNavItems(managementItems)}
+            </>
+          )}
+        </Stack>
+      </ScrollArea>
+
+      {/* Toggle Button */}
+      <Box p={collapsed ? "xs" : "md"} style={{ borderTop: `1px solid ${theme.colors.gray[3]}`, display: collapsed ? 'flex' : 'block', justifyContent: collapsed ? 'center' : 'flex-start' }}>
+        <Tooltip label={collapsed ? (t('navigation.expand', language) || 'Expand') : (t('navigation.collapse', language) || 'Collapse')} position="right" withArrow>
+          <ActionIcon
+            variant="subtle"
+            size="lg"
+            onClick={() => onCollapseChange?.(!collapsed)}
+            style={{ width: collapsed ? 'auto' : '100%' }}
+          >
+            {(() => {
+              const isRTL = language === 'ar';
+              if (isRTL) {
+                // RTL: reversed logic
+                return collapsed ? <IconChevronLeft size={20} /> : <IconChevronRight size={20} />;
+              } else {
+                // LTR: normal logic
+                return collapsed ? <IconChevronRight size={20} /> : <IconChevronLeft size={20} />;
+              }
+            })()}
+          </ActionIcon>
+        </Tooltip>
+      </Box>
+    </Stack>
   );
 }
 

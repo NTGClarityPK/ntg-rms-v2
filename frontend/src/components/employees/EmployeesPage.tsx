@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useForm } from '@mantine/form';
 import {
-  Container,
   Title,
   Button,
   Stack,
@@ -52,6 +51,7 @@ import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
 import { Fragment } from 'react';
+import { getBadgeColorForText } from '@/lib/utils/theme';
 import '@mantine/dates/styles.css';
 
 const EMPLOYMENT_TYPES = [
@@ -60,7 +60,11 @@ const EMPLOYMENT_TYPES = [
   { value: 'contract', label: 'Contract' },
 ];
 
-export function EmployeesPage() {
+interface EmployeesPageProps {
+  addTrigger?: number;
+}
+
+export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
   const { canCreate, canUpdate, canDelete } = usePermissions();
@@ -304,6 +308,14 @@ export function EmployeesPage() {
   useEffect(() => {
     loadEmployees();
   }, [loadEmployees]);
+
+  // Trigger add modal from parent
+  useEffect(() => {
+    if (addTrigger && addTrigger > 0) {
+      handleOpenModal();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addTrigger]);
 
   const handleOpenModal = (employee?: Employee) => {
     if (employee) {
@@ -598,18 +610,18 @@ export function EmployeesPage() {
 
   if (loading && employees.length === 0) {
     return (
-      <Container size="xl" py="xl">
-        <Skeleton height={36} width={250} mb="xl" />
+      <Stack gap="md">
+        <Skeleton height={36} width={250} />
         <Stack gap="md">
           <Skeleton height={40} width="100%" />
           <Skeleton height={300} width="100%" />
         </Stack>
-      </Container>
+      </Stack>
     );
   }
 
   return (
-    <Container size="xl" py="xl">
+    <Stack gap="md">
       <Group justify="space-between" mb="xl">
         <Title order={2}>{t('employees.title', language)}</Title>
         <PermissionGuard resource="employees" action="create">
@@ -625,7 +637,7 @@ export function EmployeesPage() {
         </Alert>
       )}
 
-      <Paper withBorder p="md" mb="md">
+      <Paper withBorder p="md">
         <Grid>
           <Grid.Col span={{ base: 12, md: 4 }}>
             <TextInput
@@ -714,9 +726,9 @@ export function EmployeesPage() {
                             // Display multiple roles if available
                             if (employee.roles && Array.isArray(employee.roles) && employee.roles.length > 0) {
                               return employee.roles.map((role) => (
-                                <Badge key={role.id || role.name} color={primaryColor} variant="light">
-                                  {getRoleLabel(role.name)}
-                                </Badge>
+                                <Badge color={getBadgeColorForText(getRoleLabel(employee.role))} variant="light">
+                        {getRoleLabel(employee.role)}
+                      </Badge>
                               ));
                             }
                             // Fallback to single role
@@ -912,7 +924,7 @@ export function EmployeesPage() {
           </Stack>
         </form>
       </Modal>
-    </Container>
+    </Stack>
   );
 }
 

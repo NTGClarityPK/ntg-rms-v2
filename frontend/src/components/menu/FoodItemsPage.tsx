@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useForm } from '@mantine/form';
 import {
-  Container,
   Title,
   Button,
   Stack,
@@ -47,6 +46,7 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
+import { getBadgeColorForText } from '@/lib/utils/theme';
 import { onMenuDataUpdate, notifyMenuDataUpdate } from '@/lib/utils/menu-events';
 import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
@@ -888,21 +888,20 @@ export function FoodItemsPage() {
   };
 
   const labelOptions = [
-    { value: 'spicy', label: t('menu.spicy', language) },
-    { value: 'vegetarian', label: t('menu.vegetarian', language) },
-    { value: 'vegan', label: t('menu.vegan', language) },
-    { value: 'gluten_free', label: t('menu.glutenFree', language) },
-    { value: 'halal', label: t('menu.halal', language) },
-    { value: 'new', label: t('menu.new', language) },
-    { value: 'popular', label: t('menu.popular', language) },
-    { value: 'chefs_special', label: t('menu.chefsSpecial', language) },
+    { value: 'spicy', label: String(t('menu.spicy', language) || 'Spicy') },
+    { value: 'vegetarian', label: String(t('menu.vegetarian', language) || 'Vegetarian') },
+    { value: 'vegan', label: String(t('menu.vegan', language) || 'Vegan') },
+    { value: 'gluten_free', label: String(t('menu.glutenFree', language) || 'Gluten Free') },
+    { value: 'halal', label: String(t('menu.halal', language) || 'Halal') },
+    { value: 'new', label: String(t('menu.new', language) || 'New') },
+    { value: 'popular', label: String(t('menu.popular', language) || 'Popular') },
+    { value: 'chefs_special', label: String(t('menu.chefsSpecial', language) || 'Chef\'s Special') },
   ];
 
 
   return (
-    <Container size="xl" py="xl">
-      <Group justify="space-between" mb="xl">
-        <Title order={2}>{t('menu.foodItemManagement', language)}</Title>
+    <Stack gap="md">
+      <Group justify="flex-end">
         <Button
           leftSection={<IconPlus size={16} />}
           onClick={() => handleOpenModal()}
@@ -984,15 +983,32 @@ export function FoodItemsPage() {
                         <Table.Td style={{ maxWidth: 300 }}>
                           <Group gap="sm" wrap="nowrap">
                             {item.imageUrl ? (
-                              <Image
-                                src={item.imageUrl}
-                                alt={item.name || ''}
-                                width={40}
-                                height={40}
-                                radius="sm"
-                                fit="cover"
-                                style={{ flexShrink: 0 }}
-                              />
+                              <Box
+                          w={40}
+                          h={40}
+                          style={{
+                            flexShrink: 0,
+                            borderRadius: 'var(--mantine-radius-sm)',
+                            overflow: 'hidden',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Image
+                            src={item.imageUrl}
+                            alt={item.name || ''}
+                            width={40}
+                            height={40}
+                            fit="cover"
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover',
+                              objectPosition: 'center',
+                            }}
+                          />
+                        </Box>
                             ) : (
                               <Box
                                 w={40}
@@ -1034,16 +1050,24 @@ export function FoodItemsPage() {
                         <Table.Td>
                           {item.menuTypes && item.menuTypes.length > 0 ? (
                             <Group gap={4} wrap="wrap" style={{ maxWidth: 200 }}>
-                              {item.menuTypes.map((menuType) => (
+{item.menuTypes.map((menuType) => {
+                              const menuTypeLabel = menuType === 'all_day' ? t('menu.allDay', language) :
+                                 menuType === 'breakfast' ? t('menu.breakfast', language) :
+                                 menuType === 'lunch' ? t('menu.lunch', language) :
+                                 menuType === 'dinner' ? t('menu.dinner', language) :
+                                 menuType === 'kids_special' ? t('menu.kidsSpecial', language) :
+                                 menuType;
+                              return (
                                 <Badge 
                                   key={menuType} 
                                   variant="light" 
                                   size="sm"
-                                  style={{ color: primaryColor }}
+                                  color={getBadgeColorForText(menuTypeLabel)}
                                 >
-                                  {getMenuName(menuType)}
+                                  {menuTypeLabel}
                                 </Badge>
-                              ))}
+                              );
+                            })}
                             </Group>
                           ) : item.menuType ? (
                             <Badge variant="light" size="sm" style={{ color: primaryColor }}>
@@ -1054,9 +1078,13 @@ export function FoodItemsPage() {
                           )}
                         </Table.Td>
                         <Table.Td>
-                          <Badge color={item.isActive ? successColor : 'gray'} size="sm">
-                            {item.isActive ? t('menu.active', language) : t('menu.inactive', language)}
-                          </Badge>
+                        <Badge 
+                          variant="light"
+                          color={getBadgeColorForText(item.isActive ? t('menu.active', language) : t('menu.inactive', language))} 
+                          size="sm"
+                        >
+                          {item.isActive ? t('menu.active', language) : t('menu.inactive', language)}
+                        </Badge>
                         </Table.Td>
                         <Table.Td>
                           <Group gap="xs" wrap="nowrap">
@@ -1520,7 +1548,7 @@ export function FoodItemsPage() {
           </Group>
         </form>
       </Modal>
-    </Container>
+    </Stack>
   );
 }
 

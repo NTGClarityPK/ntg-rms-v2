@@ -32,8 +32,9 @@ import { reportsApi, SalesReport, ReportQueryParams } from '@/lib/api/reports';
 import { ReportFilters } from './ReportFilters';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getThemeColorShade, getSuccessColor, getInfoColor, getWarningColor } from '@/lib/utils/theme';
+import { getThemeColorShade, getSuccessColor, getInfoColor, getWarningColor, getChartColors } from '@/lib/utils/theme';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { notifications } from '@mantine/notifications';
 import { getErrorColor } from '@/lib/utils/theme';
 import { db } from '@/lib/indexeddb/database';
@@ -148,13 +149,9 @@ export default function SalesReportPage() {
     window.print();
   };
 
-  const chartColors = [
-    themeColor,
-    getSuccessColor(),
-    getInfoColor(),
-    getWarningColor(),
-    getThemeColorShade(7),
-  ];
+  // Generate chart colors dynamically based on series count
+  // For pie charts with 3 series (dine-in, takeaway, delivery)
+  const pieChartColors = getChartColors(3);
 
   if (loading) {
     return (
@@ -195,7 +192,7 @@ export default function SalesReportPage() {
               {t('reports.totalRevenue' as any, language)}
             </Text>
             <Text size="xl" fw={700} style={{ color: themeColor }}>
-              {report.summary.totalRevenue.toFixed(2)} {currency}
+              {formatCurrency(report.summary.totalRevenue, currency)}
             </Text>
           </Card>
         </Grid.Col>
@@ -215,7 +212,7 @@ export default function SalesReportPage() {
               {t('reports.avgOrderValue' as any, language)}
             </Text>
             <Text size="xl" fw={700} style={{ color: getInfoColor() }}>
-              {report.summary.avgOrderValue.toFixed(2)} {currency}
+              {formatCurrency(report.summary.avgOrderValue, currency)}
             </Text>
           </Card>
         </Grid.Col>
@@ -225,7 +222,7 @@ export default function SalesReportPage() {
               {t('reports.totalTax' as any, language)}
             </Text>
             <Text size="xl" fw={700} style={{ color: getWarningColor() }}>
-              {report.summary.totalTax.toFixed(2)} {currency}
+              {formatCurrency(report.summary.totalTax, currency)}
             </Text>
           </Card>
         </Grid.Col>
@@ -303,10 +300,10 @@ export default function SalesReportPage() {
                 labelLine={false}
                 label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
                 outerRadius={80}
-                fill="#8884d8"
+                fill={pieChartColors[0]}
                 dataKey="value"
               >
-                {chartColors.map((color, index) => (
+                {pieChartColors.map((color, index) => (
                   <Cell key={`cell-${index}`} fill={color} />
                 ))}
               </Pie>

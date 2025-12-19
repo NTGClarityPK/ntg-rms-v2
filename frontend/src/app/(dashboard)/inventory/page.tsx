@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Tabs } from '@mantine/core';
+import { Tabs, Title } from '@mantine/core';
 import { IconBox, IconArrowsExchange, IconBook, IconChartBar } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
@@ -23,38 +23,50 @@ export default function InventoryPage() {
 
   return (
     <InventoryRefreshProvider>
-      <Tabs value={activeTab} onChange={handleTabChange}>
-      <Tabs.List>
-        <Tabs.Tab value="ingredients" leftSection={<IconBox size={16} />}>
-          {t('inventory.ingredients', language)}
-        </Tabs.Tab>
-        <Tabs.Tab value="stock" leftSection={<IconArrowsExchange size={16} />}>
-          {t('inventory.stockManagement', language)}
-        </Tabs.Tab>
-        <Tabs.Tab value="recipes" leftSection={<IconBook size={16} />}>
-          {t('inventory.recipes', language)}
-        </Tabs.Tab>
-        <Tabs.Tab value="reports" leftSection={<IconChartBar size={16} />}>
-          {t('inventory.reports', language)}
-        </Tabs.Tab>
-      </Tabs.List>
+      <>
+        <div className="page-title-bar">
+          <Title order={1} style={{ margin: 0, textAlign: 'left' }}>
+            {t('navigation.inventory', language)}
+          </Title>
+        </div>
 
-      <Tabs.Panel value="ingredients" pt="md">
-        <IngredientsPage />
-      </Tabs.Panel>
+        <div className="page-sub-title-bar"></div>
 
-      <Tabs.Panel value="stock" pt="md">
-        <StockManagementPage />
-      </Tabs.Panel>
+        <div style={{ marginTop: '60px', paddingLeft: 'var(--mantine-spacing-md)', paddingRight: 'var(--mantine-spacing-md)', paddingTop: 'var(--mantine-spacing-sm)', paddingBottom: 'var(--mantine-spacing-xl)' }}>
+          <Tabs value={activeTab} onChange={handleTabChange}>
+            <Tabs.List>
+              <Tabs.Tab value="ingredients" leftSection={<IconBox size={16} />}>
+                {t('inventory.ingredients', language)}
+              </Tabs.Tab>
+              <Tabs.Tab value="stock" leftSection={<IconArrowsExchange size={16} />}>
+                {t('inventory.stockManagement', language)}
+              </Tabs.Tab>
+              <Tabs.Tab value="recipes" leftSection={<IconBook size={16} />}>
+                {t('inventory.recipes', language)}
+              </Tabs.Tab>
+              <Tabs.Tab value="reports" leftSection={<IconChartBar size={16} />}>
+                {t('inventory.reports', language)}
+              </Tabs.Tab>
+            </Tabs.List>
 
-      <Tabs.Panel value="recipes" pt="md">
-        <RecipesPage />
-      </Tabs.Panel>
+            <Tabs.Panel value="ingredients" pt="md" px="md" pb="md">
+              <IngredientsPage />
+            </Tabs.Panel>
 
-      <Tabs.Panel value="reports" pt="md">
-        <InventoryReportsPage />
-      </Tabs.Panel>
-      </Tabs>
+            <Tabs.Panel value="stock" pt="md" px="md" pb="md">
+              <StockManagementPage />
+            </Tabs.Panel>
+
+            <Tabs.Panel value="recipes" pt="md" px="md" pb="md">
+              <RecipesPage />
+            </Tabs.Panel>
+
+            <Tabs.Panel value="reports" pt="md" px="md" pb="md">
+              <InventoryReportsPage />
+            </Tabs.Panel>
+          </Tabs>
+        </div>
+      </>
     </InventoryRefreshProvider>
   );
 }

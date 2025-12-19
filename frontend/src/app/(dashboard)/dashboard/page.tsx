@@ -16,10 +16,11 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { dashboardApi, DashboardData } from '@/lib/api/dashboard';
 import { useSyncStatus } from '@/lib/hooks/use-sync-status';
 import { notifications } from '@mantine/notifications';
-import { getErrorColor } from '@/lib/utils/theme';
+import { getErrorColor, getBadgeColorForText, getChartColors } from '@/lib/utils/theme';
 import { IconX } from '@tabler/icons-react';
 
 export default function DashboardPage() {
@@ -57,7 +58,7 @@ export default function DashboardPage() {
   const stats = dashboardData ? [
     { 
       title: t('dashboard.todaySales' as any, language) || 'Today\'s Sales', 
-      value: `${dashboardData.todaySales.toFixed(2)} ${currency}`,
+      value: formatCurrency(dashboardData.todaySales, currency),
       icon: IconCash,
     },
     { 
@@ -77,13 +78,8 @@ export default function DashboardPage() {
     },
   ] : [];
 
-  const chartColors = [
-    primary,
-    `var(--mantine-color-blue-6)`,
-    `var(--mantine-color-green-6)`,
-    `var(--mantine-color-yellow-6)`,
-    `var(--mantine-color-red-6)`,
-  ];
+  // Chart colors will be generated dynamically based on series count
+  // Using getChartColors() utility function
 
   // Format role in a user-friendly way
   const formatRole = (role: string | undefined): string => {
@@ -106,11 +102,19 @@ export default function DashboardPage() {
   };
 
   return (
-    <Stack gap="md">
-      <Title order={1}>{t('dashboard.title' as any, language) || 'Dashboard'}</Title>
-      
-      {/* Welcome Card */}
-      <Paper p="md" withBorder>
+    <>
+      <div className="page-title-bar">
+        <Title order={1} style={{ margin: 0, textAlign: 'left' }}>
+          {t('dashboard.title' as any, language) || 'Dashboard'}
+        </Title>
+      </div>
+
+      <div className="page-sub-title-bar"></div>
+
+      <div style={{ marginTop: '60px', paddingLeft: 'var(--mantine-spacing-md)', paddingRight: 'var(--mantine-spacing-md)', paddingTop: 'var(--mantine-spacing-sm)', paddingBottom: 'var(--mantine-spacing-xl)' }}>
+        <Stack gap="md">
+          {/* Welcome Card */}
+          <Paper p="md" withBorder>
         <Stack gap="sm">
           <Text size="lg" fw={600}>
             {t('dashboard.welcomeMessage' as any, language)?.replace('{name}', user?.name || user?.email || 'User') || `Welcome, ${user?.name || user?.email || 'User'}`}
@@ -183,6 +187,7 @@ export default function DashboardPage() {
             <Stack gap="md">
               <Group>
                 <IconAlertTriangle size={24} color={primary} />
+                <IconAlertTriangle size={24} color={primary} />
                 <Title order={3}>{t('dashboard.lowStockAlerts' as any, language) || 'Low Stock Alerts'}</Title>
               </Group>
               {loading ? (
@@ -195,10 +200,10 @@ export default function DashboardPage() {
                         {(alert as any).name || (alert as any).nameEn || (alert as any).nameAr || 'Unknown'}
                       </Text>
                       <Group gap="xs" mt="xs">
-                        <Badge color={primary} variant="light">
+                        <Badge color={getBadgeColorForText(`${t('dashboard.stock' as any, language) || 'Stock'}: ${alert.currentStock}`)} variant="light">
                           {t('dashboard.stock' as any, language) || 'Stock'}: {alert.currentStock}
                         </Badge>
-                        <Badge color="orange" variant="light">
+                        <Badge color={getBadgeColorForText(`${t('dashboard.threshold' as any, language) || 'Threshold'}: ${alert.minimumThreshold}`)} variant="light">
                           {t('dashboard.threshold' as any, language) || 'Threshold'}: {alert.minimumThreshold}
                         </Badge>
                       </Group>
@@ -276,7 +281,7 @@ export default function DashboardPage() {
                             : type}
                         </Table.Td>
                         <Table.Td>
-                          <Badge color={primary} variant="light">{count}</Badge>
+                          <Badge color={getBadgeColorForText(String(count))} variant="light">{count}</Badge>
                         </Table.Td>
                       </Table.Tr>
                     ))}
@@ -287,7 +292,9 @@ export default function DashboardPage() {
           </Paper>
         </Grid.Col>
       </Grid>
-    </Stack>
+        </Stack>
+      </div>
+    </>
   );
 }
 

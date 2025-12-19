@@ -11,12 +11,13 @@ import {
   Text,
   Badge,
   Group,
-  Button,
+  Chip,
   Stack,
-  SegmentedControl,
   Skeleton,
   Modal,
   NumberInput,
+  Button,
+  Paper,
 } from '@mantine/core';
 import { IconSearch, IconShoppingCart, IconChefHat, IconShoppingBag } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
@@ -24,7 +25,7 @@ import { t } from '@/lib/utils/translations';
 import { db } from '@/lib/indexeddb/database';
 import { FoodItem as IndexedDBFoodItem } from '@/lib/indexeddb/database';
 import { useThemeColor, useThemeColorShade } from '@/lib/hooks/use-theme-color';
-import { getErrorColor, getWarningColor } from '@/lib/utils/theme';
+import { getErrorColor, getWarningColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { ItemSelectionModal } from './ItemSelectionModal';
 import { useCurrency } from '@/lib/hooks/use-currency';
@@ -32,11 +33,12 @@ import { menuApi, FoodItem, Buffet, ComboMeal } from '@/lib/api/menu';
 import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
+import { formatCurrency } from '@/lib/utils/currency-formatter';
 
 interface FoodItemsGridProps {
   tenantId: string;
-  selectedCategoryId: string | null;
-  onCategoryChange: (categoryId: string | null) => void;
+  selectedCategoryIds: string[];
+  onCategoryChange: (categoryIds: string[]) => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onAddToCart: (item: any) => void;
@@ -46,7 +48,7 @@ interface FoodItemsGridProps {
 
 export function FoodItemsGrid({
   tenantId,
-  selectedCategoryId,
+  selectedCategoryIds,
   onCategoryChange,
   searchQuery,
   onSearchChange,
@@ -98,7 +100,7 @@ export function FoodItemsGrid({
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, selectedCategoryId, searchQuery, foodItemsPagination.page, foodItemsPagination.limit, buffetsPagination.page, buffetsPagination.limit, comboMealsPagination.page, comboMealsPagination.limit, itemType, orderType]);
+  }, [tenantId, selectedCategoryIds, searchQuery, foodItemsPagination.page, foodItemsPagination.limit, buffetsPagination.page, buffetsPagination.limit, comboMealsPagination.page, comboMealsPagination.limit, itemType, orderType]);
 
   const loadData = async () => {
     try {
@@ -455,8 +457,7 @@ export function FoodItemsGrid({
       </Box>
 
       {/* Food Items Grid */}
-      <ScrollArea style={{ flex: 1 }}>
-        <Box p="md">
+      <Box>
           {loading ? (
             <Grid>
               {[...Array(12)].map((_, i) => (
@@ -569,12 +570,12 @@ export function FoodItemsGrid({
                           </Text>
 
                           {isOutOfStock && (
-                            <Badge color={getErrorColor()} size="sm">
+                            <Badge variant="light" color={getBadgeColorForText(t('pos.outOfStock', language))} size="sm">
                               {t('pos.outOfStock', language)}
                             </Badge>
                           )}
                           {isLimitedStock && (
-                            <Badge color={getWarningColor()} size="sm">
+                            <Badge variant="light" color={getBadgeColorForText(t('pos.limitedStock', language))} size="sm">
                               {t('pos.limitedStock', language)}
                             </Badge>
                           )}

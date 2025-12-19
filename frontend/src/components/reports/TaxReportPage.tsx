@@ -9,8 +9,9 @@ import { reportsApi, TaxReport, ReportQueryParams } from '@/lib/api/reports';
 import { ReportFilters } from './ReportFilters';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getSuccessColor, getErrorColor } from '@/lib/utils/theme';
+import { getSuccessColor, getErrorColor, getChartColors } from '@/lib/utils/theme';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { notifications } from '@mantine/notifications';
 import { db } from '@/lib/indexeddb/database';
 import { useSyncStatus } from '@/lib/hooks/use-sync-status';
@@ -97,8 +98,8 @@ export default function TaxReportPage() {
     <Stack gap="md">
       <ReportFilters branches={branches} onFilterChange={handleFilterChange} onExport={handleExport} onPrint={handlePrint} onRefresh={() => loadReport(filters)} loading={loading} currentFilters={filters} showGroupBy={true} />
       <Grid>
-        <Grid.Col span={{ base: 12, sm: 6, md: 4 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.totalTax' as any, language)}</Text><Text size="xl" fw={700} style={{ color: themeColor }}>{report.summary.totalTax.toFixed(2)} {currency}</Text></Card></Grid.Col>
-        <Grid.Col span={{ base: 12, sm: 6, md: 4 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.taxableAmount' as any, language)}</Text><Text size="xl" fw={700} style={{ color: getSuccessColor() }}>{report.summary.taxableAmount.toFixed(2)} {currency}</Text></Card></Grid.Col>
+        <Grid.Col span={{ base: 12, sm: 6, md: 4 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.totalTax' as any, language)}</Text><Text size="xl" fw={700} style={{ color: themeColor }}>{formatCurrency(report.summary.totalTax, currency)}</Text></Card></Grid.Col>
+        <Grid.Col span={{ base: 12, sm: 6, md: 4 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.taxableAmount' as any, language)}</Text><Text size="xl" fw={700} style={{ color: getSuccessColor() }}>{formatCurrency(report.summary.taxableAmount, currency)}</Text></Card></Grid.Col>
         <Grid.Col span={{ base: 12, sm: 6, md: 4 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.taxRate' as any, language)}</Text><Text size="xl" fw={700} style={{ color: getErrorColor() }}>{report.summary.taxRate.toFixed(2)}%</Text></Card></Grid.Col>
       </Grid>
       {report.taxByType && report.taxByType.length > 0 && (
@@ -116,12 +117,18 @@ export default function TaxReportPage() {
                       labelLine={false}
                       label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
                       outerRadius={80}
-                      fill="#8884d8"
+                      fill={(() => {
+                        const colors = getChartColors(report.taxByType.length);
+                        return colors[0];
+                      })()}
                       dataKey="value"
                     >
-                      {report.taxByType.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={[themeColor, getSuccessColor(), getErrorColor()][index % 3]} />
-                      ))}
+                      {(() => {
+                        const colors = getChartColors(report.taxByType.length);
+                        return report.taxByType.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
+                        ));
+                      })()}
                     </Pie>
                     <Tooltip formatter={(value: number) => `${value.toFixed(2)} ${currency}`} />
                     <Legend />
@@ -141,7 +148,7 @@ export default function TaxReportPage() {
                         </Text>
                       </Box>
                       <Text fw={600} size="sm" style={{ color: themeColor }}>
-                        {tax.estimatedAmount.toFixed(2)} {currency}
+                        {formatCurrency(tax.estimatedAmount, currency)}
                       </Text>
                     </Group>
                   </Card>

@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useForm } from '@mantine/form';
 import {
-  Container,
   Title,
   Button,
   Stack,
@@ -33,7 +32,7 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getWarningColor } from '@/lib/utils/theme';
+import { getWarningColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { useInventoryRefresh } from '@/lib/contexts/inventory-refresh-context';
 import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
@@ -459,9 +458,8 @@ export function IngredientsPage() {
   };
 
   return (
-    <Container size="xl" py="xl">
-      <Group justify="space-between" mb="xl">
-        <Title order={2}>{t('inventory.ingredients', language)}</Title>
+    <Stack gap="md">
+      <Group justify="flex-end">
         <Button
           leftSection={<IconPlus size={16} />}
           onClick={() => handleOpenModal()}
@@ -492,11 +490,14 @@ export function IngredientsPage() {
             <Select
               placeholder={t('inventory.filterByCategory', language)}
               data={[
-                { value: '', label: t('inventory.allCategories', language) },
-                ...CATEGORIES.map(cat => ({
-                  value: cat.value,
-                  label: t(`inventory.${cat.value}` as any, language) || cat.label
-                }))
+                { value: '', label: String(t('inventory.allCategories', language) || 'All Categories') },
+                ...CATEGORIES.map(cat => {
+                  const label = t(`inventory.${cat.value}` as any, language) || cat.label || '';
+                  return {
+                    value: cat.value,
+                    label: String(label),
+                  };
+                })
               ]}
               value={categoryFilter || ''}
               onChange={(value) => setCategoryFilter(value || null)}
@@ -559,7 +560,7 @@ export function IngredientsPage() {
                     </Table.Td>
                     <Table.Td>
                       {ingredient.category ? (
-                        <Badge variant="light" color={primaryColor}>
+                        <Badge variant="light" color={getBadgeColorForText(t(`inventory.${ingredient.category}` as any, language) || ingredient.category)}>
                           {t(`inventory.${ingredient.category}` as any, language) || ingredient.category}
                         </Badge>
                       ) : (
@@ -658,20 +659,26 @@ export function IngredientsPage() {
             <Select
               label={t('inventory.category', language)}
               placeholder={t('inventory.category', language)}
-              data={CATEGORIES.map(cat => ({
-                value: cat.value,
-                label: t(`inventory.${cat.value}` as any, language) || cat.label
-              }))}
+              data={CATEGORIES.map(cat => {
+                const label = t(`inventory.${cat.value}` as any, language) || cat.label || '';
+                return {
+                  value: cat.value,
+                  label: String(label),
+                };
+              })}
               {...form.getInputProps('category')}
             />
             <Select
               label={t('inventory.unitOfMeasurement', language)}
               placeholder={t('inventory.unitOfMeasurement', language)}
               required
-              data={UNITS.map(unit => ({
-                value: unit.value,
-                label: t(`inventory.${unit.value}` as any, language) || unit.label
-              }))}
+              data={UNITS.map(unit => {
+                const label = t(`inventory.${unit.value}` as any, language) || unit.label || '';
+                return {
+                  value: unit.value,
+                  label: String(label),
+                };
+              })}
               {...form.getInputProps('unitOfMeasurement')}
             />
             <Grid>
@@ -718,7 +725,7 @@ export function IngredientsPage() {
           </Stack>
         </form>
       </Modal>
-    </Container>
+    </Stack>
   );
 }
 
