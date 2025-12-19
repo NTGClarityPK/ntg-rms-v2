@@ -28,7 +28,7 @@ import { menuApi } from '@/lib/api/menu';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getSuccessColor, getErrorColor } from '@/lib/utils/theme';
+import { getSuccessColor, getErrorColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { db } from '@/lib/indexeddb/database';
 import { useSyncStatus } from '@/lib/hooks/use-sync-status';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
@@ -292,7 +292,9 @@ export default function TaxesPage() {
                         : t('taxes.itemWise' as any, language) || 'Item'}
                     </Table.Td>
                     <Table.Td>
-                      <Badge color={tax.isActive ? primary : 'gray'}>
+                      <Badge variant="light" color={getBadgeColorForText(tax.isActive
+                        ? (t('common.active' as any, language) || 'Active')
+                        : (t('common.inactive' as any, language) || 'Inactive'))}>
                         {tax.isActive
                           ? t('common.active' as any, language) || 'Active'
                           : t('common.inactive' as any, language) || 'Inactive'}

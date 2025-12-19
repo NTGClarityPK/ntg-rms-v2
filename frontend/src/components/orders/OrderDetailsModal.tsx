@@ -14,6 +14,7 @@ import {
   Paper,
   Grid,
   Skeleton,
+  useMantineTheme,
 } from '@mantine/core';
 import { IconCheck, IconEdit, IconPrinter } from '@tabler/icons-react';
 import { useRouter } from 'next/navigation';
@@ -24,10 +25,13 @@ import { notifications } from '@mantine/notifications';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getStatusColor, getPaymentStatusColor, getSuccessColor, getErrorColor } from '@/lib/utils/theme';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { InvoiceGenerator } from '@/lib/utils/invoice-generator';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { useDateFormat } from '@/lib/hooks/use-date-format';
 import { useSettings } from '@/lib/hooks/use-settings';
+import { menuApi } from '@/lib/api/menu';
+import type { ThemeConfig } from '@/lib/theme/themeConfig';
 
 interface OrderDetailsModalProps {
   opened: boolean;
@@ -52,6 +56,8 @@ export function OrderDetailsModal({
   onStatusUpdate,
 }: OrderDetailsModalProps) {
   const { language } = useLanguageStore();
+  const theme = useMantineTheme();
+  const themeConfig = (theme.other as any) as ThemeConfig | undefined;
   const primary = useThemeColor();
   const currency = useCurrency();
   const { formatDateTime } = useDateFormat();
@@ -78,6 +84,52 @@ export function OrderDetailsModal({
     setLoading(true);
     try {
       const data = await ordersApi.getOrderById(order.id);
+      
+      // Fetch missing buffet and combo meal names if needed
+      if (data.items) {
+        const itemsWithNames = await Promise.all(
+          data.items.map(async (item) => {
+            // If buffetId exists but buffet object is missing or has no name, fetch it
+            if (item.buffetId && (!item.buffet || !item.buffet.name)) {
+              try {
+                const buffet = await menuApi.getBuffetById(item.buffetId);
+                return {
+                  ...item,
+                  buffet: {
+                    id: buffet.id,
+                    name: buffet.name,
+                    imageUrl: buffet.imageUrl,
+                  },
+                };
+              } catch (error) {
+                console.error('Failed to fetch buffet:', error);
+                return item;
+              }
+            }
+            // If comboMealId exists but comboMeal object is missing or has no name, fetch it
+            if (item.comboMealId && (!item.comboMeal || !item.comboMeal.name)) {
+              try {
+                const comboMeal = await menuApi.getComboMealById(item.comboMealId);
+                return {
+                  ...item,
+                  comboMeal: {
+                    id: comboMeal.id,
+                    name: comboMeal.name,
+                    imageUrl: comboMeal.imageUrl,
+                    foodItemIds: comboMeal.foodItemIds || [],
+                  },
+                };
+              } catch (error) {
+                console.error('Failed to fetch combo meal:', error);
+                return item;
+              }
+            }
+            return item;
+          })
+        );
+        data.items = itemsWithNames;
+      }
+      
       setOrderDetails(data);
       setNewStatus(data.status);
     } catch (error: any) {
@@ -109,10 +161,8 @@ export function OrderDetailsModal({
     if (opened && order) {
       setOrderDetails(order);
       setNewStatus(order.status);
-      // Fetch full order details if needed
-      if (!order.items) {
-        loadOrderDetails();
-      }
+      // Always reload order details to ensure we have latest data including buffet/combo meal info
+      loadOrderDetails();
       // Load tenant and branch info for invoice
       loadInvoiceData();
     }
@@ -213,7 +263,11 @@ export function OrderDetailsModal({
           paymentMethod: paymentMethod,
           items: orderDetails.items?.map(item => ({
             ...item,
-            foodItemName: item.foodItem?.name || '',
+            foodItemName: (item.buffetId || item.buffet) 
+              ? (item.buffet?.name?.trim() || (item.buffetId ? `Buffet #${item.buffetId.substring(0, 8)}...` : 'Buffet'))
+              : (item.comboMealId || item.comboMeal)
+              ? (item.comboMeal?.name?.trim() || (item.comboMealId ? `Combo Meal #${item.comboMealId.substring(0, 8)}...` : 'Combo Meal'))
+              : (item.foodItem?.name || ''),
             variationName: item.variation?.variationName || '',
             addOns: item.addOns?.map(a => ({
               addOnName: a.addOn?.name || '',
@@ -242,8 +296,8 @@ export function OrderDetailsModal({
       };
 
       const html = template === 'thermal'
-        ? InvoiceGenerator.generateThermal(invoiceData, language)
-        : InvoiceGenerator.generateA4(invoiceData, language);
+        ? InvoiceGenerator.generateThermal(invoiceData, language, themeConfig)
+        : InvoiceGenerator.generateA4(invoiceData, language, themeConfig);
 
       InvoiceGenerator.printInvoice(html);
     } catch (error: any) {
@@ -532,8 +586,12 @@ export function OrderDetailsModal({
                       <Table.Td>
                         <Stack gap={4}>
                           <Text fw={500}>
-                            {item.foodItem
-                              ? (item.foodItem.name || t('pos.item', language))
+                            {(item.buffetId || item.buffet)
+                              ? (item.buffet?.name?.trim() || (item.buffetId ? `Buffet #${item.buffetId.substring(0, 8)}...` : 'Buffet'))
+                              : (item.comboMealId || item.comboMeal)
+                              ? (item.comboMeal?.name?.trim() || (item.comboMealId ? `Combo Meal #${item.comboMealId.substring(0, 8)}...` : 'Combo Meal'))
+                              : (item.foodItemId || item.foodItem)
+                              ? (item.foodItem?.name || t('pos.item', language))
                               : t('pos.item', language) + ` #${item.foodItemId || item.id}`}
                           </Text>
                           {item.variation && item.variation.variationName && (
@@ -562,8 +620,8 @@ export function OrderDetailsModal({
                         </Stack>
                       </Table.Td>
                       <Table.Td>{item.quantity}</Table.Td>
-                      <Table.Td>{(item.unitPrice || 0).toFixed(2)} {currency}</Table.Td>
-                      <Table.Td>{(item.subtotal || 0).toFixed(2)} {currency}</Table.Td>
+                      <Table.Td>{formatCurrency(item.unitPrice || 0, currency)}</Table.Td>
+                      <Table.Td>{formatCurrency(item.subtotal || 0, currency)}</Table.Td>
                     </Table.Tr>
                   ))}
                 </Table.Tbody>
@@ -584,19 +642,19 @@ export function OrderDetailsModal({
               {(orderDetails.discountAmount || 0) > 0 && (
                 <Group justify="space-between">
                   <Text c={getSuccessColor()}>{t('pos.discount', language)}</Text>
-                  <Text c={getSuccessColor()}>-{(orderDetails.discountAmount || 0).toFixed(2)} {currency}</Text>
+                  <Text c={getSuccessColor()}>-{formatCurrency(orderDetails.discountAmount || 0, currency)}</Text>
                 </Group>
               )}
               {(orderDetails.taxAmount || 0) > 0 && (
                 <Group justify="space-between">
                   <Text>{t('pos.tax', language)}</Text>
-                  <Text>{(orderDetails.taxAmount || 0).toFixed(2)} {currency}</Text>
+                  <Text>{formatCurrency(orderDetails.taxAmount || 0, currency)}</Text>
                 </Group>
               )}
               {(orderDetails.deliveryCharge || 0) > 0 && (
                 <Group justify="space-between">
                   <Text>{t('pos.deliveryCharge', language)}</Text>
-                  <Text>{(orderDetails.deliveryCharge || 0).toFixed(2)} {currency}</Text>
+                  <Text>{formatCurrency(orderDetails.deliveryCharge || 0, currency)}</Text>
                 </Group>
               )}
               <Divider />
@@ -605,7 +663,7 @@ export function OrderDetailsModal({
                   {t('pos.grandTotal', language)}
                 </Text>
                 <Text fw={700} size="lg">
-                  {(orderDetails.totalAmount || 0).toFixed(2)} {currency}
+                  {formatCurrency(orderDetails.totalAmount || 0, currency)}
                 </Text>
               </Group>
             </Stack>

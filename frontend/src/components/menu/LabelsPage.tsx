@@ -5,6 +5,7 @@ import { IconTag } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
+import { getBadgeColorForText } from '@/lib/utils/theme';
 
 export function LabelsPage() {
   const { language } = useLanguageStore();
@@ -41,7 +42,7 @@ export function LabelsPage() {
                 <IconTag size={20} color={primaryColor} />
                 <Text fw={500}>{label.label}</Text>
               </Group>
-              <Badge variant="light" style={{ color: primaryColor }}>
+              <Badge variant="light" color={getBadgeColorForText(label.label)}>
                 {label.value}
               </Badge>
             </Group>

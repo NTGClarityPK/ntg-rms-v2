@@ -370,7 +370,7 @@ export default function BranchesPage() {
   return (
     <Container size="xl" py="xl">
       <Group justify="space-between" mb="xl">
-        <Title order={2}>{t('restaurant.branchManagement', language)}</Title>
+        <Title order={1}>{t('restaurant.branchManagement', language)}</Title>
         <PermissionGuard resource="restaurant" action="create">
           <Button leftSection={<IconPlus size={16} />} onClick={() => handleOpenModal()}>
             {t('restaurant.addBranch', language)}

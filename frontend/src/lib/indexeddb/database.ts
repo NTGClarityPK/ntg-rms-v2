@@ -125,7 +125,9 @@ export interface Order {
 export interface OrderItem {
   id: string;
   orderId: string;
-  foodItemId: string;
+  foodItemId?: string;
+  buffetId?: string;
+  comboMealId?: string;
   variationId?: string;
   quantity: number;
   unitPrice: number;
@@ -321,7 +323,9 @@ export interface FoodItemAddOnGroup {
 
 export interface CartItem {
   id?: number;
-  foodItemId: string;
+  foodItemId?: string; // Optional since items can be buffets or combo meals
+  buffetId?: string;
+  comboMealId?: string;
   foodItemName: string;
   foodItemImageUrl?: string;
   variationId?: string;
@@ -339,6 +343,10 @@ export interface CartItem {
   subtotal: number;
   specialInstructions?: string;
   createdAt?: string;
+  // Additional properties for compatibility
+  foodItem?: any;
+  buffet?: any;
+  comboMeal?: any;
 }
 
 export interface SyncQueue {

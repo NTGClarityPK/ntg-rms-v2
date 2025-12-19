@@ -81,6 +81,38 @@ export interface AddOnGroup {
   addOns?: AddOn[];
 }
 
+export interface Buffet {
+  id: string;
+  name: string;
+  description?: string;
+  imageUrl?: string;
+  pricePerPerson: number; // Only price per person, no base price
+  minPersons?: number; // Optional minimum number of persons (not required - single person allowed)
+  duration?: number; // Duration in minutes (how long the buffet is available)
+  menuTypes: string[]; // Menu types - food items will be auto-populated from these menus
+  displayOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  availableFoodItems?: FoodItem[]; // Populated food items from menu types (read-only)
+}
+
+export interface ComboMeal {
+  id: string;
+  name: string;
+  description?: string;
+  imageUrl?: string;
+  basePrice: number;
+  foodItemIds: string[]; // Food items included in combo
+  menuTypes?: string[];
+  displayOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  foodItems?: FoodItem[]; // Populated food items
+  discountPercentage?: number; // Discount percentage compared to individual items
+}
+
 import { PaginationParams, PaginatedResponse, isPaginatedResponse } from '../types/pagination.types';
 
 export const menuApi = {
@@ -247,6 +279,84 @@ export const menuApi = {
 
   deleteMenu: async (menuType: string): Promise<void> => {
     await apiClient.delete(`/menu/menus/${menuType}`);
+  },
+
+  // Buffets
+  getBuffets: async (pagination?: PaginationParams): Promise<Buffet[] | PaginatedResponse<Buffet>> => {
+    const params = new URLSearchParams();
+    if (pagination?.page) params.append('page', pagination.page.toString());
+    if (pagination?.limit) params.append('limit', pagination.limit.toString());
+    const { data } = await apiClient.get(`/menu/buffets${params.toString() ? `?${params.toString()}` : ''}`);
+    return data;
+  },
+
+  getBuffetById: async (id: string): Promise<Buffet> => {
+    const { data } = await apiClient.get(`/menu/buffets/${id}`);
+    return data;
+  },
+
+  createBuffet: async (buffet: Partial<Buffet>): Promise<Buffet> => {
+    const { data } = await apiClient.post('/menu/buffets', buffet);
+    return data;
+  },
+
+  updateBuffet: async (id: string, buffet: Partial<Buffet>): Promise<Buffet> => {
+    const { data } = await apiClient.put(`/menu/buffets/${id}`, buffet);
+    return data;
+  },
+
+  deleteBuffet: async (id: string): Promise<void> => {
+    await apiClient.delete(`/menu/buffets/${id}`);
+  },
+
+  uploadBuffetImage: async (id: string, file: File): Promise<Buffet> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await apiClient.post(`/menu/buffets/${id}/upload-image`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return data;
+  },
+
+  // Combo Meals
+  getComboMeals: async (pagination?: PaginationParams): Promise<ComboMeal[] | PaginatedResponse<ComboMeal>> => {
+    const params = new URLSearchParams();
+    if (pagination?.page) params.append('page', pagination.page.toString());
+    if (pagination?.limit) params.append('limit', pagination.limit.toString());
+    const { data } = await apiClient.get(`/menu/combo-meals${params.toString() ? `?${params.toString()}` : ''}`);
+    return data;
+  },
+
+  getComboMealById: async (id: string): Promise<ComboMeal> => {
+    const { data } = await apiClient.get(`/menu/combo-meals/${id}`);
+    return data;
+  },
+
+  createComboMeal: async (comboMeal: Partial<ComboMeal>): Promise<ComboMeal> => {
+    const { data } = await apiClient.post('/menu/combo-meals', comboMeal);
+    return data;
+  },
+
+  updateComboMeal: async (id: string, comboMeal: Partial<ComboMeal>): Promise<ComboMeal> => {
+    const { data } = await apiClient.put(`/menu/combo-meals/${id}`, comboMeal);
+    return data;
+  },
+
+  deleteComboMeal: async (id: string): Promise<void> => {
+    await apiClient.delete(`/menu/combo-meals/${id}`);
+  },
+
+  uploadComboMealImage: async (id: string, file: File): Promise<ComboMeal> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await apiClient.post(`/menu/combo-meals/${id}/upload-image`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return data;
   },
 };
 

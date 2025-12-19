@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Container,
-  Tabs,
+  Chip,
   TextInput,
   Select,
   Button,
@@ -13,6 +12,7 @@ import {
   Text,
   Badge,
   ActionIcon,
+  Title,
   Menu,
   Paper,
   Box,
@@ -48,12 +48,14 @@ import {
   AssignDeliveryDto,
 } from '@/lib/api/delivery';
 import { restaurantApi } from '@/lib/api/restaurant';
+import { customersApi, Customer } from '@/lib/api/customers';
 import { notifications } from '@mantine/notifications';
 import { useDisclosure } from '@mantine/hooks';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getStatusColor, getSuccessColor, getErrorColor, getInfoColor } from '@/lib/utils/theme';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { formatCurrency } from '@/lib/utils/currency-formatter';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { useDateFormat } from '@/lib/hooks/use-date-format';
@@ -64,8 +66,6 @@ import { isPaginatedResponse } from '@/lib/types/pagination.types';
 
 dayjs.extend(relativeTime);
 
-type DeliveryTab = 'all' | 'pending' | 'assigned' | 'out_for_delivery' | 'delivered' | 'cancelled';
-
 export default function DeliveryPage() {
   const { language } = useLanguageStore();
   const { formatDateTime } = useDateFormat();
@@ -74,14 +74,17 @@ export default function DeliveryPage() {
   const successColor = useSuccessColor();
   const infoColor = getInfoColor();
   const pagination = usePagination<DeliveryOrder>({ initialPage: 1, initialLimit: 10 });
-  const [activeTab, setActiveTab] = useState<DeliveryTab>('all');
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [deliveries, setDeliveries] = useState<DeliveryOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
   const [selectedDeliveryPerson, setSelectedDeliveryPerson] = useState<string | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null);
   const [branches, setBranches] = useState<{ value: string; label: string }[]>([]);
   const [personnel, setPersonnel] = useState<DeliveryPersonnel[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [selectedDelivery, setSelectedDelivery] = useState<DeliveryOrder | null>(null);
   const [assignModalOpened, { open: openAssignModal, close: closeAssignModal }] = useDisclosure(false);
   const [detailsModalOpened, { open: openDetailsModal, close: closeDetailsModal }] = useDisclosure(false);
@@ -112,12 +115,29 @@ export default function DeliveryPage() {
     }
   }, [selectedBranch]);
 
+  const loadCustomers = useCallback(async () => {
+    setLoadingCustomers(true);
+    try {
+      const response = await customersApi.getCustomers();
+      const customerData = Array.isArray(response) ? response : response.data || [];
+      setCustomers(customerData);
+    } catch (error) {
+      console.error('Failed to load customers:', error);
+    } finally {
+      setLoadingCustomers(false);
+    }
+  }, []);
+
   const loadDeliveries = useCallback(async (silent = false) => {
     if (!silent) {
       setLoading(true);
     }
     try {
-      const status = activeTab === 'all' ? undefined : (activeTab as DeliveryStatus);
+      // If multiple statuses selected or none selected, fetch all and filter client-side
+      // If single status selected, pass it to API for server-side filtering
+      const status = selectedStatuses.length === 1 
+        ? (selectedStatuses[0] as DeliveryStatus)
+        : undefined;
       const response = await deliveryApi.getDeliveryOrders({
         status,
         branchId: selectedBranch || undefined,
@@ -142,7 +162,7 @@ export default function DeliveryPage() {
         setLoading(false);
       }
     }
-  }, [activeTab, selectedBranch, selectedDeliveryPerson, language, pagination]);
+  }, [selectedStatuses, selectedBranch, selectedDeliveryPerson, language, pagination]);
 
   useEffect(() => {
     loadBranches();
@@ -153,9 +173,13 @@ export default function DeliveryPage() {
   }, [loadPersonnel]);
 
   useEffect(() => {
+    loadCustomers();
+  }, [loadCustomers]);
+
+  useEffect(() => {
     loadDeliveries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, selectedBranch, selectedDeliveryPerson, pagination.page, pagination.limit]);
+  }, [selectedStatuses, selectedBranch, selectedDeliveryPerson, pagination.page, pagination.limit]);
 
   const handleAssignDelivery = async () => {
     if (!selectedDelivery || !selectedPersonnelId) {
@@ -237,9 +261,31 @@ export default function DeliveryPage() {
   };
 
   const filteredDeliveries = deliveries.filter((delivery) => {
-    // Apply tab filter
-    if (activeTab !== 'all' && delivery.status !== activeTab) {
+    // Apply status filter (multi-select)
+    if (selectedStatuses.length > 0 && !selectedStatuses.includes(delivery.status)) {
       return false;
+    }
+
+    // Apply customer filter
+    if (selectedCustomer) {
+      if (selectedCustomer === 'walkIN') {
+        // Walk-in customers: have delivery address/notes but no customerId
+        const hasAddress = delivery.customerAddress || delivery.notes;
+        if (delivery.order?.customerId || delivery.order?.customer || !hasAddress) {
+          return false;
+        }
+      } else if (selectedCustomer === 'others') {
+        // Others: no customer and no delivery address (or other edge cases)
+        const hasAddress = delivery.customerAddress || delivery.notes;
+        if (delivery.order?.customerId || delivery.order?.customer || hasAddress) {
+          return false;
+        }
+      } else {
+        // Specific customer: must match customerId
+        if (delivery.order?.customerId !== selectedCustomer) {
+          return false;
+        }
+      }
     }
 
     // Apply search filter
@@ -255,29 +301,32 @@ export default function DeliveryPage() {
   });
 
   return (
-    <Container size="xl" py="md">
-      <Stack gap="md">
-        {/* Header */}
-        <Group justify="space-between" align="center">
-          <Text size="xl" fw={700}>
+    <>
+      <div className="page-title-bar">
+        <Group justify="space-between" align="center" style={{ width: '100%', height: '100%', paddingRight: 'var(--mantine-spacing-md)' }}>
+          <Title order={1} style={{ margin: 0, textAlign: 'left' }}>
             {t('delivery.title' as any, language) || 'Delivery Management'}
-          </Text>
-          <Group>
-            <Button
-              leftSection={<IconRefresh size={16} />}
-              variant="light"
-              onClick={() => loadDeliveries(false)}
-              loading={loading}
-            >
-              {t('common.refresh' as any, language)}
-            </Button>
-          </Group>
+          </Title>
+          <ActionIcon
+            variant="light"
+            size="lg"
+            onClick={() => loadDeliveries(false)}
+            loading={loading}
+            title={t('common.refresh' as any, language)}
+          >
+            <IconRefresh size={18} />
+          </ActionIcon>
         </Group>
+      </div>
 
-        {/* Filters */}
-        <Paper p="md" withBorder>
+      <div className="page-sub-title-bar"></div>
+
+      <div style={{ marginTop: '60px', paddingLeft: 'var(--mantine-spacing-md)', paddingRight: 'var(--mantine-spacing-md)', paddingTop: 'var(--mantine-spacing-sm)', paddingBottom: 'var(--mantine-spacing-xl)' }}>
+        <Stack gap="md">
+          {/* Filters */}
+          <Paper p="md" withBorder>
           <Grid>
-            <Grid.Col span={{ base: 12, sm: 4 }}>
+            <Grid.Col span={{ base: 12, sm: 3 }}>
               <TextInput
                 placeholder={t('common.search' as any, language)}
                 leftSection={<IconSearch size={16} />}
@@ -285,7 +334,7 @@ export default function DeliveryPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </Grid.Col>
-            <Grid.Col span={{ base: 12, sm: 4 }}>
+            <Grid.Col span={{ base: 12, sm: 3 }}>
               <Select
                 placeholder={t('delivery.filterByBranch' as any, language) || 'Filter by Branch'}
                 data={branches}
@@ -294,7 +343,7 @@ export default function DeliveryPage() {
                 clearable
               />
             </Grid.Col>
-            <Grid.Col span={{ base: 12, sm: 4 }}>
+            <Grid.Col span={{ base: 12, sm: 3 }}>
               <Select
                 placeholder={t('delivery.filterByPersonnel' as any, language) || 'Filter by Personnel'}
                 data={personnel.map((p) => ({
@@ -306,22 +355,65 @@ export default function DeliveryPage() {
                 clearable
               />
             </Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 3 }}>
+              <Select
+                placeholder={
+                  loadingCustomers
+                    ? (t('common.loading' as any, language) || 'Loading...')
+                    : (t('delivery.filterByCustomer' as any, language) || 'Filter by Customer')
+                }
+                data={[
+                  { value: 'walkIN', label: t('pos.walkInCustomer', language) || 'Walk-in Customer' },
+                  ...customers.map((c) => ({
+                    value: c.id,
+                    label: c.name,
+                  })),
+                ]}
+                value={selectedCustomer}
+                onChange={setSelectedCustomer}
+                clearable
+                searchable
+                nothingFoundMessage={t('common.noResults' as any, language) || 'No customers found'}
+                disabled={loadingCustomers}
+              />
+            </Grid.Col>
           </Grid>
         </Paper>
 
-        {/* Tabs */}
-        <Tabs value={activeTab} onChange={(value) => setActiveTab(value as DeliveryTab)}>
-          <Tabs.List>
-            <Tabs.Tab value="all">{t('delivery.allDeliveries' as any, language) || 'All Deliveries'}</Tabs.Tab>
-            <Tabs.Tab value="pending">{t('delivery.pending' as any, language) || 'Pending'}</Tabs.Tab>
-            <Tabs.Tab value="assigned">{t('delivery.assigned' as any, language) || 'Assigned'}</Tabs.Tab>
-            <Tabs.Tab value="out_for_delivery">{t('delivery.outForDelivery' as any, language) || 'Out for Delivery'}</Tabs.Tab>
-            <Tabs.Tab value="delivered">{t('delivery.delivered' as any, language) || 'Delivered'}</Tabs.Tab>
-            <Tabs.Tab value="cancelled">{t('delivery.cancelled' as any, language) || 'Cancelled'}</Tabs.Tab>
-          </Tabs.List>
+        {/* Status Filter Chips */}
+        <Paper p="sm" withBorder>
+          <Group gap="xs" wrap="wrap" className="filter-chip-group">
+            <Chip
+              checked={selectedStatuses.length === 0}
+              onChange={() => setSelectedStatuses([])}
+              variant="filled"
+            >
+              {t('delivery.allDeliveries' as any, language) || 'All Deliveries'}
+            </Chip>
+            <Chip.Group multiple value={selectedStatuses} onChange={setSelectedStatuses}>
+              <Group gap="xs" wrap="wrap">
+                <Chip value="pending" variant="filled">
+                  {t('delivery.pending' as any, language) || 'Pending'}
+                </Chip>
+                <Chip value="assigned" variant="filled">
+                  {t('delivery.assigned' as any, language) || 'Assigned'}
+                </Chip>
+                <Chip value="out_for_delivery" variant="filled">
+                  {t('delivery.outForDelivery' as any, language) || 'Out for Delivery'}
+                </Chip>
+                <Chip value="delivered" variant="filled">
+                  {t('delivery.delivered' as any, language) || 'Delivered'}
+                </Chip>
+                <Chip value="cancelled" variant="filled">
+                  {t('delivery.cancelled' as any, language) || 'Cancelled'}
+                </Chip>
+              </Group>
+            </Chip.Group>
+          </Group>
+        </Paper>
 
-          {/* Deliveries List */}
-          <Box mt="md">
+        {/* Deliveries List */}
+        <Box>
             {loading ? (
               <Stack gap="md">
                 {[1, 2].map((i) => (
@@ -443,12 +535,12 @@ export default function DeliveryPage() {
                         </Group>
                         <Group gap="md">
                           <Text size="sm" fw={500}>
-                            {t('pos.totalAmount' as any, language)}: {(delivery.order?.totalAmount || 0).toFixed(2)} {currency}
+                            {t('pos.totalAmount' as any, language)}: {formatCurrency(delivery.order?.totalAmount || 0, currency)}
                           </Text>
                           {delivery.deliveryCharge > 0 && (
                             <Text size="sm" c="dimmed">
                               {t('delivery.deliveryCharge' as any, language) || 'Delivery Charge'}:{' '}
-                              {delivery.deliveryCharge.toFixed(2)} {currency}
+                              {formatCurrency(delivery.deliveryCharge, currency)}
                             </Text>
                           )}
                         </Group>
@@ -536,8 +628,8 @@ export default function DeliveryPage() {
               />
             )}
           </Box>
-        </Tabs>
-      </Stack>
+        </Stack>
+      </div>
 
       {/* Assign Delivery Modal */}
       <Modal
@@ -701,7 +793,7 @@ export default function DeliveryPage() {
                     {t('pos.totalAmount' as any, language)}:
                   </Text>
                   <Text size="sm" fw={600}>
-                    {(selectedDelivery.order?.totalAmount || 0).toFixed(2)} {currency}
+                    {formatCurrency(selectedDelivery.order?.totalAmount || 0, currency)}
                   </Text>
                 </Group>
                 {selectedDelivery.deliveryCharge > 0 && (
@@ -710,7 +802,7 @@ export default function DeliveryPage() {
                       {t('delivery.deliveryCharge' as any, language) || 'Delivery Charge'}:
                     </Text>
                     <Text size="sm" fw={500}>
-                      {selectedDelivery.deliveryCharge.toFixed(2)} {currency}
+                      {formatCurrency(selectedDelivery.deliveryCharge, currency)}
                     </Text>
                   </Group>
                 )}
@@ -724,6 +816,6 @@ export default function DeliveryPage() {
           </Stack>
         )}
       </Modal>
-    </Container>
+    </>
   );
 }

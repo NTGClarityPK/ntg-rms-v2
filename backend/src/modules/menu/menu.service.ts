@@ -16,6 +16,10 @@ import { CreateAddOnDto } from './dto/create-add-on.dto';
 import { UpdateAddOnDto } from './dto/update-add-on.dto';
 import { CreateMenuDto } from './dto/create-menu.dto';
 import { UpdateMenuDto } from './dto/update-menu.dto';
+import { CreateBuffetDto } from './dto/create-buffet.dto';
+import { UpdateBuffetDto } from './dto/update-buffet.dto';
+import { CreateComboMealDto } from './dto/create-combo-meal.dto';
+import { UpdateComboMealDto } from './dto/update-combo-meal.dto';
 import { PaginationParams, PaginatedResponse, getPaginationParams, createPaginatedResponse } from '../../common/dto/pagination.dto';
 
 @Injectable()
@@ -236,7 +240,7 @@ export class MenuService {
     }
 
     const updateData: any = {};
-    if (updateDto.name !== undefined) updateData.name = updateDto.name;
+    if (updateDto.name !== undefined) updateData.name = updateDto.name.trim();
     if (updateDto.description !== undefined) updateData.description = updateDto.description;
     if (updateDto.imageUrl !== undefined) updateData.image_url = updateDto.imageUrl;
     if (updateDto.categoryType !== undefined) updateData.category_type = updateDto.categoryType;
@@ -716,7 +720,7 @@ export class MenuService {
 
     // Update food item
     const updateData: any = {};
-    if (updateDto.name !== undefined) updateData.name = updateDto.name;
+    if (updateDto.name !== undefined) updateData.name = updateDto.name.trim();
     if (updateDto.description !== undefined) updateData.description = updateDto.description;
     if (updateDto.imageUrl !== undefined) updateData.image_url = updateDto.imageUrl;
     if (updateDto.categoryId !== undefined) updateData.category_id = updateDto.categoryId;
@@ -1219,7 +1223,7 @@ export class MenuService {
       .single();
 
     const updateData: any = {};
-    if (updateDto.name !== undefined) updateData.name = updateDto.name;
+    if (updateDto.name !== undefined) updateData.name = updateDto.name.trim();
     
     const selectionType = updateDto.selectionType !== undefined ? updateDto.selectionType : current?.selection_type;
     const isRequired = updateDto.isRequired !== undefined ? updateDto.isRequired : current?.is_required;
@@ -1468,7 +1472,7 @@ export class MenuService {
     }
 
     const updateData: any = {};
-    if (updateDto.name !== undefined) updateData.name = updateDto.name;
+    if (updateDto.name !== undefined) updateData.name = updateDto.name.trim();
     if (updateDto.price !== undefined) updateData.price = updateDto.price;
     if (updateDto.isActive !== undefined) updateData.is_active = updateDto.isActive;
     if (updateDto.displayOrder !== undefined) updateData.display_order = updateDto.displayOrder;
@@ -2052,5 +2056,678 @@ export class MenuService {
       .eq('menu_type', menuType);
 
     return { message: 'Menu deleted successfully', menuType };
+  }
+
+  // ============================================
+  // BUFFET MANAGEMENT
+  // ============================================
+
+  async getBuffets(tenantId: string, pagination?: PaginationParams): Promise<PaginatedResponse<any> | any[]> {
+    const supabase = this.supabaseService.getServiceRoleClient();
+    
+    // Get total count for pagination
+    const { count: totalCount } = await supabase
+      .from('buffets')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+
+    let query = supabase
+      .from('buffets')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .order('display_order', { ascending: true });
+
+    // Apply pagination if provided
+    if (pagination) {
+      const { offset, limit } = getPaginationParams(pagination.page, pagination.limit);
+      query = query.range(offset, offset + limit - 1);
+    }
+
+    const { data: buffets, error } = await query;
+
+    if (error) {
+      throw new BadRequestException(`Failed to fetch buffets: ${error.message}`);
+    }
+
+    const formattedBuffets = buffets.map((buffet) => ({
+      id: buffet.id,
+      name: buffet.name,
+      description: buffet.description,
+      imageUrl: buffet.image_url,
+      pricePerPerson: buffet.price_per_person,
+      minPersons: buffet.min_persons,
+      duration: buffet.duration,
+      menuTypes: buffet.menu_types || [],
+      displayOrder: buffet.display_order,
+      isActive: buffet.is_active,
+      createdAt: buffet.created_at,
+      updatedAt: buffet.updated_at,
+    }));
+
+    if (pagination) {
+      return createPaginatedResponse(formattedBuffets, totalCount || 0, pagination.page || 1, pagination.limit || 10);
+    }
+
+    return formattedBuffets;
+  }
+
+  async getBuffetById(tenantId: string, id: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    const { data: buffet, error } = await supabase
+      .from('buffets')
+      .select('*')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (error || !buffet) {
+      throw new NotFoundException('Buffet not found');
+    }
+
+    // Get food items from menu types
+    let availableFoodItems = [];
+    if (buffet.menu_types && buffet.menu_types.length > 0) {
+      const { data: menuItems } = await supabase
+        .from('menu_items')
+        .select('food_item_id')
+        .eq('tenant_id', tenantId)
+        .in('menu_type', buffet.menu_types);
+
+      if (menuItems && menuItems.length > 0) {
+        const foodItemIds = [...new Set(menuItems.map((mi) => mi.food_item_id))];
+        const { data: items } = await supabase
+          .from('food_items')
+          .select('id, name, base_price, image_url')
+          .eq('tenant_id', tenantId)
+          .in('id', foodItemIds)
+          .eq('is_active', true)
+          .is('deleted_at', null);
+
+        availableFoodItems = items || [];
+      }
+    }
+
+    return {
+      id: buffet.id,
+      name: buffet.name,
+      description: buffet.description,
+      imageUrl: buffet.image_url,
+      pricePerPerson: buffet.price_per_person,
+      minPersons: buffet.min_persons,
+      duration: buffet.duration,
+      menuTypes: buffet.menu_types || [],
+      displayOrder: buffet.display_order,
+      isActive: buffet.is_active,
+      createdAt: buffet.created_at,
+      updatedAt: buffet.updated_at,
+      availableFoodItems,
+    };
+  }
+
+  async createBuffet(tenantId: string, createDto: CreateBuffetDto) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Check if buffet with same name already exists
+    const { data: existing } = await supabase
+      .from('buffets')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('name', createDto.name.trim())
+      .is('deleted_at', null)
+      .single();
+
+    if (existing) {
+      throw new ConflictException('A buffet with this name already exists');
+    }
+
+    // Get max display order
+    const { data: maxOrder } = await supabase
+      .from('buffets')
+      .select('display_order')
+      .eq('tenant_id', tenantId)
+      .order('display_order', { ascending: false })
+      .limit(1)
+      .single();
+
+    const displayOrder = createDto.displayOrder ?? ((maxOrder?.display_order || 0) + 1);
+
+    const { data: buffet, error } = await supabase
+      .from('buffets')
+      .insert({
+        tenant_id: tenantId,
+        name: createDto.name.trim(),
+        description: createDto.description,
+        price_per_person: createDto.pricePerPerson,
+        min_persons: createDto.minPersons,
+        duration: createDto.duration,
+        menu_types: createDto.menuTypes || [],
+        display_order: displayOrder,
+        is_active: createDto.isActive !== undefined ? createDto.isActive : true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(`Failed to create buffet: ${error.message}`);
+    }
+
+    return {
+      id: buffet.id,
+      name: buffet.name,
+      description: buffet.description,
+      imageUrl: buffet.image_url,
+      pricePerPerson: buffet.price_per_person,
+      minPersons: buffet.min_persons,
+      duration: buffet.duration,
+      menuTypes: buffet.menu_types || [],
+      displayOrder: buffet.display_order,
+      isActive: buffet.is_active,
+      createdAt: buffet.created_at,
+      updatedAt: buffet.updated_at,
+    };
+  }
+
+  async updateBuffet(tenantId: string, id: string, updateDto: UpdateBuffetDto) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Check if buffet exists
+    const { data: existing } = await supabase
+      .from('buffets')
+      .select('id')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!existing) {
+      throw new NotFoundException('Buffet not found');
+    }
+
+    // Check if name is being changed and if new name already exists
+    if (updateDto.name && updateDto.name.trim() !== '') {
+      const { data: nameConflict } = await supabase
+        .from('buffets')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('name', updateDto.name.trim())
+        .neq('id', id)
+        .is('deleted_at', null)
+        .single();
+
+      if (nameConflict) {
+        throw new ConflictException('A buffet with this name already exists');
+      }
+    }
+
+    const updateData: any = {};
+    if (updateDto.name !== undefined) updateData.name = updateDto.name.trim();
+    if (updateDto.description !== undefined) updateData.description = updateDto.description;
+    if ((updateDto as any).imageUrl !== undefined) updateData.image_url = (updateDto as any).imageUrl;
+    if (updateDto.pricePerPerson !== undefined) updateData.price_per_person = updateDto.pricePerPerson;
+    if (updateDto.minPersons !== undefined) updateData.min_persons = updateDto.minPersons;
+    if (updateDto.duration !== undefined) updateData.duration = updateDto.duration;
+    if (updateDto.menuTypes !== undefined) updateData.menu_types = updateDto.menuTypes;
+    if (updateDto.displayOrder !== undefined) updateData.display_order = updateDto.displayOrder;
+    if (updateDto.isActive !== undefined) updateData.is_active = updateDto.isActive;
+    updateData.updated_at = new Date().toISOString();
+
+    const { data: buffet, error } = await supabase
+      .from('buffets')
+      .update(updateData)
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(`Failed to update buffet: ${error.message}`);
+    }
+
+    return {
+      id: buffet.id,
+      name: buffet.name,
+      description: buffet.description,
+      imageUrl: buffet.image_url,
+      pricePerPerson: buffet.price_per_person,
+      minPersons: buffet.min_persons,
+      duration: buffet.duration,
+      menuTypes: buffet.menu_types || [],
+      displayOrder: buffet.display_order,
+      isActive: buffet.is_active,
+      createdAt: buffet.created_at,
+      updatedAt: buffet.updated_at,
+    };
+  }
+
+  async deleteBuffet(tenantId: string, id: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Check if buffet exists
+    const { data: existing } = await supabase
+      .from('buffets')
+      .select('id')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!existing) {
+      throw new NotFoundException('Buffet not found');
+    }
+
+    // Soft delete
+    const { error } = await supabase
+      .from('buffets')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('tenant_id', tenantId);
+
+    if (error) {
+      throw new BadRequestException(`Failed to delete buffet: ${error.message}`);
+    }
+
+    return { message: 'Buffet deleted successfully', id };
+  }
+
+  async uploadBuffetImage(tenantId: string, id: string, file: any) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Check if buffet exists
+    const { data: existing } = await supabase
+      .from('buffets')
+      .select('id')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!existing) {
+      throw new NotFoundException('Buffet not found');
+    }
+
+    const imageUrl = await this.storageService.uploadImage(
+      file,
+      this.IMAGE_BUCKET,
+      `buffets/${id}`,
+      tenantId,
+    );
+
+    const { data: buffet, error } = await supabase
+      .from('buffets')
+      .update({ image_url: imageUrl, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(`Failed to update buffet image: ${error.message}`);
+    }
+
+    return {
+      id: buffet.id,
+      name: buffet.name,
+      description: buffet.description,
+      imageUrl: buffet.image_url,
+      pricePerPerson: buffet.price_per_person,
+      minPersons: buffet.min_persons,
+      duration: buffet.duration,
+      menuTypes: buffet.menu_types || [],
+      displayOrder: buffet.display_order,
+      isActive: buffet.is_active,
+      createdAt: buffet.created_at,
+      updatedAt: buffet.updated_at,
+    };
+  }
+
+  // ============================================
+  // COMBO MEAL MANAGEMENT
+  // ============================================
+
+  async getComboMeals(tenantId: string, pagination?: PaginationParams): Promise<PaginatedResponse<any> | any[]> {
+    const supabase = this.supabaseService.getServiceRoleClient();
+    
+    // Get total count for pagination
+    const { count: totalCount } = await supabase
+      .from('combo_meals')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+
+    let query = supabase
+      .from('combo_meals')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .order('display_order', { ascending: true });
+
+    // Apply pagination if provided
+    if (pagination) {
+      const { offset, limit } = getPaginationParams(pagination.page, pagination.limit);
+      query = query.range(offset, offset + limit - 1);
+    }
+
+    const { data: comboMeals, error } = await query;
+
+    if (error) {
+      throw new BadRequestException(`Failed to fetch combo meals: ${error.message}`);
+    }
+
+    const formattedComboMeals = comboMeals.map((combo) => ({
+      id: combo.id,
+      name: combo.name,
+      description: combo.description,
+      imageUrl: combo.image_url,
+      basePrice: combo.base_price,
+      foodItemIds: combo.food_item_ids || [],
+      menuTypes: combo.menu_types || [],
+      discountPercentage: combo.discount_percentage,
+      displayOrder: combo.display_order,
+      isActive: combo.is_active,
+      createdAt: combo.created_at,
+      updatedAt: combo.updated_at,
+    }));
+
+    if (pagination) {
+      return createPaginatedResponse(formattedComboMeals, totalCount || 0, pagination.page || 1, pagination.limit || 10);
+    }
+
+    return formattedComboMeals;
+  }
+
+  async getComboMealById(tenantId: string, id: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    const { data: comboMeal, error } = await supabase
+      .from('combo_meals')
+      .select('*')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (error || !comboMeal) {
+      throw new NotFoundException('Combo meal not found');
+    }
+
+    // Get food items
+    let foodItems = [];
+    if (comboMeal.food_item_ids && comboMeal.food_item_ids.length > 0) {
+      const { data: items } = await supabase
+        .from('food_items')
+        .select('id, name, base_price, image_url')
+        .eq('tenant_id', tenantId)
+        .in('id', comboMeal.food_item_ids)
+        .is('deleted_at', null);
+
+      foodItems = items || [];
+    }
+
+    return {
+      id: comboMeal.id,
+      name: comboMeal.name,
+      description: comboMeal.description,
+      imageUrl: comboMeal.image_url,
+      basePrice: comboMeal.base_price,
+      foodItemIds: comboMeal.food_item_ids || [],
+      menuTypes: comboMeal.menu_types || [],
+      discountPercentage: comboMeal.discount_percentage,
+      displayOrder: comboMeal.display_order,
+      isActive: comboMeal.is_active,
+      createdAt: comboMeal.created_at,
+      updatedAt: comboMeal.updated_at,
+      foodItems,
+    };
+  }
+
+  async createComboMeal(tenantId: string, createDto: CreateComboMealDto) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Check if combo meal with same name already exists
+    const { data: existing } = await supabase
+      .from('combo_meals')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('name', createDto.name.trim())
+      .is('deleted_at', null)
+      .single();
+
+    if (existing) {
+      throw new ConflictException('A combo meal with this name already exists');
+    }
+
+    // Validate food items belong to tenant
+    if (createDto.foodItemIds && createDto.foodItemIds.length > 0) {
+      const { data: foodItems } = await supabase
+        .from('food_items')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .in('id', createDto.foodItemIds)
+        .is('deleted_at', null);
+
+      if (foodItems.length !== createDto.foodItemIds.length) {
+        throw new BadRequestException('One or more food items not found');
+      }
+    }
+
+    // Get max display order
+    const { data: maxOrder } = await supabase
+      .from('combo_meals')
+      .select('display_order')
+      .eq('tenant_id', tenantId)
+      .order('display_order', { ascending: false })
+      .limit(1)
+      .single();
+
+    const displayOrder = createDto.displayOrder ?? ((maxOrder?.display_order || 0) + 1);
+
+    const { data: comboMeal, error } = await supabase
+      .from('combo_meals')
+      .insert({
+        tenant_id: tenantId,
+        name: createDto.name.trim(),
+        description: createDto.description,
+        base_price: createDto.basePrice,
+        food_item_ids: createDto.foodItemIds || [],
+        menu_types: createDto.menuTypes || [],
+        discount_percentage: createDto.discountPercentage,
+        display_order: displayOrder,
+        is_active: createDto.isActive !== undefined ? createDto.isActive : true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(`Failed to create combo meal: ${error.message}`);
+    }
+
+    return {
+      id: comboMeal.id,
+      name: comboMeal.name,
+      description: comboMeal.description,
+      imageUrl: comboMeal.image_url,
+      basePrice: comboMeal.base_price,
+      foodItemIds: comboMeal.food_item_ids || [],
+      menuTypes: comboMeal.menu_types || [],
+      discountPercentage: comboMeal.discount_percentage,
+      displayOrder: comboMeal.display_order,
+      isActive: comboMeal.is_active,
+      createdAt: comboMeal.created_at,
+      updatedAt: comboMeal.updated_at,
+    };
+  }
+
+  async updateComboMeal(tenantId: string, id: string, updateDto: UpdateComboMealDto) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Check if combo meal exists
+    const { data: existing } = await supabase
+      .from('combo_meals')
+      .select('id')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!existing) {
+      throw new NotFoundException('Combo meal not found');
+    }
+
+    // Check if name is being changed and if new name already exists
+    if (updateDto.name && updateDto.name.trim() !== '') {
+      const { data: nameConflict } = await supabase
+        .from('combo_meals')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('name', updateDto.name.trim())
+        .neq('id', id)
+        .is('deleted_at', null)
+        .single();
+
+      if (nameConflict) {
+        throw new ConflictException('A combo meal with this name already exists');
+      }
+    }
+
+    // Validate food items if provided
+    if (updateDto.foodItemIds && updateDto.foodItemIds.length > 0) {
+      const { data: foodItems } = await supabase
+        .from('food_items')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .in('id', updateDto.foodItemIds)
+        .is('deleted_at', null);
+
+      if (foodItems.length !== updateDto.foodItemIds.length) {
+        throw new BadRequestException('One or more food items not found');
+      }
+    }
+
+    const updateData: any = {};
+    if (updateDto.name !== undefined) updateData.name = updateDto.name.trim();
+    if (updateDto.description !== undefined) updateData.description = updateDto.description;
+    if ((updateDto as any).imageUrl !== undefined) updateData.image_url = (updateDto as any).imageUrl;
+    if (updateDto.basePrice !== undefined) updateData.base_price = updateDto.basePrice;
+    if (updateDto.foodItemIds !== undefined) updateData.food_item_ids = updateDto.foodItemIds;
+    if (updateDto.menuTypes !== undefined) updateData.menu_types = updateDto.menuTypes;
+    if (updateDto.discountPercentage !== undefined) updateData.discount_percentage = updateDto.discountPercentage;
+    if (updateDto.displayOrder !== undefined) updateData.display_order = updateDto.displayOrder;
+    if (updateDto.isActive !== undefined) updateData.is_active = updateDto.isActive;
+    updateData.updated_at = new Date().toISOString();
+
+    const { data: comboMeal, error } = await supabase
+      .from('combo_meals')
+      .update(updateData)
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(`Failed to update combo meal: ${error.message}`);
+    }
+
+    return {
+      id: comboMeal.id,
+      name: comboMeal.name,
+      description: comboMeal.description,
+      imageUrl: comboMeal.image_url,
+      basePrice: comboMeal.base_price,
+      foodItemIds: comboMeal.food_item_ids || [],
+      menuTypes: comboMeal.menu_types || [],
+      discountPercentage: comboMeal.discount_percentage,
+      displayOrder: comboMeal.display_order,
+      isActive: comboMeal.is_active,
+      createdAt: comboMeal.created_at,
+      updatedAt: comboMeal.updated_at,
+    };
+  }
+
+  async deleteComboMeal(tenantId: string, id: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Check if combo meal exists
+    const { data: existing } = await supabase
+      .from('combo_meals')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!existing) {
+      throw new NotFoundException('Combo meal not found');
+    }
+
+    // Soft delete
+    const { error } = await supabase
+      .from('combo_meals')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('tenant_id', tenantId);
+
+    if (error) {
+      throw new BadRequestException(`Failed to delete combo meal: ${error.message}`);
+    }
+
+    return { message: 'Combo meal deleted successfully', id };
+  }
+
+  async uploadComboMealImage(tenantId: string, id: string, file: any) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Check if combo meal exists
+    const { data: existing } = await supabase
+      .from('combo_meals')
+      .select('id')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!existing) {
+      throw new NotFoundException('Combo meal not found');
+    }
+
+    const imageUrl = await this.storageService.uploadImage(
+      file,
+      this.IMAGE_BUCKET,
+      `combo-meals/${id}`,
+      tenantId,
+    );
+
+    const { data: comboMeal, error } = await supabase
+      .from('combo_meals')
+      .update({ image_url: imageUrl, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(`Failed to update combo meal image: ${error.message}`);
+    }
+
+    return {
+      id: comboMeal.id,
+      name: comboMeal.name,
+      description: comboMeal.description,
+      imageUrl: comboMeal.image_url,
+      basePrice: comboMeal.base_price,
+      foodItemIds: comboMeal.food_item_ids || [],
+      menuTypes: comboMeal.menu_types || [],
+      discountPercentage: comboMeal.discount_percentage,
+      displayOrder: comboMeal.display_order,
+      isActive: comboMeal.is_active,
+      createdAt: comboMeal.created_at,
+      updatedAt: comboMeal.updated_at,
+    };
   }
 }

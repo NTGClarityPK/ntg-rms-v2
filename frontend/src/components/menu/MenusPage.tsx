@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useForm } from '@mantine/form';
 import {
-  Container,
   Title,
   Button,
   Stack,
@@ -29,6 +28,7 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
+import { getBadgeColorForText } from '@/lib/utils/theme';
 import { onMenuDataUpdate, notifyMenuDataUpdate } from '@/lib/utils/menu-events';
 
 export function MenusPage() {
@@ -320,7 +320,7 @@ export function MenusPage() {
   const defaultMenuTypes = ['all_day', 'breakfast', 'lunch', 'dinner', 'kids_special'];
 
   return (
-    <Container size="xl" py="xl">
+    <Stack gap="md">
       <Group justify="space-between" mb="xl">
         <Title order={2}>
           {t('menu.menuManagement', language)}
@@ -374,7 +374,7 @@ export function MenusPage() {
                     {menu.itemCount} {t('menu.foodItems', language)}
                   </Text>
                 </div>
-                <Badge color={menu.isActive ? successColor : 'gray'}>
+                <Badge color={getBadgeColorForText(menu.isActive ? t('menu.active', language) : t('menu.inactive', language))}>
                   {menu.isActive ? t('menu.active', language) : t('menu.inactive', language)}
                 </Badge>
               </Group>
@@ -439,51 +439,7 @@ export function MenusPage() {
           </Group>
         </Stack>
       </Modal>
-
-      <Modal
-        opened={createModalOpened}
-        onClose={handleCloseCreateModal}
-        title={t('menu.createMenu', language) || 'Create Menu'}
-        size="lg"
-      >
-        <form onSubmit={form.onSubmit(handleCreateMenu)}>
-          <Stack gap="md">
-            <TextInput
-              label={t('menu.menuName', language) || 'Menu Name'}
-              placeholder="e.g., Happy Hour, Brunch Menu, Kids Special"
-              description="Enter a name for your menu. A unique identifier will be generated automatically."
-              required
-              {...form.getInputProps('name')}
-            />
-            <MultiSelect
-              label={t('menu.foodItems', language)}
-              description={t('menu.selectFoodItemsForMenu', language) || 'Select food items to add to this menu (optional)'}
-              data={foodItems.map((item) => ({
-                value: item.id,
-                label: item.name || '',
-              }))}
-              {...form.getInputProps('foodItemIds')}
-              searchable
-              clearable
-            />
-            <Switch
-              label={t('menu.active', language)}
-              {...form.getInputProps('isActive', { type: 'checkbox' })}
-              color={form.values.isActive ? successColor : 'gray'}
-            />
-
-            <Group justify="flex-end" mt="md">
-              <Button variant="subtle" onClick={handleCloseCreateModal}>
-                {t('common.cancel' as any, language) || 'Cancel'}
-              </Button>
-              <Button type="submit" style={{ backgroundColor: primaryColor }}>
-                {t('common.create' as any, language) || 'Create'}
-              </Button>
-            </Group>
-          </Stack>
-        </form>
-      </Modal>
-    </Container>
+    </Stack>
   );
 }
 

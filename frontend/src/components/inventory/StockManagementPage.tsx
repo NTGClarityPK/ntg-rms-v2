@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useForm } from '@mantine/form';
 import {
-  Container,
   Title,
   Button,
   Stack,
@@ -52,6 +51,7 @@ import { t } from '@/lib/utils/translations';
 import { useInventoryRefresh } from '@/lib/contexts/inventory-refresh-context';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
+import { getBadgeColorForText } from '@/lib/utils/theme';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { Branch } from '@/lib/indexeddb/database';
 import { usePagination } from '@/lib/hooks/use-pagination';
@@ -867,9 +867,8 @@ export function StockManagementPage() {
   };
 
   return (
-    <Container size="xl" py="xl">
-      <Group justify="space-between" mb="xl">
-        <Title order={2}>{t('inventory.stockManagement', language)}</Title>
+    <Stack gap="md">
+      <Group justify="flex-end">
         <Group gap="xs">
           <Button
             leftSection={<IconPlus size={16} />}
@@ -1001,13 +1000,8 @@ export function StockManagementPage() {
                     </Table.Td>
                     <Table.Td>
                       <Badge
-                        color={
-                          tx.transactionType === 'purchase' || tx.transactionType === 'transfer_in'
-                            ? successColor
-                            : tx.transactionType === 'usage' || tx.transactionType === 'transfer_out' || tx.transactionType === 'waste' || tx.transactionType === 'damaged' || tx.transactionType === 'expired'
-                            ? errorColor
-                            : primaryColor
-                        }
+                        variant="light"
+                        color={getBadgeColorForText(getTransactionTypeLabel(tx.transactionType))}
                       >
                         {getTransactionTypeLabel(tx.transactionType)}
                       </Badge>
@@ -1347,7 +1341,7 @@ export function StockManagementPage() {
           </Stack>
         </form>
       </Modal>
-    </Container>
+    </Stack>
   );
 }
 

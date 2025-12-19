@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useForm } from '@mantine/form';
 import {
-  Container,
   Title,
   Button,
   Stack,
@@ -35,6 +34,7 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor, useInfoColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
+import { getBadgeColorForText } from '@/lib/utils/theme';
 import { onMenuDataUpdate, notifyMenuDataUpdate } from '@/lib/utils/menu-events';
 
 export function CategoriesPage() {
@@ -365,9 +365,8 @@ export function CategoriesPage() {
   };
 
   return (
-    <Container size="xl" py="xl">
-      <Group justify="space-between" mb="xl">
-        <Title order={2}>{t('menu.categoryManagement', language)}</Title>
+    <Stack gap="md">
+      <Group justify="flex-end">
         <Button
           leftSection={<IconPlus size={16} />}
           onClick={() => handleOpenModal()}
@@ -456,7 +455,7 @@ export function CategoriesPage() {
                     </div>
                   </Group>
                   <Group gap="xs" align="center">
-                    <Badge color={category.isActive ? successColor : 'gray'} variant="light">
+                    <Badge color={getBadgeColorForText(category.isActive ? t('menu.active', language) : t('menu.inactive', language))} variant="light">
                       {category.isActive ? t('menu.active', language) : t('menu.inactive', language)}
                     </Badge>
                     <ActionIcon
@@ -485,7 +484,7 @@ export function CategoriesPage() {
                           </Text>
                         </Group>
                         <Group gap="xs" align="center">
-                          <Badge color={sub.isActive ? successColor : 'gray'} variant="light">
+                          <Badge color={getBadgeColorForText(sub.isActive ? t('menu.active', language) : t('menu.inactive', language))} variant="light">
                             {sub.isActive ? t('menu.active', language) : t('menu.inactive', language)}
                           </Badge>
                           <ActionIcon
@@ -632,7 +631,7 @@ export function CategoriesPage() {
           </Stack>
         </form>
       </Modal>
-    </Container>
+    </Stack>
   );
 }
 

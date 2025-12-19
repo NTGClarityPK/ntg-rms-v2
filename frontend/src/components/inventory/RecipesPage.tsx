@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useForm } from '@mantine/form';
 import {
-  Container,
   Title,
   Button,
   Stack,
@@ -44,6 +43,7 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
+import { getBadgeColorForText } from '@/lib/utils/theme';
 import { useInventoryRefresh } from '@/lib/contexts/inventory-refresh-context';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
 import { usePagination } from '@/lib/hooks/use-pagination';
@@ -559,9 +559,8 @@ export function RecipesPage() {
   };
 
   return (
-    <Container size="xl" py="xl">
-      <Group justify="space-between" mb="xl">
-        <Title order={2}>{t('inventory.recipes', language)}</Title>
+    <Stack gap="md">
+      <Group justify="flex-end">
         <Button
           leftSection={<IconLink size={16} />}
           onClick={() => handleOpenModal()}
@@ -637,7 +636,7 @@ export function RecipesPage() {
                                       ? ingredient.name
                                       : 'Unknown'}
                                   </Text>
-                                  <Badge variant="light" color={primaryColor} size="sm">
+                                  <Badge variant="light" color={getBadgeColorForText(`${rec.quantity} ${rec.unit}`)} size="sm">
                                     {rec.quantity} {rec.unit}
                                   </Badge>
                                 </Group>
@@ -815,7 +814,7 @@ export function RecipesPage() {
           </Stack>
         </form>
       </Modal>
-    </Container>
+    </Stack>
   );
 }
 

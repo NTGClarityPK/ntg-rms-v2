@@ -25,9 +25,20 @@ export class OrderItemAddOnDto {
 }
 
 export class OrderItemDto {
-  @ApiProperty()
+  @ApiProperty({ required: false })
   @IsUUID()
-  foodItemId: string;
+  @IsOptional()
+  foodItemId?: string;
+
+  @ApiProperty({ required: false })
+  @IsUUID()
+  @IsOptional()
+  buffetId?: string;
+
+  @ApiProperty({ required: false })
+  @IsUUID()
+  @IsOptional()
+  comboMealId?: string;
 
   @ApiProperty()
   @IsNumber()

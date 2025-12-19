@@ -9,8 +9,9 @@ import { reportsApi, FinancialReport, ReportQueryParams } from '@/lib/api/report
 import { ReportFilters } from './ReportFilters';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getSuccessColor, getErrorColor } from '@/lib/utils/theme';
+import { getSuccessColor, getErrorColor, getChartColors } from '@/lib/utils/theme';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { notifications } from '@mantine/notifications';
 import { db } from '@/lib/indexeddb/database';
 import { useSyncStatus } from '@/lib/hooks/use-sync-status';
@@ -124,9 +125,9 @@ export default function FinancialReportPage() {
     <Stack gap="md">
       <ReportFilters branches={branches} onFilterChange={handleFilterChange} onExport={handleExport} onPrint={handlePrint} onRefresh={() => loadReport(filters)} loading={loading} currentFilters={filters} showGroupBy={false} />
       <Grid>
-        <Grid.Col span={{ base: 12, sm: 6, md: 3 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.totalRevenue' as any, language)}</Text><Text size="xl" fw={700} style={{ color: themeColor }}>{report.revenue.total.toFixed(2)} {currency}</Text></Card></Grid.Col>
-        <Grid.Col span={{ base: 12, sm: 6, md: 3 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.costOfGoods' as any, language)}</Text><Text size="xl" fw={700} style={{ color: getErrorColor() }}>{report.costs.costOfGoods.toFixed(2)} {currency}</Text></Card></Grid.Col>
-        <Grid.Col span={{ base: 12, sm: 6, md: 3 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.grossProfit' as any, language)}</Text><Text size="xl" fw={700} style={{ color: getSuccessColor() }}>{report.profit.gross.toFixed(2)} {currency}</Text></Card></Grid.Col>
+        <Grid.Col span={{ base: 12, sm: 6, md: 3 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.totalRevenue' as any, language)}</Text><Text size="xl" fw={700} style={{ color: themeColor }}>{formatCurrency(report.revenue.total, currency)}</Text></Card></Grid.Col>
+        <Grid.Col span={{ base: 12, sm: 6, md: 3 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.costOfGoods' as any, language)}</Text><Text size="xl" fw={700} style={{ color: getErrorColor() }}>{formatCurrency(report.costs.costOfGoods, currency)}</Text></Card></Grid.Col>
+        <Grid.Col span={{ base: 12, sm: 6, md: 3 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.grossProfit' as any, language)}</Text><Text size="xl" fw={700} style={{ color: getSuccessColor() }}>{formatCurrency(report.profit.gross, currency)}</Text></Card></Grid.Col>
         <Grid.Col span={{ base: 12, sm: 6, md: 3 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.profitMargin' as any, language)}</Text><Text size="xl" fw={700} style={{ color: report.profit.margin >= 0 ? getSuccessColor() : getErrorColor() }}>{report.profit.margin.toFixed(2)}%</Text></Card></Grid.Col>
       </Grid>
       <Paper p="md" withBorder>
@@ -142,11 +143,19 @@ export default function FinancialReportPage() {
                   labelLine={false} 
                   label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`} 
                   outerRadius={80} 
-                  fill="#8884d8" 
+                  fill={(() => {
+                    const colors = getChartColors(paymentData.length);
+                    return colors[0];
+                  })()}
                   dataKey="amount"
                   minAngle={0}
                 >
-                  {paymentData.map((entry, index) => <Cell key={`cell-${index}`} fill={[themeColor, getSuccessColor(), getErrorColor()][index % 3]} />)}
+                  {(() => {
+                    const colors = getChartColors(paymentData.length);
+                    return paymentData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
+                    ));
+                  })()}
                 </Pie>
                 <Tooltip formatter={(value: number) => `${value.toFixed(2)} ${currency}`} />
                 <Legend />

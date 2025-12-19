@@ -258,7 +258,7 @@ export default function CountersPage() {
   return (
     <Container size="xl" py="xl">
       <Group justify="space-between" mb="xl">
-        <Title order={2}>Counter Management</Title>
+        <Title order={1}>Counter Management</Title>
         <Button leftSection={<IconPlus size={16} />} onClick={() => handleOpenModal()}>
           Add Counter
         </Button>

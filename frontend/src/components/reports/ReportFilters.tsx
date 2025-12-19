@@ -12,7 +12,7 @@ import {
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import '@mantine/dates/styles.css';
-import { IconCalendar, IconDownload, IconPrinter, IconRefresh } from '@tabler/icons-react';
+import { IconCalendar, IconDownload, IconPrinter, IconRefresh, IconCheck } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
@@ -64,6 +64,7 @@ export function ReportFilters({
   const [groupBy, setGroupBy] = useState<string>(
     currentFilters?.groupBy || 'day'
   );
+  const [selectedDateRange, setSelectedDateRange] = useState<string | null>(null);
   const hasInitialized = useRef(false);
 
   // Sync with currentFilters when they change externally (only if different from current state)
@@ -100,6 +101,16 @@ export function ReportFilters({
   }, [currentFilters?.startDate, currentFilters?.endDate, currentFilters?.branchId, currentFilters?.groupBy]);
 
   const handleQuickDateRange = (range: string) => {
+    // Toggle: if clicking the same range again, deselect it
+    if (selectedDateRange === range) {
+      setSelectedDateRange(null);
+      setStartDate(null);
+      setEndDate(null);
+      applyFilters(null, null, selectedBranch, groupBy);
+      return;
+    }
+
+    setSelectedDateRange(range); // Track selected range
     const now = dayjs();
     let start: Date | null = null;
     let end: Date | null = now.toDate();
@@ -163,6 +174,7 @@ export function ReportFilters({
   };
 
   const handleDateChange = () => {
+    setSelectedDateRange(null); // Clear selected range when custom dates are used
     applyFilters(startDate, endDate, selectedBranch, groupBy);
   };
 
@@ -195,55 +207,55 @@ export function ReportFilters({
     <Paper p="md" withBorder className="report-filters">
       <Stack gap="md">
         {/* Quick Date Range Buttons */}
-        <Group gap="xs">
+        <Group gap="xs" className="filter-button-group">
           <Text size="sm" fw={500}>
             {t('reports.selectDateRange' as any, language)}:
           </Text>
           <Button
             size="xs"
-            variant="light"
             onClick={() => handleQuickDateRange('last7Days')}
-            style={{ color: themeColor }}
+            data-selected={selectedDateRange === 'last7Days' ? "true" : "false"}
+            leftSection={selectedDateRange === 'last7Days' ? <IconCheck size={12} /> : undefined}
           >
             {t('reports.last7Days' as any, language)}
           </Button>
           <Button
             size="xs"
-            variant="light"
             onClick={() => handleQuickDateRange('last30Days')}
-            style={{ color: themeColor }}
+            data-selected={selectedDateRange === 'last30Days' ? "true" : "false"}
+            leftSection={selectedDateRange === 'last30Days' ? <IconCheck size={12} /> : undefined}
           >
             {t('reports.last30Days' as any, language)}
           </Button>
           <Button
             size="xs"
-            variant="light"
             onClick={() => handleQuickDateRange('last90Days')}
-            style={{ color: themeColor }}
+            data-selected={selectedDateRange === 'last90Days' ? "true" : "false"}
+            leftSection={selectedDateRange === 'last90Days' ? <IconCheck size={12} /> : undefined}
           >
             {t('reports.last90Days' as any, language)}
           </Button>
           <Button
             size="xs"
-            variant="light"
             onClick={() => handleQuickDateRange('thisMonth')}
-            style={{ color: themeColor }}
+            data-selected={selectedDateRange === 'thisMonth' ? "true" : "false"}
+            leftSection={selectedDateRange === 'thisMonth' ? <IconCheck size={12} /> : undefined}
           >
             {t('reports.thisMonth' as any, language)}
           </Button>
           <Button
             size="xs"
-            variant="light"
             onClick={() => handleQuickDateRange('lastMonth')}
-            style={{ color: themeColor }}
+            data-selected={selectedDateRange === 'lastMonth' ? "true" : "false"}
+            leftSection={selectedDateRange === 'lastMonth' ? <IconCheck size={12} /> : undefined}
           >
             {t('reports.lastMonth' as any, language)}
           </Button>
           <Button
             size="xs"
-            variant="light"
             onClick={() => handleQuickDateRange('thisYear')}
-            style={{ color: themeColor }}
+            data-selected={selectedDateRange === 'thisYear' ? "true" : "false"}
+            leftSection={selectedDateRange === 'thisYear' ? <IconCheck size={12} /> : undefined}
           >
             {t('reports.thisYear' as any, language)}
           </Button>
@@ -256,6 +268,7 @@ export function ReportFilters({
             value={startDate}
             onChange={(date) => {
               setStartDate(date);
+              setSelectedDateRange(null); // Clear selected range when custom dates are used
               // Always apply filters when date changes
               applyFilters(date, endDate, selectedBranch, groupBy);
             }}
@@ -268,6 +281,7 @@ export function ReportFilters({
             value={endDate}
             onChange={(date) => {
               setEndDate(date);
+              setSelectedDateRange(null); // Clear selected range when custom dates are used
               // Always apply filters when date changes
               applyFilters(startDate, date, selectedBranch, groupBy);
             }}
@@ -278,8 +292,11 @@ export function ReportFilters({
           <Select
             label={t('reports.filterByBranch' as any, language)}
             data={[
-              { value: '', label: t('reports.allBranches' as any, language) },
-              ...branches,
+              { value: '', label: String(t('reports.allBranches' as any, language) || 'All Branches') },
+              ...branches.map((b) => ({
+                value: b.value || '',
+                label: String(b.label || ''),
+              })),
             ]}
             value={selectedBranch}
             onChange={handleBranchChange}
@@ -290,10 +307,10 @@ export function ReportFilters({
             <Select
               label={t('reports.groupBy' as any, language)}
               data={[
-                { value: 'day', label: t('reports.day' as any, language) },
-                { value: 'week', label: t('reports.week' as any, language) },
-                { value: 'month', label: t('reports.month' as any, language) },
-                { value: 'year', label: t('reports.year' as any, language) },
+                { value: 'day', label: String(t('reports.day' as any, language) || 'Day') },
+                { value: 'week', label: String(t('reports.week' as any, language) || 'Week') },
+                { value: 'month', label: String(t('reports.month' as any, language) || 'Month') },
+                { value: 'year', label: String(t('reports.year' as any, language) || 'Year') },
               ]}
               value={groupBy}
               onChange={handleGroupByChange}
