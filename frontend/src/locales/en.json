@@ -404,6 +404,7 @@
   },
   "pos": {
     "title": "Point of Sale",
+    "newOrder": "New Order",
     "foodItems": "Food Items",
     "searchItems": "Search items...",
     "noItemsFound": "No items found",

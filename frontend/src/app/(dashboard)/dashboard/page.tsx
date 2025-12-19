@@ -187,7 +187,6 @@ export default function DashboardPage() {
             <Stack gap="md">
               <Group>
                 <IconAlertTriangle size={24} color={primary} />
-                <IconAlertTriangle size={24} color={primary} />
                 <Title order={3}>{t('dashboard.lowStockAlerts' as any, language) || 'Low Stock Alerts'}</Title>
               </Group>
               {loading ? (

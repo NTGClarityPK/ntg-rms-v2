@@ -294,8 +294,8 @@ export function ReportFilters({
             data={[
               { value: '', label: String(t('reports.allBranches' as any, language) || 'All Branches') },
               ...branches.map((b) => ({
-                value: b.value || b.id || '',
-                label: String(b.label || b.nameEn || b.nameAr || ''),
+                value: b.value || '',
+                label: String(b.label || ''),
               })),
             ]}
             value={selectedBranch}

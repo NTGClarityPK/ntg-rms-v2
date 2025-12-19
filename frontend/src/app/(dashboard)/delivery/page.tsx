@@ -133,7 +133,11 @@ export default function DeliveryPage() {
       setLoading(true);
     }
     try {
-      const status = activeTab === 'all' ? undefined : (activeTab as DeliveryStatus);
+      // If multiple statuses selected or none selected, fetch all and filter client-side
+      // If single status selected, pass it to API for server-side filtering
+      const status = selectedStatuses.length === 1 
+        ? (selectedStatuses[0] as DeliveryStatus)
+        : undefined;
       const response = await deliveryApi.getDeliveryOrders({
         status,
         branchId: selectedBranch || undefined,
@@ -158,7 +162,7 @@ export default function DeliveryPage() {
         setLoading(false);
       }
     }
-  }, [selectedBranch, selectedDeliveryPerson, language, pagination]);
+  }, [selectedStatuses, selectedBranch, selectedDeliveryPerson, language, pagination]);
 
   useEffect(() => {
     loadBranches();
@@ -175,7 +179,7 @@ export default function DeliveryPage() {
   useEffect(() => {
     loadDeliveries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, selectedBranch, selectedDeliveryPerson, pagination.page, pagination.limit]);
+  }, [selectedStatuses, selectedBranch, selectedDeliveryPerson, pagination.page, pagination.limit]);
 
   const handleAssignDelivery = async () => {
     if (!selectedDelivery || !selectedPersonnelId) {

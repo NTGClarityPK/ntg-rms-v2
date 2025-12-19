@@ -18,6 +18,7 @@ import {
   NumberInput,
   Button,
   Paper,
+  SegmentedControl,
 } from '@mantine/core';
 import { IconSearch, IconShoppingCart, IconChefHat, IconShoppingBag } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
@@ -165,7 +166,7 @@ export function FoodItemsGrid({
           try {
             // Load from server with pagination
             const serverItemsResponse = await menuApi.getFoodItems(
-              selectedCategoryId || undefined,
+              selectedCategoryIds.length > 0 ? selectedCategoryIds[0] : undefined,
               foodItemsPagination.paginationParams
             );
             const serverItems: FoodItem[] = foodItemsPagination.extractData(serverItemsResponse) as FoodItem[];
@@ -229,8 +230,11 @@ export function FoodItemsGrid({
       .equals(tenantId)
       .filter((item) => item.isActive && !item.deletedAt);
 
-    if (selectedCategoryId) {
-      itemsQuery = itemsQuery.filter((item) => item.categoryId === selectedCategoryId);
+    if (selectedCategoryIds.length > 0) {
+      itemsQuery = itemsQuery.filter((item) => {
+        if (!item.categoryId) return false;
+        return selectedCategoryIds.includes(item.categoryId);
+      });
     }
 
     const items = await itemsQuery.toArray();
@@ -388,7 +392,7 @@ export function FoodItemsGrid({
           {/* Item Type Selector */}
           <SegmentedControl
             value={itemType}
-            onChange={(value) => {
+            onChange={(value: string) => {
               const newItemType = value as 'food-items' | 'buffets' | 'combo-meals';
               setItemType(newItemType);
               // Reset pagination for the selected type
@@ -428,11 +432,11 @@ export function FoodItemsGrid({
             <ScrollArea>
               <Group gap="xs">
                 <Button
-                  variant={selectedCategoryId === null ? 'filled' : 'light'}
+                  variant={selectedCategoryIds.length === 0 ? 'filled' : 'light'}
                   size="sm"
-                  onClick={() => onCategoryChange(null)}
+                  onClick={() => onCategoryChange([])}
                   style={{
-                    backgroundColor: selectedCategoryId === null ? primaryShade : undefined,
+                    backgroundColor: selectedCategoryIds.length === 0 ? primaryShade : undefined,
                   }}
                 >
                   {t('pos.allCategories', language)}
@@ -440,11 +444,17 @@ export function FoodItemsGrid({
                 {categories.map((category) => (
                   <Button
                     key={category.id}
-                    variant={selectedCategoryId === category.id ? 'filled' : 'light'}
+                    variant={selectedCategoryIds.includes(category.id) ? 'filled' : 'light'}
                     size="sm"
-                    onClick={() => onCategoryChange(category.id)}
+                    onClick={() => {
+                      if (selectedCategoryIds.includes(category.id)) {
+                        onCategoryChange(selectedCategoryIds.filter(id => id !== category.id));
+                      } else {
+                        onCategoryChange([...selectedCategoryIds, category.id]);
+                      }
+                    }}
                     style={{
-                      backgroundColor: selectedCategoryId === category.id ? primaryShade : undefined,
+                      backgroundColor: selectedCategoryIds.includes(category.id) ? primaryShade : undefined,
                     }}
                   >
                     {category.name}
@@ -624,7 +634,6 @@ export function FoodItemsGrid({
             />
           )}
         </Box>
-      </ScrollArea>
 
       {/* Item Selection Modal - Only for food items */}
       {selectedItem && 'stockType' in selectedItem && !('pricePerPerson' in selectedItem) && (
@@ -647,12 +656,12 @@ export function FoodItemsGrid({
             setModalOpened(false);
             setSelectedItem(null);
           }}
-          title={selectedItem.name}
+          title={selectedItem?.name || ''}
           size="md"
         >
           <Stack gap="md">
-            {selectedItem.description && <Text size="sm">{selectedItem.description}</Text>}
-            {('pricePerPerson' in selectedItem && !('stockType' in selectedItem)) && (
+            {selectedItem?.description && <Text size="sm">{selectedItem.description}</Text>}
+            {selectedItem && ('pricePerPerson' in selectedItem && !('stockType' in selectedItem)) && (
               <Stack gap="xs">
                 <Text size="sm" fw={500}>{t('menu.buffetDetails', language)}</Text>
                 <Text size="xs">{t('menu.pricePerPerson', language)}: {(selectedItem as Buffet).pricePerPerson.toFixed(2)} {currency}</Text>
@@ -677,6 +686,8 @@ export function FoodItemsGrid({
               <Button
                 style={{ backgroundColor: primaryColor }}
                 onClick={() => {
+                  if (!selectedItem) return;
+                  
                   let quantity = 1;
                   if ('pricePerPerson' in selectedItem) {
                     const personsInput = document.getElementById('buffet-persons') as HTMLInputElement;

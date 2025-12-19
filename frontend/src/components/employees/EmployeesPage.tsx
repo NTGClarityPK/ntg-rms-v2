@@ -622,14 +622,7 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
 
   return (
     <Stack gap="md">
-      <Group justify="space-between" mb="xl">
-        <Title order={2}>{t('employees.title', language)}</Title>
-        <PermissionGuard resource="employees" action="create">
-          <Button leftSection={<IconPlus size={16} />} onClick={() => handleOpenModal()}>
-            {t('employees.addEmployee', language)}
-          </Button>
-        </PermissionGuard>
-      </Group>
+      
 
       {error && (
         <Alert icon={<IconAlertCircle size={16} />} color={errorColor} mb="md">
@@ -726,7 +719,7 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
                             // Display multiple roles if available
                             if (employee.roles && Array.isArray(employee.roles) && employee.roles.length > 0) {
                               return employee.roles.map((role) => (
-                                <Badge color={getBadgeColorForText(getRoleLabel(employee.role))} variant="light">
+                                <Badge key={role.id} color={getBadgeColorForText(getRoleLabel(employee.role))} variant="light">
                         {getRoleLabel(employee.role)}
                       </Badge>
                               ));

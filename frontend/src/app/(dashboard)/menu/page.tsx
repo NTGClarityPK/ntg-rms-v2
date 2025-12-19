@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Tabs } from '@mantine/core';
+import { Tabs, Title } from '@mantine/core';
 import { IconCategory, IconToolsKitchen2, IconPlus, IconMenu2, IconChefHat, IconShoppingBag } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
@@ -72,6 +72,8 @@ export default function MenuPage() {
       <Tabs.Panel value="combo-meals" pt="md">
         <ComboMealPage />
       </Tabs.Panel>
-    </Tabs>
+        </Tabs>
+      </div>
+    </>
   );
 }
