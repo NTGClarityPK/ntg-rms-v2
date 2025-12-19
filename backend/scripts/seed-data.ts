@@ -1539,7 +1539,7 @@ async function seedOrders(
         customer_id: customerId,
         cashier_id: seedData.cashierId,
         order_number: orderNumber,
-        token_number: `T${String(i + 1).padStart(3, '0')}`,
+        token_number: `${String(i + 1).padStart(4, '0')}`,
         order_type: orderType,
         status,
         payment_status: paymentStatus,

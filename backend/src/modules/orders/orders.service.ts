@@ -91,7 +91,7 @@ export class OrdersService {
       .is('deleted_at', null)
       .not('token_number', 'is', null);
 
-    const tokenNum = ((count || 0) + 1).toString().padStart(3, '0');
+    const tokenNum = ((count || 0) + 1).toString().padStart(4, '0');
     return tokenNum;
   }
 
