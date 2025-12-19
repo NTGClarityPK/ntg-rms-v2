@@ -183,8 +183,8 @@ export default function KitchenDisplayPage() {
         ? allOrdersResponse.data 
         : allOrdersResponse;
       
-      // Sort by order date (newest first)
-      allOrders.sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime());
+      // Sort by order date (oldest first)
+      allOrders.sort((a, b) => new Date(a.orderDate).getTime() - new Date(b.orderDate).getTime());
       
       // Only update if data actually changed (to prevent unnecessary re-renders)
       setOrders((prevOrders) => {
