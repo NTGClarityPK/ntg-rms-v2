@@ -48,6 +48,7 @@ import {
   AssignDeliveryDto,
 } from '@/lib/api/delivery';
 import { restaurantApi } from '@/lib/api/restaurant';
+import { customersApi, Customer } from '@/lib/api/customers';
 import { notifications } from '@mantine/notifications';
 import { useDisclosure } from '@mantine/hooks';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
@@ -80,8 +81,11 @@ export default function DeliveryPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
   const [selectedDeliveryPerson, setSelectedDeliveryPerson] = useState<string | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null);
   const [branches, setBranches] = useState<{ value: string; label: string }[]>([]);
   const [personnel, setPersonnel] = useState<DeliveryPersonnel[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [selectedDelivery, setSelectedDelivery] = useState<DeliveryOrder | null>(null);
   const [assignModalOpened, { open: openAssignModal, close: closeAssignModal }] = useDisclosure(false);
   const [detailsModalOpened, { open: openDetailsModal, close: closeDetailsModal }] = useDisclosure(false);
@@ -111,6 +115,19 @@ export default function DeliveryPage() {
       console.error('Failed to load delivery personnel:', error);
     }
   }, [selectedBranch]);
+
+  const loadCustomers = useCallback(async () => {
+    setLoadingCustomers(true);
+    try {
+      const response = await customersApi.getCustomers();
+      const customerData = Array.isArray(response) ? response : response.data || [];
+      setCustomers(customerData);
+    } catch (error) {
+      console.error('Failed to load customers:', error);
+    } finally {
+      setLoadingCustomers(false);
+    }
+  }, []);
 
   const loadDeliveries = useCallback(async (silent = false) => {
     if (!silent) {
@@ -151,6 +168,10 @@ export default function DeliveryPage() {
   useEffect(() => {
     loadPersonnel();
   }, [loadPersonnel]);
+
+  useEffect(() => {
+    loadCustomers();
+  }, [loadCustomers]);
 
   useEffect(() => {
     loadDeliveries();
@@ -242,6 +263,28 @@ export default function DeliveryPage() {
       return false;
     }
 
+    // Apply customer filter
+    if (selectedCustomer) {
+      if (selectedCustomer === 'walkIN') {
+        // Walk-in customers: have delivery address/notes but no customerId
+        const hasAddress = delivery.customerAddress || delivery.notes;
+        if (delivery.order?.customerId || delivery.order?.customer || !hasAddress) {
+          return false;
+        }
+      } else if (selectedCustomer === 'others') {
+        // Others: no customer and no delivery address (or other edge cases)
+        const hasAddress = delivery.customerAddress || delivery.notes;
+        if (delivery.order?.customerId || delivery.order?.customer || hasAddress) {
+          return false;
+        }
+      } else {
+        // Specific customer: must match customerId
+        if (delivery.order?.customerId !== selectedCustomer) {
+          return false;
+        }
+      }
+    }
+
     // Apply search filter
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
@@ -277,7 +320,7 @@ export default function DeliveryPage() {
         {/* Filters */}
         <Paper p="md" withBorder>
           <Grid>
-            <Grid.Col span={{ base: 12, sm: 4 }}>
+            <Grid.Col span={{ base: 12, sm: 3 }}>
               <TextInput
                 placeholder={t('common.search' as any, language)}
                 leftSection={<IconSearch size={16} />}
@@ -285,7 +328,7 @@ export default function DeliveryPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </Grid.Col>
-            <Grid.Col span={{ base: 12, sm: 4 }}>
+            <Grid.Col span={{ base: 12, sm: 3 }}>
               <Select
                 placeholder={t('delivery.filterByBranch' as any, language) || 'Filter by Branch'}
                 data={branches}
@@ -294,7 +337,7 @@ export default function DeliveryPage() {
                 clearable
               />
             </Grid.Col>
-            <Grid.Col span={{ base: 12, sm: 4 }}>
+            <Grid.Col span={{ base: 12, sm: 3 }}>
               <Select
                 placeholder={t('delivery.filterByPersonnel' as any, language) || 'Filter by Personnel'}
                 data={personnel.map((p) => ({
@@ -304,6 +347,28 @@ export default function DeliveryPage() {
                 value={selectedDeliveryPerson}
                 onChange={setSelectedDeliveryPerson}
                 clearable
+              />
+            </Grid.Col>
+            <Grid.Col span={{ base: 12, sm: 3 }}>
+              <Select
+                placeholder={
+                  loadingCustomers
+                    ? (t('common.loading' as any, language) || 'Loading...')
+                    : (t('delivery.filterByCustomer' as any, language) || 'Filter by Customer')
+                }
+                data={[
+                  { value: 'walkIN', label: t('pos.walkInCustomer', language) || 'Walk-in Customer' },
+                  ...customers.map((c) => ({
+                    value: c.id,
+                    label: c.name,
+                  })),
+                ]}
+                value={selectedCustomer}
+                onChange={setSelectedCustomer}
+                clearable
+                searchable
+                nothingFoundMessage={t('common.noResults' as any, language) || 'No customers found'}
+                disabled={loadingCustomers}
               />
             </Grid.Col>
           </Grid>
