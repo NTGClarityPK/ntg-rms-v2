@@ -17,6 +17,8 @@ import { TaxesModule } from './modules/taxes/taxes.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { DatabaseModule } from './database/database.module';
+import { HealthController } from './health/health.controller';
+
 
 @Module({
   imports: [
@@ -92,6 +94,7 @@ import { DatabaseModule } from './database/database.module';
     DashboardModule,
     RolesModule,
   ],
+  controllers: [HealthController],
 })
 export class AppModule {}
 
