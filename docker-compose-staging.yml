@@ -41,7 +41,7 @@ services:
     networks:
       - rms-network-staging
     ports:
-      - "8001:4000"
+      - "8001:8001"
     command: ["node", "dist/src/main.js"]
     restart: unless-stopped
 
