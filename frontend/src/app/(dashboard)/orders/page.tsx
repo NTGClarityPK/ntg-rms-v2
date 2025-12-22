@@ -25,6 +25,7 @@ import {
   IconDotsVertical,
   IconRefresh,
   IconChefHat,
+  IconCheck,
 } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
@@ -467,6 +468,27 @@ export default function OrdersPage() {
     closeDetailsModal();
   };
 
+  const handleMarkAsPaid = async (order: Order) => {
+    try {
+      await ordersApi.updatePaymentStatus(order.id, {
+        paymentStatus: 'paid',
+        amountPaid: order.totalAmount,
+      });
+      notifications.show({
+        title: t('common.success' as any, language),
+        message: t('orders.paymentStatusUpdated', language),
+        color: getSuccessColor(),
+      });
+      loadOrders();
+    } catch (error: any) {
+      notifications.show({
+        title: t('common.error' as any, language),
+        message: error?.response?.data?.message || t('orders.updateError', language),
+        color: getErrorColor(),
+      });
+    }
+  };
+
   const getStatusColorForBadge = (status: OrderStatus): string => {
     return getStatusColor(status);
   };
@@ -692,21 +714,42 @@ export default function OrdersPage() {
                           </Text>
                         </Group>
                       </Stack>
-                      <Menu>
-                        <Menu.Target>
-                          <ActionIcon variant="subtle">
-                            <IconDotsVertical size={16} />
-                          </ActionIcon>
-                        </Menu.Target>
-                        <Menu.Dropdown>
-                          <Menu.Item
-                            leftSection={<IconEye size={16} />}
-                            onClick={() => handleViewOrder(order)}
+                      <Group gap="xs">
+                        {order.paymentStatus === 'unpaid' && (
+                          <Button
+                            size="sm"
+                            variant="light"
+                            color={getSuccessColor()}
+                            leftSection={<IconCheck size={16} />}
+                            onClick={() => handleMarkAsPaid(order)}
                           >
-                            {t('common.view' as any, language)}
-                          </Menu.Item>
-                        </Menu.Dropdown>
-                      </Menu>
+                            {t('orders.markAsPaid', language)}
+                          </Button>
+                        )}
+                        <Menu>
+                          <Menu.Target>
+                            <ActionIcon variant="subtle">
+                              <IconDotsVertical size={16} />
+                            </ActionIcon>
+                          </Menu.Target>
+                          <Menu.Dropdown>
+                            <Menu.Item
+                              leftSection={<IconEye size={16} />}
+                              onClick={() => handleViewOrder(order)}
+                            >
+                              {t('common.view' as any, language)}
+                            </Menu.Item>
+                            {order.paymentStatus === 'unpaid' && (
+                              <Menu.Item
+                                leftSection={<IconCheck size={16} />}
+                                onClick={() => handleMarkAsPaid(order)}
+                              >
+                                {t('orders.markAsPaid', language)}
+                              </Menu.Item>
+                            )}
+                          </Menu.Dropdown>
+                        </Menu>
+                      </Group>
                     </Group>
                   </Card>
                 ))}
