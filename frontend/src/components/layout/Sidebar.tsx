@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  NavLink,
   Stack,
   Text,
   Divider,
@@ -9,6 +8,7 @@ import {
   ActionIcon,
   Tooltip,
   Box,
+  Button,
 } from '@mantine/core';
 import {
   IconDashboard,
@@ -30,9 +30,10 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { useMantineTheme } from '@mantine/core';
 import { t } from '@/lib/utils/translations';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { usePermissions } from '@/lib/hooks/use-permissions';
+import type { ThemeConfig } from '@/lib/theme/themeConfig';
 
 const navItems = [
   { href: '/dashboard', icon: IconDashboard, key: 'dashboard', permission: null }, // Dashboard always visible
@@ -49,7 +50,6 @@ const navItems = [
 ] as const;
 
 type NavItemKey = typeof navItems[number]['key'];
-type NavigationKey = `navigation.${NavItemKey}`;
 
 interface SidebarProps {
   onMobileClose?: () => void;
@@ -60,9 +60,8 @@ interface SidebarProps {
 export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: SidebarProps = {}) {
   const { language } = useLanguageStore();
   const pathname = usePathname();
-  const router = useRouter();
   const theme = useMantineTheme();
-  const primary = useThemeColor();
+  const themeConfig = (theme.other as any) as ThemeConfig | undefined;
   const { hasPermission } = usePermissions();
 
   // Filter items based on permissions
@@ -109,46 +108,92 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
     return pathname === href || pathname?.startsWith(href + '/');
   };
 
+  const navbarConfig = themeConfig?.components?.navbar || {};
+
   const renderNavItems = (items: Array<typeof navItems[number]>) => {
     return items.map((item) => {
       const label = t(`navigation.${item.key}` as any, language);
-      const navLink = (
-        <NavLink
-          key={item.href}
+      const active = isActive(item.href);
+      const Icon = item.icon;
+
+      const buttonContent = (
+        <Button
           component={Link}
           href={item.href}
-          label={collapsed ? undefined : label}
-          leftSection={<item.icon size={20} />}
-          active={isActive(item.href)}
+          variant="subtle"
+          size="md"
+          fullWidth={!collapsed}
+          leftSection={collapsed ? undefined : <Icon size={24} />}
           onClick={() => {
             onMobileClose?.();
           }}
+          className="nav-item-button"
+          data-active={active}
+          data-collapsed={collapsed}
           style={{
             justifyContent: collapsed ? 'center' : 'flex-start',
-            padding: collapsed ? '0.5rem' : undefined,
+            padding: collapsed ? '0.75rem' : '0.5rem 1rem',
+            height: 'auto',
+            minHeight: '2.5rem',
+            backgroundColor: active 
+              ? navbarConfig.activeBackground 
+              : 'transparent',
+            color: active 
+              ? navbarConfig.activeTextColor 
+              : navbarConfig.textColor,
           }}
-        />
+          styles={{
+            root: {
+              '&:hover': {
+                backgroundColor: navbarConfig.hoverBackground,
+                color: navbarConfig.hoverTextColor,
+              },
+            },
+            leftSection: {
+              marginRight: collapsed ? 0 : '0.75rem',
+            },
+          }}
+        >
+          {collapsed ? (
+            <Icon size={24} />
+          ) : (
+            <Text size="sm" fw={active ? 600 : 400}>
+              {label}
+            </Text>
+          )}
+        </Button>
       );
 
       if (collapsed) {
         return (
           <Tooltip key={item.href} label={label} position="right" withArrow>
-            {navLink}
+            <Box style={{ display: 'flex', justifyContent: 'center' }}>
+              {buttonContent}
+            </Box>
           </Tooltip>
         );
       }
 
-      return navLink;
+      return <Box key={item.href}>{buttonContent}</Box>;
     });
   };
 
+  const isRTL = language === 'ar';
+
   return (
-    <Stack h="100%" justify="space-between">
+    <Stack h="100%" justify="space-between" gap={0}>
       <ScrollArea h="100%" style={{ flex: 1 }}>
         <Stack gap="xs" p={collapsed ? "xs" : "md"}>
           {/* Main Navigation */}
           {!collapsed && (
-            <Text size="xs" tt="uppercase" fw={700} c="dimmed" mb="xs">
+            <Text 
+              size="xs" 
+              tt="uppercase" 
+              fw={700} 
+              c="dimmed" 
+              mb="xs"
+              style={{ color: navbarConfig.textColor }}
+            >
               {t('dashboard.navigation', language)}
             </Text>
           )}
@@ -159,7 +204,14 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
             <>
               {!collapsed && <Divider my="sm" />}
               {!collapsed && (
-                <Text size="xs" tt="uppercase" fw={700} c="dimmed" mb="xs">
+                <Text 
+                  size="xs" 
+                  tt="uppercase" 
+                  fw={700} 
+                  c="dimmed" 
+                  mb="xs"
+                  style={{ color: navbarConfig.textColor }}
+                >
                   {t('dashboard.management', language)}
                 </Text>
               )}
@@ -170,28 +222,50 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
       </ScrollArea>
 
       {/* Toggle Button */}
-      <Box p={collapsed ? "xs" : "md"} style={{ borderTop: `1px solid ${theme.colors.gray[3]}`, display: collapsed ? 'flex' : 'block', justifyContent: collapsed ? 'center' : 'flex-start' }}>
-        <Tooltip label={collapsed ? (t('navigation.expand', language) || 'Expand') : (t('navigation.collapse', language) || 'Collapse')} position="right" withArrow>
+      <Box 
+        p={collapsed ? "xs" : "md"} 
+        style={{ 
+          borderTop: `1px solid ${navbarConfig.borderColor || 'transparent'}`,
+          display: 'flex',
+          justifyContent: collapsed ? 'center' : 'flex-start',
+        }}
+      >
+        <Tooltip 
+          label={collapsed 
+            ? (t('navigation.expand', language) || 'Expand') 
+            : (t('navigation.collapse', language) || 'Collapse')} 
+          position="right" 
+          withArrow
+        >
           <ActionIcon
             variant="subtle"
             size="lg"
             onClick={() => onCollapseChange?.(!collapsed)}
-            style={{ width: collapsed ? 'auto' : '100%' }}
+            className="nav-toggle-button"
+            style={{
+              width: collapsed ? 'auto' : '100%',
+              backgroundColor: 'transparent',
+              color: navbarConfig.textColor,
+            }}
+            styles={{
+              root: {
+                '&:hover': {
+                  backgroundColor: navbarConfig.hoverBackground,
+                  color: navbarConfig.hoverTextColor,
+                },
+              },
+            }}
           >
-            {(() => {
-              const isRTL = language === 'ar';
-              if (isRTL) {
-                // RTL: reversed logic
-                return collapsed ? <IconChevronLeft size={20} /> : <IconChevronRight size={20} />;
-              } else {
-                // LTR: normal logic
-                return collapsed ? <IconChevronRight size={20} /> : <IconChevronLeft size={20} />;
-              }
-            })()}
+            {isRTL ? (
+              // RTL: reversed logic
+              collapsed ? <IconChevronLeft size={24} /> : <IconChevronRight size={24} />
+            ) : (
+              // LTR: normal logic
+              collapsed ? <IconChevronRight size={24} /> : <IconChevronLeft size={24} />
+            )}
           </ActionIcon>
         </Tooltip>
       </Box>
     </Stack>
   );
 }
-

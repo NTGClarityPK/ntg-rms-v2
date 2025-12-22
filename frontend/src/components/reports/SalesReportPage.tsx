@@ -32,7 +32,8 @@ import { reportsApi, SalesReport, ReportQueryParams } from '@/lib/api/reports';
 import { ReportFilters } from './ReportFilters';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getThemeColorShade, getSuccessColor, getInfoColor, getWarningColor, getChartColors } from '@/lib/utils/theme';
+import { getThemeColorShade, getSuccessColor, getInfoColor, getWarningColor } from '@/lib/utils/theme';
+import { useChartColors } from '@/lib/hooks/use-chart-colors';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { notifications } from '@mantine/notifications';
@@ -151,7 +152,7 @@ export default function SalesReportPage() {
 
   // Generate chart colors dynamically based on series count
   // For pie charts with 3 series (dine-in, takeaway, delivery)
-  const pieChartColors = getChartColors(3);
+  const pieChartColors = useChartColors(3);
 
   if (loading) {
     return (

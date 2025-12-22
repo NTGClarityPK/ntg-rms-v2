@@ -9,7 +9,8 @@ import { reportsApi, CustomerReport, ReportQueryParams } from '@/lib/api/reports
 import { ReportFilters } from './ReportFilters';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getThemeColorShade, getSuccessColor, getInfoColor, getWarningColor, getErrorColor, getChartColors } from '@/lib/utils/theme';
+import { getThemeColorShade, getSuccessColor, getInfoColor, getWarningColor, getErrorColor } from '@/lib/utils/theme';
+import { useChartColors } from '@/lib/hooks/use-chart-colors';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { notifications } from '@mantine/notifications';
@@ -92,7 +93,7 @@ export default function CustomersReportPage() {
   const handlePrint = () => window.print();
 
   // Generate chart colors dynamically - pie chart has 4 loyalty tiers
-  const chartColors = getChartColors(4); // regular, silver, gold, platinum
+  const chartColors = useChartColors(4); // regular, silver, gold, platinum
 
   if (loading) return <Stack gap="md"><Skeleton height={200} /><Skeleton height={400} /></Stack>;
   if (!report) return <Paper p="md" withBorder><Text c="dimmed">{t('reports.noData' as any, language) || 'No data available'}</Text></Paper>;

@@ -20,7 +20,7 @@ import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { dashboardApi, DashboardData } from '@/lib/api/dashboard';
 import { useSyncStatus } from '@/lib/hooks/use-sync-status';
 import { notifications } from '@mantine/notifications';
-import { getErrorColor, getBadgeColorForText, getChartColors } from '@/lib/utils/theme';
+import { getErrorColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { IconX } from '@tabler/icons-react';
 
 export default function DashboardPage() {
