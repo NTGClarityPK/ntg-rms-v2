@@ -25,6 +25,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconDiscount,
+  IconBook,
 } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
@@ -42,6 +43,7 @@ const navItems = [
   { href: '/pos', icon: IconShoppingCart, key: 'pos', permission: { resource: 'orders', action: 'create' } },
   { href: '/orders', icon: IconClipboardList, key: 'orders', permission: { resource: 'orders', action: 'view' } },
   { href: '/inventory', icon: IconPackage, key: 'inventory', permission: { resource: 'inventory', action: 'view' } },
+  { href: '/recipes', icon: IconBook, key: 'recipes', permission: { resource: 'inventory', action: 'view' } },
   { href: '/employees', icon: IconUsers, key: 'employees', permission: { resource: 'employees', action: 'view' } },
   { href: '/customers', icon: IconUser, key: 'customers', permission: { resource: 'customers', action: 'view' } },
   { href: '/delivery', icon: IconTruck, key: 'delivery', permission: { resource: 'deliveries', action: 'view' } },
@@ -99,6 +101,7 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
       item.href === '/restaurant' ||
       item.href === '/customers' ||
       item.href === '/inventory' ||
+      item.href === '/recipes' ||
       item.href === '/employees' ||
       item.href === '/coupons' ||
       item.href === '/reports' ||

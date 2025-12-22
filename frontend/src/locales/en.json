@@ -137,6 +137,7 @@
     "pos": "POS",
     "orders": "Orders",
     "inventory": "Inventory",
+    "recipes": "Recipes",
     "employees": "Employees",
     "customers": "Customers",
     "delivery": "Delivery",
