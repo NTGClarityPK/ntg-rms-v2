@@ -52,7 +52,7 @@ import { customersApi, Customer } from '@/lib/api/customers';
 import { notifications } from '@mantine/notifications';
 import { useDisclosure } from '@mantine/hooks';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getStatusColor, getSuccessColor, getErrorColor, getInfoColor } from '@/lib/utils/theme';
+import { getStatusColor, getSuccessColor, getErrorColor, getInfoColor, getWarningColor } from '@/lib/utils/theme';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
@@ -63,6 +63,7 @@ import { useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
+import { syncService } from '@/lib/sync/sync-service';
 
 dayjs.extend(relativeTime);
 
@@ -191,6 +192,41 @@ export default function DeliveryPage() {
       return;
     }
 
+    // Helper to check if error is a network/offline error
+    const isNetworkError = (error: any): boolean => {
+      if (!error) return false;
+      // Check for network errors
+      if (error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED') return true;
+      if (error.message?.includes('Network Error') || error.message?.includes('Failed to fetch')) return true;
+      // Check if request failed due to no internet
+      if (!error.response && error.request) return true;
+      return false;
+    };
+
+    // Find selected personnel details for optimistic update
+    const selectedPersonnel = personnel.find(p => p.id === selectedPersonnelId);
+
+    // Optimistic update: update delivery in list immediately
+    const previousDeliveries = deliveries;
+    setDeliveries(prevDeliveries =>
+      prevDeliveries.map(delivery =>
+        delivery.id === selectedDelivery.id
+          ? {
+              ...delivery,
+              deliveryPersonId: selectedPersonnelId,
+              deliveryPerson: selectedPersonnel ? {
+                id: selectedPersonnel.id,
+                name: selectedPersonnel.name,
+                phone: selectedPersonnel.phone,
+                email: selectedPersonnel.email,
+              } : undefined,
+              status: 'assigned' as DeliveryStatus,
+              estimatedDeliveryTime: estimatedTime ? estimatedTime.toISOString() : delivery.estimatedDeliveryTime,
+            }
+          : delivery
+      )
+    );
+
     setAssigningDelivery(true);
     try {
       const assignDto: AssignDeliveryDto = {
@@ -199,44 +235,200 @@ export default function DeliveryPage() {
         estimatedDeliveryTime: estimatedTime ? estimatedTime.toISOString() : undefined,
       };
 
-      await deliveryApi.assignDelivery(assignDto);
-      notifications.show({
-        title: t('common.success' as any, language),
-        message: t('delivery.assignedSuccess' as any, language) || 'Delivery assigned successfully',
-        color: getSuccessColor(),
-        icon: <IconCheck size={16} />,
-      });
-      closeAssignModal();
-      setSelectedPersonnelId('');
-      setEstimatedTime(null);
-      loadDeliveries();
+      if (!navigator.onLine) {
+        // Offline: queue change for sync and keep optimistic UI
+        try {
+          // Use delivery ID if available, otherwise use orderId as recordId
+          const recordId = selectedDelivery.id || selectedDelivery.orderId;
+          await syncService.queueChange('deliveries', 'UPDATE', recordId, assignDto);
+
+          notifications.show({
+            title: t('delivery.offlineAssignmentQueuedTitle' as any, language) || 'Assignment queued while offline',
+            message: t('delivery.offlineAssignmentQueuedMessage' as any, language) || 'Delivery assignment will sync when you are back online.',
+            color: getWarningColor(),
+          });
+          closeAssignModal();
+          setSelectedPersonnelId('');
+          setEstimatedTime(null);
+        } catch (queueError: any) {
+          // Only revert if queueing itself fails (very rare - IndexedDB error)
+          console.error('Failed to queue offline assignment:', queueError);
+          setDeliveries(previousDeliveries);
+          notifications.show({
+            title: t('common.error' as any, language),
+            message: t('delivery.queueError' as any, language) || 'Failed to queue assignment. Please try again.',
+            color: getErrorColor(),
+          });
+        }
+      } else {
+        // Online: try API call, but catch network errors and treat as offline
+        try {
+          await deliveryApi.assignDelivery(assignDto);
+          notifications.show({
+            title: t('common.success' as any, language),
+            message: t('delivery.assignedSuccess' as any, language) || 'Delivery assigned successfully',
+            color: getSuccessColor(),
+            icon: <IconCheck size={16} />,
+          });
+          closeAssignModal();
+          setSelectedPersonnelId('');
+          setEstimatedTime(null);
+          loadDeliveries();
+        } catch (apiError: any) {
+          // If it's a network error, treat as offline and queue the change
+          if (isNetworkError(apiError)) {
+            console.log('Network error detected, queueing assignment offline:', apiError);
+            try {
+              const recordId = selectedDelivery.id || selectedDelivery.orderId;
+              await syncService.queueChange('deliveries', 'UPDATE', recordId, assignDto);
+
+              notifications.show({
+                title: t('delivery.offlineAssignmentQueuedTitle' as any, language) || 'Assignment queued while offline',
+                message: t('delivery.offlineAssignmentQueuedMessage' as any, language) || 'Delivery assignment will sync when you are back online.',
+                color: getWarningColor(),
+              });
+              closeAssignModal();
+              setSelectedPersonnelId('');
+              setEstimatedTime(null);
+            } catch (queueError: any) {
+              // Only revert if queueing itself fails
+              console.error('Failed to queue offline assignment:', queueError);
+              setDeliveries(previousDeliveries);
+              notifications.show({
+                title: t('common.error' as any, language),
+                message: t('delivery.queueError' as any, language) || 'Failed to queue assignment. Please try again.',
+                color: getErrorColor(),
+              });
+            }
+          } else {
+            // Real API error (400, 500, etc.) - revert UI
+            throw apiError;
+          }
+        }
+      }
     } catch (error: any) {
-      notifications.show({
-        title: t('common.error' as any, language),
-        message: error?.response?.data?.message || t('delivery.assignError' as any, language) || 'Failed to assign delivery',
-        color: getErrorColor(),
-      });
+      // Only revert optimistic update on real API errors (not network errors)
+      if (!isNetworkError(error)) {
+        setDeliveries(previousDeliveries);
+        notifications.show({
+          title: t('common.error' as any, language),
+          message: error?.response?.data?.message || t('delivery.assignError' as any, language) || 'Failed to assign delivery',
+          color: getErrorColor(),
+        });
+      }
+      // Network errors are already handled above and assignment is queued
     } finally {
       setAssigningDelivery(false);
     }
   };
 
   const handleUpdateStatus = async (delivery: DeliveryOrder, newStatus: DeliveryStatus) => {
+    // Helper to check if error is a network/offline error
+    const isNetworkError = (error: any): boolean => {
+      if (!error) return false;
+      // Check for network errors
+      if (error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED') return true;
+      if (error.message?.includes('Network Error') || error.message?.includes('Failed to fetch')) return true;
+      // Check if request failed due to no internet
+      if (!error.response && error.request) return true;
+      return false;
+    };
+
+    // Optimistic update: update delivery status immediately
+    const previousDeliveries = deliveries;
+    setDeliveries(prevDeliveries =>
+      prevDeliveries.map(d =>
+        d.id === delivery.id
+          ? {
+              ...d,
+              status: newStatus,
+              // Set actual delivery time if marking as delivered
+              actualDeliveryTime: newStatus === 'delivered' ? new Date().toISOString() : d.actualDeliveryTime,
+              // Clear delivery person if restoring to pending from cancelled
+              deliveryPersonId: newStatus === 'pending' && d.status === 'cancelled' ? undefined : d.deliveryPersonId,
+              deliveryPerson: newStatus === 'pending' && d.status === 'cancelled' ? undefined : d.deliveryPerson,
+            }
+          : d
+      )
+    );
+
     try {
-      await deliveryApi.updateDeliveryStatus(delivery.id, { status: newStatus });
-      notifications.show({
-        title: t('common.success' as any, language),
-        message: t('delivery.statusUpdated' as any, language) || 'Delivery status updated',
-        color: getSuccessColor(),
-        icon: <IconCheck size={16} />,
-      });
-      loadDeliveries();
+      if (!navigator.onLine) {
+        // Offline: queue status update for sync and keep optimistic UI
+        try {
+          await syncService.queueChange('deliveries', 'UPDATE', delivery.id, {
+            deliveryId: delivery.id,
+            status: newStatus,
+          });
+
+          notifications.show({
+            title: t('delivery.offlineStatusQueuedTitle' as any, language) || 'Status update queued while offline',
+            message: t('delivery.offlineStatusQueuedMessage' as any, language) || 'Delivery status will sync when you are back online.',
+            color: getWarningColor(),
+          });
+        } catch (queueError: any) {
+          // Only revert if queueing itself fails (very rare - IndexedDB error)
+          console.error('Failed to queue offline status update:', queueError);
+          setDeliveries(previousDeliveries);
+          notifications.show({
+            title: t('common.error' as any, language),
+            message: t('delivery.queueError' as any, language) || 'Failed to queue status update. Please try again.',
+            color: getErrorColor(),
+          });
+        }
+      } else {
+        // Online: try API call, but catch network errors and treat as offline
+        try {
+          await deliveryApi.updateDeliveryStatus(delivery.id, { status: newStatus });
+          notifications.show({
+            title: t('common.success' as any, language),
+            message: t('delivery.statusUpdated' as any, language) || 'Delivery status updated',
+            color: getSuccessColor(),
+            icon: <IconCheck size={16} />,
+          });
+          loadDeliveries();
+        } catch (apiError: any) {
+          // If it's a network error, treat as offline and queue the change
+          if (isNetworkError(apiError)) {
+            console.log('Network error detected, queueing status update offline:', apiError);
+            try {
+              await syncService.queueChange('deliveries', 'UPDATE', delivery.id, {
+                deliveryId: delivery.id,
+                status: newStatus,
+              });
+
+              notifications.show({
+                title: t('delivery.offlineStatusQueuedTitle' as any, language) || 'Status update queued while offline',
+                message: t('delivery.offlineStatusQueuedMessage' as any, language) || 'Delivery status will sync when you are back online.',
+                color: getWarningColor(),
+              });
+            } catch (queueError: any) {
+              // Only revert if queueing itself fails
+              console.error('Failed to queue offline status update:', queueError);
+              setDeliveries(previousDeliveries);
+              notifications.show({
+                title: t('common.error' as any, language),
+                message: t('delivery.queueError' as any, language) || 'Failed to queue status update. Please try again.',
+                color: getErrorColor(),
+              });
+            }
+          } else {
+            // Real API error (400, 500, etc.) - revert UI
+            throw apiError;
+          }
+        }
+      }
     } catch (error: any) {
-      notifications.show({
-        title: t('common.error' as any, language),
-        message: error?.response?.data?.message || t('delivery.updateError' as any, language) || 'Failed to update status',
-        color: getErrorColor(),
-      });
+      // Only revert optimistic update on real API errors (not network errors)
+      if (!isNetworkError(error)) {
+        setDeliveries(previousDeliveries);
+        notifications.show({
+          title: t('common.error' as any, language),
+          message: error?.response?.data?.message || t('delivery.updateError' as any, language) || 'Failed to update status',
+          color: getErrorColor(),
+        });
+      }
+      // Network errors are already handled above and status update is queued
     }
   };
 
