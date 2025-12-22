@@ -4,6 +4,7 @@ import { PushSyncDto } from './dto/push-sync.dto';
 import { OrdersService } from '../orders/orders.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { RestaurantService } from '../restaurant/restaurant.service';
+import { DeliveryService } from '../delivery/delivery.service';
 import { CreateIngredientDto } from '../inventory/dto/create-ingredient.dto';
 import { UpdateIngredientDto } from '../inventory/dto/update-ingredient.dto';
 import { AddStockDto } from '../inventory/dto/add-stock.dto';
@@ -19,6 +20,7 @@ export class SyncService {
     private ordersService: OrdersService,
     private inventoryService: InventoryService,
     private restaurantService: RestaurantService,
+    private deliveryService: DeliveryService,
   ) {}
 
   async pushSync(pushDto: PushSyncDto, tenantId: string, userId: string) {
@@ -28,6 +30,8 @@ export class SyncService {
     // Group changes by table and action
     const ordersToCreate: any[] = [];
     const orderItemsByOrderId: Record<string, any[]> = {};
+    const orderItemsToUpdate: any[] = [];
+    const deliveriesToAssign: any[] = [];
 
     // Group inventory changes
     const ingredientsToCreate: any[] = [];
@@ -50,6 +54,12 @@ export class SyncService {
             orderItemsByOrderId[orderId] = [];
           }
           orderItemsByOrderId[orderId].push(change.data);
+        } else if (change.table === 'orderItems' && change.action === 'UPDATE') {
+          // Queue order item status updates (used by kitchen display when offline)
+          orderItemsToUpdate.push(change);
+        } else if (change.table === 'deliveries' && (change.action === 'UPDATE' || change.action === 'CREATE')) {
+          // Queue delivery assignments (used by delivery page when offline)
+          deliveriesToAssign.push(change);
         } else if (change.table === 'ingredients') {
           if (change.action === 'CREATE') {
             ingredientsToCreate.push({ id: change.recordId, data: change.data });
@@ -240,6 +250,91 @@ export class SyncService {
             error: `Parent order failed: ${errorMessage}`,
           });
         }
+      }
+    }
+
+    // Process order item updates (e.g., kitchen display status changes)
+    for (const change of orderItemsToUpdate) {
+      try {
+        const orderId = change.data?.orderId;
+        const itemId = change.recordId || change.data?.id;
+        const status = change.data?.status;
+
+        if (!orderId || !itemId || !status) {
+          throw new Error('Missing orderId, itemId, or status for orderItems UPDATE');
+        }
+
+        await this.ordersService.updateOrderItemStatus(
+          tenantId,
+          orderId,
+          itemId,
+          { status },
+        );
+
+        results.push({
+          table: 'orderItems',
+          recordId: itemId,
+          status: 'SUCCESS',
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        errors.push({
+          table: 'orderItems',
+          recordId: change.recordId || change.data?.id,
+          error: errorMessage,
+        });
+      }
+    }
+
+    // Process delivery assignments and status updates (e.g., assigning personnel or updating status when offline)
+    for (const change of deliveriesToAssign) {
+      try {
+        const orderId = change.data?.orderId;
+        const deliveryId = change.data?.deliveryId || change.recordId;
+        const deliveryPersonId = change.data?.deliveryPersonId;
+        const status = change.data?.status;
+        const estimatedDeliveryTime = change.data?.estimatedDeliveryTime;
+
+        // Check if this is a status update (has status but no deliveryPersonId) or an assignment (has deliveryPersonId)
+        if (status && deliveryId) {
+          // This is a status update
+          await this.deliveryService.updateDeliveryStatus(
+            tenantId,
+            userId,
+            deliveryId,
+            { status },
+          );
+
+          results.push({
+            table: 'deliveries',
+            recordId: deliveryId,
+            status: 'SUCCESS',
+          });
+        } else if (orderId && deliveryPersonId) {
+          // This is an assignment
+          const assignDto = {
+            orderId,
+            deliveryPersonId,
+            estimatedDeliveryTime,
+          };
+
+          await this.deliveryService.assignDelivery(tenantId, userId, assignDto);
+
+          results.push({
+            table: 'deliveries',
+            recordId: change.recordId || orderId,
+            status: 'SUCCESS',
+          });
+        } else {
+          throw new Error('Missing required fields: either (deliveryId + status) for status update or (orderId + deliveryPersonId) for assignment');
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        errors.push({
+          table: 'deliveries',
+          recordId: change.recordId || change.data?.deliveryId || change.data?.orderId,
+          error: errorMessage,
+        });
       }
     }
 
