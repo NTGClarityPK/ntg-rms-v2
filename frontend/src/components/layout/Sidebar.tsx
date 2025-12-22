@@ -24,6 +24,7 @@ import {
   IconSettings,
   IconChevronLeft,
   IconChevronRight,
+  IconDiscount,
 } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
@@ -44,6 +45,7 @@ const navItems = [
   { href: '/employees', icon: IconUsers, key: 'employees', permission: { resource: 'employees', action: 'view' } },
   { href: '/customers', icon: IconUser, key: 'customers', permission: { resource: 'customers', action: 'view' } },
   { href: '/delivery', icon: IconTruck, key: 'delivery', permission: { resource: 'deliveries', action: 'view' } },
+  { href: '/coupons', icon: IconDiscount, key: 'coupons', permission: { resource: 'coupons', action: 'view' } },
   { href: '/reports', icon: IconChartBar, key: 'reports', permission: { resource: 'reports', action: 'view' } },
   { href: '/settings', icon: IconSettings, key: 'settings', permission: { resource: 'settings', action: 'view' } },
 ] as const;
@@ -98,6 +100,7 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
       item.href === '/customers' ||
       item.href === '/inventory' ||
       item.href === '/employees' ||
+      item.href === '/coupons' ||
       item.href === '/reports' ||
       item.href === '/settings'
   );

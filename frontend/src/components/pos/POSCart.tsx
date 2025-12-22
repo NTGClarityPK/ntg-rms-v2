@@ -687,7 +687,13 @@ export function POSCart({
         });
       }
     } catch (error: any) {
-      const errorMessage = error.response?.data?.message || error.message || t('pos.invalidCoupon', language);
+      // Extract error message from nested error structure
+      const errorMessage = 
+        error.response?.data?.error?.message || 
+        error.response?.data?.message || 
+        error.message || 
+        t('pos.invalidCoupon', language);
+      
       notifications.show({
         title: t('pos.invalidCoupon', language),
         message: errorMessage,
