@@ -443,36 +443,27 @@ export function ItemSelectionModal({
                     </Group>
 
                     {isSingle ? (
-                      <Radio.Group
-                        value={selected[0] || ''}
-                        onChange={(value) => {
-                          setSelectedAddOns((prev) => ({
-                            ...prev,
-                            [group.id]: value ? [value] : [],
-                          }));
-                        }}
-                      >
-                        <Stack gap="xs">
-                          {group.addOns?.map((addOn: any) => (
-                            <Radio
-                              key={addOn.id}
-                              value={addOn.id}
-                              label={
-                                <Group justify="space-between" style={{ flex: 1 }}>
-                                  <Text>
-                                    {addOn.name}
+                      <Stack gap="xs">
+                        {group.addOns?.map((addOn: any) => (
+                          <Checkbox
+                            key={addOn.id}
+                            checked={selected.includes(addOn.id)}
+                            onChange={(e) => handleAddOnChange(group.id, addOn.id, e.currentTarget.checked)}
+                            label={
+                              <Group justify="space-between" style={{ flex: 1 }}>
+                                <Text>
+                                  {addOn.name}
+                                </Text>
+                                {addOn.price > 0 && (
+                                  <Text fw={500} c={primaryColor}>
+                                    +{formatCurrency(addOn.price, currency)}
                                   </Text>
-                                  {addOn.price > 0 && (
-                                    <Text fw={500} c={primaryColor}>
-                                      +{formatCurrency(addOn.price, currency)}
-                                    </Text>
-                                  )}
-                                </Group>
-                              }
-                            />
-                          ))}
-                        </Stack>
-                      </Radio.Group>
+                                )}
+                              </Group>
+                            }
+                          />
+                        ))}
+                      </Stack>
                     ) : (
                       <Stack gap="xs">
                         {group.addOns?.map((addOn: any) => (
@@ -497,10 +488,10 @@ export function ItemSelectionModal({
                       </Stack>
                     )}
 
-                    {group.minSelections && (
+                    {(group.minSelections != null && group.minSelections > 0) && (
                       <Text size="xs" c="dimmed">
                         {t('menu.minSelections', language)}: {group.minSelections}
-                        {group.maxSelections && ` - ${t('menu.maxSelections', language)}: ${group.maxSelections}`}
+                        {group.maxSelections != null && group.maxSelections > 0 && ` - ${t('menu.maxSelections', language)}: ${group.maxSelections}`}
                       </Text>
                     )}
                   </Stack>
