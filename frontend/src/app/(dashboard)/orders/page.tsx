@@ -69,6 +69,7 @@ export default function OrdersPage() {
   const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
   const [selectedOrderType, setSelectedOrderType] = useState<string | null>(null);
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState<string | null>(null);
+  const [showMyOrdersOnly, setShowMyOrdersOnly] = useState(false);
   const [branches, setBranches] = useState<{ value: string; label: string }[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [detailsModalOpened, { open: openDetailsModal, close: closeDetailsModal }] = useDisclosure(false);
@@ -440,7 +441,12 @@ export default function OrdersPage() {
   }, [loadOrders]);
 
   const filteredOrders = orders.filter((order) => {
-    // First apply status filter (multi-select)
+    // First apply "My Orders" filter
+    if (showMyOrdersOnly && user?.email && order.waiterEmail !== user.email) {
+      return false;
+    }
+
+    // Then apply status filter (multi-select)
     // If no statuses selected, show all orders
     if (selectedStatuses.length > 0 && !selectedStatuses.includes(order.status)) {
       return false;
@@ -624,6 +630,13 @@ export default function OrdersPage() {
                 </Chip>
               </Group>
             </Chip.Group>
+            <Chip
+              checked={showMyOrdersOnly}
+              onChange={(checked) => setShowMyOrdersOnly(checked)}
+              variant="filled"
+            >
+              {t('orders.myOrders', language)}
+            </Chip>
           </Group>
         </Paper>
 
@@ -680,9 +693,14 @@ export default function OrdersPage() {
                               {order.branch.name}
                             </Text>
                           )}
+                          {order.waiterEmail && (
+                            <Text size="sm" c="dimmed">
+                              {t('orders.waiterName', language)}: {order.waiterEmail}
+                            </Text>
+                          )}
                           {((order as any).tables && (order as any).tables.length > 0) || (order.table && order.table.table_number) ? (
                             <Text size="sm" c="dimmed">
-                              {t('pos.tableNo', language)}: {
+                              {t('orders.tableNumber', language)}: {
                                 (order as any).tables && (order as any).tables.length > 0
                                   ? (order as any).tables.map((t: any) => t.table_number).join(', ')
                                   : (order.table?.table_number || '')

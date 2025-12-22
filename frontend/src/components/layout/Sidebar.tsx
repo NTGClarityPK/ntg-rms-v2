@@ -70,17 +70,44 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
   const { hasPermission } = usePermissions();
 
   // Filter items based on permissions
-  // If user has no permissions loaded yet, show all items (fallback for owners/managers)
+  // If user has no permissions loaded yet, show items based on role (fallback)
   const visibleItems = navItems.filter((item) => {
     if (!item.permission) return true; // Dashboard always visible
     
-    // If permissions aren't loaded yet, show all items (will be filtered once loaded)
+    // If permissions aren't loaded yet, show items based on role as fallback
     const { user } = useAuthStore.getState();
     if (!user?.permissions || user.permissions.length === 0) {
-      // For tenant_owner or manager role, show all items as fallback
-      if (user?.role === 'tenant_owner' || user?.role === 'manager') {
-        return true;
+      // Define role-based fallback paths based on RBAC permissions
+      // These fallbacks ensure users can access navigation items even if permissions haven't loaded yet
+      // The fallbacks match the permissions defined in the RBAC migration (013_create_rbac_tables.sql)
+      const roleFallbacks: Record<string, string[]> = {
+        // Super Admin: Full access to everything (legacy role, treat as manager)
+        super_admin: ['/restaurant', '/menu', '/pos', '/orders', '/inventory', '/recipes', '/employees', '/customers', '/delivery', '/coupons', '/reports', '/settings'],
+        // Manager: Full access to everything
+        manager: ['/restaurant', '/menu', '/pos', '/orders', '/inventory', '/recipes', '/employees', '/customers', '/delivery', '/coupons', '/reports', '/settings'],
+        // Tenant Owner: Full access to everything
+        tenant_owner: ['/restaurant', '/menu', '/pos', '/orders', '/inventory', '/recipes', '/employees', '/customers', '/delivery', '/coupons', '/reports', '/settings'],
+        // Cashier: Orders (full), Menu (view), Customers (view/create/update), Reports (view)
+        // Permissions: orders (view/create/update/delete), menu (view), customers (view/create/update), reports (view)
+        cashier: ['/pos', '/orders', '/menu', '/customers', '/reports'],
+        // Kitchen Staff: Orders (view/update), Menu (view), Inventory (view)
+        // Permissions: orders (view/update), menu (view), inventory (view)
+        kitchen_staff: ['/orders', '/menu', '/inventory'],
+        // Waiter: Orders (view/create/update), Menu (view), Customers (view/create/update), Reservations (view/create/update)
+        // Permissions: orders (view/create/update), menu (view), customers (view/create/update), reservations (view/create/update)
+        waiter: ['/pos', '/orders', '/menu', '/customers'],
+        // Delivery: Orders (view/update), Deliveries (view/assign/update), Customers (view)
+        // Permissions: orders (view/update), deliveries (view/assign/update), customers (view)
+        delivery: ['/orders', '/delivery', '/customers'],
+      };
+      
+      // Get fallback paths for user's role
+      const userRole = user?.role;
+      if (userRole && roleFallbacks[userRole]) {
+        return roleFallbacks[userRole].includes(item.href);
       }
+      
+      // If role not found in fallbacks, deny access (security-first approach)
       return false;
     }
     

@@ -166,6 +166,16 @@ export class SyncService {
           }
         }
 
+        // Get user email for waiter_email field
+        const supabase = this.supabaseService.getServiceRoleClient();
+        const { data: user } = await supabase
+          .from('users')
+          .select('email')
+          .eq('id', userId)
+          .single();
+        
+        const userEmail = user?.email || '';
+
         // Create order using OrdersService
         // Note: The backend will recalculate totals, so we pass the items and let it calculate
         // Note: createOrder() automatically deducts stock via deductStockForOrder()
@@ -187,6 +197,7 @@ export class SyncService {
         const createdOrder = await this.ordersService.createOrder(
           tenantId,
           userId,
+          userEmail,
           createOrderDto,
         );
 

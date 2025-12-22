@@ -352,7 +352,7 @@ export class OrdersService {
   /**
    * Create a new order
    */
-  async createOrder(tenantId: string, userId: string, createDto: CreateOrderDto) {
+  async createOrder(tenantId: string, userId: string, userEmail: string, createDto: CreateOrderDto) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     try {
@@ -632,6 +632,7 @@ export class OrdersService {
           table_id: tableIdForOrder, // Keep for backward compatibility
           customer_id: createDto.customerId || null,
           cashier_id: userId,
+          waiter_email: userEmail, // Store the email of the user who created the order
           order_number: orderNumber,
           token_number: tokenNumber,
           order_type: createDto.orderType,
@@ -1489,6 +1490,7 @@ export class OrdersService {
           customer: order.customer_id ? customerMap.get(order.customer_id) || null : null,
           cashierId: order.cashier_id || null,
           cashier: order.cashier_id ? cashierMap.get(order.cashier_id) || null : null,
+          waiterEmail: order.waiter_email || null,
           orderNumber: order.order_number,
           tokenNumber: order.token_number || null,
           orderType: order.order_type,
