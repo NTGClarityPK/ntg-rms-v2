@@ -28,6 +28,7 @@ export class SyncService {
     // Group changes by table and action
     const ordersToCreate: any[] = [];
     const orderItemsByOrderId: Record<string, any[]> = {};
+    const orderItemsToUpdate: any[] = [];
 
     // Group inventory changes
     const ingredientsToCreate: any[] = [];
@@ -50,6 +51,9 @@ export class SyncService {
             orderItemsByOrderId[orderId] = [];
           }
           orderItemsByOrderId[orderId].push(change.data);
+        } else if (change.table === 'orderItems' && change.action === 'UPDATE') {
+          // Queue order item status updates (used by kitchen display when offline)
+          orderItemsToUpdate.push(change);
         } else if (change.table === 'ingredients') {
           if (change.action === 'CREATE') {
             ingredientsToCreate.push({ id: change.recordId, data: change.data });
@@ -229,6 +233,39 @@ export class SyncService {
             error: `Parent order failed: ${errorMessage}`,
           });
         }
+      }
+    }
+
+    // Process order item updates (e.g., kitchen display status changes)
+    for (const change of orderItemsToUpdate) {
+      try {
+        const orderId = change.data?.orderId;
+        const itemId = change.recordId || change.data?.id;
+        const status = change.data?.status;
+
+        if (!orderId || !itemId || !status) {
+          throw new Error('Missing orderId, itemId, or status for orderItems UPDATE');
+        }
+
+        await this.ordersService.updateOrderItemStatus(
+          tenantId,
+          orderId,
+          itemId,
+          { status },
+        );
+
+        results.push({
+          table: 'orderItems',
+          recordId: itemId,
+          status: 'SUCCESS',
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        errors.push({
+          table: 'orderItems',
+          recordId: change.recordId || change.data?.id,
+          error: errorMessage,
+        });
       }
     }
 
