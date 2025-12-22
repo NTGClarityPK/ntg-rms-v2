@@ -2659,6 +2659,7 @@ export class MenuService {
     const { data: existing } = await supabase
       .from('combo_meals')
       .select('id')
+      .eq('id', id)
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
       .single();

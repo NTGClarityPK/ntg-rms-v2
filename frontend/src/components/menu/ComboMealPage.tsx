@@ -416,15 +416,32 @@ export function ComboMealPage() {
                       <Table.Td style={{ maxWidth: 300 }}>
                         <Group gap="sm" wrap="nowrap">
                           {comboMeal.imageUrl ? (
-                            <Image
-                              src={comboMeal.imageUrl}
-                              alt={comboMeal.name}
-                              width={40}
-                              height={40}
-                              radius="sm"
-                              fit="cover"
-                              style={{ flexShrink: 0 }}
-                            />
+                            <Box
+                          w={40}
+                          h={40}
+                          style={{
+                            flexShrink: 0,
+                            borderRadius: 'var(--mantine-radius-sm)',
+                            overflow: 'hidden',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Image
+                            src={comboMeal.imageUrl}
+                            alt={comboMeal.name}
+                            width={40}
+                            height={40}
+                            fit="cover"
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover',
+                              objectPosition: 'center',
+                            }}
+                          />
+                        </Box>
                           ) : (
                             <Box
                               w={40}

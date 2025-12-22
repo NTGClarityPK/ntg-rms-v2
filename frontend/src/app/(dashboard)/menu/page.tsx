@@ -47,6 +47,12 @@ export default function MenuPage() {
             <Tabs.Tab value="menus" leftSection={<IconMenu2 size={16} />}>
               {t('menu.menus', language)}
             </Tabs.Tab>
+            <Tabs.Tab value="buffets" leftSection={<IconChefHat size={16} />}>
+              {t('menu.buffets', language)}
+            </Tabs.Tab>
+            <Tabs.Tab value="combo-meals" leftSection={<IconShoppingBag size={16} />}>
+              {t('menu.comboMeals', language)}
+            </Tabs.Tab>
           </Tabs.List>
 
           <Tabs.Panel value="categories" pt="md" px="md" pb="md">
