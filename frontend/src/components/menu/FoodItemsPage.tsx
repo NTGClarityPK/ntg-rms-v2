@@ -93,6 +93,7 @@ export function FoodItemsPage() {
       name: (value) => (!value ? (t('menu.foodItemName', language) || 'Name') + ' is required' : null),
       categoryId: (value) => (!value ? t('menu.selectCategory', language) + ' is required' : null),
       basePrice: (value) => (value <= 0 ? 'Base price must be greater than 0' : null),
+      menuTypes: (value) => (!value || value.length === 0 ? (t('menu.menuTypes', language) || 'Menu Types') + ' is required' : null),
     },
   });
 
@@ -544,7 +545,8 @@ export function FoodItemsPage() {
     if (activeStep === 0) {
       const step1Valid = form.validateField('name').hasError === false &&
         form.validateField('categoryId').hasError === false &&
-        form.validateField('basePrice').hasError === false;
+        form.validateField('basePrice').hasError === false &&
+        form.validateField('menuTypes').hasError === false;
       if (step1Valid) {
         setActiveStep(1);
       }
@@ -1235,12 +1237,14 @@ export function FoodItemsPage() {
                     <MultiSelect
                       label={t('menu.menuTypes', language)}
                       placeholder={t('menu.selectMenuTypes', language)}
+                      required
                       data={menus.map((menu) => ({
                         value: menu.menuType,
                         label: menu.name || menu.menuType,
                       }))}
                       {...form.getInputProps('menuTypes')}
                       searchable
+                      error={form.errors.menuTypes}
                     />
                   </Grid.Col>
                   <Grid.Col span={{ base: 12, md: 6 }}>
