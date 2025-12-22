@@ -533,12 +533,16 @@ export function OrderDetailsModal({
                     </Text>
                   </Grid.Col>
                 )}
-                {orderDetails.table && orderDetails.table.table_number && (
+                {(((orderDetails as any).tables && (orderDetails as any).tables.length > 0) || (orderDetails.table && orderDetails.table.table_number)) && (
                   <Grid.Col span={6}>
                     <Text size="sm" c="dimmed">
                       {t('pos.tableNo', language)}
                     </Text>
-                    <Text>{orderDetails.table.table_number}</Text>
+                    <Text>
+                      {(orderDetails as any).tables && (orderDetails as any).tables.length > 0
+                        ? (orderDetails as any).tables.map((t: any) => t.table_number).join(', ')
+                        : (orderDetails.table?.table_number || '')}
+                    </Text>
                   </Grid.Col>
                 )}
                 {orderDetails.customer && orderDetails.customer.name && (

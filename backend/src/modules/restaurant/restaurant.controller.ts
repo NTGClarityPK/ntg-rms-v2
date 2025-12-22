@@ -238,6 +238,17 @@ export class RestaurantController {
     return this.restaurantService.getTables(user.tenantId, branchId);
   }
 
+  @Get('tables/available')
+  @ApiOperation({ summary: 'Get available tables (tables without active orders) for dine-in' })
+  @ApiQuery({ name: 'branchId', required: false, description: 'Filter by branch ID' })
+  @ApiResponse({ status: 200, description: 'Available tables retrieved successfully' })
+  getAvailableTables(
+    @CurrentUser() user: any,
+    @Query('branchId') branchId?: string,
+  ) {
+    return this.restaurantService.getAvailableTables(user.tenantId, branchId);
+  }
+
   @Get('tables/:id')
   @ApiOperation({ summary: 'Get a single table by ID' })
   @ApiParam({ name: 'id', description: 'Table ID' })

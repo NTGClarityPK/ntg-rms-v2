@@ -826,6 +826,115 @@ export class RestaurantService {
   }
 
   /**
+   * Get available tables (tables without active orders) for dine-in
+   */
+  async getAvailableTables(tenantId: string, branchId?: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+    
+    // Get all tables for the tenant/branch
+    let query = supabase
+      .from('tables')
+      .select(`
+        *,
+        branch:branches!tables_branch_id_fkey(id, tenant_id, name, code)
+      `)
+      .eq('branch.tenant_id', tenantId)
+      .is('deleted_at', null);
+
+    if (branchId) {
+      query = query.eq('branch_id', branchId);
+    } else {
+      // Get all branches for tenant
+      const { data: branches } = await supabase
+        .from('branches')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null);
+
+      if (!branches || branches.length === 0) {
+        return [];
+      }
+
+      const branchIds = branches.map(b => b.id);
+      query = query.in('branch_id', branchIds);
+    }
+
+    const { data: tables, error } = await query;
+
+    if (error) {
+      throw new BadRequestException('Failed to fetch tables: ' + error.message);
+    }
+
+    if (!tables || tables.length === 0) {
+      return [];
+    }
+
+    // Get all active orders (not completed or cancelled) for dine-in
+    const tableIds = tables.map(t => t.id);
+    
+    // Check old table_id field (backward compatibility)
+    const { data: activeOrders } = await supabase
+      .from('orders')
+      .select('table_id')
+      .eq('tenant_id', tenantId)
+      .eq('order_type', 'dine_in')
+      .in('table_id', tableIds)
+      .not('status', 'in', '(completed,cancelled)')
+      .is('deleted_at', null);
+
+    // Check new order_tables junction table
+    const { data: orderTables } = await supabase
+      .from('order_tables')
+      .select(`
+        table_id,
+        orders!inner(id, tenant_id, order_type, status, deleted_at)
+      `)
+      .in('table_id', tableIds);
+
+    // Get set of occupied table IDs from both sources
+    const occupiedTableIds = new Set<string>();
+    
+    // Add tables from old table_id field
+    (activeOrders || []).forEach(o => {
+      if (o.table_id) {
+        occupiedTableIds.add(o.table_id);
+      }
+    });
+    
+    // Add tables from order_tables junction table
+    (orderTables || []).forEach((ot: any) => {
+      const order = ot.orders;
+      if (
+        order &&
+        order.tenant_id === tenantId &&
+        order.order_type === 'dine_in' &&
+        order.status !== 'completed' &&
+        order.status !== 'cancelled' &&
+        !order.deleted_at &&
+        ot.table_id
+      ) {
+        occupiedTableIds.add(ot.table_id);
+      }
+    });
+
+    // Filter out occupied tables and map to response format
+    return tables
+      .filter(table => !occupiedTableIds.has(table.id))
+      .map(table => ({
+        id: table.id,
+        branchId: table.branch_id,
+        branch: table.branch,
+        tableNumber: table.table_number,
+        seatingCapacity: table.seating_capacity,
+        tableType: table.table_type,
+        qrCode: table.qr_code,
+        status: table.status,
+        createdAt: table.created_at,
+        updatedAt: table.updated_at,
+      }));
+  }
+
+  /**
    * Get a single table by ID
    */
   async getTableById(tenantId: string, tableId: string) {

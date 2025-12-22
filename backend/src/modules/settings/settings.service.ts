@@ -135,6 +135,7 @@ export class SettingsService {
         emailNotifications: true,
         smsNotifications: false,
         soundAlerts: true,
+        totalTables: 5, // Default number of tables
       },
       invoice: {
         headerText: '',

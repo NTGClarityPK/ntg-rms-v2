@@ -16,6 +16,7 @@ export interface GeneralSettings {
   emailNotifications?: boolean;
   smsNotifications?: boolean;
   soundAlerts?: boolean;
+  totalTables?: number;
 }
 
 export interface InvoiceSettings {

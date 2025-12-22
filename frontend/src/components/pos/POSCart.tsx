@@ -10,6 +10,7 @@ import {
   Button,
   SegmentedControl,
   Select,
+  MultiSelect,
   NumberInput,
   Divider,
   Badge,
@@ -18,6 +19,8 @@ import {
   Modal,
   TextInput,
   useMantineTheme,
+  Tooltip,
+  Flex,
 } from '@mantine/core';
 import {
   IconTrash,
@@ -28,6 +31,7 @@ import {
   IconShoppingCart,
   IconDiscount,
   IconPrinter,
+  IconX,
   IconCheck,
 } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
@@ -59,8 +63,10 @@ interface POSCartProps {
   onClearCart: () => void;
   orderType: 'dine_in' | 'takeaway' | 'delivery';
   onOrderTypeChange: (type: 'dine_in' | 'takeaway' | 'delivery') => void;
-  selectedTableId: string | null;
-  onTableChange: (tableId: string | null) => void;
+  selectedTableId: string | null; // Deprecated: use selectedTableIds instead
+  onTableChange: (tableId: string | null) => void; // Deprecated: use onTableIdsChange instead
+  selectedTableIds: string[];
+  onTableIdsChange: (tableIds: string[]) => void;
   selectedCustomerId: string | null;
   onCustomerChange: (customerId: string | null) => void;
   numberOfPersons: number;
@@ -80,6 +86,8 @@ export function POSCart({
   onOrderTypeChange,
   selectedTableId,
   onTableChange,
+  selectedTableIds = [],
+  onTableIdsChange,
   selectedCustomerId,
   onCustomerChange,
   numberOfPersons,
@@ -172,7 +180,7 @@ export function POSCart({
       loadTables();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, branchId]);
+  }, [tenantId, branchId, settings?.general?.totalTables]);
 
   const loadActiveTaxes = async () => {
     try {
@@ -286,12 +294,74 @@ export function POSCart({
   const loadTables = async () => {
     if (!branchId) return;
     try {
+      const totalTables = settings?.general?.totalTables || 0;
+      
+      // If totalTables is set, use available tables API and filter by range
+      if (totalTables > 0 && navigator.onLine) {
+        try {
+          const availableTables = await restaurantApi.getAvailableTables(branchId);
+          
+          // Filter tables to only include those within 1 to totalTables range
+          const filteredTables = availableTables.filter((table) => {
+            const tableNum = parseInt(table.tableNumber, 10);
+            return !isNaN(tableNum) && tableNum >= 1 && tableNum <= totalTables;
+          });
+          
+          // Sort by table number
+          filteredTables.sort((a, b) => {
+            const aNum = parseInt(a.tableNumber, 10);
+            const bNum = parseInt(b.tableNumber, 10);
+            return aNum - bNum;
+          });
+          
+          // Convert to RestaurantTable format and save to IndexedDB for offline use
+          const tablesToStore = filteredTables.map((table) => ({
+            id: table.id,
+            tenantId,
+            branchId: table.branchId,
+            tableNumber: table.tableNumber,
+            name: `Table ${table.tableNumber}`,
+            capacity: table.seatingCapacity || 4,
+            status: table.status || 'available',
+            createdAt: table.createdAt || new Date().toISOString(),
+            updatedAt: table.updatedAt || new Date().toISOString(),
+            syncStatus: 'synced' as const,
+            lastSynced: new Date().toISOString(),
+          }));
+          
+          // Update IndexedDB with available tables
+          for (const table of tablesToStore) {
+            try {
+              await db.restaurantTables.put(table as any);
+            } catch (error) {
+              console.error('Failed to update table in IndexedDB:', error);
+            }
+          }
+          
+          setTables(tablesToStore as any);
+          return;
+        } catch (error) {
+          console.error('Failed to load available tables from API:', error);
+          // Fall through to IndexedDB loading
+        }
+      }
+      
+      // Fallback: Load from IndexedDB
       const allTables = (await db.restaurantTables
         .where('branchId')
         .equals(branchId)
         .toArray()) as unknown as RestaurantTable[];
       
-      const branchTables = allTables.filter((table) => !table.deletedAt);
+      let branchTables = allTables.filter((table) => !table.deletedAt);
+      
+      // If totalTables is set, filter by range
+      if (totalTables > 0) {
+        branchTables = branchTables.filter((table) => {
+          const tableNum = parseInt((table as any).tableNumber || (table as any).table_number || '0', 10);
+          return !isNaN(tableNum) && tableNum >= 1 && tableNum <= totalTables;
+        });
+      }
+      
       branchTables.sort((a, b) => {
         const aTableNum = (a as any).tableNumber || (a as any).table_number || '';
         const bTableNum = (b as any).tableNumber || (b as any).table_number || '';
@@ -789,7 +859,9 @@ export function POSCart({
       // Prepare order DTO for API
       const createOrderDto = {
         branchId,
-        tableId: orderType === 'dine_in' ? selectedTableId || undefined : undefined,
+        // Use tableIds if available, otherwise fallback to tableId for backward compatibility
+        tableId: orderType === 'dine_in' && selectedTableIds.length === 0 ? (selectedTableId || undefined) : undefined,
+        tableIds: orderType === 'dine_in' && selectedTableIds.length > 0 ? selectedTableIds : undefined,
         customerId: selectedCustomerId || undefined,
         orderType,
         items: orderItemsForApi,
@@ -930,6 +1002,20 @@ export function POSCart({
           setAppliedCouponDiscount(0);
           setAppliedCouponId(null);
           setPaymentMethod(null);
+          
+          // Reset tables and persons
+          if (onTableIdsChange) {
+            onTableIdsChange([]);
+          }
+          if (onTableChange) {
+            onTableChange(null);
+          }
+          if (onNumberOfPersonsChange) {
+            onNumberOfPersonsChange(1);
+          }
+          
+          // Reload tables to update available list
+          await loadTables();
 
           // Notify other components about the new order
           const { notifyOrderUpdate } = await import('@/lib/utils/order-events');
@@ -1045,7 +1131,8 @@ export function POSCart({
         id: orderId,
         tenantId,
         branchId,
-        tableId: orderType === 'dine_in' ? selectedTableId || undefined : undefined,
+        tableId: orderType === 'dine_in' && selectedTableIds.length === 0 ? (selectedTableId || undefined) : undefined, // Backward compatibility
+        tableIds: orderType === 'dine_in' && selectedTableIds.length > 0 ? selectedTableIds : undefined,
         customerId: selectedCustomerId || undefined,
         orderNumber,
         tokenNumber,
@@ -1122,6 +1209,20 @@ export function POSCart({
       setAppliedCouponDiscount(0);
       setAppliedCouponId(null);
       setPaymentMethod(null);
+      
+      // Reset tables and persons
+      if (onTableIdsChange) {
+        onTableIdsChange([]);
+      }
+      if (onTableChange) {
+        onTableChange(null);
+      }
+      if (onNumberOfPersonsChange) {
+        onNumberOfPersonsChange(1);
+      }
+      
+      // Reload tables to update available list
+      await loadTables();
 
       // Notify other components about the new order
       const { notifyOrderUpdate } = await import('@/lib/utils/order-events');
@@ -1347,91 +1448,195 @@ export function POSCart({
 
           {/* Table Selection (for dine-in) */}
           {orderType === 'dine_in' && enableTableManagement && (
-            <Stack gap="xs">
-              <Text fw={500} size="sm">
+            <Paper withBorder p="md" radius="md" style={{ backgroundColor: 'var(--mantine-color-gray-0)' }}>
+              <Stack gap="md">
+                <Group justify="space-between" align="center">
+                  <Group gap="xs">
+                    <IconTable size={18} color={primaryColor} />
+                    <Text fw={600} size="sm">
                 {t('pos.tableSelection', language)}
               </Text>
-              <Group gap="xs" align="flex-end">
+                    {selectedTableIds.length > 0 && (
+                      <Badge
+                        size="sm"
+                        variant="filled"
+                        style={{ backgroundColor: primaryColor }}
+                      >
+                        {selectedTableIds.length} {selectedTableIds.length === 1 ? (t('pos.table', language) || 'table') : (t('pos.tables', language) || 'tables')}
+                      </Badge>
+                    )}
+                  </Group>
+                </Group>
+
+                <Group gap="md" align="flex-start" grow>
                 <Box style={{ flex: 1 }}>
-                  <Text fw={500} size="xs" mb={4}>
+                    <Text fw={500} size="xs" mb={6} c="dimmed">
                     {t('pos.tableNo', language) || 'Table No'}
                   </Text>
-                  <NumberInput
-                    placeholder={t('pos.selectTable', language)}
-                    value={
-                      selectedTableId
-                        ? (() => {
-                            const table = tables.find((t) => t.id === selectedTableId);
-                            if (table) {
-                              const tableNum = (table as any).tableNumber || (table as any).table_number;
-                              if (tableNum) {
-                                const num = parseInt(tableNum, 10);
-                                return isNaN(num) ? undefined : num;
-                              }
-                            }
-                            return undefined;
-                          })()
-                        : undefined
-                    }
-                    onChange={async (value) => {
-                      if (typeof value === 'number' && value > 0) {
-                        const tableValue = value.toString();
-                        // Try to find existing table
-                        let table = tables.find((t) => {
-                          const tableNum = (t as any).tableNumber || (t as any).table_number;
-                          return tableNum && tableNum.toString() === tableValue;
-                        });
-                        
-                        if (!table) {
-                          // Create a temporary table entry if it doesn't exist
-                          // Generate a UUID v4-like ID
-                          const generateUUID = () => {
-                            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-                              const r = (Math.random() * 16) | 0;
-                              const v = c === 'x' ? r : (r & 0x3) | 0x8;
-                              return v.toString(16);
-                            });
+                    {onTableIdsChange ? (
+                      <MultiSelect
+                        placeholder={t('pos.selectTables', language) || t('pos.selectTable', language) || 'Select Tables'}
+                        value={selectedTableIds}
+                        onChange={(values) => {
+                          onTableIdsChange(values);
+                        }}
+                        data={tables.map((table) => {
+                          const tableNum = (table as any).tableNumber || (table as any).table_number || '';
+                          const tableLabelText = t('pos.tableLabel' as any, language) || 'Table';
+                          return {
+                            value: table.id,
+                            label: `${tableLabelText} ${tableNum}`,
                           };
-                          
-                          const tempTableId = generateUUID();
-                          const tempTable: RestaurantTable = {
-                            id: tempTableId,
-                            tenantId,
-                            branchId,
-                            tableNumber: tableValue,
-                            name: `Table ${tableValue}`,
-                            capacity: numberOfPersons || 4,
-                            status: 'available',
-                            createdAt: new Date().toISOString(),
-                            updatedAt: new Date().toISOString(),
-                            syncStatus: 'pending',
+                        })}
+                        leftSection={<IconTable size={16} color={primaryColor} />}
+                        searchable
+                        clearable
+                        disabled={tables.length === 0}
+                        maxDropdownHeight={200}
+                        styles={{
+                          input: {
+                            borderColor: selectedTableIds.length > 0 ? primaryColor : undefined,
+                            borderWidth: selectedTableIds.length > 0 ? 2 : undefined,
+                            '&:focus': {
+                              borderColor: primaryColor,
+                              borderWidth: 2,
+                            },
+                          },
+                          section: {
+                            color: `${primaryColor} !important`,
+                            '& svg': {
+                              color: `${primaryColor} !important`,
+                            },
+                          },
+                          option: {
+                            '&[data-selected="true"]': {
+                              backgroundColor: `${primaryColor}20`,
+                              color: primaryColor,
+                              fontWeight: 600,
+                            },
+                            '&:hover': {
+                              backgroundColor: `${primaryColor}10`,
+                            },
+                          },
+                        }}
+                      />
+                    ) : (
+                      <Select
+                        placeholder={t('pos.selectTable', language) || 'Select Table'}
+                        value={selectedTableId}
+                        onChange={(value) => onTableChange(value)}
+                        data={tables.map((table) => {
+                          const tableNum = (table as any).tableNumber || (table as any).table_number || '';
+                          const tableLabelText = t('pos.tableLabel' as any, language) || 'Table';
+                          return {
+                            value: table.id,
+                            label: `${tableLabelText} ${tableNum}`,
                           };
-                          
-                          try {
-                            await db.restaurantTables.add(tempTable);
-                            setTables([...tables, tempTable]);
-                            table = tempTable;
-                          } catch (error) {
-                            console.error('Failed to create temporary table:', error);
-                            // Still allow the order to proceed with the temp ID
-                            onTableChange(tempTableId);
-                            return;
-                          }
-                        }
-                        
-                        onTableChange(table.id);
-                      } else {
-                        onTableChange(null);
-                      }
-                    }}
-                    leftSection={<IconTable size={16} />}
-                    min={1}
-                    allowDecimal={false}
-                    allowNegative={false}
-                  />
+                        })}
+                        leftSection={<IconTable size={16} color={primaryColor} />}
+                        searchable
+                        clearable
+                        disabled={tables.length === 0}
+                        styles={{
+                          input: {
+                            '&:focus': {
+                              borderColor: primaryColor,
+                              borderWidth: 2,
+                            },
+                          },
+                          section: {
+                            color: `${primaryColor} !important`,
+                            '& svg': {
+                              color: `${primaryColor} !important`,
+                            },
+                          },
+                          option: {
+                            '&[data-selected="true"]': {
+                              backgroundColor: `${primaryColor}20`,
+                              color: primaryColor,
+                              fontWeight: 600,
+                            },
+                            '&:hover': {
+                              backgroundColor: `${primaryColor}10`,
+                            },
+                          },
+                        }}
+                      />
+                    )}
+
+                    {/* Selected Tables Display */}
+                    {selectedTableIds.length > 0 && (
+                      <Flex gap="xs" mt={8} wrap="wrap">
+                        {selectedTableIds.map((tableId) => {
+                          const table = tables.find((t) => t.id === tableId);
+                          const tableNum = table ? ((table as any).tableNumber || (table as any).table_number || '') : '';
+                          return (
+                            <Tooltip key={tableId} label={t('pos.removeTable', language) || 'Remove table'} withArrow>
+                              <Badge
+                                size="lg"
+                                variant="light"
+                                color={primaryColor}
+                                rightSection={
+                                  <ActionIcon
+                                    size="xs"
+                                    color={primaryColor}
+                                    radius="xl"
+                                    variant="subtle"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (onTableIdsChange) {
+                                        onTableIdsChange(selectedTableIds.filter((id) => id !== tableId));
+                                      }
+                                    }}
+                                    style={{ 
+                                      marginLeft: 4,
+                                      color: primaryColor,
+                                    }}
+                                  >
+                                    <IconX size={12} color={primaryColor} />
+                                  </ActionIcon>
+                                }
+                                style={{
+                                  cursor: 'pointer',
+                                  paddingRight: 4,
+                                  border: `1px solid ${primaryColor}40`,
+                                  backgroundColor: `${primaryColor}15`,
+                                  color: primaryColor,
+                                  transition: 'all 0.2s ease',
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.backgroundColor = `${primaryColor}25`;
+                                  e.currentTarget.style.borderColor = primaryColor;
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.backgroundColor = `${primaryColor}15`;
+                                  e.currentTarget.style.borderColor = `${primaryColor}40`;
+                                }}
+                              >
+                                <Group gap={4}>
+                                  <IconTable size={14} color={primaryColor} />
+                                  <Text fw={600} size="xs" c={primaryColor}>
+                                    {tableNum}
+                                  </Text>
+                                </Group>
+                              </Badge>
+                            </Tooltip>
+                          );
+                        })}
+                      </Flex>
+                    )}
+
+                    {tables.length === 0 && (
+                      <Text size="xs" c="dimmed" mt={6} style={{ fontStyle: 'italic' }}>
+                        {settings?.general?.totalTables 
+                          ? (t('pos.noAvailableTables', language) || 'No available tables. All tables are currently occupied.')
+                          : (t('pos.noTablesConfigured', language) || 'No tables configured. Please set total number of tables in settings.')}
+                      </Text>
+                    )}
                 </Box>
-                <Box style={{ width: 120 }}>
-                  <Text fw={500} size="xs" mb={4}>
+
+                  <Box style={{ width: 140 }}>
+                    <Text fw={500} size="xs" mb={6} c="dimmed">
                     {t('pos.numberOfPersons', language)}
                   </Text>
                   <NumberInput
@@ -1439,11 +1644,34 @@ export function POSCart({
                     value={numberOfPersons}
                     onChange={(value) => onNumberOfPersonsChange(typeof value === 'number' ? value : 1)}
                     min={1}
-                    max={20}
+                      max={50}
+                      leftSection={<IconUser size={16} color={primaryColor} />}
+                      styles={{
+                        input: {
+                          borderColor: numberOfPersons > 0 ? primaryColor : undefined,
+                          '&:focus': {
+                            borderColor: primaryColor,
+                            borderWidth: 2,
+                          },
+                        },
+                        section: {
+                          color: `${primaryColor} !important`,
+                          '& svg': {
+                            color: `${primaryColor} !important`,
+                          },
+                        },
+                        control: {
+                          '&:hover': {
+                            backgroundColor: `${primaryColor}10`,
+                            borderColor: primaryColor,
+                          },
+                        },
+                      }}
                   />
                 </Box>
               </Group>
             </Stack>
+            </Paper>
           )}
 
           <Divider />

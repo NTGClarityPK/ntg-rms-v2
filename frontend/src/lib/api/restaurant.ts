@@ -224,6 +224,12 @@ export const restaurantApi = {
     return response.data;
   },
 
+  async getAvailableTables(branchId?: string): Promise<Table[]> {
+    const params = branchId ? { branchId } : {};
+    const response = await apiClient.get(`${API_ENDPOINTS.RESTAURANT.TABLES}/available`, { params });
+    return response.data;
+  },
+
   async getTable(id: string): Promise<Table> {
     const response = await apiClient.get(`${API_ENDPOINTS.RESTAURANT.TABLES}/${id}`);
     return response.data;

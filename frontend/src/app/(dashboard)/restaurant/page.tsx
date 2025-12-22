@@ -34,9 +34,10 @@ import { useNotificationColors } from '@/lib/hooks/use-theme-colors';
 import { useErrorColor } from '@/lib/hooks/use-theme-colors';
 import { notifications } from '@mantine/notifications';
 import { DEFAULT_THEME_COLOR, getLegacyThemeColor } from '@/lib/utils/theme';
-import { ColorInput } from '@mantine/core';
+import { ColorInput, NumberInput } from '@mantine/core';
 import { BranchesTab } from '@/components/restaurant/BranchesTab';
 import { PermissionGuard } from '@/components/common/PermissionGuard';
+import { settingsApi } from '@/lib/api/settings';
 
 // Common timezones list with GMT offsets
 const TIMEZONE_DATA = [
@@ -136,6 +137,7 @@ export default function RestaurantPage() {
   const [error, setError] = useState<string | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [totalTables, setTotalTables] = useState<number>(5);
 
   // Get current theme color from store, restaurant, or localStorage, or default
   const getCurrentThemeColor = () => {
@@ -181,6 +183,20 @@ export default function RestaurantPage() {
     try {
       setLoading(true);
       setError(null);
+
+      // Load settings to get totalTables
+      try {
+        if (navigator.onLine) {
+          const settings = await settingsApi.getSettings();
+          setTotalTables(settings.general?.totalTables || 5);
+        } else {
+          // Try to get from IndexedDB or use default
+          setTotalTables(5);
+        }
+      } catch (err) {
+        console.warn('Failed to load settings, using default:', err);
+        setTotalTables(5);
+      }
 
       // Try to load from IndexedDB first
       const localData = await db.tenants.get(user?.tenantId || '');
@@ -412,6 +428,19 @@ export default function RestaurantPage() {
         updateThemeColor(updateData.primaryColor);
       }
 
+      // Update settings with totalTables
+      if (navigator.onLine) {
+        try {
+          await settingsApi.updateSettings({
+            general: {
+              totalTables: totalTables || 5,
+            },
+          });
+        } catch (err: any) {
+          console.error('Failed to update settings:', err);
+        }
+      }
+
       // Try to sync immediately if online
       if (navigator.onLine) {
         try {
@@ -578,6 +607,15 @@ export default function RestaurantPage() {
                 <TextInput
                   label={t('restaurant.vatNumber', language)}
                   {...form.getInputProps('vatNumber')}
+                />
+              </Grid.Col>
+              <Grid.Col span={{ base: 12, md: 6 }}>
+                <NumberInput
+                  label={t('restaurant.totalTables', language) || 'Total Number of Tables'}
+                  value={totalTables}
+                  onChange={(value) => setTotalTables(typeof value === 'number' ? value : 5)}
+                  min={0}
+                  defaultValue={5}
                 />
               </Grid.Col>
               <Grid.Col span={12}>

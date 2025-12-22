@@ -25,7 +25,8 @@ export default function POSPage() {
   
   // Initialize order type from settings
   const [orderType, setOrderType] = useState<'dine_in' | 'takeaway' | 'delivery'>('dine_in');
-  const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
+  const [selectedTableId, setSelectedTableId] = useState<string | null>(null); // Deprecated: use selectedTableIds
+  const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [numberOfPersons, setNumberOfPersons] = useState<number>(1);
   const [branches, setBranches] = useState<any[]>([]);
@@ -59,6 +60,12 @@ export default function POSPage() {
         }
         if (order.tableId) {
           setSelectedTableId(order.tableId);
+        }
+        // Support multiple tables
+        if ((order as any).tableIds && (order as any).tableIds.length > 0) {
+          setSelectedTableIds((order as any).tableIds);
+        } else if (order.tableId) {
+          setSelectedTableIds([order.tableId]);
         }
         if (order.customerId) {
           setSelectedCustomerId(order.customerId);
@@ -434,6 +441,8 @@ export default function POSPage() {
             isBuffetMode={currentItemType === 'buffets'}
               selectedTableId={selectedTableId}
               onTableChange={setSelectedTableId}
+              selectedTableIds={selectedTableIds}
+              onTableIdsChange={setSelectedTableIds}
               selectedCustomerId={selectedCustomerId}
               onCustomerChange={setSelectedCustomerId}
               numberOfPersons={numberOfPersons}

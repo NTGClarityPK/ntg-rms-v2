@@ -65,6 +65,7 @@ export default function SettingsPage() {
       emailNotifications: true,
       smsNotifications: false,
       soundAlerts: true,
+      totalTables: 0,
     },
   });
 
@@ -564,6 +565,14 @@ export default function SettingsPage() {
                     label={t('settings.enableTableManagement' as any, language) || 'Enable Table Management'}
                     {...generalForm.getInputProps('enableTableManagement', { type: 'checkbox' })}
                   />
+                  {generalForm.values.enableTableManagement && (
+                    <NumberInput
+                      label={t('settings.totalTables' as any, language) || 'Total Number of Tables'}
+                      description={t('settings.totalTablesDescription' as any, language) || 'Set the total number of tables in your restaurant. Leave as 0 for unlimited tables.'}
+                      min={0}
+                      {...generalForm.getInputProps('totalTables')}
+                    />
+                  )}
                   <Switch
                     label={t('settings.enableDeliveryManagement' as any, language) || 'Enable Delivery Management'}
                     {...generalForm.getInputProps('enableDeliveryManagement', { type: 'checkbox' })}

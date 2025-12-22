@@ -451,8 +451,111 @@ export class OrdersService {
       // Update createDto with effective branch ID
       createDto.branchId = effectiveBranchId;
 
-      // Note: Table ID is optional - can be any table number string
-      // No validation required as tables can be any number
+      // Validate tables for dine-in orders
+      // Support both tableId (backward compatibility) and tableIds (multiple tables)
+      const tableIdsToValidate: string[] = [];
+      if (createDto.tableIds && createDto.tableIds.length > 0) {
+        tableIdsToValidate.push(...createDto.tableIds);
+      } else if (createDto.tableId) {
+        tableIdsToValidate.push(createDto.tableId);
+      }
+
+      if (createDto.orderType === 'dine_in' && tableIdsToValidate.length > 0) {
+        // Get settings to check totalTables
+        const settings = await this.settingsService.getSettings(tenantId);
+        const totalTables = settings.general?.totalTables || 0;
+
+        // Remove duplicates
+        const uniqueTableIds = [...new Set(tableIdsToValidate)];
+
+        // Validate all tables exist and are in range
+        const { data: tables } = await supabase
+          .from('tables')
+          .select('table_number, id')
+          .in('id', uniqueTableIds)
+          .eq('branch_id', createDto.branchId)
+          .is('deleted_at', null);
+
+        if (!tables || tables.length !== uniqueTableIds.length) {
+          throw new BadRequestException('One or more tables not found');
+        }
+
+        // If totalTables is set (> 0), validate all table numbers are within range
+        if (totalTables > 0) {
+          for (const table of tables) {
+            const tableNumber = parseInt(table.table_number, 10);
+            if (isNaN(tableNumber) || tableNumber < 1 || tableNumber > totalTables) {
+              throw new BadRequestException(
+                `Table ${table.table_number} must be between 1 and ${totalTables}`
+              );
+            }
+          }
+        }
+
+        // Check if any of the tables have active orders (not completed or cancelled)
+        // Check both old table_id field and new order_tables junction table
+        const { data: activeOrdersByTableId } = await supabase
+          .from('orders')
+          .select('id, order_number, status, table_id')
+          .eq('tenant_id', tenantId)
+          .eq('branch_id', createDto.branchId)
+          .in('table_id', uniqueTableIds)
+          .eq('order_type', 'dine_in')
+          .not('status', 'in', '(completed,cancelled)')
+          .is('deleted_at', null);
+
+        // Also check order_tables junction table
+        const { data: orderTables } = await supabase
+          .from('order_tables')
+          .select(`
+            order_id,
+            table_id,
+            orders!inner(id, order_number, status, tenant_id, branch_id, order_type, deleted_at)
+          `)
+          .in('table_id', uniqueTableIds);
+
+        const activeOrdersFromJunction = (orderTables || [])
+          .filter((ot: any) => {
+            const order = ot.orders;
+            return order &&
+              order.tenant_id === tenantId &&
+              order.branch_id === createDto.branchId &&
+              order.order_type === 'dine_in' &&
+              order.status !== 'completed' &&
+              order.status !== 'cancelled' &&
+              !order.deleted_at;
+          })
+          .map((ot: any) => ot.orders);
+
+        // Combine both sources
+        const allActiveOrders = [
+          ...(activeOrdersByTableId || []),
+          ...activeOrdersFromJunction,
+        ];
+
+        if (allActiveOrders.length > 0) {
+          // Group by table to show which tables are occupied
+          const occupiedTables = new Map<string, string[]>();
+          for (const order of allActiveOrders) {
+            const tableId = order.table_id || (orderTables?.find((ot: any) => ot.order_id === order.id)?.table_id);
+            if (tableId) {
+              if (!occupiedTables.has(tableId)) {
+                occupiedTables.set(tableId, []);
+              }
+              occupiedTables.get(tableId)!.push(order.order_number);
+            }
+          }
+
+          const occupiedMessages = Array.from(occupiedTables.entries()).map(([tableId, orderNumbers]) => {
+            const table = tables.find(t => t.id === tableId);
+            return `Table ${table?.table_number || tableId}: ${orderNumbers.join(', ')}`;
+          });
+
+          throw new BadRequestException(
+            `One or more tables are currently occupied: ${occupiedMessages.join('; ')}. Please complete or cancel the existing orders first.`
+          );
+        }
+      }
 
       // Note: For delivery orders, customerAddressId is optional
       // Walk-in customers can place delivery orders without a customer address ID
@@ -514,6 +617,11 @@ export class OrdersService {
         }
       }
 
+      // Determine table_id for backward compatibility (use first table if multiple)
+      const tableIdForOrder = tableIdsToValidate.length > 0 
+        ? tableIdsToValidate[0] 
+        : (createDto.tableId || null);
+
       // Create order
       const { data: order, error: orderError } = await supabase
         .from('orders')
@@ -521,7 +629,7 @@ export class OrdersService {
           tenant_id: tenantId,
           branch_id: createDto.branchId,
           counter_id: counterId,
-          table_id: createDto.tableId || null,
+          table_id: tableIdForOrder, // Keep for backward compatibility
           customer_id: createDto.customerId || null,
           cashier_id: userId,
           order_number: orderNumber,
@@ -543,6 +651,23 @@ export class OrdersService {
 
       if (orderError) {
         throw new InternalServerErrorException(`Failed to create order: ${orderError.message}`);
+      }
+
+      // Create entries in order_tables junction table for all selected tables
+      if (tableIdsToValidate.length > 0) {
+        const orderTableEntries = tableIdsToValidate.map(tableId => ({
+          order_id: order.id,
+          table_id: tableId,
+        }));
+
+        const { error: orderTablesError } = await supabase
+          .from('order_tables')
+          .insert(orderTableEntries);
+
+        if (orderTablesError) {
+          console.error('Failed to create order_tables entries:', orderTablesError);
+          // Don't fail the order creation, but log the error
+        }
       }
 
       // Create order items
@@ -992,7 +1117,28 @@ export class OrdersService {
     // Collect unique IDs for batch fetching
     const branchIds = [...new Set(orders.map((o: any) => o.branch_id).filter(Boolean))];
     const counterIds = [...new Set(orders.map((o: any) => o.counter_id).filter(Boolean))];
-    const tableIds = [...new Set(orders.map((o: any) => o.table_id).filter(Boolean))];
+    const orderIds = orders.map((o: any) => o.id);
+    
+    // Fetch order_tables junction table to get all tables for orders
+    const { data: orderTablesData } = await supabase
+      .from('order_tables')
+      .select('order_id, table_id')
+      .in('order_id', orderIds);
+    
+    // Collect table IDs from both old table_id field and new order_tables junction
+    const tableIdsFromOrders = [...new Set(orders.map((o: any) => o.table_id).filter(Boolean))];
+    const tableIdsFromJunction = [...new Set((orderTablesData || []).map((ot: any) => ot.table_id).filter(Boolean))];
+    const tableIds = [...new Set([...tableIdsFromOrders, ...tableIdsFromJunction])];
+    
+    // Create map of order_id -> table_ids array
+    const orderTablesMap = new Map<string, string[]>();
+    (orderTablesData || []).forEach((ot: any) => {
+      if (!orderTablesMap.has(ot.order_id)) {
+        orderTablesMap.set(ot.order_id, []);
+      }
+      orderTablesMap.get(ot.order_id)!.push(ot.table_id);
+    });
+    
     const customerIds = [...new Set(orders.map((o: any) => o.customer_id).filter(Boolean))];
     const cashierIds = [...new Set(orders.map((o: any) => o.cashier_id).filter(Boolean))];
 
@@ -1317,6 +1463,16 @@ export class OrdersService {
           itemsCount = count || 0;
         }
 
+        // Get table IDs from junction table for this order
+        const orderTableIds = orderTablesMap.get(order.id) || [];
+        // If no tables in junction table, fall back to old table_id field
+        const finalTableIds = orderTableIds.length > 0 ? orderTableIds : (order.table_id ? [order.table_id] : []);
+        
+        // Get table objects for all tables
+        const orderTables = finalTableIds
+          .map((tableId: string) => tableMap.get(tableId))
+          .filter(Boolean);
+
         // Transform snake_case to camelCase and ensure numeric fields are numbers
         return {
           id: order.id,
@@ -1325,8 +1481,10 @@ export class OrdersService {
           branch: order.branch_id ? branchMap.get(order.branch_id) || null : null,
           counterId: order.counter_id || null,
           counter: order.counter_id ? counterMap.get(order.counter_id) || null : null,
-          tableId: order.table_id || null,
-          table: order.table_id ? tableMap.get(order.table_id) || null : null,
+          tableId: order.table_id || (finalTableIds.length > 0 ? finalTableIds[0] : null), // Backward compatibility: first table or old table_id
+          table: finalTableIds.length > 0 ? tableMap.get(finalTableIds[0]) || null : (order.table_id ? tableMap.get(order.table_id) || null : null), // Backward compatibility: first table or old table
+          tableIds: finalTableIds, // Array of all table IDs
+          tables: orderTables, // Array of all table objects
           customerId: order.customer_id || null,
           customer: order.customer_id ? customerMap.get(order.customer_id) || null : null,
           cashierId: order.cashier_id || null,
@@ -1383,8 +1541,20 @@ export class OrdersService {
       throw new NotFoundException('Order not found');
     }
 
+    // Fetch tables from order_tables junction table
+    const { data: orderTablesData } = await supabase
+      .from('order_tables')
+      .select('table_id')
+      .eq('order_id', orderId);
+    
+    // Get all table IDs (from junction table or fallback to old table_id)
+    const tableIdsFromJunction = (orderTablesData || []).map((ot: any) => ot.table_id).filter(Boolean);
+    const finalTableIds = tableIdsFromJunction.length > 0 
+      ? tableIdsFromJunction 
+      : (order.table_id ? [order.table_id] : []);
+
     // Manually fetch related data to avoid join failures
-    const [branch, counter, table, customer, cashier] = await Promise.all([
+    const [branch, counter, customer, cashier, tablesData] = await Promise.all([
       order.branch_id
         ? supabase
             .from('branches')
@@ -1397,13 +1567,6 @@ export class OrdersService {
             .from('counters')
             .select('id, name')
             .eq('id', order.counter_id)
-            .maybeSingle()
-        : Promise.resolve({ data: null, error: null }),
-      order.table_id
-        ? supabase
-            .from('tables')
-            .select('id, table_number, seating_capacity')
-            .eq('id', order.table_id)
             .maybeSingle()
         : Promise.resolve({ data: null, error: null }),
       order.customer_id
@@ -1420,7 +1583,16 @@ export class OrdersService {
             .eq('id', order.cashier_id)
             .maybeSingle()
         : Promise.resolve({ data: null, error: null }),
+      finalTableIds.length > 0
+        ? supabase
+            .from('tables')
+            .select('id, table_number, seating_capacity')
+            .in('id', finalTableIds)
+        : Promise.resolve({ data: [], error: null }),
     ]);
+    
+    // Get first table for backward compatibility
+    const firstTable = tablesData.data && tablesData.data.length > 0 ? tablesData.data[0] : null;
 
     // Transform snake_case to camelCase and ensure numeric fields are numbers
     const orderWithRelations = {
@@ -1430,8 +1602,10 @@ export class OrdersService {
       branch: branch.data || null,
       counterId: order.counter_id || null,
       counter: counter.data || null,
-      tableId: order.table_id || null,
-      table: table.data || null,
+      tableId: order.table_id || (finalTableIds.length > 0 ? finalTableIds[0] : null), // Backward compatibility: first table or old table_id
+      table: firstTable || null, // Backward compatibility: first table
+      tableIds: finalTableIds, // Array of all table IDs
+      tables: tablesData.data || [], // Array of all table objects
       customerId: order.customer_id || null,
       customer: customer.data || null,
       cashierId: order.cashier_id || null,

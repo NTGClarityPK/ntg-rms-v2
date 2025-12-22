@@ -102,7 +102,8 @@ export interface Order {
   tenantId: string;
   branchId: string;
   counterId?: string;
-  tableId?: string;
+  tableId?: string; // Deprecated: use tableIds instead
+  tableIds?: string[]; // Array of table IDs for multiple tables
   customerId?: string;
   orderNumber: string;
   tokenNumber?: string;

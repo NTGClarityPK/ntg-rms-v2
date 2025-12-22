@@ -658,11 +658,15 @@ export default function OrdersPage() {
                               {order.branch.name}
                             </Text>
                           )}
-                          {order.table && order.table.table_number && (
+                          {((order as any).tables && (order as any).tables.length > 0) || (order.table && order.table.table_number) ? (
                             <Text size="sm" c="dimmed">
-                              {t('pos.tableNo', language)}: {order.table.table_number}
+                              {t('pos.tableNo', language)}: {
+                                (order as any).tables && (order as any).tables.length > 0
+                                  ? (order as any).tables.map((t: any) => t.table_number).join(', ')
+                                  : (order.table?.table_number || '')
+                              }
                             </Text>
-                          )}
+                          ) : null}
                           {order.customer && order.customer.name && (
                             <Text size="sm" c="dimmed">
                               {order.customer.name}

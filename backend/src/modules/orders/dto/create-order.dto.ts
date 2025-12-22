@@ -76,7 +76,13 @@ export class CreateOrderDto {
   @ApiProperty({ required: false })
   @IsUUID()
   @IsOptional()
-  tableId?: string;
+  tableId?: string; // Deprecated: use tableIds instead, kept for backward compatibility
+
+  @ApiProperty({ type: [String], required: false })
+  @IsArray()
+  @IsUUID(undefined, { each: true })
+  @IsOptional()
+  tableIds?: string[]; // Array of table IDs for multiple tables
 
   @ApiProperty({ required: false })
   @IsUUID()

@@ -82,6 +82,11 @@ export class GeneralSettingsDto {
   @IsBoolean()
   @IsOptional()
   soundAlerts?: boolean;
+
+  @ApiProperty({ required: false })
+  @IsNumber()
+  @IsOptional()
+  totalTables?: number;
 }
 
 export class InvoiceSettingsDto {
