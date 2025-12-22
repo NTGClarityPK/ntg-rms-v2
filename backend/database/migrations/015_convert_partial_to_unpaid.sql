@@ -10,3 +10,4 @@ WHERE payment_status = 'partial';
 -- FROM orders 
 -- WHERE payment_status = 'partial';
 
+

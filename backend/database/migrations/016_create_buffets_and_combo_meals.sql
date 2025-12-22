@@ -55,3 +55,4 @@ CREATE TABLE IF NOT EXISTS combo_meals (
 CREATE INDEX IF NOT EXISTS idx_combo_meals_tenant_id ON combo_meals(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_combo_meals_is_active ON combo_meals(is_active) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_combo_meals_display_order ON combo_meals(display_order);
+

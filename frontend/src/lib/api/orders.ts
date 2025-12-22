@@ -46,6 +46,7 @@ export interface OrderItem {
   taxAmount: number;
   subtotal: number;
   specialInstructions?: string;
+  status?: 'pending' | 'preparing' | 'ready';
   addOns?: {
     id: string;
     addOnId: string;
@@ -130,6 +131,10 @@ export interface UpdatePaymentStatusDto {
   paymentStatus: PaymentStatus;
   amountPaid?: number;
   paymentMethod?: 'cash' | 'card' | 'zainCash' | 'asiaHawala' | 'bankTransfer';
+}
+
+export interface UpdateOrderItemStatusDto {
+  status: 'pending' | 'preparing' | 'ready';
 }
 
 export interface CreateOrderItemDto {
@@ -224,6 +229,11 @@ export const ordersApi = {
 
   async deleteOrder(id: string, reason?: string): Promise<void> {
     await apiClient.delete(`${API_ENDPOINTS.ORDERS}/${id}`, { params: { reason } });
+  },
+
+  async updateOrderItemStatus(orderId: string, itemId: string, data: UpdateOrderItemStatusDto): Promise<Order> {
+    const response = await apiClient.put(`${API_ENDPOINTS.ORDERS}/${orderId}/items/${itemId}/status`, data);
+    return response.data;
   },
 };
 

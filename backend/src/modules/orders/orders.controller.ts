@@ -21,6 +21,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdatePaymentStatusDto } from './dto/update-payment-status.dto';
+import { UpdateOrderItemStatusDto } from './dto/update-order-item-status.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 
 @ApiTags('orders')
@@ -235,6 +236,17 @@ export class OrdersController {
     @Body() updateDto: UpdatePaymentStatusDto,
   ) {
     return this.ordersService.updatePaymentStatus(user.tenantId, id, updateDto);
+  }
+
+  @Put(':orderId/items/:itemId/status')
+  @ApiOperation({ summary: 'Update individual order item status (kitchen display only)' })
+  updateOrderItemStatus(
+    @CurrentUser() user: any,
+    @Param('orderId') orderId: string,
+    @Param('itemId') itemId: string,
+    @Body() updateDto: UpdateOrderItemStatusDto,
+  ) {
+    return this.ordersService.updateOrderItemStatus(user.tenantId, orderId, itemId, updateDto);
   }
 
   @Delete(':id')

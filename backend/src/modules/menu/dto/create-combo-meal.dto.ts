@@ -48,3 +48,4 @@ export class CreateComboMealDto {
   @IsBoolean()
   isActive?: boolean;
 }
+

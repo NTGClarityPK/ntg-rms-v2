@@ -51,3 +51,4 @@ export class UpdateBuffetDto {
   @IsBoolean()
   isActive?: boolean;
 }
+

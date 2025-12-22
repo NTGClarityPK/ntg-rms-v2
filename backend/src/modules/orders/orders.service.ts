@@ -11,6 +11,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdatePaymentStatusDto } from './dto/update-payment-status.dto';
+import { UpdateOrderItemStatusDto } from './dto/update-order-item-status.dto';
 import { CouponsService } from '../coupons/coupons.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { DeliveryService } from '../delivery/delivery.service';
@@ -687,6 +688,7 @@ export class OrdersService {
             tax_amount: itemTaxAmount,
             subtotal: itemTotal,
             special_instructions: item.specialInstructions || null,
+            status: 'pending', // Default status for new items
           })
           .select()
           .single();
@@ -1300,6 +1302,7 @@ export class OrdersService {
               taxAmount: Number(item.tax_amount) || 0,
               subtotal: Number(item.subtotal) || 0,
               specialInstructions: item.special_instructions || null,
+              status: (item.status || 'pending') as 'pending' | 'preparing' | 'ready',
               addOns: itemAddOns,
               createdAt: item.created_at,
               updatedAt: item.updated_at,
@@ -1681,6 +1684,7 @@ export class OrdersService {
           taxAmount: Number(item.tax_amount) || 0,
           subtotal: Number(item.subtotal) || 0,
           specialInstructions: item.special_instructions || null,
+          status: (item.status || 'pending') as 'pending' | 'preparing' | 'ready',
           addOns: (addOns || []).map((addOn: any) => {
             const addOnData = addOn.add_on_id ? addOnDetailsMap.get(addOn.add_on_id) : null;
             const transformedAddOn = addOnData ? {
@@ -1926,6 +1930,7 @@ export class OrdersService {
             tax_amount: itemTaxAmount,
             subtotal: itemTotal,
             special_instructions: item.specialInstructions || null,
+            status: 'pending', // Default status for new items
           })
           .select()
           .single();
@@ -2165,6 +2170,137 @@ export class OrdersService {
     const updatedOrder = await this.getOrderById(tenantId, orderId);
     
     // Emit SSE event for order status change
+    this.ordersSseService.emitOrderUpdate({
+      type: 'ORDER_STATUS_CHANGED',
+      tenantId,
+      orderId,
+      order: updatedOrder,
+    });
+
+    return updatedOrder;
+  }
+
+  /**
+   * Update individual order item status
+   * This is used by kitchen display to mark items as preparing or ready
+   * The overall order status will be automatically updated based on item statuses
+   */
+  async updateOrderItemStatus(
+    tenantId: string,
+    orderId: string,
+    itemId: string,
+    updateDto: UpdateOrderItemStatusDto,
+  ) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Get current order
+    const { data: order } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('id', orderId)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    // Get the order item
+    const { data: orderItem, error: itemError } = await supabase
+      .from('order_items')
+      .select('*')
+      .eq('id', itemId)
+      .eq('order_id', orderId)
+      .single();
+
+    if (itemError || !orderItem) {
+      throw new NotFoundException('Order item not found');
+    }
+
+    // Update the item status
+    const { error: updateError } = await supabase
+      .from('order_items')
+      .update({
+        status: updateDto.status,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', itemId)
+      .eq('order_id', orderId);
+
+    if (updateError) {
+      throw new InternalServerErrorException(`Failed to update order item status: ${updateError.message}`);
+    }
+
+    // Get all items for this order to determine overall order status
+    const { data: allItems } = await supabase
+      .from('order_items')
+      .select('status')
+      .eq('order_id', orderId);
+
+    if (!allItems || allItems.length === 0) {
+      throw new InternalServerErrorException('No items found for order');
+    }
+
+    // Determine overall order status based on item statuses
+    const itemStatuses = allItems.map((item: any) => item.status || 'pending');
+    const totalItems = itemStatuses.length;
+    const readyCount = itemStatuses.filter((status: string) => status === 'ready').length;
+    const preparingCount = itemStatuses.filter((status: string) => status === 'preparing').length;
+    const pendingCount = itemStatuses.filter((status: string) => status === 'pending').length;
+
+    let newOrderStatus = order.status;
+
+    // Update order status based on item statuses
+    // Priority: pending > preparing > ready (order status reflects the "lowest" item status)
+    // Order is "pending" if ANY items are still pending
+    if (pendingCount > 0) {
+      newOrderStatus = 'pending';
+    }
+    // Order is "preparing" only when ALL items are preparing (no pending items, no ready items)
+    else if (preparingCount === totalItems) {
+      newOrderStatus = 'preparing';
+    }
+    // Order is "ready" only when ALL items are ready
+    else if (readyCount === totalItems) {
+      newOrderStatus = 'ready';
+    }
+    // Fallback: if there are preparing and ready items but no pending, order is preparing
+    else if (preparingCount > 0 && readyCount > 0 && pendingCount === 0) {
+      newOrderStatus = 'preparing';
+    }
+    // This should not happen, but keep current status as fallback
+    else {
+      newOrderStatus = order.status;
+    }
+
+    // Only update order status if it changed
+    if (newOrderStatus !== order.status) {
+      const { error: orderUpdateError } = await supabase
+        .from('orders')
+        .update({
+          status: newOrderStatus,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', orderId)
+        .eq('tenant_id', tenantId);
+
+      if (orderUpdateError) {
+        console.error('Failed to update order status after item status change:', orderUpdateError);
+        // Don't throw - item status was updated successfully
+      }
+    }
+
+    // Trigger Supabase Realtime event
+    await supabase
+      .from('orders')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', orderId);
+
+    // Get updated order for SSE event
+    const updatedOrder = await this.getOrderById(tenantId, orderId);
+    
+    // Emit SSE event for order item status change
     this.ordersSseService.emitOrderUpdate({
       type: 'ORDER_STATUS_CHANGED',
       tenantId,

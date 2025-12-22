@@ -55,7 +55,7 @@ export default function KitchenDisplayPage() {
   const [loading, setLoading] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [processingOrderIds, setProcessingOrderIds] = useState<Set<string>>(new Set());
+  const [processingOrderIds, setProcessingOrderIds] = useState<Set<string>>(new Set()); // Format: "orderId-itemId" or "orderId"
   const audioContextRef = useRef<AudioContext | null>(null);
   const previousOrderIdsRef = useRef<Set<string>>(new Set());
   const audioResumedRef = useRef<boolean>(false);
@@ -338,23 +338,54 @@ export default function KitchenDisplayPage() {
     };
   }, []); // Empty deps - only set up once, use ref for latest function
 
-  const handleMarkAsReady = async (order: Order) => {
-    // Optimistic update: remove order immediately (before API call)
+  const handleItemClick = async (order: Order, itemId: string) => {
+    const item = order.items?.find(i => i.id === itemId);
+    if (!item) return;
+
+    const currentStatus = item.status || 'pending';
+    let newStatus: 'preparing' | 'ready';
+    
+    // Determine next status
+    if (currentStatus === 'pending') {
+      newStatus = 'preparing';
+    } else if (currentStatus === 'preparing') {
+      newStatus = 'ready';
+    } else {
+      // Item is already ready, do nothing
+      return;
+    }
+
     const previousOrders = orders;
-    setOrders(prevOrders => prevOrders.filter(o => o.id !== order.id));
-    setProcessingOrderIds(prev => new Set(prev).add(order.id));
+    
+    // Optimistic update: update item status immediately
+    setOrders(prevOrders => 
+      prevOrders.map(o => {
+        if (o.id !== order.id) return o;
+        return {
+          ...o,
+          items: o.items?.map(i => 
+            i.id === itemId 
+              ? { ...i, status: newStatus }
+              : i
+          ),
+          updatedAt: new Date().toISOString(),
+        };
+      })
+    );
+    
+    const processingKey = `${order.id}-${itemId}`;
+    setProcessingOrderIds(prev => new Set(prev).add(processingKey));
     
     try {
-      await ordersApi.updateOrderStatus(order.id, { status: 'ready' });
+      await ordersApi.updateOrderItemStatus(order.id, itemId, { status: newStatus });
       
-      notifications.show({
-        title: t('common.success' as any, language),
-        message: t('orders.markedAsReady', language),
-        color: getSuccessColor(),
-      });
-      
-      // Notify same-browser screens about the status change (for immediate UI update)
+      // Notify same-browser screens about the status change
       notifyOrderUpdate('order-status-changed', order.id);
+      
+      // Reload orders to get updated order status (may have changed if all items are ready)
+      if (loadOrdersRef.current) {
+        loadOrdersRef.current(true);
+      }
     } catch (error: any) {
       // Revert optimistic update on error
       setOrders(previousOrders);
@@ -367,39 +398,69 @@ export default function KitchenDisplayPage() {
     } finally {
       setProcessingOrderIds(prev => {
         const next = new Set(prev);
-        next.delete(order.id);
+        next.delete(processingKey);
         return next;
       });
     }
   };
 
-  const handleStartPreparing = async (order: Order) => {
-    // Optimistic update: change status immediately (before API call)
+  const handleBulkAction = async (order: Order, status: 'pending' | 'preparing') => {
+    if (!order.items || order.items.length === 0) return;
+
+    // Find items in the specified status
+    const itemsToAdvance = order.items.filter(item => {
+      if (item.buffetId || item.buffet) return false;
+      return (item.status || 'pending') === status;
+    });
+
+    if (itemsToAdvance.length === 0) return;
+
     const previousOrders = orders;
-    setOrders(prevOrders => 
-      prevOrders.map(o => 
-        o.id === order.id 
-          ? { ...o, status: 'preparing' as OrderStatus, updatedAt: new Date().toISOString() }
-          : o
-      )
-    );
-    setProcessingOrderIds(prev => new Set(prev).add(order.id));
     
+    // Optimistic update: update all items immediately
+    setOrders(prevOrders => 
+      prevOrders.map(o => {
+        if (o.id !== order.id) return o;
+        const newStatus = status === 'pending' ? 'preparing' : 'ready';
+        return {
+          ...o,
+          items: o.items?.map(i => {
+            const shouldUpdate = itemsToAdvance.some(item => item.id === i.id);
+            return shouldUpdate ? { ...i, status: newStatus } : i;
+          }),
+          updatedAt: new Date().toISOString(),
+        };
+      })
+    );
+
+    // Mark all items as processing
+    const processingKeys = itemsToAdvance.map(item => `${order.id}-${item.id}`);
+    setProcessingOrderIds(prev => {
+      const next = new Set(prev);
+      processingKeys.forEach(key => next.add(key));
+      return next;
+    });
+
     try {
-      await ordersApi.updateOrderStatus(order.id, { status: 'preparing' });
-      
-      notifications.show({
-        title: t('common.success' as any, language),
-        message: t('orders.startedPreparing', language),
-        color: getSuccessColor(),
-      });
-      
-      // Notify same-browser screens about the status change (for immediate UI update)
+      // Update all items in parallel
+      const newStatus = status === 'pending' ? 'preparing' : 'ready';
+      await Promise.all(
+        itemsToAdvance.map(item => 
+          ordersApi.updateOrderItemStatus(order.id, item.id, { status: newStatus })
+        )
+      );
+
+      // Notify same-browser screens about the status change
       notifyOrderUpdate('order-status-changed', order.id);
+
+      // Reload orders to get updated order status
+      if (loadOrdersRef.current) {
+        loadOrdersRef.current(true);
+      }
     } catch (error: any) {
       // Revert optimistic update on error
       setOrders(previousOrders);
-      
+
       notifications.show({
         title: t('common.error' as any, language),
         message: error?.response?.data?.message || t('orders.updateError', language),
@@ -408,7 +469,7 @@ export default function KitchenDisplayPage() {
     } finally {
       setProcessingOrderIds(prev => {
         const next = new Set(prev);
-        next.delete(order.id);
+        processingKeys.forEach(key => next.delete(key));
         return next;
       });
     }
@@ -465,8 +526,18 @@ export default function KitchenDisplayPage() {
     );
     return hasNonBuffetItems; // Only keep orders that have at least one non-buffet item
   });
-  const pendingOrders = ordersWithoutBuffetsOnly.filter((o) => o.status === 'pending');
-  const preparingOrders = ordersWithoutBuffetsOnly.filter((o) => o.status === 'preparing');
+
+  // Filter orders by item status, not order status
+  // An order appears in pending if it has pending items, and in preparing if it has preparing items
+  const pendingOrders = ordersWithoutBuffetsOnly.filter((order) => {
+    const items = order.items?.filter((item) => !item.buffetId && !item.buffet) || [];
+    return items.some((item) => (item.status || 'pending') === 'pending');
+  });
+
+  const preparingOrders = ordersWithoutBuffetsOnly.filter((order) => {
+    const items = order.items?.filter((item) => !item.buffetId && !item.buffet) || [];
+    return items.some((item) => (item.status || 'pending') === 'preparing');
+  });
 
   return (
     <Box
@@ -638,11 +709,12 @@ export default function KitchenDisplayPage() {
                                       order={order}
                                       language={language}
                                       primary={primary}
-                                      onMarkAsReady={() => handleStartPreparing(order)}
-                                      onStartPreparing={() => handleStartPreparing(order)}
-                                      processing={processingOrderIds.has(order.id)}
+                                      onItemClick={handleItemClick}
+                                      onBulkAction={handleBulkAction}
+                                      processingOrderIds={processingOrderIds}
                                       getPriorityColor={getPriorityColor}
                                       getOrderAge={getOrderAge}
+                                      showStatus="pending"
                                     />
                                   ))
                                 )}
@@ -670,26 +742,26 @@ export default function KitchenDisplayPage() {
                           return (
                             <Grid.Col key={`preparing-${colIndex}`} span={4} style={{ overflow: 'hidden' }}>
                               <Stack gap="md">
-                                {columnOrders.length === 0 && colIndex === 0 ? (
-                                  <Center py="xl">
-                                    <Text c="dimmed">{t('orders.noPreparingOrders', language)}</Text>
-                                  </Center>
-                                ) : (
-                                  columnOrders.map((order) => (
-                                    <OrderCard
-                                      key={order.id}
-                                      order={order}
-                                      language={language}
-                                      primary={primary}
-                                      onMarkAsReady={() => handleMarkAsReady(order)}
-                                      onStartPreparing={() => handleStartPreparing(order)}
-                                      processing={processingOrderIds.has(order.id)}
-                                      getPriorityColor={getPriorityColor}
-                                      getOrderAge={getOrderAge}
-                                      showReadyButton
-                                    />
-                                  ))
-                                )}
+                                 {columnOrders.length === 0 && colIndex === 0 ? (
+                                   <Center py="xl">
+                                     <Text c="dimmed">{t('orders.noPreparingOrders', language)}</Text>
+                                   </Center>
+                                 ) : (
+                                   columnOrders.map((order) => (
+                                     <OrderCard
+                                       key={order.id}
+                                       order={order}
+                                       language={language}
+                                       primary={primary}
+                                       onItemClick={handleItemClick}
+                                       onBulkAction={(order, status) => handleBulkAction(order, status)}
+                                       processingOrderIds={processingOrderIds}
+                                       getPriorityColor={getPriorityColor}
+                                       getOrderAge={getOrderAge}
+                                       showStatus="preparing"
+                                     />
+                                   ))
+                                 )}
                               </Stack>
                             </Grid.Col>
                           );
@@ -711,24 +783,24 @@ interface OrderCardProps {
   order: Order;
   language: 'en' | 'ar';
   primary: string;
-  onMarkAsReady: () => void;
-  onStartPreparing: () => void;
-  processing: boolean;
+  onItemClick: (order: Order, itemId: string) => void;
+  onBulkAction: (order: Order, status: 'pending' | 'preparing') => void;
+  processingOrderIds: Set<string>;
   getPriorityColor: (order: Order) => string;
   getOrderAge: (order: Order) => string;
-  showReadyButton?: boolean;
+  showStatus: 'pending' | 'preparing'; // Which status column this card is in
 }
 
 function OrderCard({
   order,
   language,
   primary,
-  onMarkAsReady,
-  onStartPreparing,
-  processing,
+  onItemClick,
+  onBulkAction,
+  processingOrderIds,
   getPriorityColor,
   getOrderAge,
-  showReadyButton = false,
+  showStatus,
 }: OrderCardProps) {
   const priorityColor = getPriorityColor(order);
   const orderAge = getOrderAge(order);
@@ -769,111 +841,161 @@ function OrderCard({
           )}
         </Group>
 
-        {/* Order Items */}
-        <Box>
-          {order.items && order.items.length > 0 ? (
-            <Stack gap={0}>
-              {order.items
-                .filter((item) => !item.buffetId && !item.buffet) // Filter out buffets from kitchen display
-                .map((item) => {
-                  // For combo meals, show constituent food items
-                  if (item.comboMealId && item.comboMeal) {
-                    return (
-                      <Paper key={item.id}>
-                        <Stack gap={4} style={{ padding: '4px 2px' }}>
-                          <Text fw={600} size="md" c="blue" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
-                            {item.quantity}x {item.comboMeal.name || t('pos.comboMeal', language)}
-                          </Text>
-                          {item.comboMeal.foodItems && item.comboMeal.foodItems.length > 0 && (
-                            <Stack gap={2} style={{ paddingLeft: 12, borderLeft: '2px solid var(--mantine-color-blue-3)' }}>
-                              {item.comboMeal.foodItems.map((foodItem, idx) => (
-                                <Text key={idx} size="sm" c="dimmed" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
-                                  • {foodItem.name || t('pos.item', language)}
-                                </Text>
-                              ))}
-                            </Stack>
-                          )}
-                          {item.specialInstructions && (
-                            <Text size="xs" c="dimmed" fs="italic">
-                              {t('pos.specialInstructions', language)}: {item.specialInstructions}
-                            </Text>
-                          )}
-                        </Stack>
-                      </Paper>
-                    );
-                  }
-                  
-                  // Regular food items
-                  return (
-                    <Paper key={item.id}>
-                      <Group justify="space-between" wrap="nowrap" style={{ padding: '2px 2px' }}>
-                        <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-                          <Text fw={500} size="md" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
-                            {item.quantity}x{' '}
-                            {item.foodItem
-                              ? (item.foodItem.name || t('pos.item', language))
-                              : t('pos.item', language) + ` #${item.foodItemId || item.id}`}
-                          </Text>
-                          {item.variation && item.variation.variationName && (
-                            <Text size="xs" c="dimmed">
-                              {item.variation.variationGroup}: {item.variation.variationName}
-                            </Text>
-                          )}
-                          {item.addOns && item.addOns.length > 0 && item.addOns.some(a => a.addOn) && (
-                            <Text size="xs" c="dimmed">
-                              {t('pos.addOns', language)}:{' '}
-                              {item.addOns
-                                .filter(addOn => addOn.addOn)
-                                .map(
-                                  (addOn) =>
-                                    addOn.addOn?.name || ''
-                                )
-                                .filter(Boolean)
-                                .join(', ') || '-'}
-                            </Text>
-                          )}
-                          {item.specialInstructions && (
-                            <Text size="xs" c="dimmed" fs="italic">
-                              {t('pos.specialInstructions', language)}: {item.specialInstructions}
-                            </Text>
-                          )}
-                        </Stack>
-                      </Group>
-                    </Paper>
-                  );
-                })}
-            </Stack>
-          ) : (
-            <Text size="sm" c="dimmed" p="xs">
-              {t('orders.loadingItems', language) || 'Loading items...'}
-            </Text>
-          )}
-        </Box>
+         {/* Order Items */}
+         <Box>
+           {order.items && order.items.length > 0 ? (
+             <Stack gap={4}>
+               {order.items
+                 .filter((item) => {
+                   // Filter out buffets and ready items
+                   if (item.buffetId || item.buffet) return false;
+                   const itemStatus = item.status || 'pending';
+                   // Only show items that match the column status
+                   return itemStatus === showStatus;
+                 })
+                 .map((item) => {
+                   const itemStatus = item.status || 'pending';
+                   const isProcessing = processingOrderIds.has(`${order.id}-${item.id}`);
+                   const canAdvance = itemStatus !== 'ready';
+                   
+                   // For combo meals, show constituent food items
+                   if (item.comboMealId && item.comboMeal) {
+                     return (
+                       <Box
+                         key={item.id}
+                         p="xs"
+                         style={{
+                           cursor: canAdvance ? 'pointer' : 'default',
+                           transition: 'opacity 0.2s ease',
+                           opacity: isProcessing ? 0.6 : 1,
+                         }}
+                         onClick={() => canAdvance && !isProcessing && onItemClick(order, item.id)}
+                         onMouseEnter={(e) => {
+                           if (canAdvance && !isProcessing) {
+                             e.currentTarget.style.opacity = '0.8';
+                           }
+                         }}
+                         onMouseLeave={(e) => {
+                           e.currentTarget.style.opacity = isProcessing ? '0.6' : '1';
+                         }}
+                       >
+                         <Stack gap={2}>
+                           <Text fw={500} size="md" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+                             {item.quantity}x {item.comboMeal.name || t('pos.comboMeal', language)}
+                           </Text>
+                           {item.comboMeal.foodItems && item.comboMeal.foodItems.length > 0 && (
+                             <Stack gap={2} style={{ paddingLeft: 12 }}>
+                               {item.comboMeal.foodItems.map((foodItem, idx) => (
+                                 <Text key={idx} size="sm" c="dimmed" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+                                   • {foodItem.name || t('pos.item', language)}
+                                 </Text>
+                               ))}
+                             </Stack>
+                           )}
+                           {item.specialInstructions && (
+                             <Text size="xs" c="dimmed" fs="italic">
+                               {t('pos.specialInstructions', language)}: {item.specialInstructions}
+                             </Text>
+                           )}
+                         </Stack>
+                       </Box>
+                     );
+                   }
+                   
+                   // Regular food items
+                   return (
+                     <Box
+                       key={item.id}
+                       p="xs"
+                       style={{
+                         cursor: canAdvance ? 'pointer' : 'default',
+                         transition: 'opacity 0.2s ease',
+                         opacity: isProcessing ? 0.6 : 1,
+                       }}
+                       onClick={() => canAdvance && !isProcessing && onItemClick(order, item.id)}
+                       onMouseEnter={(e) => {
+                         if (canAdvance && !isProcessing) {
+                           e.currentTarget.style.opacity = '0.8';
+                         }
+                       }}
+                       onMouseLeave={(e) => {
+                         e.currentTarget.style.opacity = isProcessing ? '0.6' : '1';
+                       }}
+                     >
+                       <Stack gap={2}>
+                         <Text fw={500} size="md" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+                           {item.quantity}x{' '}
+                           {item.foodItem
+                             ? (item.foodItem.name || t('pos.item', language))
+                             : t('pos.item', language) + ` #${item.foodItemId || item.id}`}
+                         </Text>
+                         {item.variation && item.variation.variationName && (
+                           <Text size="xs" c="dimmed">
+                             {item.variation.variationGroup}: {item.variation.variationName}
+                           </Text>
+                         )}
+                         {item.addOns && item.addOns.length > 0 && item.addOns.some(a => a.addOn) && (
+                           <Text size="xs" c="dimmed">
+                             {t('pos.addOns', language)}:{' '}
+                             {item.addOns
+                               .filter(addOn => addOn.addOn)
+                               .map(
+                                 (addOn) =>
+                                   addOn.addOn?.name || ''
+                               )
+                               .filter(Boolean)
+                               .join(', ') || '-'}
+                           </Text>
+                         )}
+                         {item.specialInstructions && (
+                           <Text size="xs" c="dimmed" fs="italic">
+                             {t('pos.specialInstructions', language)}: {item.specialInstructions}
+                           </Text>
+                         )}
+                       </Stack>
+                     </Box>
+                   );
+                 })}
+             </Stack>
+           ) : (
+             <Text size="sm" c="dimmed" p="xs">
+               {t('orders.loadingItems', language) || 'Loading items...'}
+             </Text>
+           )}
+         </Box>
 
-        {/* Actions */}
-        <Group>
-          {!showReadyButton ? (
+        {/* Bulk Action Button - only show if there are items in this column's status */}
+        {order.items && order.items.length > 0 && (() => {
+          const items = order.items.filter((item) => {
+            if (item.buffetId || item.buffet) return false;
+            const itemStatus = item.status || 'pending';
+            return itemStatus === showStatus; // Only items in this column
+          });
+          
+          if (items.length === 0) return null; // No items in this status
+          
+          const isProcessing = items.some(item => processingOrderIds.has(`${order.id}-${item.id}`));
+          
+          return (
             <Button
               fullWidth
-              onClick={onStartPreparing}
-              loading={processing}
-              leftSection={<IconChefHat size={16} />}
-              color={primary}
+              onClick={() => onBulkAction(order, showStatus)}
+              loading={isProcessing}
+              leftSection={
+                showStatus === 'pending' ? <IconChefHat size={18} /> : <IconCheck size={18} />
+              }
+              color={showStatus === 'pending' ? primary : getSuccessColor()}
+              size="md"
+              radius="md"
+              style={{ marginTop: '8px' }}
             >
-              {t('orders.startPreparing', language)}
+              {showStatus === 'pending'
+                ? t('orders.startPreparing', language) 
+                : t('orders.markAsReady', language)}
             </Button>
-          ) : (
-            <Button
-              fullWidth
-              onClick={onMarkAsReady}
-              loading={processing}
-              leftSection={<IconCheck size={16} />}
-              color={getSuccessColor()}
-            >
-              {t('orders.markAsReady', language)}
-            </Button>
-          )}
-        </Group>
+          );
+        })()}
+
       </Stack>
     </Card>
   );

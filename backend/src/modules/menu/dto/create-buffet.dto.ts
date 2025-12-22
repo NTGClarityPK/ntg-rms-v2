@@ -48,3 +48,4 @@ export class CreateBuffetDto {
   @IsBoolean()
   isActive?: boolean;
 }
+
