@@ -27,6 +27,7 @@ import {
   IconVolumeOff,
   IconRefresh,
   IconSearch,
+  IconArrowLeft,
 } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
@@ -38,6 +39,7 @@ import { getSuccessColor, getErrorColor, getWarningColor, getInfoColor, getStatu
 import { useAuthStore } from '@/lib/store/auth-store';
 import { onOrderUpdate, notifyOrderUpdate } from '@/lib/utils/order-events';
 import { useKitchenSse, OrderUpdateEvent } from '@/lib/hooks/use-kitchen-sse';
+import Link from 'next/link';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/ar';
@@ -559,6 +561,29 @@ export default function KitchenDisplayPage() {
           {/* Controls - positioned absolutely */}
           <Box style={{ position: 'absolute', top: 10, right: 10, zIndex: 1001 }}>
             <Group gap="xs">
+              {/* Back to Orders button */}
+              <Tooltip 
+                label={t('orders.backToOrders' as any, language) || 'Back to Orders'}
+                withArrow
+                position="bottom"
+                styles={{
+                  tooltip: {
+                    backgroundColor: 'var(--mantine-color-gray-9)',
+                    color: 'var(--mantine-color-white)',
+                  },
+                }}
+              >
+                <ActionIcon
+                  size="lg"
+                  variant="light"
+                  color={primary}
+                  component={Link}
+                  href="/orders"
+                >
+                  <IconArrowLeft size={20} />
+                </ActionIcon>
+              </Tooltip>
+              
               {/* Refresh button */}
               <Tooltip 
                 label={t('common.refresh', language) || 'Refresh'}
