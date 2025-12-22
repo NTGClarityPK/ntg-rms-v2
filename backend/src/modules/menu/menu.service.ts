@@ -1089,6 +1089,7 @@ export class MenuService {
           maxSelections: group.max_selections,
           displayOrder: group.display_order,
           isActive: group.is_active,
+          category: group.category || null,
           createdAt: group.created_at,
           updatedAt: group.updated_at,
           addOns: addOns?.map((addOn) => ({
@@ -1141,6 +1142,7 @@ export class MenuService {
       maxSelections: addOnGroup.max_selections,
       displayOrder: addOnGroup.display_order,
       isActive: addOnGroup.is_active,
+      category: addOnGroup.category || null,
       createdAt: addOnGroup.created_at,
       updatedAt: addOnGroup.updated_at,
       addOns: addOns?.map((addOn) => ({
@@ -1177,6 +1179,7 @@ export class MenuService {
         max_selections: maxSelections,
         display_order: 0,
         is_active: true,
+        category: createDto.category || null,
       })
       .select()
       .single();
@@ -1194,6 +1197,7 @@ export class MenuService {
       maxSelections: addOnGroup.max_selections,
       displayOrder: addOnGroup.display_order,
       isActive: addOnGroup.is_active,
+      category: addOnGroup.category || null,
       createdAt: addOnGroup.created_at,
       updatedAt: addOnGroup.updated_at,
       addOns: [],
@@ -1269,6 +1273,7 @@ export class MenuService {
     }
     if (updateDto.displayOrder !== undefined) updateData.display_order = updateDto.displayOrder;
     if (updateDto.isActive !== undefined) updateData.is_active = updateDto.isActive;
+    if (updateDto.category !== undefined) updateData.category = updateDto.category?.trim() || null;
     updateData.updated_at = new Date().toISOString();
 
     const { data: addOnGroup, error } = await supabase

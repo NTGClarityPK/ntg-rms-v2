@@ -793,6 +793,8 @@
     }
   },
   "coupons": {
+    "validFromPlaceholder": "اختر تاريخ البداية",
+    "validUntilPlaceholder": "اختر تاريخ النهاية",
     "title": "القسائم",
     "createCoupon": "إنشاء قسيمة",
     "editCoupon": "تعديل قسيمة",

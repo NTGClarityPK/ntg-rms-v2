@@ -767,6 +767,8 @@
     }
   },
   "coupons": {
+    "validFromPlaceholder": "Select start date",
+    "validUntilPlaceholder": "Select end date",
     "title": "Coupons",
     "createCoupon": "Create Coupon",
     "editCoupon": "Edit Coupon",

@@ -483,7 +483,7 @@ export function ItemSelectionModal({
                             label={
                               <Group justify="space-between" style={{ flex: 1 }}>
                                 <Text>
-                                  {language === 'ar' && addOn.name ? addOn.name : addOn.nameEn}
+                                  {addOn.name || ''}
                                 </Text>
                                 {addOn.price > 0 && (
                                   <Text fw={500} c={primaryColor}>

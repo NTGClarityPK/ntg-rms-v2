@@ -493,7 +493,7 @@ export function CouponsPage() {
 
             <DatePickerInput
               label={t('coupons.validFrom', language) || 'Valid From (Optional)'}
-              placeholder="Select start date"
+              placeholder={t('coupons.validFromPlaceholder', language) || 'Select start date'}
               value={form.values.validFrom ? new Date(form.values.validFrom) : null}
               onChange={(date) => {
                 if (date) {
@@ -506,7 +506,7 @@ export function CouponsPage() {
 
             <DatePickerInput
               label={t('coupons.validUntil', language) || 'Valid Until (Optional)'}
-              placeholder="Select end date"
+              placeholder={t('coupons.validUntilPlaceholder', language) || 'Select end date'}
               value={form.values.validUntil ? new Date(form.values.validUntil) : null}
               onChange={(date) => {
                 if (date) {
