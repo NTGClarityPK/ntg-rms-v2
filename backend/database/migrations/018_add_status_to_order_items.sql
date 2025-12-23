@@ -16,3 +16,4 @@ ALTER COLUMN status SET NOT NULL;
 -- Add index for faster queries on order_id and status
 CREATE INDEX IF NOT EXISTS idx_order_items_order_id_status ON order_items(order_id, status);
 
+

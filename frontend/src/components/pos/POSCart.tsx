@@ -690,7 +690,13 @@ export function POSCart({
         });
       }
     } catch (error: any) {
-      const errorMessage = error.response?.data?.message || error.message || t('pos.invalidCoupon', language);
+      // Extract error message from nested error structure
+      const errorMessage = 
+        error.response?.data?.error?.message || 
+        error.response?.data?.message || 
+        error.message || 
+        t('pos.invalidCoupon', language);
+      
       notifications.show({
         title: t('pos.invalidCoupon', language),
         message: errorMessage,
@@ -1283,7 +1289,7 @@ export function POSCart({
             foodItemName: item.foodItemName || (item as any).foodItemNameEn || (item as any).foodItemNameAr || '',
             variationName: item.variationName,
             addOns: item.addOns?.map((a: any) => ({
-              addOnName: a.addOnName || (a as any).addOnNameEn || (a as any).addOnNameAr || '',
+              addOnName: a.addOnName || a.addOn?.name || '',
             })) || [],
             quantity: item.quantity,
             subtotal: item.subtotal ?? (item.unitPrice ?? 0) * (item.quantity ?? 1),
@@ -1740,7 +1746,7 @@ export function POSCart({
                       {item.addOns && item.addOns.length > 0 && (
                         <Text size="xs" c="dimmed">
                           {t('pos.addOns', language)}:{' '}
-                          {item.addOns.map((a) => (a as any).addOnName || (a as any).addOnNameEn || (a as any).addOnNameAr || '').join(', ')}
+                          {item.addOns.map((a) => (a as any).addOnName || (a as any).addOn?.name || '').join(', ')}
                         </Text>
                       )}
 

@@ -24,6 +24,8 @@ import {
   IconSettings,
   IconChevronLeft,
   IconChevronRight,
+  IconDiscount,
+  IconBook,
 } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
@@ -43,9 +45,11 @@ const navItems = [
   { href: '/pos', icon: IconShoppingCart, key: 'pos', permission: { resource: 'orders', action: 'create' } },
   { href: '/orders', icon: IconClipboardList, key: 'orders', permission: { resource: 'orders', action: 'view' } },
   { href: '/inventory', icon: IconPackage, key: 'inventory', permission: { resource: 'inventory', action: 'view' } },
+  { href: '/recipes', icon: IconBook, key: 'recipes', permission: { resource: 'inventory', action: 'view' } },
   { href: '/employees', icon: IconUsers, key: 'employees', permission: { resource: 'employees', action: 'view' } },
   { href: '/customers', icon: IconUser, key: 'customers', permission: { resource: 'customers', action: 'view' } },
   { href: '/delivery', icon: IconTruck, key: 'delivery', permission: { resource: 'deliveries', action: 'view' } },
+  { href: '/coupons', icon: IconDiscount, key: 'coupons', permission: { resource: 'coupons', action: 'view' } },
   { href: '/reports', icon: IconChartBar, key: 'reports', permission: { resource: 'reports', action: 'view' } },
   { href: '/settings', icon: IconSettings, key: 'settings', permission: { resource: 'settings', action: 'view' } },
 ] as const;
@@ -115,17 +119,44 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
   const offlineDisabledItems = ['/dashboard', '/employees', '/customers', '/reports'];
 
   // Filter items based on permissions
-  // If user has no permissions loaded yet, show all items (fallback for owners/managers)
+  // If user has no permissions loaded yet, show items based on role (fallback)
   const visibleItems = navItems.filter((item) => {
     if (!item.permission) return true; // Dashboard always visible
     
-    // If permissions aren't loaded yet, show all items (will be filtered once loaded)
+    // If permissions aren't loaded yet, show items based on role as fallback
     const { user } = useAuthStore.getState();
     if (!user?.permissions || user.permissions.length === 0) {
-      // For tenant_owner or manager role, show all items as fallback
-      if (user?.role === 'tenant_owner' || user?.role === 'manager') {
-        return true;
+      // Define role-based fallback paths based on RBAC permissions
+      // These fallbacks ensure users can access navigation items even if permissions haven't loaded yet
+      // The fallbacks match the permissions defined in the RBAC migration (013_create_rbac_tables.sql)
+      const roleFallbacks: Record<string, string[]> = {
+        // Super Admin: Full access to everything (legacy role, treat as manager)
+        super_admin: ['/restaurant', '/menu', '/pos', '/orders', '/inventory', '/recipes', '/employees', '/customers', '/delivery', '/coupons', '/reports', '/settings'],
+        // Manager: Full access to everything
+        manager: ['/restaurant', '/menu', '/pos', '/orders', '/inventory', '/recipes', '/employees', '/customers', '/delivery', '/coupons', '/reports', '/settings'],
+        // Tenant Owner: Full access to everything
+        tenant_owner: ['/restaurant', '/menu', '/pos', '/orders', '/inventory', '/recipes', '/employees', '/customers', '/delivery', '/coupons', '/reports', '/settings'],
+        // Cashier: Orders (full), Menu (view), Customers (view/create/update), Reports (view)
+        // Permissions: orders (view/create/update/delete), menu (view), customers (view/create/update), reports (view)
+        cashier: ['/pos', '/orders', '/menu', '/customers', '/reports'],
+        // Kitchen Staff: Orders (view/update), Menu (view), Inventory (view)
+        // Permissions: orders (view/update), menu (view), inventory (view)
+        kitchen_staff: ['/orders', '/menu', '/inventory'],
+        // Waiter: Orders (view/create/update), Menu (view), Customers (view/create/update), Reservations (view/create/update)
+        // Permissions: orders (view/create/update), menu (view), customers (view/create/update), reservations (view/create/update)
+        waiter: ['/pos', '/orders', '/menu', '/customers'],
+        // Delivery: Orders (view/update), Deliveries (view/assign/update), Customers (view)
+        // Permissions: orders (view/update), deliveries (view/assign/update), customers (view)
+        delivery: ['/orders', '/delivery', '/customers'],
+      };
+      
+      // Get fallback paths for user's role
+      const userRole = user?.role;
+      if (userRole && roleFallbacks[userRole]) {
+        return roleFallbacks[userRole].includes(item.href);
       }
+      
+      // If role not found in fallbacks, deny access (security-first approach)
       return false;
     }
     
@@ -146,7 +177,9 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
       item.href === '/restaurant' ||
       item.href === '/customers' ||
       item.href === '/inventory' ||
+      item.href === '/recipes' ||
       item.href === '/employees' ||
+      item.href === '/coupons' ||
       item.href === '/reports' ||
       item.href === '/settings'
   );

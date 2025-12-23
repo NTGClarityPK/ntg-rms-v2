@@ -25,6 +25,7 @@ import {
   IconDotsVertical,
   IconRefresh,
   IconChefHat,
+  IconCheck,
 } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
@@ -68,6 +69,7 @@ export default function OrdersPage() {
   const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
   const [selectedOrderType, setSelectedOrderType] = useState<string | null>(null);
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState<string | null>(null);
+  const [showMyOrdersOnly, setShowMyOrdersOnly] = useState(false);
   const [branches, setBranches] = useState<{ value: string; label: string }[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [detailsModalOpened, { open: openDetailsModal, close: closeDetailsModal }] = useDisclosure(false);
@@ -439,7 +441,12 @@ export default function OrdersPage() {
   }, [loadOrders]);
 
   const filteredOrders = orders.filter((order) => {
-    // First apply status filter (multi-select)
+    // First apply "My Orders" filter
+    if (showMyOrdersOnly && user?.email && order.waiterEmail !== user.email) {
+      return false;
+    }
+
+    // Then apply status filter (multi-select)
     // If no statuses selected, show all orders
     if (selectedStatuses.length > 0 && !selectedStatuses.includes(order.status)) {
       return false;
@@ -465,6 +472,27 @@ export default function OrdersPage() {
   const handleStatusUpdate = () => {
     loadOrders();
     closeDetailsModal();
+  };
+
+  const handleMarkAsPaid = async (order: Order) => {
+    try {
+      await ordersApi.updatePaymentStatus(order.id, {
+        paymentStatus: 'paid',
+        amountPaid: order.totalAmount,
+      });
+      notifications.show({
+        title: t('common.success' as any, language),
+        message: t('orders.paymentStatusUpdated', language),
+        color: getSuccessColor(),
+      });
+      loadOrders();
+    } catch (error: any) {
+      notifications.show({
+        title: t('common.error' as any, language),
+        message: error?.response?.data?.message || t('orders.updateError', language),
+        color: getErrorColor(),
+      });
+    }
   };
 
   const getStatusColorForBadge = (status: OrderStatus): string => {
@@ -602,6 +630,13 @@ export default function OrdersPage() {
                 </Chip>
               </Group>
             </Chip.Group>
+            <Chip
+              checked={showMyOrdersOnly}
+              onChange={(checked) => setShowMyOrdersOnly(checked)}
+              variant="filled"
+            >
+              {t('orders.myOrders', language)}
+            </Chip>
           </Group>
         </Paper>
 
@@ -658,9 +693,14 @@ export default function OrdersPage() {
                               {order.branch.name}
                             </Text>
                           )}
+                          {order.waiterEmail && (
+                            <Text size="sm" c="dimmed">
+                              {t('orders.waiterName', language)}: {order.waiterEmail}
+                            </Text>
+                          )}
                           {((order as any).tables && (order as any).tables.length > 0) || (order.table && order.table.table_number) ? (
                             <Text size="sm" c="dimmed">
-                              {t('pos.tableNo', language)}: {
+                              {t('orders.tableNumber', language)}: {
                                 (order as any).tables && (order as any).tables.length > 0
                                   ? (order as any).tables.map((t: any) => t.table_number).join(', ')
                                   : (order.table?.table_number || '')
@@ -692,21 +732,42 @@ export default function OrdersPage() {
                           </Text>
                         </Group>
                       </Stack>
-                      <Menu>
-                        <Menu.Target>
-                          <ActionIcon variant="subtle">
-                            <IconDotsVertical size={16} />
-                          </ActionIcon>
-                        </Menu.Target>
-                        <Menu.Dropdown>
-                          <Menu.Item
-                            leftSection={<IconEye size={16} />}
-                            onClick={() => handleViewOrder(order)}
+                      <Group gap="xs">
+                        {order.paymentStatus === 'unpaid' && (
+                          <Button
+                            size="sm"
+                            variant="light"
+                            color={getSuccessColor()}
+                            leftSection={<IconCheck size={16} />}
+                            onClick={() => handleMarkAsPaid(order)}
                           >
-                            {t('common.view' as any, language)}
-                          </Menu.Item>
-                        </Menu.Dropdown>
-                      </Menu>
+                            {t('orders.markAsPaid', language)}
+                          </Button>
+                        )}
+                        <Menu>
+                          <Menu.Target>
+                            <ActionIcon variant="subtle">
+                              <IconDotsVertical size={16} />
+                            </ActionIcon>
+                          </Menu.Target>
+                          <Menu.Dropdown>
+                            <Menu.Item
+                              leftSection={<IconEye size={16} />}
+                              onClick={() => handleViewOrder(order)}
+                            >
+                              {t('common.view' as any, language)}
+                            </Menu.Item>
+                            {order.paymentStatus === 'unpaid' && (
+                              <Menu.Item
+                                leftSection={<IconCheck size={16} />}
+                                onClick={() => handleMarkAsPaid(order)}
+                              >
+                                {t('orders.markAsPaid', language)}
+                              </Menu.Item>
+                            )}
+                          </Menu.Dropdown>
+                        </Menu>
+                      </Group>
                     </Group>
                   </Card>
                 ))}

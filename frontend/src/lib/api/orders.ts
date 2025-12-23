@@ -89,6 +89,7 @@ export interface Order {
     phone: string;
     email?: string;
   };
+  waiterEmail?: string;
   orderNumber: string;
   tokenNumber?: string;
   orderType: OrderType;

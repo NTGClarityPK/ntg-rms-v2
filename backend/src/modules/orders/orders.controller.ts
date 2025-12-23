@@ -79,7 +79,7 @@ export class OrdersController {
   @Post()
   @ApiOperation({ summary: 'Create a new order' })
   createOrder(@CurrentUser() user: any, @Body() createDto: CreateOrderDto) {
-    return this.ordersService.createOrder(user.tenantId, user.id, createDto);
+    return this.ordersService.createOrder(user.tenantId, user.id, user.email, createDto);
   }
 
   @Get('kitchen/stream')

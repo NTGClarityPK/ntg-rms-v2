@@ -8,13 +8,14 @@ import { t } from '@/lib/utils/translations';
 import SalesReportPage from '@/components/reports/SalesReportPage';
 import OrdersReportPage from '@/components/reports/OrdersReportPage';
 import CustomersReportPage from '@/components/reports/CustomersReportPage';
-import InventoryReportPage from '@/components/reports/InventoryReportPage';
+import { InventoryReportsPage } from '@/components/inventory/InventoryReportsPage';
 import FinancialReportPage from '@/components/reports/FinancialReportPage';
 import TaxReportPage from '@/components/reports/TaxReportPage';
 import TopItemsReportPage from '@/components/reports/TopItemsReportPage';
 import { useSyncStatus } from '@/lib/hooks/use-sync-status';
 import { useRouter } from 'next/navigation';
 import { getErrorColor } from '@/lib/utils/theme';
+import { InventoryRefreshProvider } from '@/lib/contexts/inventory-refresh-context';
 
 export default function ReportsPage() {
   const language = useLanguageStore((state) => state.language);
@@ -70,7 +71,7 @@ export default function ReportsPage() {
               {t('reports.customers' as any, language) || 'Customer Reports'}
             </Tabs.Tab>
             <Tabs.Tab value="inventory">
-              {t('reports.inventory' as any, language) || 'Inventory Reports'}
+              {t('navigation.inventory', language) || 'Inventory'}
             </Tabs.Tab>
             <Tabs.Tab value="financial">
               {t('reports.financial' as any, language) || 'Financial Reports'}
@@ -96,7 +97,9 @@ export default function ReportsPage() {
           </Tabs.Panel>
 
           <Tabs.Panel value="inventory" pt="md" px="md" pb="md" data-tab-value="inventory">
-            <InventoryReportPage />
+            <InventoryRefreshProvider>
+              <InventoryReportsPage />
+            </InventoryRefreshProvider>
           </Tabs.Panel>
 
           <Tabs.Panel value="financial" pt="md" px="md" pb="md" data-tab-value="financial">

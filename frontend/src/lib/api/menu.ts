@@ -76,6 +76,7 @@ export interface AddOnGroup {
   maxSelections?: number;
   displayOrder: number;
   isActive: boolean;
+  category?: 'Add' | 'Remove' | 'Change' | null;
   createdAt: string;
   updatedAt: string;
   addOns?: AddOn[];

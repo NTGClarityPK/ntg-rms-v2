@@ -69,6 +69,7 @@ export function AddOnGroupsPage() {
       isRequired: false,
       minSelections: 0,
       maxSelections: undefined as number | undefined,
+      category: undefined as 'Add' | 'Remove' | 'Change' | undefined,
     },
     validate: {
       name: (value) => (!value ? (t('menu.addOnGroupName', language) || 'Name') + ' is required' : null),
@@ -126,6 +127,7 @@ export function AddOnGroupsPage() {
               maxSelections: group.maxSelections,
               displayOrder: group.displayOrder,
               isActive: group.isActive,
+              category: group.category,
               createdAt: group.createdAt,
               updatedAt: group.updatedAt,
               lastSynced: new Date().toISOString(),
@@ -146,6 +148,7 @@ export function AddOnGroupsPage() {
             maxSelections: group.maxSelections,
             displayOrder: group.displayOrder,
             isActive: group.isActive,
+            category: (group as any).category || null,
             createdAt: group.createdAt,
             updatedAt: group.updatedAt,
             addOns: [],
@@ -169,6 +172,7 @@ export function AddOnGroupsPage() {
           maxSelections: group.maxSelections,
           displayOrder: group.displayOrder,
           isActive: group.isActive,
+          category: (group as any).category || null,
           createdAt: group.createdAt,
           updatedAt: group.updatedAt,
           addOns: [],
@@ -222,6 +226,7 @@ export function AddOnGroupsPage() {
         isRequired: group.isRequired,
         minSelections: group.minSelections,
         maxSelections: group.selectionType === 'single' ? 1 : group.maxSelections,
+        category: group.category || undefined,
       });
     } else {
       setEditingGroup(null);
@@ -262,6 +267,7 @@ export function AddOnGroupsPage() {
           isRequired: values.isRequired,
           minSelections: values.minSelections,
           maxSelections: values.maxSelections,
+          category: (values.category as 'Add' | 'Remove' | 'Change' | undefined) || null,
         };
 
         let savedGroup: AddOnGroup;
@@ -275,6 +281,7 @@ export function AddOnGroupsPage() {
             isRequired: groupData.isRequired,
             minSelections: groupData.minSelections,
             maxSelections: groupData.maxSelections,
+            category: groupData.category,
             updatedAt: new Date().toISOString(),
             lastSynced: new Date().toISOString(),
             syncStatus: 'synced',
@@ -292,6 +299,7 @@ export function AddOnGroupsPage() {
             isRequired: groupData.isRequired ?? false,
             minSelections: groupData.minSelections ?? 0,
             maxSelections: groupData.maxSelections,
+            category: groupData.category,
             displayOrder: savedGroup.displayOrder,
             isActive: savedGroup.isActive,
             createdAt: savedGroup.createdAt,
@@ -546,11 +554,21 @@ export function AddOnGroupsPage() {
                         <Text fw={500} size="sm">
                           {group.name}
                         </Text>
-                        <Text size="xs" c="dimmed">
-                          {group.selectionType === 'single'
-                            ? t('menu.single', language)
-                            : t('menu.multiple', language)}
-                        </Text>
+                        <Group gap="xs" mt={4}>
+                          <Text size="xs" c="dimmed">
+                            {group.selectionType === 'single'
+                              ? t('menu.single', language)
+                              : t('menu.multiple', language)}
+                          </Text>
+                          {group.category && (
+                            <>
+                              <Text size="xs" c="dimmed">•</Text>
+                              <Badge variant="light" color="blue" size="xs">
+                                {group.category}
+                              </Badge>
+                            </>
+                          )}
+                        </Group>
                       </div>
                       <Group gap="xs">
                         <ActionIcon
@@ -701,6 +719,19 @@ export function AddOnGroupsPage() {
                   label={t('menu.addOnGroupName', language)}
                   required
                   {...groupForm.getInputProps('name')}
+                />
+              </Grid.Col>
+              <Grid.Col span={{ base: 12, md: 6 }}>
+                <Select
+                  label={t('menu.category' as any, language) || 'Category'}
+                  placeholder="Select category type"
+                  data={[
+                    { value: 'Add', label: 'Add' },
+                    { value: 'Remove', label: 'Remove' },
+                    { value: 'Change', label: 'Change' },
+                  ]}
+                  clearable
+                  {...groupForm.getInputProps('category')}
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 6 }}>

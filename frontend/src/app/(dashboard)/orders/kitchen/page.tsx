@@ -18,6 +18,7 @@ import {
   ActionIcon,
   Tooltip,
   TextInput,
+  Chip,
 } from '@mantine/core';
 import {
   IconCheck,
@@ -58,6 +59,7 @@ export default function KitchenDisplayPage() {
   const [loading, setLoading] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showMyOrdersOnly, setShowMyOrdersOnly] = useState(false);
   const [processingOrderIds, setProcessingOrderIds] = useState<Set<string>>(new Set()); // Format: "orderId-itemId" or "orderId"
   const audioContextRef = useRef<AudioContext | null>(null);
   const previousOrderIdsRef = useRef<Set<string>>(new Set());
@@ -638,15 +640,23 @@ export default function KitchenDisplayPage() {
     return dayjs(order.orderDate).locale(locale).fromNow();
   };
 
-  // Filter orders based on search query (token number or food items)
+  // Filter orders based on search query (token number or food items) and "My Orders" filter
   const filterOrders = useCallback((ordersList: Order[]): Order[] => {
+    let filtered = ordersList;
+
+    // Apply "My Orders" filter first
+    if (showMyOrdersOnly && user?.email) {
+      filtered = filtered.filter((order) => order.waiterEmail === user.email);
+    }
+
+    // Then apply search query filter
     if (!searchQuery.trim()) {
-      return ordersList;
+      return filtered;
     }
 
     const query = searchQuery.toLowerCase().trim();
     
-    return ordersList.filter((order) => {
+    return filtered.filter((order) => {
       // Search by token number
       if (order.tokenNumber && order.tokenNumber.toLowerCase().includes(query)) {
         return true;
@@ -665,7 +675,7 @@ export default function KitchenDisplayPage() {
 
       return false;
     });
-  }, [searchQuery]);
+  }, [searchQuery, showMyOrdersOnly, user?.email]);
 
   const filteredOrders = filterOrders(orders);
   // Filter out orders that only contain buffets (no food items or combo meals)
@@ -792,15 +802,24 @@ export default function KitchenDisplayPage() {
             </Group>
           </Box>
 
-          {/* Search input */}
+          {/* Search input and My Orders filter */}
           <Box style={{ padding: '0 16px', marginTop: 10 }}>
-            <TextInput
-              placeholder={language === 'ar' ? 'ابحث برقم الرمز أو عناصر الطعام...' : 'Search by token number or food items...'}
-              leftSection={<IconSearch size={16} />}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.currentTarget.value)}
-              style={{ maxWidth: 400 }}
-            />
+            <Group gap="md" align="center">
+              <TextInput
+                placeholder={t('orders.searchByTokenOrItems', language)}
+                leftSection={<IconSearch size={16} />}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.currentTarget.value)}
+                style={{ maxWidth: 400 }}
+              />
+              <Chip
+                checked={showMyOrdersOnly}
+                onChange={(checked) => setShowMyOrdersOnly(checked)}
+                variant="filled"
+              >
+                {t('orders.myOrders', language)}
+              </Chip>
+            </Group>
           </Box>
 
           {loading ? (
@@ -992,28 +1011,47 @@ function OrderCard({
     >
       <Stack gap="sm">
         {/* Order Header */}
-        <Group gap="xs" align="center">
-          {order.tokenNumber && (
-            <Badge color={getBadgeColorForText(`Token: ${order.tokenNumber}`)} variant="light" size="lg">
-              Token: {order.tokenNumber}
-            </Badge>
-          )}
-          <IconClock size={14} />
-          <Text size="sm" c="dimmed">{orderAge}</Text>
-          {order.orderType && (
-            <Badge 
-              color={
-                order.orderType === 'delivery' ? getInfoColor()  :
-                order.orderType === 'takeaway' ? getWarningColor() :
-                getSuccessColor()
-              } 
-              variant="light" 
-              size="sm"
-            >
-              {t(`orders.orderType.${order.orderType}` as any, language)}
-            </Badge>
-          )}
-        </Group>
+        <Stack gap="xs">
+          <Group gap="xs" align="center">
+            {order.tokenNumber && (
+              <Badge color={getBadgeColorForText(`${t('orders.token', language)}: ${order.tokenNumber}`)} variant="light" size="lg">
+                {t('orders.token', language)}: {order.tokenNumber}
+              </Badge>
+            )}
+            <IconClock size={14} />
+            <Text size="sm" c="dimmed">{orderAge}</Text>
+            {order.orderType && (
+              <Badge 
+                color={
+                  order.orderType === 'delivery' ? getInfoColor()  :
+                  order.orderType === 'takeaway' ? getWarningColor() :
+                  getSuccessColor()
+                } 
+                variant="light" 
+                size="sm"
+              >
+                {t(`orders.orderType.${order.orderType}` as any, language)}
+              </Badge>
+            )}
+          </Group>
+          {/* Waiter and Table Info */}
+          <Group gap="md" align="center">
+            {order.waiterEmail && (
+              <Text size="sm" fw={500}>
+                {t('orders.waiterName', language)}: <Text span c="dimmed" fw={400}>{order.waiterEmail}</Text>
+              </Text>
+            )}
+            {((order as any).tables && (order as any).tables.length > 0) || (order.table && order.table.table_number) ? (
+              <Text size="sm" fw={500}>
+                {t('orders.tableNumber', language)}: <Text span c="dimmed" fw={400}>{
+                  (order as any).tables && (order as any).tables.length > 0
+                    ? (order as any).tables.map((t: any) => t.table_number).join(', ')
+                    : (order.table?.table_number || '')
+                }</Text>
+              </Text>
+            ) : null}
+          </Group>
+        </Stack>
 
          {/* Order Items */}
          <Box>

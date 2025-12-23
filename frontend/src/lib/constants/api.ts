@@ -61,6 +61,7 @@ export const API_ENDPOINTS = {
   },
   // Coupons
   COUPONS: {
+    BASE: '/coupons',
     VALIDATE: '/coupons/validate',
   },
   // Taxes
