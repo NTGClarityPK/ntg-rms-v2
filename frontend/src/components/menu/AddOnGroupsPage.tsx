@@ -638,7 +638,7 @@ export function AddOnGroupsPage() {
                         </Table.Td>
                         <Table.Td>{addOn.price.toFixed(2)}</Table.Td>
                         <Table.Td>
-                          <Badge color={getBadgeColorForText(addOn.isActive ? t('menu.active', language) : t('menu.inactive', language))}>
+                          <Badge variant="light" color={getBadgeColorForText(addOn.isActive ? t('menu.active', language) : t('menu.inactive', language))}>
                             {addOn.isActive ? t('menu.active', language) : t('menu.inactive', language)}
                           </Badge>
                         </Table.Td>

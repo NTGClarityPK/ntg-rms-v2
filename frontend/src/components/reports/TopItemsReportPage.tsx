@@ -11,6 +11,7 @@ import { restaurantApi } from '@/lib/api/restaurant';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getSuccessColor, getErrorColor } from '@/lib/utils/theme';
 import { useChartColors } from '@/lib/hooks/use-chart-colors';
+import { useChartTooltip } from '@/lib/hooks/use-chart-tooltip';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { notifications } from '@mantine/notifications';
@@ -22,6 +23,7 @@ export default function TopItemsReportPage() {
   const currency = useCurrency();
   const themeColor = useThemeColor();
   const { isOnline } = useSyncStatus();
+  const tooltipStyle = useChartTooltip();
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<TopItemsReport | null>(null);
   const [branches, setBranches] = useState<Array<{ value: string; label: string }>>([]);
@@ -113,7 +115,7 @@ export default function TopItemsReportPage() {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis type="number" />
               <YAxis dataKey="name" type="category" width={150} />
-              <Tooltip />
+              <Tooltip contentStyle={tooltipStyle.contentStyle} itemStyle={tooltipStyle.itemStyle} labelStyle={tooltipStyle.labelStyle} />
               <Legend />
               <Bar dataKey="quantity" fill={topItemsChartColors[0]} name={t('reports.quantity' as any, language)} />
               <Bar dataKey="revenue" fill={topItemsChartColors[1]} name={t('reports.revenue' as any, language)} />

@@ -11,6 +11,7 @@ import { restaurantApi } from '@/lib/api/restaurant';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getSuccessColor, getErrorColor } from '@/lib/utils/theme';
 import { useChartColors } from '@/lib/hooks/use-chart-colors';
+import { useChartTooltip } from '@/lib/hooks/use-chart-tooltip';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { notifications } from '@mantine/notifications';
@@ -22,6 +23,7 @@ export default function TaxReportPage() {
   const currency = useCurrency();
   const themeColor = useThemeColor();
   const { isOnline } = useSyncStatus();
+  const tooltipStyle = useChartTooltip();
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<TaxReport | null>(null);
   const [branches, setBranches] = useState<Array<{ value: string; label: string }>>([]);
@@ -129,7 +131,7 @@ export default function TaxReportPage() {
                         <Cell key={`cell-${index}`} fill={taxChartColors[index % taxChartColors.length] || themeColor} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(value: number) => `${value.toFixed(2)} ${currency}`} />
+                    <Tooltip formatter={(value: number) => `${value.toFixed(2)} ${currency}`} contentStyle={tooltipStyle.contentStyle} itemStyle={tooltipStyle.itemStyle} labelStyle={tooltipStyle.labelStyle} />
                     <Legend />
                   </PieChart>
                 </ResponsiveContainer>
@@ -165,7 +167,7 @@ export default function TaxReportPage() {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="period" />
               <YAxis />
-              <Tooltip formatter={(value: number) => `${value.toFixed(2)} ${currency}`} />
+              <Tooltip formatter={(value: number) => `${value.toFixed(2)} ${currency}`} contentStyle={tooltipStyle.contentStyle} itemStyle={tooltipStyle.itemStyle} labelStyle={tooltipStyle.labelStyle} />
               <Legend />
               <Line type="monotone" dataKey="tax" stroke={themeColor} strokeWidth={2} name={t('reports.totalTax' as any, language)} />
             </LineChart>

@@ -14,7 +14,7 @@ export default function Customers() {
   return (
     <>
       <div className="page-title-bar">
-        <Group justify="space-between" align="center" style={{ width: '100%', height: '100%', paddingRight: 'var(--mantine-spacing-md)' }}>
+        <Group justify="space-between" align="center" style={{ width: '100%', height: '100%' }}>
           <Title order={1} style={{ margin: 0, textAlign: 'left' }}>
             {t('navigation.customers', language)}
           </Title>

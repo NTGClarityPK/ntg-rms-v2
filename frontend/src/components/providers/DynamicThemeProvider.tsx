@@ -266,6 +266,28 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
         padding-right: var(--mantine-spacing-md) !important;
       }
       
+      /* Title bar button group alignment - align with content padding */
+      /* Title bar already has padding-left and padding-right matching content div */
+      /* The Group inside should respect this padding and not add extra */
+      /* In LTR: buttons naturally align with content's right edge via title bar padding */
+      .page-title-bar .mantine-Group-root[data-justify="space-between"],
+      .page-title-bar .mantine-Group-root[style*="justify-content: space-between"] {
+        /* Ensure no extra padding interferes - title bar padding handles alignment */
+        padding-right: 0 !important;
+        padding-left: 0 !important;
+      }
+      
+      /* RTL - Title bar button group alignment */
+      /* Title bar padding already matches content padding in RTL */
+      html[dir="rtl"] .page-title-bar .mantine-Group-root[data-justify="space-between"],
+      [dir="rtl"] .page-title-bar .mantine-Group-root[data-justify="space-between"],
+      html[dir="rtl"] .page-title-bar .mantine-Group-root[style*="justify-content: space-between"],
+      [dir="rtl"] .page-title-bar .mantine-Group-root[style*="justify-content: space-between"] {
+        /* Ensure no extra padding interferes - title bar padding handles alignment */
+        padding-right: 0 !important;
+        padding-left: 0 !important;
+      }
+      
       /* Add top margin to main content to account for title bar */
       .mantine-AppShell-main {
         padding-top: calc(60px + var(--mantine-spacing-md)) !important;
@@ -296,6 +318,26 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       [dir="rtl"] .page-title-bar ~ * .mantine-Tabs-list {
         padding-right: 0 !important;
         margin-right: 0 !important;
+      }
+      
+      /* Form action buttons alignment - align with cards inside Tabs.Panel */
+      /* Tabs.Panel has px="md" which adds var(--mantine-spacing-md) padding */
+      /* Cards are indented by this padding, so buttons need matching padding */
+      /* Target Groups that come after Tabs components inside forms */
+      div[style*="paddingLeft"] form .mantine-Tabs-root ~ .mantine-Group-root,
+      div[style*="padding-left"] form .mantine-Tabs-root ~ .mantine-Group-root {
+        /* Match Tabs.Panel horizontal padding (px="md" = var(--mantine-spacing-md)) */
+        /* In LTR: add right padding to align with cards' right edge */
+        padding-right: var(--mantine-spacing-md) !important;
+      }
+      
+      /* RTL - Form action buttons should align with cards' left edge */
+      html[dir="rtl"] div[style*="paddingLeft"] form .mantine-Tabs-root ~ .mantine-Group-root,
+      [dir="rtl"] div[style*="padding-left"] form .mantine-Tabs-root ~ .mantine-Group-root {
+        /* Match Tabs.Panel horizontal padding (px="md" = var(--mantine-spacing-md)) */
+        /* In RTL: add left padding to align with cards' left edge */
+        padding-right: 0 !important;
+        padding-left: var(--mantine-spacing-md) !important;
       }
       
       /* Navbar Navigation Buttons */
@@ -926,6 +968,12 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       }
 
       /* Filter Chips - configurable from themeConfig.filterChip */
+      .filter-chip-group .mantine-ChipGroup-root {
+        display: inline-flex !important;
+        flex-wrap: wrap !important;
+        gap: var(--mantine-spacing-xs) !important;
+      }
+
       .filter-chip-group .mantine-Chip-label {
         background-color: ${config.components.filterChip.backgroundColor} !important;
         color: ${config.components.filterChip.textColor} !important;

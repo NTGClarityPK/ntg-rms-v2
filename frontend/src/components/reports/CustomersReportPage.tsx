@@ -11,6 +11,7 @@ import { restaurantApi } from '@/lib/api/restaurant';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getThemeColorShade, getSuccessColor, getInfoColor, getWarningColor, getErrorColor } from '@/lib/utils/theme';
 import { useChartColors } from '@/lib/hooks/use-chart-colors';
+import { useChartTooltip } from '@/lib/hooks/use-chart-tooltip';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { notifications } from '@mantine/notifications';
@@ -22,6 +23,7 @@ export default function CustomersReportPage() {
   const currency = useCurrency();
   const themeColor = useThemeColor();
   const { isOnline } = useSyncStatus();
+  const tooltipStyle = useChartTooltip();
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<CustomerReport | null>(null);
   const [branches, setBranches] = useState<Array<{ value: string; label: string }>>([]);
@@ -122,7 +124,7 @@ export default function CustomersReportPage() {
               <Pie data={loyaltyData} cx="50%" cy="50%" labelLine={false} label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`} outerRadius={80} fill={chartColors[0]} dataKey="value">
                 {loyaltyData.map((entry, index) => <Cell key={`cell-${index}`} fill={chartColors[index % chartColors.length]} />)}
               </Pie>
-              <Tooltip />
+              <Tooltip contentStyle={tooltipStyle.contentStyle} itemStyle={tooltipStyle.itemStyle} labelStyle={tooltipStyle.labelStyle} />
             </PieChart>
           </ResponsiveContainer>
         </Box>

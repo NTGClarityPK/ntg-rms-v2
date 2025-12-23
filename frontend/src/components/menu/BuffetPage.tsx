@@ -479,7 +479,7 @@ export function BuffetPage() {
                         )}
                       </Table.Td>
                       <Table.Td>
-                        <Badge color={buffet.isActive ? successColor : 'gray'} size="sm">
+                        <Badge variant="light" color={buffet.isActive ? successColor : 'gray'} size="sm">
                           {buffet.isActive ? t('menu.active', language) : t('menu.inactive', language)}
                         </Badge>
                       </Table.Td>

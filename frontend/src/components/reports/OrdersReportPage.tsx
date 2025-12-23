@@ -33,6 +33,7 @@ import { restaurantApi } from '@/lib/api/restaurant';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getThemeColorShade, getSuccessColor, getInfoColor, getWarningColor, getErrorColor } from '@/lib/utils/theme';
 import { useChartColors } from '@/lib/hooks/use-chart-colors';
+import { useChartTooltip } from '@/lib/hooks/use-chart-tooltip';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { notifications } from '@mantine/notifications';
 import { db } from '@/lib/indexeddb/database';
@@ -43,6 +44,7 @@ export default function OrdersReportPage() {
   const currency = useCurrency();
   const themeColor = useThemeColor();
   const { isOnline } = useSyncStatus();
+  const tooltipStyle = useChartTooltip();
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<OrderReport | null>(null);
   const [branches, setBranches] = useState<Array<{ value: string; label: string }>>([]);
@@ -235,7 +237,7 @@ export default function OrdersReportPage() {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" />
               <YAxis />
-              <Tooltip />
+              <Tooltip contentStyle={tooltipStyle.contentStyle} itemStyle={tooltipStyle.itemStyle} labelStyle={tooltipStyle.labelStyle} />
               <Legend />
               <Bar dataKey="count" fill={themeColor} name={t('reports.totalOrders' as any, language)} />
             </BarChart>
@@ -264,7 +266,7 @@ export default function OrdersReportPage() {
                   <Cell key={`cell-${index}`} fill={chartColors[index % chartColors.length]} />
                 ))}
               </Pie>
-              <Tooltip />
+              <Tooltip contentStyle={tooltipStyle.contentStyle} itemStyle={tooltipStyle.itemStyle} labelStyle={tooltipStyle.labelStyle} />
             </PieChart>
           </ResponsiveContainer>
         </Box>

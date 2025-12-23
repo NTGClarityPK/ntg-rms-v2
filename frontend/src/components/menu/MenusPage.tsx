@@ -374,7 +374,7 @@ export function MenusPage() {
                     {menu.itemCount} {t('menu.foodItems', language)}
                   </Text>
                 </div>
-                <Badge color={getBadgeColorForText(menu.isActive ? t('menu.active', language) : t('menu.inactive', language))}>
+                <Badge variant="light" color={getBadgeColorForText(menu.isActive ? t('menu.active', language) : t('menu.inactive', language))}>
                   {menu.isActive ? t('menu.active', language) : t('menu.inactive', language)}
                 </Badge>
               </Group>
