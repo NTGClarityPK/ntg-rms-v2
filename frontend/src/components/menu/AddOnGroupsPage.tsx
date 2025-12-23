@@ -73,6 +73,7 @@ export function AddOnGroupsPage() {
     },
     validate: {
       name: (value) => (!value ? (t('menu.addOnGroupName', language) || 'Name') + ' is required' : null),
+      category: (value) => (!value ? (t('menu.category' as any, language) || 'Category') + ' is required' : null),
     },
   });
 
@@ -730,7 +731,7 @@ export function AddOnGroupsPage() {
                     { value: 'Remove', label: 'Remove' },
                     { value: 'Change', label: 'Change' },
                   ]}
-                  clearable
+                  required
                   {...groupForm.getInputProps('category')}
                 />
               </Grid.Col>
