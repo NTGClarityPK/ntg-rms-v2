@@ -6,3 +6,4 @@ ADD COLUMN IF NOT EXISTS waiter_email VARCHAR(255);
 -- Add index for filtering orders by waiter email
 CREATE INDEX IF NOT EXISTS idx_orders_waiter_email ON orders(waiter_email);
 
+
