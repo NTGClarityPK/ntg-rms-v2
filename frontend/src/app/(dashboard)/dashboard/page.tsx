@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Stack, SimpleGrid, Paper, Text, Title, Card, Group, Grid, Skeleton, Badge, Table, Box } from '@mantine/core';
+import { Stack, SimpleGrid, Paper, Text, Title, Card, Group, Grid, Skeleton, Badge, Table, Box, Center } from '@mantine/core';
 import {
   IconCash,
   IconShoppingCart,
@@ -9,6 +9,8 @@ import {
   IconClock,
   IconAlertTriangle,
   IconTrendingUp,
+  IconWifiOff,
+  IconX,
 } from '@tabler/icons-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { useLanguageStore } from '@/lib/store/language-store';
@@ -21,7 +23,7 @@ import { dashboardApi, DashboardData } from '@/lib/api/dashboard';
 import { useSyncStatus } from '@/lib/hooks/use-sync-status';
 import { notifications } from '@mantine/notifications';
 import { getErrorColor, getBadgeColorForText, getChartColors } from '@/lib/utils/theme';
-import { IconX } from '@tabler/icons-react';
+import { useRouter } from 'next/navigation';
 
 export default function DashboardPage() {
   const { language } = useLanguageStore();
@@ -29,6 +31,7 @@ export default function DashboardPage() {
   const primary = useThemeColor();
   const currency = useCurrency();
   const { isOnline } = useSyncStatus();
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
 
@@ -51,9 +54,34 @@ export default function DashboardPage() {
     }
   }, [isOnline, language]);
 
+  // Redirect if offline
+  useEffect(() => {
+    if (!isOnline) {
+      router.push('/orders');
+    }
+  }, [isOnline, router]);
+
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
+
+  if (!isOnline) {
+    return (
+      <Center h="100vh">
+        <Paper p="xl" radius="md" withBorder>
+          <Stack align="center" gap="md">
+            <IconWifiOff size={48} color={getErrorColor()} />
+            <Text size="lg" fw={500}>
+              {t('navigation.offlineDisabled' as any, language) || 'Dashboard is not available offline'}
+            </Text>
+            <Text size="sm" c="dimmed">
+              {t('navigation.offlineRedirect' as any, language) || 'Redirecting to Orders...'}
+            </Text>
+          </Stack>
+        </Paper>
+      </Center>
+    );
+  }
 
   const stats = dashboardData ? [
     { 

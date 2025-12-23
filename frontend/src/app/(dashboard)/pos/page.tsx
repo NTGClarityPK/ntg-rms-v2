@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Grid, Box, Select, Group, Text, Stack, Skeleton, Title, Paper } from '@mantine/core';
+import { useState, useEffect, useCallback, Suspense } from 'react';
+import { Grid, Box, Select, Group, Text, Stack, Skeleton, Title, Paper, Alert } from '@mantine/core';
+import { IconAlertCircle } from '@tabler/icons-react';
 import { useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useLanguageStore } from '@/lib/store/language-store';
@@ -12,16 +13,21 @@ import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { t } from '@/lib/utils/translations';
 import { ordersApi } from '@/lib/api/orders';
 import { useSettings } from '@/lib/hooks/use-settings';
+import { useSyncStatus } from '@/lib/hooks/use-sync-status';
+import { syncService } from '@/lib/sync/sync-service';
+import { menuApi } from '@/lib/api/menu';
 
-export default function POSPage() {
+function POSPageContent() {
   const { user } = useAuthStore();
   const { language } = useLanguageStore();
   const { settings } = useSettings();
+  const { isOnline } = useSyncStatus();
   const searchParams = useSearchParams();
   const editOrderId = searchParams?.get('editOrder');
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [cartItems, setCartItems] = useState<any[]>([]);
+  const [error, setError] = useState<string | null>(null);
   
   // Initialize order type from settings
   const [orderType, setOrderType] = useState<'dine_in' | 'takeaway' | 'delivery'>('dine_in');
@@ -52,6 +58,13 @@ export default function POSPage() {
 
       try {
         setEditingOrderId(editOrderId);
+        
+        // Only try to fetch order if online - editing orders offline is not supported
+        if (!navigator.onLine) {
+          console.warn('⚠️ Cannot edit order while offline');
+          return;
+        }
+        
         const order = await ordersApi.getOrderById(editOrderId);
 
         // Set order details
@@ -90,7 +103,6 @@ export default function POSPage() {
               // If still not found, try to fetch from API
               if (!foodItem && item.foodItemId && navigator.onLine) {
                 try {
-                  const { menuApi } = await import('@/lib/api/menu');
                   foodItem = await menuApi.getFoodItemById(item.foodItemId);
                 } catch (error) {
                   console.error('Failed to fetch food item:', error);
@@ -155,13 +167,18 @@ export default function POSPage() {
     const loadData = async () => {
       setLoadingBranches(true);
       try {
-        // First, pull latest data from server
+        // First, try to pull latest data from server (only if online)
+        // This is optional - POS works offline from IndexedDB
         if (navigator.onLine) {
-          const { syncService } = await import('@/lib/sync/sync-service');
-          await syncService.pullChanges();
+          try {
+            await syncService.pullChanges();
+          } catch (syncError) {
+            // If sync fails, continue with offline data - don't crash the page
+            console.warn('⚠️ Failed to sync data, continuing with offline data:', syncError);
+          }
         }
 
-        // Then load branches from IndexedDB
+        // Load branches from IndexedDB (works offline)
         const allBranches = await db.branches
           .where('tenantId')
           .equals(user?.tenantId || '')
@@ -181,7 +198,30 @@ export default function POSPage() {
           setCartItems(items);
         }
       } catch (error) {
-        console.error('Failed to load data:', error);
+        // Even if there's an error, try to load from IndexedDB as fallback
+        console.error('Failed to load data, trying offline fallback:', error);
+        setError(null); // Clear any previous errors
+        try {
+          const allBranches = await db.branches
+            .where('tenantId')
+            .equals(user?.tenantId || '')
+            .toArray();
+          
+          const activeBranches = allBranches.filter((branch) => branch.isActive && !branch.deletedAt);
+          setBranches(activeBranches);
+
+          if (activeBranches.length > 0 && !selectedBranchId) {
+            setSelectedBranchId(activeBranches[0].id);
+          }
+
+          if (!editOrderId) {
+            const items = await db.cart.toArray();
+            setCartItems(items);
+          }
+        } catch (fallbackError) {
+          console.error('Failed to load offline fallback data:', fallbackError);
+          // Don't set error state - allow page to render with empty data
+        }
       } finally {
         setLoadingBranches(false);
       }
@@ -360,16 +400,34 @@ export default function POSPage() {
     return null;
   }
 
+  // Show offline indicator if offline
+  const showOfflineIndicator = !isOnline;
+
   // Only show "no branches" message after loading is complete
-  if (!loadingBranches && (!selectedBranchId || branches.length === 0)) {
+  // If offline and no branches in IndexedDB, still allow POS to work (user can select branch later)
+  if (!loadingBranches && branches.length === 0) {
     return (
       <Box p="md">
-        <Text>{t('pos.selectBranch', language) || 'Please select a branch'}</Text>
-        {branches.length === 0 && (
-          <Text size="sm" c="dimmed" mt="xs">
-            No branches available. Please create a branch first.
-          </Text>
+        {showOfflineIndicator && (
+          <Alert icon={<IconAlertCircle size={16} />} color="yellow" mb="md">
+            {t('pos.offlineMode' as any, language) || 'You are currently offline. POS will work with cached menu data.'}
+          </Alert>
         )}
+        <Text>{t('pos.selectBranch', language) || 'Please select a branch'}</Text>
+        <Text size="sm" c="dimmed" mt="xs">
+          {!isOnline 
+            ? 'No branches available offline. Please go online to sync branches, or create a branch first.'
+            : 'No branches available. Please create a branch first.'}
+        </Text>
+      </Box>
+    );
+  }
+
+  // If no branch selected but branches exist, auto-select first one
+  if (!selectedBranchId && branches.length > 0) {
+    return (
+      <Box p="md">
+        <Skeleton height={400} />
       </Box>
     );
   }
@@ -404,6 +462,16 @@ export default function POSPage() {
       <div className="page-sub-title-bar"></div>
 
       <div style={{ marginTop: '60px', paddingLeft: 'var(--mantine-spacing-md)', paddingRight: 'var(--mantine-spacing-md)', paddingTop: 'var(--mantine-spacing-sm)', paddingBottom: 'var(--mantine-spacing-xl)' }}>
+        {showOfflineIndicator && (
+          <Alert icon={<IconAlertCircle size={16} />} color="yellow" mb="md">
+            {t('pos.offlineMode' as any, language) || 'You are currently offline. POS will work with cached menu data. Orders will be queued and synced when you come back online.'}
+          </Alert>
+        )}
+        {error && (
+          <Alert icon={<IconAlertCircle size={16} />} color="red" mb="md" onClose={() => setError(null)} withCloseButton>
+            {error}
+          </Alert>
+        )}
         <Grid gutter="md">
           {/* Left Panel - Food Items Grid (60%) */}
           <Grid.Col span={{ base: 12, md: 7 }}>
@@ -455,5 +523,19 @@ export default function POSPage() {
         </Grid>
       </div>
     </>
+  );
+}
+
+export default function POSPage() {
+  return (
+    <Suspense
+      fallback={
+        <Box p="md">
+          <Skeleton height={400} />
+        </Box>
+      }
+    >
+      <POSPageContent />
+    </Suspense>
   );
 }

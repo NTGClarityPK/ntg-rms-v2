@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { Tabs, Title } from '@mantine/core';
+import { useState, useEffect } from 'react';
+import { Tabs, Title, Center, Paper, Stack, Text } from '@mantine/core';
+import { IconWifiOff } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import SalesReportPage from '@/components/reports/SalesReportPage';
@@ -11,11 +12,41 @@ import { InventoryReportsPage } from '@/components/inventory/InventoryReportsPag
 import FinancialReportPage from '@/components/reports/FinancialReportPage';
 import TaxReportPage from '@/components/reports/TaxReportPage';
 import TopItemsReportPage from '@/components/reports/TopItemsReportPage';
+import { useSyncStatus } from '@/lib/hooks/use-sync-status';
+import { useRouter } from 'next/navigation';
+import { getErrorColor } from '@/lib/utils/theme';
 import { InventoryRefreshProvider } from '@/lib/contexts/inventory-refresh-context';
 
 export default function ReportsPage() {
   const language = useLanguageStore((state) => state.language);
+  const { isOnline } = useSyncStatus();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<string | null>('sales');
+
+  // Redirect if offline
+  useEffect(() => {
+    if (!isOnline) {
+      router.push('/orders');
+    }
+  }, [isOnline, router]);
+
+  if (!isOnline) {
+    return (
+      <Center h="100vh">
+        <Paper p="xl" radius="md" withBorder>
+          <Stack align="center" gap="md">
+            <IconWifiOff size={48} color={getErrorColor()} />
+            <Text size="lg" fw={500}>
+              {t('navigation.offlineDisabled' as any, language) || 'Reports section is not available offline'}
+            </Text>
+            <Text size="sm" c="dimmed">
+              {t('navigation.offlineRedirect' as any, language) || 'Redirecting to Orders...'}
+            </Text>
+          </Stack>
+        </Paper>
+      </Center>
+    );
+  }
 
   return (
     <>

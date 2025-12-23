@@ -120,16 +120,25 @@ export function FoodItemsGrid({
       let activeMenuTypes: string[] = [];
       try {
         if (navigator.onLine) {
-          const menusResponse = await menuApi.getMenus();
-          // Handle both paginated and non-paginated responses
-          const menus = Array.isArray(menusResponse) ? menusResponse : (menusResponse?.data || []);
-          activeMenuTypes = menus
-            .filter((menu) => menu.isActive)
-            .map((menu) => menu.menuType)
-            .filter(Boolean);
+          try {
+            const menusResponse = await menuApi.getMenus();
+            // Handle both paginated and non-paginated responses
+            const menus = Array.isArray(menusResponse) ? menusResponse : (menusResponse?.data || []);
+            activeMenuTypes = menus
+              .filter((menu) => menu.isActive)
+              .map((menu) => menu.menuType)
+              .filter(Boolean);
+          } catch (apiError) {
+            // Network error even though navigator.onLine is true - fall back to offline mode
+            console.warn('⚠️ Failed to load menus from API, using offline fallback:', apiError);
+            throw apiError; // Re-throw to trigger offline fallback
+          }
         } else {
-          // Offline: use food items' menuTypes to infer active menus
-          // This is a fallback - ideally menus should be synced to IndexedDB
+          throw new Error('Offline'); // Trigger offline fallback
+        }
+      } catch (error) {
+        // Offline fallback: use food items' menuTypes to infer active menus
+        try {
           const allItems = await db.foodItems
             .where('tenantId')
             .equals(tenantId)
@@ -144,10 +153,10 @@ export function FoodItemsGrid({
             }
           });
           activeMenuTypes = Array.from(allMenuTypes);
+        } catch (dbError) {
+          console.error('Failed to load active menus from IndexedDB:', dbError);
+          // Continue with empty array - will show no items if no active menus
         }
-      } catch (error) {
-        console.error('Failed to load active menus:', error);
-        // Continue with empty array - will show no items if no active menus
       }
 
       // Load items based on selected type
@@ -168,7 +177,11 @@ export function FoodItemsGrid({
             const serverItemsResponse = await menuApi.getFoodItems(
               selectedCategoryIds.length > 0 ? selectedCategoryIds[0] : undefined,
               foodItemsPagination.paginationParams
-            );
+            ).catch((error) => {
+              // If API call fails, throw to trigger offline fallback
+              console.warn('⚠️ Failed to load food items from API, using offline fallback:', error);
+              throw error;
+            });
             const serverItems: FoodItem[] = foodItemsPagination.extractData(serverItemsResponse) as FoodItem[];
             foodItemsPagination.extractPagination(serverItemsResponse);
             
@@ -299,7 +312,8 @@ export function FoodItemsGrid({
   const loadBuffets = async (activeMenuTypes: string[]) => {
     try {
       if (navigator.onLine) {
-        const response = await menuApi.getBuffets(buffetsPagination.paginationParams);
+        try {
+          const response = await menuApi.getBuffets(buffetsPagination.paginationParams);
         const serverBuffets: Buffet[] = buffetsPagination.extractData(response) as Buffet[];
         buffetsPagination.extractPagination(response);
         
@@ -322,8 +336,14 @@ export function FoodItemsGrid({
           );
         }
         
-        setBuffets(filtered);
+          setBuffets(filtered);
+        } catch (apiError) {
+          // Network error - fall back to empty array (buffets not stored in IndexedDB)
+          console.warn('⚠️ Failed to load buffets from API:', apiError);
+          setBuffets([]);
+        }
       } else {
+        // Offline: buffets not available offline (not stored in IndexedDB)
         setBuffets([]);
       }
     } catch (error) {
@@ -335,7 +355,8 @@ export function FoodItemsGrid({
   const loadComboMeals = async (activeMenuTypes: string[]) => {
     try {
       if (navigator.onLine) {
-        const response = await menuApi.getComboMeals(comboMealsPagination.paginationParams);
+        try {
+          const response = await menuApi.getComboMeals(comboMealsPagination.paginationParams);
         const serverComboMeals: ComboMeal[] = comboMealsPagination.extractData(response) as ComboMeal[];
         comboMealsPagination.extractPagination(response);
         
@@ -358,8 +379,14 @@ export function FoodItemsGrid({
           );
         }
         
-        setComboMeals(filtered);
+          setComboMeals(filtered);
+        } catch (apiError) {
+          // Network error - fall back to empty array (combo meals not stored in IndexedDB)
+          console.warn('⚠️ Failed to load combo meals from API:', apiError);
+          setComboMeals([]);
+        }
       } else {
+        // Offline: combo meals not available offline (not stored in IndexedDB)
         setComboMeals([]);
       }
     } catch (error) {

@@ -51,10 +51,12 @@ import { API_ENDPOINTS } from '@/lib/constants/api';
 import { ordersApi } from '@/lib/api/orders';
 import { customersApi } from '@/lib/api/customers';
 import { useSettings } from '@/lib/hooks/use-settings';
+import { useSyncStatus } from '@/lib/hooks/use-sync-status';
 import { InvoiceGenerator } from '@/lib/utils/invoice-generator';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { taxesApi, Tax } from '@/lib/api/taxes';
 import type { ThemeConfig } from '@/lib/theme/themeConfig';
+import { notifyOrderUpdate } from '@/lib/utils/order-events';
 
 interface POSCartProps {
   cartItems: CartItem[];
@@ -100,6 +102,7 @@ export function POSCart({
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
   const { settings } = useSettings();
+  const { isOnline } = useSyncStatus();
   const theme = useMantineTheme();
   const themeConfig = (theme.other as any) as ThemeConfig | undefined;
   const primaryColor = useThemeColor();
@@ -1024,7 +1027,6 @@ export function POSCart({
           await loadTables();
 
           // Notify other components about the new order
-          const { notifyOrderUpdate } = await import('@/lib/utils/order-events');
           notifyOrderUpdate('order-created', orderId);
 
           // Show success notification
@@ -1231,7 +1233,6 @@ export function POSCart({
       await loadTables();
 
       // Notify other components about the new order
-      const { notifyOrderUpdate } = await import('@/lib/utils/order-events');
       notifyOrderUpdate('order-created', orderId);
 
       // Show warning notification for offline orders
@@ -1390,14 +1391,24 @@ export function POSCart({
                 }}
                 style={{ flex: 1 }}
               />
-              <Button
-                variant="light"
-                size="sm"
-                onClick={() => setCustomerModalOpened(true)}
-                style={{ color: primaryShade }}
+              <Tooltip
+                label={!isOnline ? (t('pos.customerOfflineDisabled' as any, language) || 'Customer creation is not available offline') : ''}
+                disabled={isOnline}
               >
-                <IconUser size={16} />
-              </Button>
+                <Button
+                  variant="light"
+                  size="sm"
+                  onClick={() => setCustomerModalOpened(true)}
+                  disabled={!isOnline}
+                  style={{ 
+                    color: primaryShade,
+                    opacity: !isOnline ? 0.5 : 1,
+                    cursor: !isOnline ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <IconUser size={16} />
+                </Button>
+              </Tooltip>
             </Group>
           </Box>
 
