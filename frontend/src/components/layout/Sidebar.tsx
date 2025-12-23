@@ -9,6 +9,7 @@ import {
   Tooltip,
   Box,
   Button,
+  NavLink,
 } from '@mantine/core';
 import {
   IconDashboard,
@@ -190,7 +191,7 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
     return pathname === href || pathname?.startsWith(href + '/');
   };
 
-  const navbarConfig = themeConfig?.components?.navbar || {};
+  const navbarConfig = themeConfig?.components?.navbar;
 
   const renderNavItems = (items: Array<typeof navItems[number]>) => {
     // Force re-check online status in render
@@ -297,7 +298,7 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
         );
       }
 
-      return <Box key={item.href}>{buttonContent}</Box>;
+      return <Box key={item.href}>{navLink}</Box>;
     });
   };
 
@@ -315,7 +316,7 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
               fw={700} 
               c="dimmed" 
               mb="xs"
-              style={{ color: navbarConfig.textColor }}
+              style={{ color: navbarConfig?.textColor }}
             >
               {t('dashboard.navigation', language)}
             </Text>
@@ -333,7 +334,7 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
                   fw={700} 
                   c="dimmed" 
                   mb="xs"
-                  style={{ color: navbarConfig.textColor }}
+                  style={{ color: navbarConfig?.textColor }}
                 >
                   {t('dashboard.management', language)}
                 </Text>
@@ -348,7 +349,7 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
       <Box 
         p={collapsed ? "xs" : "md"} 
         style={{ 
-          borderTop: `1px solid ${navbarConfig.borderColor || 'transparent'}`,
+          borderTop: `1px solid ${navbarConfig?.borderColor || 'transparent'}`,
           display: 'flex',
           justifyContent: collapsed ? 'center' : 'flex-start',
         }}
@@ -368,13 +369,13 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
             style={{
               width: collapsed ? 'auto' : '100%',
               backgroundColor: 'transparent',
-              color: navbarConfig.textColor,
+              color: navbarConfig?.textColor,
             }}
             styles={{
               root: {
                 '&:hover': {
-                  backgroundColor: navbarConfig.hoverBackground,
-                  color: navbarConfig.hoverTextColor,
+                  backgroundColor: navbarConfig?.hoverBackground,
+                  color: navbarConfig?.hoverTextColor,
                 },
               },
             }}

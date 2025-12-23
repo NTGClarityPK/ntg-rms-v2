@@ -464,7 +464,10 @@ export function FoodItemsGrid({
                 >
                   {t('pos.allCategories', language)}
                 </Chip>
-                <Chip.Group value={selectedCategoryId || ''} onChange={(value) => onCategoryChange(value || null)}>
+                <Chip.Group value={selectedCategoryId || ''} onChange={(value) => {
+                  const categoryId = Array.isArray(value) ? (value[0] || null) : (value || null);
+                  onCategoryChange(categoryId);
+                }}>
                   {categories.map((category) => (
                     <Chip key={category.id} value={category.id} variant="filled">
                       {category.name}

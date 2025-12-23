@@ -33,6 +33,7 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       return generateThemeConfig(storeColor, isDark);
     }
     return mantineThemeConfig;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeColor, isDark, themeVersion, mantineThemeConfig]);
 
   // Set dir and lang attributes on html element for RTL support

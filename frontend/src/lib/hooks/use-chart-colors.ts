@@ -38,5 +38,6 @@ export function useChartColors(seriesCount: number): string[] {
 
     // Return only the number of colors needed
     return colors.slice(0, seriesCount);
-  }, [primaryColor, themeVersion, isDark, seriesCount]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [primaryColor, isDark, seriesCount]);
 }
