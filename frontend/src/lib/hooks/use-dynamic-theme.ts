@@ -16,7 +16,8 @@ export function useDynamicTheme() {
   const { user } = useAuthStore();
   const { primaryColor: storeColor, setPrimaryColor: setStoreColor } = useThemeStore();
   const { setRestaurant } = useRestaurantStore();
-  const [primaryColor, setPrimaryColor] = useState<string | undefined>(undefined);
+  // Initialize with store color if available, to avoid default blue flash
+  const [primaryColor, setPrimaryColor] = useState<string | undefined>(storeColor || undefined);
 
   useEffect(() => {
     const loadTheme = async () => {
@@ -115,14 +116,12 @@ export function useDynamicTheme() {
 
         // Apply the theme immediately
         if (colorToUse) {
-          setPrimaryColor(colorToUse);
-          setStoreColor(colorToUse); // Update store to trigger re-renders
+          // Update store FIRST to trigger immediate re-renders in all components using hooks
+          setStoreColor(colorToUse);
+          // Then apply CSS variables
           applyThemeColor(colorToUse);
-          
-          // Apply again after a short delay to ensure it overrides any default styles
-          setTimeout(() => {
-            applyThemeColor(colorToUse!);
-          }, 100);
+          // Update local state
+          setPrimaryColor(colorToUse);
         }
       } catch (err) {
         console.error('Failed to load theme:', err);
@@ -199,23 +198,25 @@ export function useDynamicTheme() {
   };
 
   const updateThemeColor = async (color: string) => {
-    // Update store first to trigger immediate re-renders
+    // Update store FIRST to trigger immediate re-renders in all components using hooks
     setStoreColor(color);
-    setPrimaryColor(color);
+    
+    // Apply CSS variables immediately
     applyThemeColor(color);
+    
+    // Update local state
+    setPrimaryColor(color);
+    
     // Store in localStorage so auth pages (without tenantId) can use it
     setLegacyThemeColor(color);
     
-    // Force re-apply after short delays to ensure all components update
-    setTimeout(() => {
-      applyThemeColor(color);
-      // Trigger a small DOM change to force browser repaint
+    // Force a repaint by updating a CSS variable that components can watch
+    // This ensures CSS-based components (like Mantine's default components) also update
+    if (typeof document !== 'undefined') {
       document.documentElement.style.setProperty('--mantine-theme-updated', Date.now().toString());
-    }, 50);
-    
-    setTimeout(() => {
-      applyThemeColor(color);
-    }, 150);
+      // Trigger a reflow to ensure styles are applied
+      void document.documentElement.offsetHeight;
+    }
   };
 
   return {

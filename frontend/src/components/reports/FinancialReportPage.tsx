@@ -9,7 +9,9 @@ import { reportsApi, FinancialReport, ReportQueryParams } from '@/lib/api/report
 import { ReportFilters } from './ReportFilters';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getSuccessColor, getErrorColor, getChartColors } from '@/lib/utils/theme';
+import { getSuccessColor, getErrorColor } from '@/lib/utils/theme';
+import { useChartColors } from '@/lib/hooks/use-chart-colors';
+import { useChartTooltip } from '@/lib/hooks/use-chart-tooltip';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { notifications } from '@mantine/notifications';
@@ -21,6 +23,7 @@ export default function FinancialReportPage() {
   const currency = useCurrency();
   const themeColor = useThemeColor();
   const { isOnline } = useSyncStatus();
+  const tooltipStyle = useChartTooltip();
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<FinancialReport | null>(null);
   const [branches, setBranches] = useState<Array<{ value: string; label: string }>>([]);
@@ -91,6 +94,10 @@ export default function FinancialReportPage() {
   };
   const handlePrint = () => window.print();
 
+  // Generate chart colors - reactive to theme changes
+  // Must be called before early returns (React rules)
+  const paymentChartColors = useChartColors(report?.paymentMethods ? Object.keys(report.paymentMethods).length : 1);
+
   if (loading) return <Stack gap="md"><Skeleton height={200} /><Skeleton height={400} /></Stack>;
   if (!report) return <Paper p="md" withBorder><Text c="dimmed">{t('reports.noData' as any, language) || 'No data available'}</Text></Paper>;
 
@@ -143,21 +150,15 @@ export default function FinancialReportPage() {
                   labelLine={false} 
                   label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`} 
                   outerRadius={80} 
-                  fill={(() => {
-                    const colors = getChartColors(paymentData.length);
-                    return colors[0];
-                  })()}
+                  fill={paymentChartColors[0] || themeColor}
                   dataKey="amount"
                   minAngle={0}
                 >
-                  {(() => {
-                    const colors = getChartColors(paymentData.length);
-                    return paymentData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
-                    ));
-                  })()}
+                  {paymentData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={paymentChartColors[index % paymentChartColors.length] || themeColor} />
+                  ))}
                 </Pie>
-                <Tooltip formatter={(value: number) => `${value.toFixed(2)} ${currency}`} />
+                <Tooltip formatter={(value: number) => `${value.toFixed(2)} ${currency}`} contentStyle={tooltipStyle.contentStyle} itemStyle={tooltipStyle.itemStyle} labelStyle={tooltipStyle.labelStyle} />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>

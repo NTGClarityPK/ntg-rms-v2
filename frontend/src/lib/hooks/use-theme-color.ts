@@ -11,58 +11,11 @@ import { useThemeStore } from '@/lib/store/theme-store';
 export function useThemeColor(): string {
   const theme = useMantineTheme();
   const { primaryColor: storeColor, themeVersion } = useThemeStore();
-  const [cssColor, setCssColor] = useState<string>(storeColor);
 
-  useEffect(() => {
-    // Update from CSS variable when theme changes
-    const updateColor = () => {
-      if (typeof document !== 'undefined') {
-        const color = getComputedStyle(document.documentElement)
-          .getPropertyValue('--mantine-primary-color')
-          .trim();
-        if (color) {
-          setCssColor(color);
-        }
-      }
-    };
-
-    // Listen to theme change events
-    const handleThemeChange = () => {
-      updateColor();
-    };
-
-    // Also listen to CSS variable changes via MutationObserver
-    const observer = new MutationObserver(() => {
-      updateColor();
-    });
-
-    if (typeof document !== 'undefined') {
-      observer.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ['style'],
-      });
-    }
-
-    window.addEventListener('theme-change', handleThemeChange);
-    updateColor(); // Initial update
-
-    return () => {
-      window.removeEventListener('theme-change', handleThemeChange);
-      observer.disconnect();
-    };
-  }, [themeVersion]); // Re-run when theme version changes
-
-  // Use CSS color if available, otherwise use store color
-  if (typeof document !== 'undefined') {
-    const currentCssColor = getComputedStyle(document.documentElement)
-      .getPropertyValue('--mantine-primary-color')
-      .trim();
-    if (currentCssColor) {
-      return currentCssColor;
-    }
-  }
-
-  return storeColor || getThemeColor();
+  // Always prioritize store color - it's the source of truth and updates immediately
+  // The store is updated first in updateThemeColor, so this will always have the latest value
+  // CSS variables are updated for Mantine components, but React components should use the store
+  return storeColor || DEFAULT_THEME_COLOR;
 }
 
 /**

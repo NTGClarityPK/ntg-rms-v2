@@ -9,7 +9,9 @@ import { reportsApi, InventoryReport, ReportQueryParams } from '@/lib/api/report
 import { ReportFilters } from './ReportFilters';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getSuccessColor, getWarningColor, getErrorColor, getChartColors } from '@/lib/utils/theme';
+import { getSuccessColor, getWarningColor, getErrorColor } from '@/lib/utils/theme';
+import { useChartColors } from '@/lib/hooks/use-chart-colors';
+import { useChartTooltip } from '@/lib/hooks/use-chart-tooltip';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { notifications } from '@mantine/notifications';
@@ -21,6 +23,7 @@ export default function InventoryReportPage() {
   const currency = useCurrency();
   const themeColor = useThemeColor();
   const { isOnline } = useSyncStatus();
+  const tooltipStyle = useChartTooltip();
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<InventoryReport | null>(null);
   const [branches, setBranches] = useState<Array<{ value: string; label: string }>>([]);
@@ -91,6 +94,10 @@ export default function InventoryReportPage() {
   };
   const handlePrint = () => window.print();
 
+  // Generate chart colors - reactive to theme changes
+  // Must be called before early returns (React rules)
+  const stockChartColors = useChartColors(2); // 2 series: stock and threshold
+
   if (loading) return <Stack gap="md"><Skeleton height={200} /><Skeleton height={400} /></Stack>;
   if (!report) return <Paper p="md" withBorder><Text c="dimmed">{t('reports.noData' as any, language) || 'No data available'}</Text></Paper>;
 
@@ -126,17 +133,10 @@ export default function InventoryReportPage() {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} />
               <YAxis />
-              <Tooltip />
+              <Tooltip contentStyle={tooltipStyle.contentStyle} itemStyle={tooltipStyle.itemStyle} labelStyle={tooltipStyle.labelStyle} />
               <Legend />
-              {(() => {
-                const colors = getChartColors(2); // 2 series: stock and threshold
-                return (
-                  <>
-                    <Bar dataKey="stock" fill={colors[0]} name={t('reports.currentStock' as any, language)} />
-                    <Bar dataKey="threshold" fill={colors[1]} name={t('reports.minimumThreshold' as any, language)} />
-                  </>
-                );
-              })()}
+              <Bar dataKey="stock" fill={stockChartColors[0]} name={t('reports.currentStock' as any, language)} />
+              <Bar dataKey="threshold" fill={stockChartColors[1]} name={t('reports.minimumThreshold' as any, language)} />
             </BarChart>
           </ResponsiveContainer>
         </Box>

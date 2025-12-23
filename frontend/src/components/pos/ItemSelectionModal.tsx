@@ -559,9 +559,9 @@ export function ItemSelectionModal({
                   </Text>
                 </Group>
                 <Group justify="space-between">
-                  <Badge color={getBadgeColorForText(activeDiscount.discountType === 'percentage'
+                  <Badge variant="light" color={getBadgeColorForText(activeDiscount.discountType === 'percentage'
                     ? `${activeDiscount.discountValue}% ${t('pos.discount', language) || 'OFF'}`
-                    : `${formatCurrency(discountAmount, currency)} ${t('pos.discount', language) || 'OFF'}`)} variant="light">
+                    : `${formatCurrency(discountAmount, currency)} ${t('pos.discount', language) || 'OFF'}`)}>
                     {activeDiscount.discountType === 'percentage'
                       ? `${activeDiscount.discountValue}% ${t('pos.discount', language) || 'OFF'}`
                       : `${formatCurrency(discountAmount, currency)} ${t('pos.discount', language) || 'OFF'}`}

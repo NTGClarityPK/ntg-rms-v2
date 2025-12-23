@@ -24,7 +24,7 @@ function POSPageContent() {
   const { isOnline } = useSyncStatus();
   const searchParams = useSearchParams();
   const editOrderId = searchParams?.get('editOrder');
-  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [cartItems, setCartItems] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -435,7 +435,7 @@ function POSPageContent() {
   return (
     <>
       <div className="page-title-bar">
-        <Group justify="space-between" align="center" style={{ width: '100%', paddingRight: 'var(--mantine-spacing-md)' }}>
+        <Group justify="space-between" align="center" style={{ width: '100%' }}>
           <Title order={1} style={{ margin: 0, textAlign: 'left', paddingTop: 'var(--mantine-spacing-sm)' }}>
             {t('pos.newOrder', language) || 'New Order'}
           </Title>
@@ -477,8 +477,8 @@ function POSPageContent() {
           <Grid.Col span={{ base: 12, md: 7 }}>
             <FoodItemsGrid
               tenantId={user.tenantId}
-              selectedCategoryIds={selectedCategoryIds}
-              onCategoryChange={setSelectedCategoryIds}
+              selectedCategoryId={selectedCategoryId}
+              onCategoryChange={setSelectedCategoryId}
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
               onAddToCart={handleAddToCart}

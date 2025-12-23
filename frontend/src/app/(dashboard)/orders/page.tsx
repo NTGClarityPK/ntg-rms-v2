@@ -519,7 +519,7 @@ export default function OrdersPage() {
   return (
     <>
       <div className="page-title-bar">
-        <Group justify="space-between" align="center" style={{ width: '100%', height: '100%', paddingRight: 'var(--mantine-spacing-md)' }}>
+        <Group justify="space-between" align="center" style={{ width: '100%', height: '100%' }}>
           <Title order={1} style={{ margin: 0, textAlign: 'left' }}>
             {t('orders.title', language)}
           </Title>
@@ -683,7 +683,7 @@ export default function OrdersPage() {
                           <Badge variant="light" color={getBadgeColorForText(getOrderTypeLabel(order.orderType))}>
                             {getOrderTypeLabel(order.orderType)}
                           </Badge>
-                          <Badge color={getPaymentStatusColor(order.paymentStatus)}>
+                          <Badge variant="light" color={getPaymentStatusColor(order.paymentStatus)}>
                             {getPaymentStatusLabel(order.paymentStatus)}
                           </Badge>
                         </Group>

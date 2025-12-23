@@ -218,8 +218,13 @@ export function generateThemeConfig(
         textColor: themeColors.colorTextDark,
         hoverBackground: themeColors.colorMedium, // Subtle surface variant
         hoverTextColor: themeColors.primary, // Primary color on hover
-        activeBackground: themeColors.primaryLightest, // Lightest primary for subtle active state
-        activeTextColor: themeColors.primary, // Primary color for active
+        // Theme-aware active state: darker background in dark mode, lighter in light mode
+        activeBackground: isDark 
+          ? themeColors.primaryDark // Darker shade for dark mode (better contrast)
+          : themeColors.primaryLightest, // Light shade for light mode
+        activeTextColor: isDark
+          ? themeColors.pureWhite // White text/icon in dark mode for maximum contrast
+          : themeColors.primary, // Primary color for light mode
       },
       header: {
         backgroundColor: themeColors.colorCard, // Same as navbar for consistency

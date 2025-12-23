@@ -37,6 +37,8 @@ import { isPaginatedResponse } from '@/lib/types/pagination.types';
 import { notifications } from '@mantine/notifications';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getSuccessColor, getErrorColor, getWarningColor, getInfoColor, getStatusColor, getBadgeColorForText } from '@/lib/utils/theme';
+import { useTheme } from '@/lib/hooks/use-theme';
+import { generateThemeColors } from '@/lib/utils/themeColors';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { onOrderUpdate, notifyOrderUpdate } from '@/lib/utils/order-events';
 import { useKitchenSse, OrderUpdateEvent } from '@/lib/hooks/use-kitchen-sse';
@@ -55,6 +57,8 @@ export default function KitchenDisplayPage() {
   const { language } = useLanguageStore();
   const primary = useThemeColor();
   const { user } = useAuthStore();
+  const { isDark } = useTheme();
+  const themeColors = generateThemeColors(primary, isDark);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -708,7 +712,7 @@ export default function KitchenDisplayPage() {
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'var(--mantine-color-gray-0)',
+        backgroundColor: themeColors.colorLight,
         overflow: 'auto',
         zIndex: 1000,
         // Ensure notifications are not clipped
@@ -727,8 +731,8 @@ export default function KitchenDisplayPage() {
                 position="bottom"
                 styles={{
                   tooltip: {
-                    backgroundColor: 'var(--mantine-color-gray-9)',
-                    color: 'var(--mantine-color-white)',
+                    backgroundColor: isDark ? themeColors.colorDark : themeColors.colorTextDark,
+                    color: isDark ? themeColors.colorTextDark : themeColors.colorCard,
                   },
                 }}
               >
@@ -750,8 +754,8 @@ export default function KitchenDisplayPage() {
                 position="bottom"
                 styles={{
                   tooltip: {
-                    backgroundColor: 'var(--mantine-color-gray-9)',
-                    color: 'var(--mantine-color-white)',
+                    backgroundColor: isDark ? themeColors.colorDark : themeColors.colorTextDark,
+                    color: isDark ? themeColors.colorTextDark : themeColors.colorCard,
                   },
                 }}
               >
@@ -773,8 +777,8 @@ export default function KitchenDisplayPage() {
                 position="bottom"
                 styles={{
                   tooltip: {
-                    backgroundColor: 'var(--mantine-color-gray-9)',
-                    color: 'var(--mantine-color-white)',
+                    backgroundColor: isDark ? themeColors.colorDark : themeColors.colorTextDark,
+                    color: isDark ? themeColors.colorTextDark : themeColors.colorCard,
                   },
                 }}
               >
@@ -823,10 +827,10 @@ export default function KitchenDisplayPage() {
           </Box>
 
           {loading ? (
-            <Grid gutter="md" style={{ width: '100%', margin: 0 }}>
+            <Grid gutter="md" style={{ width: '100%', margin: 0, marginTop: 50 }}>
               {/* Pending Section Skeleton */}
               <Grid.Col span={6}>
-                <Paper p="md" withBorder style={{ backgroundColor: 'var(--mantine-color-white)', height: 'calc(100vh - 100px)' }}>
+                <Paper p="md" withBorder style={{ backgroundColor: themeColors.colorCard, height: 'calc(100vh - 100px)' }}>
                   <Stack gap="md">
                     <Skeleton height={32} width="40%" />
                     <Grid gutter="md" style={{ margin: 0 }}>
@@ -851,7 +855,7 @@ export default function KitchenDisplayPage() {
               </Grid.Col>
               {/* Preparing Section Skeleton */}
               <Grid.Col span={6}>
-                <Paper p="md" withBorder style={{ backgroundColor: 'var(--mantine-color-white)', height: 'calc(100vh - 100px)' }}>
+                <Paper p="md" withBorder style={{ backgroundColor: themeColors.colorCard, height: 'calc(100vh - 100px)' }}>
                   <Stack gap="md">
                     <Skeleton height={32} width="40%" />
                     <Grid gutter="md" style={{ margin: 0 }}>
@@ -876,10 +880,10 @@ export default function KitchenDisplayPage() {
               </Grid.Col>
             </Grid>
           ) : (
-            <Grid gutter="md" style={{ width: '100%', margin: 0 }}>
+            <Grid gutter="md" style={{ width: '100%', margin: 0, marginTop: 50 }}>
               {/* Pending Section with 3 Columns */}
               <Grid.Col span={6}>
-                <Paper p="md" withBorder style={{ backgroundColor: 'var(--mantine-color-white)', height: 'calc(100vh - 100px)', display: 'flex', flexDirection: 'column' }}>
+                <Paper p="md" withBorder style={{ backgroundColor: themeColors.colorCard, height: 'calc(100vh - 100px)', display: 'flex', flexDirection: 'column' }}>
                   <Stack gap="md" style={{ flex: 1, overflow: 'hidden' }}>
                     <Text fw={700} size="lg">
                       {t('orders.pending', language)} ({pendingOrders.length})
@@ -923,7 +927,7 @@ export default function KitchenDisplayPage() {
 
               {/* Preparing Section with 3 Columns */}
               <Grid.Col span={6}>
-                <Paper p="md" withBorder style={{ backgroundColor: 'var(--mantine-color-white)', height: 'calc(100vh - 100px)', display: 'flex', flexDirection: 'column' }}>
+                <Paper p="md" withBorder style={{ backgroundColor: themeColors.colorCard, height: 'calc(100vh - 100px)', display: 'flex', flexDirection: 'column' }}>
                   <Stack gap="md" style={{ flex: 1, overflow: 'hidden' }}>
                     <Text fw={700} size="lg">
                       {t('orders.preparing', language)} ({preparingOrders.length})
@@ -995,6 +999,8 @@ function OrderCard({
   getOrderAge,
   showStatus,
 }: OrderCardProps) {
+  const { isDark } = useTheme();
+  const themeColors = generateThemeColors(primary, isDark);
   const priorityColor = getPriorityColor(order);
   const orderAge = getOrderAge(order);
 
@@ -1004,7 +1010,7 @@ function OrderCard({
       p="md"
       style={{
         borderLeft: `4px solid ${priorityColor}`,
-        backgroundColor: 'var(--mantine-color-white)',
+        backgroundColor: themeColors.colorCard,
         overflow: 'hidden',
         width: '100%',
       }}
@@ -1092,11 +1098,11 @@ function OrderCard({
                          }}
                        >
                          <Stack gap={2}>
-                           <Text fw={500} size="md" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+                           <Text fw={500} size="md" c={primary} style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
                              {item.quantity}x {item.comboMeal.name || t('pos.comboMeal', language)}
                            </Text>
                            {item.comboMeal.foodItems && item.comboMeal.foodItems.length > 0 && (
-                             <Stack gap={2} style={{ paddingLeft: 12 }}>
+                                                         <Stack gap={2} style={{ paddingLeft: 12, borderLeft: `2px solid ${isDark ? themeColors.primaryDark : themeColors.primaryLight}` }}>
                                {item.comboMeal.foodItems.map((foodItem, idx) => (
                                  <Text key={idx} size="sm" c="dimmed" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
                                    • {foodItem.name || t('pos.item', language)}

@@ -495,7 +495,7 @@ export default function DeliveryPage() {
   return (
     <>
       <div className="page-title-bar">
-        <Group justify="space-between" align="center" style={{ width: '100%', height: '100%', paddingRight: 'var(--mantine-spacing-md)' }}>
+        <Group justify="space-between" align="center" style={{ width: '100%', height: '100%' }}>
           <Title order={1} style={{ margin: 0, textAlign: 'left' }}>
             {t('delivery.title' as any, language) || 'Delivery Management'}
           </Title>
@@ -641,7 +641,7 @@ export default function DeliveryPage() {
                               {t('pos.tokenNumber', language)}: {delivery.order.tokenNumber}
                             </Text>
                           )}
-                          <Badge color={getStatusColorForBadge(delivery.status)}>
+                          <Badge variant="light" color={getStatusColorForBadge(delivery.status)}>
                             {getStatusLabel(delivery.status)}
                           </Badge>
                         </Group>
@@ -976,7 +976,7 @@ export default function DeliveryPage() {
                   <Text size="sm" c="dimmed">
                     {t('delivery.status' as any, language) || 'Status'}:
                   </Text>
-                  <Badge color={getStatusColorForBadge(selectedDelivery.status)}>
+                  <Badge variant="light" color={getStatusColorForBadge(selectedDelivery.status)}>
                     {getStatusLabel(selectedDelivery.status)}
                   </Badge>
                 </Group>

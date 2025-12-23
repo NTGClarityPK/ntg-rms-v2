@@ -9,7 +9,9 @@ import { reportsApi, TaxReport, ReportQueryParams } from '@/lib/api/reports';
 import { ReportFilters } from './ReportFilters';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getSuccessColor, getErrorColor, getChartColors } from '@/lib/utils/theme';
+import { getSuccessColor, getErrorColor } from '@/lib/utils/theme';
+import { useChartColors } from '@/lib/hooks/use-chart-colors';
+import { useChartTooltip } from '@/lib/hooks/use-chart-tooltip';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { notifications } from '@mantine/notifications';
@@ -21,6 +23,7 @@ export default function TaxReportPage() {
   const currency = useCurrency();
   const themeColor = useThemeColor();
   const { isOnline } = useSyncStatus();
+  const tooltipStyle = useChartTooltip();
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<TaxReport | null>(null);
   const [branches, setBranches] = useState<Array<{ value: string; label: string }>>([]);
@@ -91,6 +94,10 @@ export default function TaxReportPage() {
   };
   const handlePrint = () => window.print();
 
+  // Generate chart colors - reactive to theme changes
+  // Must be called before early returns (React rules)
+  const taxChartColors = useChartColors(report?.taxByType?.length || 1);
+
   if (loading) return <Stack gap="md"><Skeleton height={200} /><Skeleton height={400} /></Stack>;
   if (!report) return <Paper p="md" withBorder><Text c="dimmed">{t('reports.noData' as any, language) || 'No data available'}</Text></Paper>;
 
@@ -117,20 +124,14 @@ export default function TaxReportPage() {
                       labelLine={false}
                       label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
                       outerRadius={80}
-                      fill={(() => {
-                        const colors = getChartColors(report.taxByType.length);
-                        return colors[0];
-                      })()}
+                      fill={taxChartColors[0] || themeColor}
                       dataKey="value"
                     >
-                      {(() => {
-                        const colors = getChartColors(report.taxByType.length);
-                        return report.taxByType.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
-                        ));
-                      })()}
+                      {report.taxByType.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={taxChartColors[index % taxChartColors.length] || themeColor} />
+                      ))}
                     </Pie>
-                    <Tooltip formatter={(value: number) => `${value.toFixed(2)} ${currency}`} />
+                    <Tooltip formatter={(value: number) => `${value.toFixed(2)} ${currency}`} contentStyle={tooltipStyle.contentStyle} itemStyle={tooltipStyle.itemStyle} labelStyle={tooltipStyle.labelStyle} />
                     <Legend />
                   </PieChart>
                 </ResponsiveContainer>
@@ -166,7 +167,7 @@ export default function TaxReportPage() {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="period" />
               <YAxis />
-              <Tooltip formatter={(value: number) => `${value.toFixed(2)} ${currency}`} />
+              <Tooltip formatter={(value: number) => `${value.toFixed(2)} ${currency}`} contentStyle={tooltipStyle.contentStyle} itemStyle={tooltipStyle.itemStyle} labelStyle={tooltipStyle.labelStyle} />
               <Legend />
               <Line type="monotone" dataKey="tax" stroke={themeColor} strokeWidth={2} name={t('reports.totalTax' as any, language)} />
             </LineChart>

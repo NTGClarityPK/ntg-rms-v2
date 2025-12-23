@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getLegacyThemeColor, DEFAULT_THEME_COLOR } from '@/lib/utils/theme';
 
 interface ThemeStore {
   primaryColor: string;
@@ -6,8 +7,15 @@ interface ThemeStore {
   setPrimaryColor: (color: string) => void;
 }
 
+// Initialize from localStorage if available to prevent blue flash
+const getInitialColor = (): string => {
+  if (typeof window === 'undefined') return DEFAULT_THEME_COLOR;
+  const stored = getLegacyThemeColor();
+  return stored || DEFAULT_THEME_COLOR;
+};
+
 export const useThemeStore = create<ThemeStore>((set, get) => ({
-  primaryColor: '#2196f3',
+  primaryColor: getInitialColor(),
   themeVersion: 0,
   setPrimaryColor: (color: string) => {
     set((state) => ({ 

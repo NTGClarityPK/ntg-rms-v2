@@ -450,7 +450,7 @@ export function OrderDetailsModal({
                 <Text size="sm" c="dimmed" mb={4}>
                   {t('orders.status', language)}
                 </Text>
-                <Badge color={getStatusColorForBadge(orderDetails.status)} size="lg">
+                <Badge variant="light" color={getStatusColorForBadge(orderDetails.status)} size="lg">
                   {t(`orders.status.${orderDetails.status}`, language) || orderDetails.status}
                 </Badge>
               </Grid.Col>

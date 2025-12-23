@@ -503,7 +503,7 @@ export function ComboMealPage() {
                         )}
                       </Table.Td>
                       <Table.Td>
-                        <Badge color={comboMeal.isActive ? successColor : 'gray'} size="sm">
+                        <Badge variant="light" color={comboMeal.isActive ? successColor : 'gray'} size="sm">
                           {comboMeal.isActive ? t('menu.active', language) : t('menu.inactive', language)}
                         </Badge>
                       </Table.Td>

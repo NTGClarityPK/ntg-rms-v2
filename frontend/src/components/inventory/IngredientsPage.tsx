@@ -571,7 +571,7 @@ export function IngredientsPage() {
                       <Group gap="xs">
                         <Text>{ingredient.currentStock} {ingredient.unitOfMeasurement}</Text>
                         {isLowStock(ingredient) && (
-                          <Badge color={getWarningColor()} size="sm">
+                          <Badge variant="light" color={getWarningColor()} size="sm">
                             {t('inventory.isLowStock', language)}
                           </Badge>
                         )}

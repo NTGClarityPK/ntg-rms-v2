@@ -1,9 +1,12 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useMantineTheme } from '@mantine/core';
 import { useDynamicTheme } from '@/lib/hooks/useDynamicTheme';
 import { useLanguageStore } from '@/lib/store/language-store';
+import { useThemeStore } from '@/lib/store/theme-store';
+import { useTheme } from '@/lib/hooks/use-theme';
+import { generateThemeConfig } from '@/lib/theme/themeConfig';
 import type { ThemeConfig } from '@/lib/theme/themeConfig';
 
 /**
@@ -18,9 +21,19 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
   const theme = useMantineTheme();
   const dynamicTheme = useDynamicTheme();
   const { language } = useLanguageStore();
+  const { primaryColor: storeColor, themeVersion } = useThemeStore();
+  const { isDark } = useTheme();
   
-  // Get theme config from Mantine theme
-  const themeConfig = (theme.other as any) as ThemeConfig | undefined;
+  // Get theme config from Mantine theme as fallback
+  const mantineThemeConfig = (theme.other as any) as ThemeConfig | undefined;
+  
+  // Generate reactive theme config from store color - this updates immediately when theme changes
+  const themeConfig = useMemo(() => {
+    if (storeColor) {
+      return generateThemeConfig(storeColor, isDark);
+    }
+    return mantineThemeConfig;
+  }, [storeColor, isDark, themeVersion, mantineThemeConfig]);
 
   // Set dir and lang attributes on html element for RTL support
   useEffect(() => {
@@ -174,11 +187,11 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       /* Adjust for collapsed navbar (desktop) - use data attribute for reliable targeting */
       @media (min-width: 768px) {
         body[data-navbar-collapsed="true"] .page-title-bar {
-          left: 70px !important;
+          left: 80px !important;
         }
         
         body[data-navbar-collapsed="true"] .page-sub-title-bar {
-          left: 70px !important;
+          left: 80px !important;
         }
       }
       
@@ -215,14 +228,14 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       @media (min-width: 768px) {
         html[dir="rtl"] body[data-navbar-collapsed="true"] .page-title-bar,
         [dir="rtl"] body[data-navbar-collapsed="true"] .page-title-bar {
-          right: 70px !important;
-          width: calc(100% - 70px) !important;
+          right: 80px !important;
+          width: calc(100% - 80px) !important;
         }
         
         html[dir="rtl"] body[data-navbar-collapsed="true"] .page-sub-title-bar,
         [dir="rtl"] body[data-navbar-collapsed="true"] .page-sub-title-bar {
-          right: 70px !important;
-          width: calc(100% - 70px) !important;
+          right: 80px !important;
+          width: calc(100% - 80px) !important;
         }
       }
       
@@ -251,6 +264,28 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
         text-align: right !important;
         padding-left: 0 !important;
         padding-right: var(--mantine-spacing-md) !important;
+      }
+      
+      /* Title bar button group alignment - align with content padding */
+      /* Title bar already has padding-left and padding-right matching content div */
+      /* The Group inside should respect this padding and not add extra */
+      /* In LTR: buttons naturally align with content's right edge via title bar padding */
+      .page-title-bar .mantine-Group-root[data-justify="space-between"],
+      .page-title-bar .mantine-Group-root[style*="justify-content: space-between"] {
+        /* Ensure no extra padding interferes - title bar padding handles alignment */
+        padding-right: 0 !important;
+        padding-left: 0 !important;
+      }
+      
+      /* RTL - Title bar button group alignment */
+      /* Title bar padding already matches content padding in RTL */
+      html[dir="rtl"] .page-title-bar .mantine-Group-root[data-justify="space-between"],
+      [dir="rtl"] .page-title-bar .mantine-Group-root[data-justify="space-between"],
+      html[dir="rtl"] .page-title-bar .mantine-Group-root[style*="justify-content: space-between"],
+      [dir="rtl"] .page-title-bar .mantine-Group-root[style*="justify-content: space-between"] {
+        /* Ensure no extra padding interferes - title bar padding handles alignment */
+        padding-right: 0 !important;
+        padding-left: 0 !important;
       }
       
       /* Add top margin to main content to account for title bar */
@@ -285,93 +320,119 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
         margin-right: 0 !important;
       }
       
-      /* NavLink */
-      .mantine-NavLink-root {
-        color: ${config.components.navbar.textColor} !important;
+      /* Form action buttons alignment - align with cards inside Tabs.Panel */
+      /* Tabs.Panel has px="md" which adds var(--mantine-spacing-md) padding */
+      /* Cards are indented by this padding, so buttons need matching padding */
+      /* Target Groups that come after Tabs components inside forms */
+      div[style*="paddingLeft"] form .mantine-Tabs-root ~ .mantine-Group-root,
+      div[style*="padding-left"] form .mantine-Tabs-root ~ .mantine-Group-root {
+        /* Match Tabs.Panel horizontal padding (px="md" = var(--mantine-spacing-md)) */
+        /* In LTR: add right padding to align with cards' right edge */
+        padding-right: var(--mantine-spacing-md) !important;
+      }
+      
+      /* RTL - Form action buttons should align with cards' left edge */
+      html[dir="rtl"] div[style*="paddingLeft"] form .mantine-Tabs-root ~ .mantine-Group-root,
+      [dir="rtl"] div[style*="padding-left"] form .mantine-Tabs-root ~ .mantine-Group-root {
+        /* Match Tabs.Panel horizontal padding (px="md" = var(--mantine-spacing-md)) */
+        /* In RTL: add left padding to align with cards' left edge */
+        padding-right: 0 !important;
+        padding-left: var(--mantine-spacing-md) !important;
+      }
+      
+      /* Navbar Navigation Buttons */
+      .nav-item-button {
         font-family: ${config.typography.fontFamily.primary} !important;
         border-radius: 8px !important;
         transition: all 0.2s ease !important;
-      }
-      
-      .mantine-NavLink-root:hover {
-        background-color: ${config.components.navbar.hoverBackground} !important;
-        color: ${config.components.navbar.hoverTextColor} !important;
-        border-radius: 8px !important;
-      }
-      
-      .mantine-NavLink-root[data-active] {
-        background-color: ${config.components.navbar.activeBackground} !important;
-        color: ${config.components.navbar.activeTextColor} !important;
-        border-radius: 8px !important;
-      }
-      
-      /* Collapsed Navbar - Icons only */
-      .mantine-AppShell-navbar[style*="width: 70"] .mantine-NavLink-root,
-      .mantine-AppShell-navbar[style*="width: 70px"] .mantine-NavLink-root {
-        justify-content: center !important;
-        padding-left: 0 !important;
-        padding-right: 0 !important;
-      }
-      
-      .mantine-AppShell-navbar[style*="width: 70"] .mantine-NavLink-root .mantine-NavLink-body,
-      .mantine-AppShell-navbar[style*="width: 70px"] .mantine-NavLink-root .mantine-NavLink-body {
-        justify-content: center !important;
-      }
-      
-      .mantine-AppShell-navbar[style*="width: 70"] .mantine-NavLink-label,
-      .mantine-AppShell-navbar[style*="width: 70px"] .mantine-NavLink-label {
-        display: none !important;
-      }
-      
-      .mantine-AppShell-navbar[style*="width: 70"] .mantine-NavLink-root .mantine-NavLink-leftSection,
-      .mantine-AppShell-navbar[style*="width: 70px"] .mantine-NavLink-root .mantine-NavLink-leftSection {
-        margin-right: 0 !important;
-      }
-      
-      /* Collapsed Navbar - Center NavLinks within Stack containers */
-      body[data-navbar-collapsed="true"] .mantine-AppShell-navbar .mantine-Stack-root .mantine-NavLink-root {
         display: flex !important;
-        justify-content: center !important;
         align-items: center !important;
-        margin: 0 auto !important;
-        width: fit-content !important; /* Let NavLink size to its content */
       }
-
-      body[data-navbar-collapsed="true"] .mantine-AppShell-navbar .mantine-NavLink-root {
-        display: flex !important;
+      
+      /* Collapsed state - perfect centering */
+      .nav-item-button[data-collapsed="true"] {
         justify-content: center !important;
-        align-items: center !important;
-        padding-left: 0.5rem !important;
-        padding-right: 0.5rem !important;
-      }
-
-      body[data-navbar-collapsed="true"] .mantine-AppShell-navbar .mantine-NavLink-root .mantine-NavLink-body {
-        display: flex !important;
-        justify-content: center !important;
-        align-items: center !important;
-        margin: 0 auto !important;
         width: auto !important;
         min-width: auto !important;
+        padding: 0.5rem !important;
+        margin: 0 auto !important;
       }
-
-      body[data-navbar-collapsed="true"] .mantine-AppShell-navbar .mantine-NavLink-root .mantine-NavLink-leftSection {
+      
+      /* Ensure button inner content is centered when collapsed */
+      .nav-item-button[data-collapsed="true"] .mantine-Button-inner {
+        justify-content: center !important;
+        width: 100% !important;
+      }
+      
+      /* Remove leftSection margin when collapsed */
+      .nav-item-button[data-collapsed="true"] .mantine-Button-leftSection {
         margin-right: 0 !important;
         margin-left: 0 !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
       }
-
-      /* Collapsed Navbar - Align expand button with icons */
-      body[data-navbar-collapsed="true"] .mantine-AppShell-navbar .mantine-Box-root:has(.mantine-ActionIcon-root) {
-        padding-left: 0.5rem !important;
-        padding-right: 0.5rem !important;
-        display: flex !important;
-        justify-content: center !important;
+      
+      /* Expanded state */
+      .nav-item-button[data-collapsed="false"] {
+        justify-content: flex-start !important;
+        width: 100% !important;
       }
-
-      body[data-navbar-collapsed="true"] .mantine-AppShell-navbar .mantine-ActionIcon-root {
-        margin: 0 auto !important;
+      
+      /* Active state */
+      .nav-item-button[data-active="true"] {
+        background-color: ${config.components.navbar.activeBackground} !important;
+        color: ${config.components.navbar.activeTextColor} !important;
+        font-weight: 600 !important;
+      }
+      
+      /* Hover state */
+      .nav-item-button:hover {
+        background-color: ${config.components.navbar.hoverBackground} !important;
+        color: ${config.components.navbar.hoverTextColor} !important;
+      }
+      
+      /* Active state in collapsed mode - more prominent */
+      .nav-item-button[data-active="true"][data-collapsed="true"] {
+        background-color: ${config.components.navbar.activeBackground} !important;
+        border-left: 4px solid ${config.components.navbar.activeTextColor} !important;
+        border-radius: 0 8px 8px 0 !important;
+        position: relative !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+        font-weight: 700 !important;
+      }
+      
+      /* Make active icon stand out more in collapsed mode */
+      .nav-item-button[data-active="true"][data-collapsed="true"] svg {
+        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2)) !important;
+      }
+      
+      /* RTL - Active state in collapsed mode uses right border */
+      html[dir="rtl"] .nav-item-button[data-active="true"][data-collapsed="true"],
+      [dir="rtl"] .nav-item-button[data-active="true"][data-collapsed="true"] {
+        border-left: none !important;
+        border-right: 4px solid ${config.components.navbar.activeTextColor} !important;
+        border-radius: 8px 0 0 8px !important;
+      }
+      
+      /* Navbar Toggle Button */
+      .nav-toggle-button {
+        transition: all 0.2s ease !important;
+        border-radius: 8px !important;
+      }
+      
+      .nav-toggle-button:hover {
+        background-color: ${config.components.navbar.hoverBackground} !important;
+        color: ${config.components.navbar.hoverTextColor} !important;
+      }
+      
+      /* Ensure collapsed navbar buttons are centered */
+      body[data-navbar-collapsed="true"] .mantine-AppShell-navbar .nav-item-button {
+        margin-left: auto !important;
+        margin-right: auto !important;
+      }
+      
+      /* Center toggle button when collapsed */
+      body[data-navbar-collapsed="true"] .mantine-AppShell-navbar .nav-toggle-button {
+        margin-left: auto !important;
+        margin-right: auto !important;
       }
       
       /* Input Components */
@@ -907,6 +968,12 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       }
 
       /* Filter Chips - configurable from themeConfig.filterChip */
+      .filter-chip-group .mantine-ChipGroup-root {
+        display: inline-flex !important;
+        flex-wrap: wrap !important;
+        gap: var(--mantine-spacing-xs) !important;
+      }
+
       .filter-chip-group .mantine-Chip-label {
         background-color: ${config.components.filterChip.backgroundColor} !important;
         color: ${config.components.filterChip.textColor} !important;

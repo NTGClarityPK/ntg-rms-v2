@@ -737,7 +737,14 @@ export default function RestaurantPage() {
           </PermissionGuard>
         </Tabs>
 
-        <Group justify="flex-end" mt="xl">
+        <Group 
+          justify="flex-end" 
+          mt="xl" 
+          style={language === 'ar' 
+            ? { paddingLeft: 'var(--mantine-spacing-md)' }
+            : { paddingRight: 'var(--mantine-spacing-md)' }
+          }
+        >
           <Button type="submit" loading={saving}>
             {t('common.saveChanges' as any, language)}
           </Button>

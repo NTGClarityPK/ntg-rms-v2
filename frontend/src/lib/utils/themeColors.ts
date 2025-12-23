@@ -84,7 +84,8 @@ export function generateThemeColors(primaryColor: string, isDark: boolean = fals
     borderLight: isDark ? '#2c2e33' : '#e9ecef',
 
     // Modern neutral grays (replacing brown/beige tones)
-    colorLight: isDark ? '#1a1b1e' : '#f8f9fa',      // Background level
+    // colorLight: isDark ? '#1a1b1e' : '#f7f6f2',      // Background level
+    colorLight: isDark ? '#1a1b1e' : '#f9f8f5',      // Background level
     colorMedium: isDark ? '#25262b' : '#e9ecef',    // Surface variant
     colorDark: isDark ? '#373a40' : '#dee2e6',      // Border/hover base
     colorDarkHover: isDark ? '#424449' : '#ced4da', // Hover state

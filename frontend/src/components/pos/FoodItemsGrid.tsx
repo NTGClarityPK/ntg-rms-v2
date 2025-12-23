@@ -38,8 +38,8 @@ import { formatCurrency } from '@/lib/utils/currency-formatter';
 
 interface FoodItemsGridProps {
   tenantId: string;
-  selectedCategoryIds: string[];
-  onCategoryChange: (categoryIds: string[]) => void;
+  selectedCategoryId: string | null;
+  onCategoryChange: (categoryId: string | null) => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onAddToCart: (item: any) => void;
@@ -49,7 +49,7 @@ interface FoodItemsGridProps {
 
 export function FoodItemsGrid({
   tenantId,
-  selectedCategoryIds,
+  selectedCategoryId,
   onCategoryChange,
   searchQuery,
   onSearchChange,
@@ -101,7 +101,7 @@ export function FoodItemsGrid({
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, selectedCategoryIds, searchQuery, foodItemsPagination.page, foodItemsPagination.limit, buffetsPagination.page, buffetsPagination.limit, comboMealsPagination.page, comboMealsPagination.limit, itemType, orderType]);
+  }, [tenantId, selectedCategoryId, searchQuery, foodItemsPagination.page, foodItemsPagination.limit, buffetsPagination.page, buffetsPagination.limit, comboMealsPagination.page, comboMealsPagination.limit, itemType, orderType]);
 
   const loadData = async () => {
     try {
@@ -175,7 +175,7 @@ export function FoodItemsGrid({
           try {
             // Load from server with pagination
             const serverItemsResponse = await menuApi.getFoodItems(
-              selectedCategoryIds.length > 0 ? selectedCategoryIds[0] : undefined,
+              selectedCategoryId || undefined,
               foodItemsPagination.paginationParams
             ).catch((error) => {
               // If API call fails, throw to trigger offline fallback
@@ -243,10 +243,9 @@ export function FoodItemsGrid({
       .equals(tenantId)
       .filter((item) => item.isActive && !item.deletedAt);
 
-    if (selectedCategoryIds.length > 0) {
+    if (selectedCategoryId) {
       itemsQuery = itemsQuery.filter((item) => {
-        if (!item.categoryId) return false;
-        return selectedCategoryIds.includes(item.categoryId);
+        return item.categoryId === selectedCategoryId;
       });
     }
 
@@ -414,7 +413,7 @@ export function FoodItemsGrid({
   return (
     <Box style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Header with Search and Categories */}
-      <Box p="md" style={{ borderBottom: `1px solid var(--mantine-color-gray-3)` }}>
+      <Box py="md" px={0} style={{ borderBottom: `1px solid var(--mantine-color-gray-3)` }}>
         <Stack gap="md">
           {/* Item Type Selector */}
           <SegmentedControl
@@ -456,45 +455,30 @@ export function FoodItemsGrid({
 
           {/* Categories - Only show for food items */}
           {itemType === 'food-items' && (
-            <ScrollArea>
-              <Group gap="xs">
-                <Button
-                  variant={selectedCategoryIds.length === 0 ? 'filled' : 'light'}
-                  size="sm"
-                  onClick={() => onCategoryChange([])}
-                  style={{
-                    backgroundColor: selectedCategoryIds.length === 0 ? primaryShade : undefined,
-                  }}
+            <Paper p="sm" withBorder>
+              <Group gap="xs" wrap="wrap" className="filter-chip-group">
+                <Chip
+                  checked={selectedCategoryId === null}
+                  onChange={() => onCategoryChange(null)}
+                  variant="filled"
                 >
                   {t('pos.allCategories', language)}
-                </Button>
-                {categories.map((category) => (
-                  <Button
-                    key={category.id}
-                    variant={selectedCategoryIds.includes(category.id) ? 'filled' : 'light'}
-                    size="sm"
-                    onClick={() => {
-                      if (selectedCategoryIds.includes(category.id)) {
-                        onCategoryChange(selectedCategoryIds.filter(id => id !== category.id));
-                      } else {
-                        onCategoryChange([...selectedCategoryIds, category.id]);
-                      }
-                    }}
-                    style={{
-                      backgroundColor: selectedCategoryIds.includes(category.id) ? primaryShade : undefined,
-                    }}
-                  >
-                    {category.name}
-                  </Button>
-                ))}
+                </Chip>
+                <Chip.Group value={selectedCategoryId || ''} onChange={(value) => onCategoryChange(value || null)}>
+                  {categories.map((category) => (
+                    <Chip key={category.id} value={category.id} variant="filled">
+                      {category.name}
+                    </Chip>
+                  ))}
+                </Chip.Group>
               </Group>
-            </ScrollArea>
+            </Paper>
           )}
         </Stack>
       </Box>
 
       {/* Food Items Grid */}
-      <Box>
+      <Box pt="md">
           {loading ? (
             <Grid>
               {[...Array(12)].map((_, i) => (

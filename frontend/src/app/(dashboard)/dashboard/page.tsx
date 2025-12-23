@@ -17,12 +17,13 @@ import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
+import { useChartTooltip } from '@/lib/hooks/use-chart-tooltip';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { dashboardApi, DashboardData } from '@/lib/api/dashboard';
 import { useSyncStatus } from '@/lib/hooks/use-sync-status';
 import { notifications } from '@mantine/notifications';
-import { getErrorColor, getBadgeColorForText, getChartColors } from '@/lib/utils/theme';
+import { getErrorColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { useRouter } from 'next/navigation';
 
 export default function DashboardPage() {
@@ -32,6 +33,7 @@ export default function DashboardPage() {
   const currency = useCurrency();
   const { isOnline } = useSyncStatus();
   const router = useRouter();
+  const tooltipStyle = useChartTooltip();
   const [loading, setLoading] = useState(true);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
 
@@ -198,7 +200,7 @@ export default function DashboardPage() {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="date" />
                       <YAxis />
-                      <Tooltip formatter={(value: number) => `${value.toFixed(2)} ${currency}`} />
+                      <Tooltip formatter={(value: number) => `${value.toFixed(2)} ${currency}`} contentStyle={tooltipStyle.contentStyle} itemStyle={tooltipStyle.itemStyle} labelStyle={tooltipStyle.labelStyle} />
                       <Legend />
                       <Line type="monotone" dataKey="revenue" stroke={primary} strokeWidth={2} name={t('dashboard.revenue' as any, language) || 'Revenue'} />
                     </LineChart>
@@ -265,7 +267,7 @@ export default function DashboardPage() {
                         height={100}
                       />
                       <YAxis />
-                      <Tooltip />
+                      <Tooltip contentStyle={tooltipStyle.contentStyle} itemStyle={tooltipStyle.itemStyle} labelStyle={tooltipStyle.labelStyle} />
                       <Legend />
                       <Bar dataKey="quantity" fill={primary} name={t('dashboard.quantity' as any, language) || 'Quantity'} />
                     </BarChart>
