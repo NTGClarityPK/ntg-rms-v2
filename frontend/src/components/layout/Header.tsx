@@ -10,10 +10,12 @@ import {
   Avatar,
   useMantineTheme,
   Box,
+  Badge,
+  Tooltip,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { useRouter } from 'next/navigation';
-import { IconToolsKitchen2, IconLanguage, IconLogout, IconUser } from '@tabler/icons-react';
+import { IconToolsKitchen2, IconLanguage, IconLogout, IconUser, IconCircle } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useRestaurantStore } from '@/lib/store/restaurant-store';
@@ -22,6 +24,7 @@ import { UserMenu } from '@/components/layout/UserMenu';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { Image } from '@mantine/core';
 import { t } from '@/lib/utils/translations';
+import { useSyncStatus } from '@/lib/hooks/use-sync-status';
 
 interface HeaderProps {
   mobileOpened?: boolean;
@@ -36,6 +39,7 @@ export function Header({ mobileOpened, toggleMobile }: HeaderProps = {}) {
   const { language, toggleLanguage } = useLanguageStore();
   const { user, logout } = useAuthStore();
   const { restaurant } = useRestaurantStore();
+  const { isOnline } = useSyncStatus();
   
   // Use restaurant name/logo or defaults
   // Show Arabic name if language is Arabic and nameAr exists, otherwise show English
@@ -104,7 +108,64 @@ export function Header({ mobileOpened, toggleMobile }: HeaderProps = {}) {
         </Group>
 
         {/* Right side - Actions */}
-        <Group>
+        <Group gap="xs">
+          {/* NTG Logo */}
+          <Box
+            style={{
+              width: '64px',
+              height: '32px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              opacity: 0.9,
+            }}
+            component="a"
+            href="https://ntgclarity.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="NTG Clarity"
+          >
+            <Image
+              src="/ntg-logo.svg"
+              alt="NTG Clarity"
+              width="100%"
+              height="100%"
+              fit="contain"
+              style={{ objectFit: 'contain' }}
+            />
+          </Box>
+
+          {/* Online/Offline Status Badge */}
+          <Tooltip
+            label={isOnline ? 'Connected to server' : 'No internet connection'}
+            position="bottom"
+            withArrow
+          >
+            <Badge
+              variant="light"
+              color={isOnline ? 'green' : 'red'}
+              size="sm"
+              leftSection={
+                <IconCircle
+                  size={8}
+                  fill="currentColor"
+                  style={{ marginRight: 4 }}
+                />
+              }
+              style={{
+                cursor: 'default',
+                fontWeight: 500,
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '0 12px',
+              }}
+            >
+              {isMobile ? '' : (isOnline ? 'Online' : 'Offline')}
+            </Badge>
+          </Tooltip>
+
           <Button
             variant="subtle"
             leftSection={<IconLanguage size={16} />}
