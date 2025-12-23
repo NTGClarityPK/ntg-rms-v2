@@ -31,6 +31,10 @@ import { CreateBuffetDto } from './dto/create-buffet.dto';
 import { UpdateBuffetDto } from './dto/update-buffet.dto';
 import { CreateComboMealDto } from './dto/create-combo-meal.dto';
 import { UpdateComboMealDto } from './dto/update-combo-meal.dto';
+import { CreateVariationGroupDto } from './dto/create-variation-group.dto';
+import { UpdateVariationGroupDto } from './dto/update-variation-group.dto';
+import { CreateVariationDto } from './dto/create-variation.dto';
+import { UpdateVariationDto } from './dto/update-variation.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 
 @ApiTags('menu')
@@ -464,5 +468,109 @@ export class MenuController {
     @UploadedFile() file: any,
   ) {
     return this.menuService.uploadComboMealImage(user.tenantId, id, file);
+  }
+
+  // ============================================
+  // VARIATION GROUP MANAGEMENT
+  // ============================================
+
+  @Get('variation-groups')
+  @ApiOperation({ summary: 'Get all variation groups' })
+  getVariationGroups(
+    @CurrentUser() user: any,
+    @Query() paginationDto?: PaginationDto,
+  ) {
+    return this.menuService.getVariationGroups(user.tenantId, paginationDto);
+  }
+
+  @Get('variation-groups/:id')
+  @ApiOperation({ summary: 'Get variation group by ID' })
+  getVariationGroupById(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.menuService.getVariationGroupById(user.tenantId, id);
+  }
+
+  @Post('variation-groups')
+  @ApiOperation({ summary: 'Create a new variation group' })
+  createVariationGroup(@CurrentUser() user: any, @Body() createDto: CreateVariationGroupDto) {
+    return this.menuService.createVariationGroup(user.tenantId, createDto);
+  }
+
+  @Put('variation-groups/:id')
+  @ApiOperation({ summary: 'Update variation group' })
+  updateVariationGroup(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() updateDto: UpdateVariationGroupDto,
+  ) {
+    return this.menuService.updateVariationGroup(user.tenantId, id, updateDto);
+  }
+
+  @Delete('variation-groups/:id')
+  @ApiOperation({ summary: 'Delete variation group (soft delete)' })
+  deleteVariationGroup(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.menuService.deleteVariationGroup(user.tenantId, id);
+  }
+
+  // ============================================
+  // VARIATION MANAGEMENT
+  // ============================================
+
+  @Get('variation-groups/:variationGroupId/variations')
+  @ApiOperation({ summary: 'Get all variations in a group' })
+  getVariations(
+    @CurrentUser() user: any,
+    @Param('variationGroupId') variationGroupId: string,
+  ) {
+    return this.menuService.getVariations(user.tenantId, variationGroupId);
+  }
+
+  @Get('variation-groups/:variationGroupId/variations/:id')
+  @ApiOperation({ summary: 'Get variation by ID' })
+  getVariationById(
+    @CurrentUser() user: any,
+    @Param('variationGroupId') variationGroupId: string,
+    @Param('id') id: string,
+  ) {
+    return this.menuService.getVariationById(user.tenantId, variationGroupId, id);
+  }
+
+  @Post('variation-groups/:variationGroupId/variations')
+  @ApiOperation({ summary: 'Create a new variation' })
+  createVariation(
+    @CurrentUser() user: any,
+    @Param('variationGroupId') variationGroupId: string,
+    @Body() createDto: CreateVariationDto,
+  ) {
+    return this.menuService.createVariation(user.tenantId, variationGroupId, createDto);
+  }
+
+  @Put('variation-groups/:variationGroupId/variations/:id')
+  @ApiOperation({ summary: 'Update variation' })
+  updateVariation(
+    @CurrentUser() user: any,
+    @Param('variationGroupId') variationGroupId: string,
+    @Param('id') id: string,
+    @Body() updateDto: UpdateVariationDto,
+  ) {
+    return this.menuService.updateVariation(user.tenantId, variationGroupId, id, updateDto);
+  }
+
+  @Delete('variation-groups/:variationGroupId/variations/:id')
+  @ApiOperation({ summary: 'Delete variation (soft delete)' })
+  deleteVariation(
+    @CurrentUser() user: any,
+    @Param('variationGroupId') variationGroupId: string,
+    @Param('id') id: string,
+  ) {
+    return this.menuService.deleteVariation(user.tenantId, variationGroupId, id);
+  }
+
+  @Get('variation-groups/:id/food-items')
+  @ApiOperation({ summary: 'Get food items that use this variation group' })
+  getFoodItemsWithVariationGroup(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+  ) {
+    return this.menuService.getFoodItemsWithVariationGroup(user.tenantId, id);
   }
 }

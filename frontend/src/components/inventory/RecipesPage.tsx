@@ -309,14 +309,15 @@ export function RecipesPage() {
           for (const rec of serverRecipes) {
             await db.recipes.put({
               id: rec.id,
-              foodItemId: rec.foodItemId,
+              ...(rec.foodItemId && { foodItemId: rec.foodItemId }),
+              ...(rec.addOnId && { addOnId: rec.addOnId }),
               ingredientId: rec.ingredientId,
               quantity: rec.quantity,
               unit: rec.unit,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
               lastSynced: new Date().toISOString(),
-              syncStatus: 'synced',
+              syncStatus: 'synced' as const,
             });
           }
         } catch (err: any) {

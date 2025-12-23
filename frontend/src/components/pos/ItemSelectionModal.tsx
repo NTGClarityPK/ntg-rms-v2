@@ -10,11 +10,11 @@ import {
   Button,
   NumberInput,
   Textarea,
-  Radio,
   Checkbox,
   Divider,
   Badge,
   ScrollArea,
+  Chip,
 } from '@mantine/core';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
@@ -190,6 +190,13 @@ export function ItemSelectionModal({
         // Remove
         return { ...prev, [groupId]: groupAddOns.filter((id) => id !== addOnId) };
       }
+    });
+  };
+
+  const handleSingleAddOnChange = (groupId: string, value: string | string[]) => {
+    setSelectedAddOns((prev) => {
+      const selectedValue = Array.isArray(value) ? value[0] : value;
+      return { ...prev, [groupId]: selectedValue ? [selectedValue] : [] };
     });
   };
 
@@ -391,39 +398,35 @@ export function ItemSelectionModal({
             <Text fw={500} size="sm">
               {t('pos.variation', language)}
             </Text>
-            <Radio.Group value={selectedVariation?.id || ''} onChange={(value) => {
+            <Chip.Group value={selectedVariation?.id || ''} onChange={(value) => {
               const variation = variations.find((v) => v.id === value);
               setSelectedVariation(variation || null);
             }}>
-              <Stack gap="xs">
-                {variations.map((variation) => (
-                  <Radio
-                    key={variation.id}
-                    value={variation.id}
-                    label={
-                      <Group justify="space-between" style={{ flex: 1 }}>
-                        <Text>
-                          {variation.variationName}
-                          {variation.variationGroup && ` (${variation.variationGroup})`}
-                        </Text>
-                        {variation.priceAdjustment !== 0 && (
-                          <Text fw={500} c={variation.priceAdjustment > 0 ? primaryColor : getSuccessColor()}>
-                            {variation.priceAdjustment > 0 ? '+' : ''}
-                            {formatCurrency(variation.priceAdjustment, currency)}
-                          </Text>
-                        )}
-                      </Group>
-                    }
-                  />
-                ))}
-              </Stack>
-            </Radio.Group>
+              <Group gap="xs" wrap="wrap">
+                {variations.map((variation) => {
+                  const label = `${variation.variationName}${variation.variationGroup ? ` (${variation.variationGroup})` : ''}`;
+                  const priceText = variation.priceAdjustment !== 0
+                    ? ` ${variation.priceAdjustment > 0 ? '+' : ''}${formatCurrency(variation.priceAdjustment, currency)}`
+                    : '';
+                  
+                  return (
+                    <Chip
+                      key={variation.id}
+                      value={variation.id}
+                      variant="filled"
+                    >
+                      {label}{priceText}
+                    </Chip>
+                  );
+                })}
+              </Group>
+            </Chip.Group>
           </Stack>
         )}
 
         {/* Add-ons */}
         {addOnGroups.length > 0 && (
-          <ScrollArea.Autosize mah={300}>
+          <ScrollArea.Autosize >
             <Stack gap="md">
               {addOnGroups.map((group) => {
                 const selected = selectedAddOns[group.id] || [];
@@ -443,27 +446,27 @@ export function ItemSelectionModal({
                     </Group>
 
                     {isSingle ? (
-                      <Stack gap="xs">
-                        {group.addOns?.map((addOn: any) => (
-                          <Checkbox
-                            key={addOn.id}
-                            checked={selected.includes(addOn.id)}
-                            onChange={(e) => handleAddOnChange(group.id, addOn.id, e.currentTarget.checked)}
-                            label={
-                              <Group justify="space-between" style={{ flex: 1 }}>
-                                <Text>
-                                  {addOn.name}
-                                </Text>
-                                {addOn.price > 0 && (
-                                  <Text fw={500} c={primaryColor}>
-                                    +{formatCurrency(addOn.price, currency)}
-                                  </Text>
-                                )}
-                              </Group>
-                            }
-                          />
-                        ))}
-                      </Stack>
+                      <Chip.Group
+                        value={selected[0] || ''}
+                        onChange={(value) => handleSingleAddOnChange(group.id, value)}
+                      >
+                        <Group gap="xs" wrap="wrap">
+                          {group.addOns?.map((addOn: any) => {
+                            const label = addOn.name || '';
+                            const priceText = addOn.price > 0 ? ` +${formatCurrency(addOn.price, currency)}` : '';
+                            
+                            return (
+                              <Chip
+                                key={addOn.id}
+                                value={addOn.id}
+                                variant="filled"
+                              >
+                                {label}{priceText}
+                              </Chip>
+                            );
+                          })}
+                        </Group>
+                      </Chip.Group>
                     ) : (
                       <Stack gap="xs">
                         {group.addOns?.map((addOn: any) => (

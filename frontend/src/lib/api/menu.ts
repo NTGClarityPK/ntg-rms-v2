@@ -19,8 +19,28 @@ export interface FoodItemVariation {
   variationGroup: string;
   variationName: string;
   priceAdjustment: number;
+  recipeMultiplier?: number;
   stockQuantity?: number;
   displayOrder: number;
+}
+
+export interface Variation {
+  id: string;
+  variationGroupId: string;
+  name: string;
+  recipeMultiplier: number;
+  pricingAdjustment: number;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VariationGroup {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  variations?: Variation[];
 }
 
 export interface FoodItemDiscount {
@@ -357,6 +377,65 @@ export const menuApi = {
         'Content-Type': 'multipart/form-data',
       },
     });
+    return data;
+  },
+
+  // Variation Groups
+  getVariationGroups: async (pagination?: PaginationParams): Promise<VariationGroup[] | PaginatedResponse<VariationGroup>> => {
+    const params = new URLSearchParams();
+    if (pagination?.page) params.append('page', pagination.page.toString());
+    if (pagination?.limit) params.append('limit', pagination.limit.toString());
+    const { data } = await apiClient.get(`/menu/variation-groups${params.toString() ? `?${params.toString()}` : ''}`);
+    return data;
+  },
+
+  getVariationGroupById: async (id: string): Promise<VariationGroup> => {
+    const { data } = await apiClient.get(`/menu/variation-groups/${id}`);
+    return data;
+  },
+
+  createVariationGroup: async (group: Partial<VariationGroup>): Promise<VariationGroup> => {
+    const { data } = await apiClient.post('/menu/variation-groups', group);
+    return data;
+  },
+
+  updateVariationGroup: async (id: string, group: Partial<VariationGroup>): Promise<VariationGroup> => {
+    const { data } = await apiClient.put(`/menu/variation-groups/${id}`, group);
+    return data;
+  },
+
+  deleteVariationGroup: async (id: string): Promise<void> => {
+    await apiClient.delete(`/menu/variation-groups/${id}`);
+  },
+
+  // Variations
+  getVariations: async (variationGroupId: string): Promise<Variation[]> => {
+    const { data } = await apiClient.get(`/menu/variation-groups/${variationGroupId}/variations`);
+    return data;
+  },
+
+  getVariationById: async (variationGroupId: string, id: string): Promise<Variation> => {
+    const { data } = await apiClient.get(`/menu/variation-groups/${variationGroupId}/variations/${id}`);
+    return data;
+  },
+
+  createVariation: async (variationGroupId: string, variation: Partial<Variation>): Promise<Variation> => {
+    const { data } = await apiClient.post(`/menu/variation-groups/${variationGroupId}/variations`, variation);
+    return data;
+  },
+
+  updateVariation: async (variationGroupId: string, id: string, variation: Partial<Variation>): Promise<Variation> => {
+    const { data } = await apiClient.put(`/menu/variation-groups/${variationGroupId}/variations/${id}`, variation);
+    return data;
+  },
+
+  deleteVariation: async (variationGroupId: string, id: string): Promise<void> => {
+    await apiClient.delete(`/menu/variation-groups/${variationGroupId}/variations/${id}`);
+  },
+
+  // Get food items with a specific variation group
+  getFoodItemsWithVariationGroup: async (variationGroupId: string): Promise<FoodItem[]> => {
+    const { data } = await apiClient.get(`/menu/variation-groups/${variationGroupId}/food-items`);
     return data;
   },
 };

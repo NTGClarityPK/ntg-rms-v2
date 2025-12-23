@@ -37,7 +37,7 @@ import {
 } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
-import { menuApi, FoodItem, FoodItemVariation, FoodItemDiscount } from '@/lib/api/menu';
+import { menuApi, FoodItem, FoodItemVariation, FoodItemDiscount, VariationGroup } from '@/lib/api/menu';
 import { Category } from '@/lib/api/menu';
 import { db } from '@/lib/indexeddb/database';
 import { syncService } from '@/lib/sync/sync-service';
@@ -63,6 +63,7 @@ export function FoodItemsPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [addOnGroups, setAddOnGroups] = useState<any[]>([]);
   const [menus, setMenus] = useState<any[]>([]);
+  const [variationGroups, setVariationGroups] = useState<VariationGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [opened, setOpened] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
@@ -85,6 +86,7 @@ export function FoodItemsPage() {
       ageLimit: undefined as number | undefined,
       imageUrl: '',
       variations: [] as FoodItemVariation[],
+      variationGroupIds: [] as string[],
       labels: [] as string[],
       addOnGroupIds: [] as string[],
       discounts: [] as FoodItemDiscount[],
@@ -117,6 +119,25 @@ export function FoodItemsPage() {
       const menuListResponse = await menuApi.getMenus();
       const menuList = Array.isArray(menuListResponse) ? menuListResponse : (menuListResponse?.data || []);
       setMenus(menuList);
+
+      // Load variation groups with their variations
+      const variationGroupsResponse = await menuApi.getVariationGroups();
+      const variationGroupsList = Array.isArray(variationGroupsResponse) 
+        ? variationGroupsResponse 
+        : (variationGroupsResponse?.data || []);
+      
+      // Load variations for each group
+      const groupsWithVariations = await Promise.all(
+        variationGroupsList.map(async (group) => {
+          try {
+            const groupWithVariations = await menuApi.getVariationGroupById(group.id);
+            return groupWithVariations;
+          } catch (err) {
+            return group;
+          }
+        })
+      );
+      setVariationGroups(groupsWithVariations);
 
       // Load food items - use server pagination if online, otherwise load from IndexedDB
       if (navigator.onLine) {
@@ -487,6 +508,17 @@ export function FoodItemsPage() {
         ? item.menuTypes 
         : (item.menuType ? [item.menuType] : []);
 
+      // Extract unique variation groups from existing variations
+      const uniqueVariationGroups = Array.from(new Set(variations.map((v) => v.variationGroup))).filter(Boolean);
+      
+      // Find variation group IDs by name
+      const variationGroupIds = uniqueVariationGroups
+        .map((groupName) => {
+          const group = variationGroups.find((g) => g.name === groupName);
+          return group?.id;
+        })
+        .filter((id): id is string => !!id);
+
       form.setValues({
         name: item.name || (item as any).nameEn || (item as any).nameAr || '',
         description: item.description || (item as any).descriptionEn || (item as any).descriptionAr || '',
@@ -505,6 +537,7 @@ export function FoodItemsPage() {
           stockQuantity: v.stockQuantity,
           displayOrder: v.displayOrder,
         })),
+        variationGroupIds: variationGroupIds,
         labels: labels.map((l) => l.label),
         addOnGroupIds: addOnGroups.map((g) => g.addOnGroupId),
         discounts: discounts.map((d) => ({
@@ -557,6 +590,54 @@ export function FoodItemsPage() {
   };
 
   const prevStep = () => setActiveStep((s) => (s > 0 ? s - 1 : s));
+
+  const handleVariationGroupChange = (selectedGroupIds: string[]) => {
+    // Get current variations to preserve any manual edits
+    const currentVariations = form.values.variations;
+    const currentGroupNames = new Set(
+      currentVariations.map((v) => v.variationGroup).filter(Boolean)
+    );
+
+    // Find selected groups
+    const selectedGroups = variationGroups.filter((g) => selectedGroupIds.includes(g.id));
+    const selectedGroupNames = new Set(selectedGroups.map((g) => g.name));
+
+    // Get groups that were removed
+    const removedGroupNames = Array.from(currentGroupNames).filter(
+      (name) => !selectedGroupNames.has(name)
+    );
+
+    // Remove variations from deselected groups
+    let updatedVariations = currentVariations.filter(
+      (v) => !removedGroupNames.includes(v.variationGroup)
+    );
+
+    // Add variations from newly selected groups
+    selectedGroups.forEach((group) => {
+      // Check if this group is already represented
+      const existingVariationsFromGroup = updatedVariations.filter(
+        (v) => v.variationGroup === group.name
+      );
+
+      // Only add if group is newly selected (no existing variations)
+      if (existingVariationsFromGroup.length === 0 && group.variations) {
+        group.variations.forEach((variation, index) => {
+          updatedVariations.push({
+            id: undefined,
+            variationGroup: group.name,
+            variationName: variation.name,
+            priceAdjustment: variation.pricingAdjustment || 0,
+            stockQuantity: undefined,
+            displayOrder: index,
+          });
+        });
+      }
+    });
+
+    // Update form
+    form.setFieldValue('variationGroupIds', selectedGroupIds);
+    form.setFieldValue('variations', updatedVariations);
+  };
 
   const handleImageUpload = async (file: File | null) => {
     if (!file) return;
@@ -1313,71 +1394,89 @@ export function FoodItemsPage() {
               icon={<IconCheck size={18} />}
             >
               <Stack gap="md" mt="xl">
-                <Group justify="space-between">
-                  <Text fw={500}>{t('menu.variations', language)}</Text>
-                  <Button
-                    type="button"
-                    size="xs"
-                    variant="light"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      form.insertListItem('variations', {
-                        variationGroup: '',
-                        variationName: '',
-                        priceAdjustment: 0,
-                        stockQuantity: undefined,
-                        displayOrder: form.values.variations.length,
-                      });
-                    }}
-                    style={{ color: primaryColor }}
-                  >
-                    {t('menu.addVariation', language)}
-                  </Button>
-                </Group>
-
-                {form.values.variations.map((variation, index) => (
-                  <Paper key={index} p="md" withBorder>
-                    <Grid>
-                      <Grid.Col span={{ base: 12, md: 4 }}>
-                        <TextInput
-                          label={t('menu.variationGroup', language)}
-                          placeholder="e.g., Size"
-                          {...form.getInputProps(`variations.${index}.variationGroup`)}
-                        />
-                      </Grid.Col>
-                      <Grid.Col span={{ base: 12, md: 4 }}>
-                        <TextInput
-                          label={t('menu.variationName', language)}
-                          placeholder="e.g., Large"
-                          {...form.getInputProps(`variations.${index}.variationName`)}
-                        />
-                      </Grid.Col>
-                      <Grid.Col span={{ base: 12, md: 3 }}>
-                        <NumberInput
-                          label={t('menu.priceAdjustment', language)}
-                          {...form.getInputProps(`variations.${index}.priceAdjustment`)}
-                        />
-                      </Grid.Col>
-                      <Grid.Col span={{ base: 12, md: 1 }}>
-                        <Box mt="xl" style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                        <ActionIcon
-                            type="button"
-                            color={errorColor}
-                          variant="light"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              form.removeListItem('variations', index);
-                            }}
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
-                        </Box>
-                      </Grid.Col>
-                    </Grid>
-                  </Paper>
-                ))}
+                <MultiSelect
+                  label={t('menu.variationGroups', language) || t('menu.variations', language)}
+                  placeholder={
+                    variationGroups.length === 0
+                      ? 'No variation groups available'
+                      : 'Select variation groups'
+                  }
+                  description="All variations from selected groups will be automatically applied"
+                  data={variationGroups.map((group) => ({
+                    value: group.id,
+                    label: group.name || '',
+                  }))}
+                  disabled={variationGroups.length === 0}
+                  value={form.values.variationGroupIds}
+                  onChange={handleVariationGroupChange}
+                  searchable
+                />
+                {variationGroups.length === 0 && (
+                  <Text size="sm" c="dimmed">
+                    {t('menu.noVariationGroups', language) || 'Please create variation groups first'}
+                  </Text>
+                )}
+                
+                {/* Display and edit selected variations */}
+                {form.values.variations.length > 0 && (
+                  <Stack gap="xs">
+                    <Text fw={500} size="sm">
+                      {t('menu.variations', language)} ({form.values.variations.length})
+                    </Text>
+                    {Array.from(new Set(form.values.variations.map((v) => v.variationGroup))).map((groupName) => {
+                      const groupVariationIndices = form.values.variations
+                        .map((v, idx) => ({ v, idx }))
+                        .filter(({ v }) => v.variationGroup === groupName)
+                        .map(({ idx }) => idx);
+                      
+                      return (
+                        <Paper key={groupName} p="md" withBorder>
+                          <Stack gap="md">
+                            <Text fw={500} size="sm">
+                              {groupName}
+                            </Text>
+                            <Table>
+                              <Table.Thead>
+                                <Table.Tr>
+                                  <Table.Th>{t('menu.variationName', language)}</Table.Th>
+                                  <Table.Th>{t('menu.priceAdjustment', language)}</Table.Th>
+                                </Table.Tr>
+                              </Table.Thead>
+                              <Table.Tbody>
+                                {groupVariationIndices.map((variationIndex) => {
+                                  const variation = form.values.variations[variationIndex];
+                                  return (
+                                    <Table.Tr key={variationIndex}>
+                                      <Table.Td>
+                                        <Text>{variation.variationName}</Text>
+                                      </Table.Td>
+                                      <Table.Td>
+                                        <NumberInput
+                                          value={variation.priceAdjustment || 0}
+                                          onChange={(value) => {
+                                            form.setFieldValue(
+                                              `variations.${variationIndex}.priceAdjustment`,
+                                              typeof value === 'number' ? value : 0
+                                            );
+                                          }}
+                                          placeholder="0"
+                                          min={-999999}
+                                          max={999999}
+                                          decimalScale={2}
+                                          style={{ width: 150 }}
+                                        />
+                                      </Table.Td>
+                                    </Table.Tr>
+                                  );
+                                })}
+                              </Table.Tbody>
+                            </Table>
+                          </Stack>
+                        </Paper>
+                      );
+                    })}
+                  </Stack>
+                )}
 
                 <MultiSelect
                   label={t('menu.labels', language)}

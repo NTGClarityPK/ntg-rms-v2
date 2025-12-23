@@ -33,6 +33,7 @@ import {
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { menuApi, AddOnGroup, AddOn } from '@/lib/api/menu';
+import { inventoryApi, Ingredient, CreateRecipeDto } from '@/lib/api/inventory';
 import { db } from '@/lib/indexeddb/database';
 import { syncService } from '@/lib/sync/sync-service';
 import { useLanguageStore } from '@/lib/store/language-store';
@@ -61,6 +62,8 @@ export function AddOnGroupsPage() {
   const [editingGroup, setEditingGroup] = useState<AddOnGroup | null>(null);
   const [editingAddOn, setEditingAddOn] = useState<AddOn | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
+  const [recipeIngredients, setRecipeIngredients] = useState<Array<{ ingredientId: string; quantity: number; unit: string }>>([]);
 
   const groupForm = useForm({
     initialValues: {
@@ -82,6 +85,7 @@ export function AddOnGroupsPage() {
       name: '',
       price: 0,
       isActive: true,
+      recipeIngredients: [] as Array<{ ingredientId: string; quantity: number; unit: string }>,
     },
     validate: {
       name: (value) => (!value ? (t('menu.addOnName', language) || 'Name') + ' is required' : null),
@@ -201,6 +205,49 @@ export function AddOnGroupsPage() {
     }
   }, []);
 
+  const loadIngredients = useCallback(async () => {
+    if (!user?.tenantId) return;
+    try {
+      const ingredientsResponse = await inventoryApi.getIngredients({ isActive: true });
+      
+      const ingredientsList = Array.isArray(ingredientsResponse) 
+        ? ingredientsResponse 
+        : (ingredientsResponse?.data || []);
+      
+      // Ensure ingredients have name property
+      const validIngredients = ingredientsList.filter((ing: any) => ing && ing.id && ing.name);
+      
+      setIngredients(validIngredients);
+      
+      if (validIngredients.length === 0) {
+        console.warn('No active ingredients found. Please create ingredients in the Inventory section.');
+      }
+    } catch (err: any) {
+      console.error('Failed to load ingredients:', err);
+      setIngredients([]);
+    }
+  }, [user?.tenantId]);
+
+  const loadAddOnRecipe = useCallback(async (addOnId: string) => {
+    try {
+      const recipesResponse = await inventoryApi.getRecipes(undefined, addOnId);
+      const recipesList = Array.isArray(recipesResponse) 
+        ? recipesResponse 
+        : (recipesResponse?.data || []);
+      const recipeIngs = recipesList.map((r: any) => ({
+        ingredientId: r.ingredientId,
+        quantity: r.quantity,
+        unit: r.unit,
+      }));
+      setRecipeIngredients(recipeIngs);
+      addOnForm.setFieldValue('recipeIngredients', recipeIngs);
+    } catch (err: any) {
+      console.error('Failed to load add-on recipe:', err);
+      setRecipeIngredients([]);
+      addOnForm.setFieldValue('recipeIngredients', []);
+    }
+  }, [addOnForm]);
+
   useEffect(() => {
     loadAddOnGroups();
     
@@ -217,6 +264,24 @@ export function AddOnGroupsPage() {
       loadAddOns(selectedGroup.id);
     }
   }, [selectedGroup, loadAddOns]);
+
+  useEffect(() => {
+    loadIngredients();
+  }, [loadIngredients]);
+
+  // Helper function to get ingredient options for Select dropdowns
+  const getIngredientOptions = useCallback(() => {
+    // Deduplicate by ID first
+    const byId = new Map(ingredients.map(ing => [ing.id, ing]));
+    const uniqueIngredients = Array.from(byId.values());
+    
+    return uniqueIngredients
+      .filter((ing) => ing && ing.name)
+      .map((ing) => ({
+        value: ing.id,
+        label: ing.name || '',
+      }));
+  }, [ingredients]);
 
   const handleOpenGroupModal = (group?: AddOnGroup) => {
     if (group) {
@@ -236,17 +301,26 @@ export function AddOnGroupsPage() {
     setGroupModalOpened(true);
   };
 
-  const handleOpenAddOnModal = (addOn?: AddOn) => {
+  const handleOpenAddOnModal = async (addOn?: AddOn) => {
+    // Ensure ingredients are loaded before opening modal
+    if (ingredients.length === 0) {
+      await loadIngredients();
+    }
+    
     if (addOn) {
       setEditingAddOn(addOn);
       addOnForm.setValues({
         name: addOn.name,
         price: addOn.price,
         isActive: addOn.isActive,
+        recipeIngredients: [],
       });
+      // Load existing recipe
+      await loadAddOnRecipe(addOn.id);
     } else {
       setEditingAddOn(null);
       addOnForm.reset();
+      setRecipeIngredients([]);
     }
     setAddOnModalOpened(true);
   };
@@ -378,6 +452,32 @@ export function AddOnGroupsPage() {
           } as any);
 
           await syncService.queueChange('addOns', 'CREATE', savedAddOn.id, savedAddOn);
+        }
+
+        // Save or delete recipe
+        try {
+          if (values.recipeIngredients && values.recipeIngredients.length > 0) {
+            // Save recipe with ingredients
+            const recipeData: CreateRecipeDto = {
+              addOnId: savedAddOn.id,
+              ingredients: values.recipeIngredients.map((ing) => ({
+                ingredientId: ing.ingredientId,
+                quantity: ing.quantity,
+                unit: ing.unit,
+              })),
+            };
+            await inventoryApi.createOrUpdateRecipe(recipeData);
+          } else {
+            // Delete recipe if no ingredients provided (createOrUpdateRecipe with empty array will delete)
+            const recipeData: CreateRecipeDto = {
+              addOnId: savedAddOn.id,
+              ingredients: [],
+            };
+            await inventoryApi.createOrUpdateRecipe(recipeData);
+          }
+        } catch (err: any) {
+          console.error('Failed to save add-on recipe:', err);
+          // Don't fail the whole operation if recipe save fails
         }
 
         notifications.show({
@@ -814,6 +914,7 @@ export function AddOnGroupsPage() {
         opened={addOnModalOpened}
         onClose={() => setAddOnModalOpened(false)}
         title={editingAddOn ? t('menu.editAddOn', language) : t('menu.createAddOn', language)}
+        size="lg"
       >
         <form onSubmit={addOnForm.onSubmit(handleAddOnSubmit)}>
           <Stack gap="md">
@@ -840,6 +941,93 @@ export function AddOnGroupsPage() {
                 />
               </Grid.Col>
             </Grid>
+
+            {/* Recipe Ingredients Section */}
+            <Stack gap="md" mt="md">
+              <Group justify="space-between">
+                <Text fw={500}>{t('inventory.recipes', language) || 'Recipe Ingredients'}</Text>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="light"
+                  leftSection={<IconPlus size={14} />}
+                  onClick={() => {
+                    addOnForm.insertListItem('recipeIngredients', {
+                      ingredientId: '',
+                      quantity: 0,
+                      unit: 'g',
+                    });
+                  }}
+                  style={{ color: primaryColor }}
+                >
+                  {t('common.add', language) || 'Add Ingredient'}
+                </Button>
+              </Group>
+
+              {addOnForm.values.recipeIngredients.length === 0 ? (
+                <Text size="sm" c="dimmed" ta="center" py="md">
+                  {t('inventory.noRecipe', language) || 'No recipe defined for this add-on'}
+                </Text>
+              ) : (
+                <Stack gap="sm">
+                  {addOnForm.values.recipeIngredients.map((ingredient, index) => (
+                    <Paper key={index} p="md" withBorder>
+                      <Grid>
+                        <Grid.Col span={{ base: 12, md: 5 }}>
+                          <Select
+                            label={t('inventory.ingredient', language) || 'Ingredient'}
+                            placeholder={t('inventory.selectIngredient', language) || 'Select ingredient'}
+                            data={getIngredientOptions()}
+                            disabled={ingredients.length === 0}
+                            searchable
+                            {...addOnForm.getInputProps(`recipeIngredients.${index}.ingredientId`)}
+                          />
+                        </Grid.Col>
+                        <Grid.Col span={{ base: 12, md: 3 }}>
+                          <NumberInput
+                            label={t('inventory.quantity', language) || 'Quantity'}
+                            min={0}
+                            step={0.01}
+                            decimalScale={2}
+                            {...addOnForm.getInputProps(`recipeIngredients.${index}.quantity`)}
+                          />
+                        </Grid.Col>
+                        <Grid.Col span={{ base: 12, md: 3 }}>
+                          <Select
+                            label={t('inventory.unit', language) || 'Unit'}
+                            data={[
+                              { value: 'g', label: 'g (grams)' },
+                              { value: 'kg', label: 'kg (kilograms)' },
+                              { value: 'ml', label: 'ml (milliliters)' },
+                              { value: 'l', label: 'l (liters)' },
+                              { value: 'pcs', label: 'pcs (pieces)' },
+                              { value: 'cup', label: 'cup' },
+                              { value: 'tbsp', label: 'tbsp (tablespoon)' },
+                              { value: 'tsp', label: 'tsp (teaspoon)' },
+                            ]}
+                            {...addOnForm.getInputProps(`recipeIngredients.${index}.unit`)}
+                          />
+                        </Grid.Col>
+                        <Grid.Col span={{ base: 12, md: 1 }}>
+                          <Box mt="xl" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                            <ActionIcon
+                              type="button"
+                              color={errorColor}
+                              variant="light"
+                              onClick={() => {
+                                addOnForm.removeListItem('recipeIngredients', index);
+                              }}
+                            >
+                              <IconTrash size={16} />
+                            </ActionIcon>
+                          </Box>
+                        </Grid.Col>
+                      </Grid>
+                    </Paper>
+                  ))}
+                </Stack>
+              )}
+            </Stack>
 
             <Group justify="flex-end" mt="md">
               <Button variant="subtle" onClick={() => setAddOnModalOpened(false)}>

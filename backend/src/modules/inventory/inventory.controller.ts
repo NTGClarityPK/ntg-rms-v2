@@ -23,7 +23,7 @@ import { TransferStockDto } from './dto/transfer-stock.dto';
 import { CreateRecipeDto } from './dto/create-recipe.dto';
 import { UpdateRecipeDto } from './dto/update-recipe.dto';
 import { InventoryReportsQueryDto } from './dto/inventory-reports.dto';
-import { PaginationDto } from '../../common/dto/pagination.dto';
+import { PaginationDto, PaginationParams } from '../../common/dto/pagination.dto';
 
 @ApiTags('inventory')
 @Controller('inventory')
@@ -39,17 +39,28 @@ export class InventoryController {
   @Get('ingredients')
   @ApiOperation({ summary: 'Get all ingredients' })
   @ApiQuery({ name: 'category', required: false, type: String })
-  @ApiQuery({ name: 'isActive', required: false, type: Boolean })
+  @ApiQuery({ name: 'isActive', required: false, type: String })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   getIngredients(
     @CurrentUser() user: any,
     @Query('category') category?: string,
     @Query('isActive') isActive?: string,
-    @Query() paginationDto?: PaginationDto,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     const filters: any = {};
     if (category) filters.category = category;
-    if (isActive !== undefined) filters.isActive = isActive === 'true';
-    return this.inventoryService.getIngredients(user.tenantId, filters, paginationDto);
+    if (isActive !== undefined) {
+      filters.isActive = isActive === 'true';
+    }
+    
+    const pagination: PaginationParams = {
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    };
+    
+    return this.inventoryService.getIngredients(user.tenantId, filters, pagination);
   }
 
   @Get('ingredients/:id')
@@ -114,11 +125,32 @@ export class InventoryController {
   @ApiQuery({ name: 'ingredientId', required: false, type: String })
   @ApiQuery({ name: 'startDate', required: false, type: String })
   @ApiQuery({ name: 'endDate', required: false, type: String })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   getStockTransactions(
     @CurrentUser() user: any,
     @Query() query: InventoryReportsQueryDto,
   ) {
-    return this.inventoryService.getStockTransactions(user.tenantId, query);
+    // Create filters without pagination fields
+    const filters: InventoryReportsQueryDto = {
+      branchId: query.branchId,
+      ingredientId: query.ingredientId,
+      startDate: query.startDate,
+      endDate: query.endDate,
+      category: query.category,
+      lowStockOnly: query.lowStockOnly,
+    };
+    
+    // Only pass pagination if at least one parameter is provided
+    const pagination: PaginationParams | undefined = 
+      query.page !== undefined || query.limit !== undefined
+        ? {
+            page: query.page,
+            limit: query.limit,
+          }
+        : undefined;
+    
+    return this.inventoryService.getStockTransactions(user.tenantId, filters, pagination);
   }
 
   // ============================================
@@ -128,12 +160,21 @@ export class InventoryController {
   @Get('recipes')
   @ApiOperation({ summary: 'Get all recipes' })
   @ApiQuery({ name: 'foodItemId', required: false, type: String })
+  @ApiQuery({ name: 'addOnId', required: false, type: String })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   getRecipes(
     @CurrentUser() user: any,
     @Query('foodItemId') foodItemId?: string,
-    @Query() paginationDto?: PaginationDto,
+    @Query('addOnId') addOnId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.inventoryService.getRecipes(user.tenantId, foodItemId, paginationDto);
+    const pagination: PaginationParams = {
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    };
+    return this.inventoryService.getRecipes(user.tenantId, foodItemId, addOnId, pagination);
   }
 
   @Get('recipes/food-item/:foodItemId')
@@ -152,6 +193,12 @@ export class InventoryController {
   @ApiOperation({ summary: 'Delete recipe for a food item' })
   deleteRecipe(@CurrentUser() user: any, @Param('foodItemId') foodItemId: string) {
     return this.inventoryService.deleteRecipe(user.tenantId, foodItemId);
+  }
+
+  @Delete('recipes/add-on/:addOnId')
+  @ApiOperation({ summary: 'Delete recipe for an add-on' })
+  deleteAddOnRecipe(@CurrentUser() user: any, @Param('addOnId') addOnId: string) {
+    return this.inventoryService.deleteRecipe(user.tenantId, undefined, addOnId);
   }
 
   // ============================================

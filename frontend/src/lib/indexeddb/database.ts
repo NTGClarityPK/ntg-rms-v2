@@ -242,7 +242,8 @@ export interface StockTransaction {
 
 export interface Recipe {
   id: string;
-  foodItemId: string;
+  foodItemId?: string; // Optional since recipes can be for add-ons
+  addOnId?: string; // Optional since recipes can be for food items
   ingredientId: string;
   quantity: number;
   unit: string;
@@ -321,6 +322,31 @@ export interface FoodItemAddOnGroup {
   foodItemId: string;
   addOnGroupId: string;
   createdAt?: string;
+}
+
+export interface VariationGroup {
+  id: string;
+  tenantId: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string;
+  lastSynced?: string;
+  syncStatus?: 'pending' | 'synced' | 'conflict';
+}
+
+export interface Variation {
+  id: string;
+  variationGroupId: string;
+  name: string;
+  recipeMultiplier: number;
+  pricingAdjustment: number;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string;
+  lastSynced?: string;
+  syncStatus?: 'pending' | 'synced' | 'conflict';
 }
 
 export interface CartItem {
@@ -403,6 +429,8 @@ export class RMSDatabase extends Dexie {
   addOnGroups!: DexieTable<AddOnGroup, string>;
   addOns!: DexieTable<AddOn, string>;
   foodItemAddOnGroups!: DexieTable<FoodItemAddOnGroup, string>;
+  variationGroups!: DexieTable<VariationGroup, string>;
+  variations!: DexieTable<Variation, string>;
   orders!: DexieTable<Order, string>;
   orderItems!: DexieTable<OrderItem, string>;
   restaurantTables!: DexieTable<RestaurantTable, string>;
@@ -417,7 +445,7 @@ export class RMSDatabase extends Dexie {
 
   constructor() {
     super('RMSDatabase');
-    this.version(8).stores({
+    this.version(9).stores({
       tenants: 'id, tenantId, subdomain, email, lastSynced, syncStatus',
       branches: 'id, tenantId, code, lastSynced, syncStatus',
       users: 'id, tenantId, email, role, lastSynced, syncStatus',
@@ -430,6 +458,8 @@ export class RMSDatabase extends Dexie {
       addOnGroups: 'id, tenantId, lastSynced, syncStatus',
       addOns: 'id, addOnGroupId, lastSynced, syncStatus',
       foodItemAddOnGroups: 'id, foodItemId, addOnGroupId',
+      variationGroups: 'id, tenantId, lastSynced, syncStatus',
+      variations: 'id, variationGroupId, lastSynced, syncStatus',
       orders: 'id, tenantId, branchId, orderNumber, orderDate, lastSynced, syncStatus',
       orderItems: 'id, orderId, foodItemId, lastSynced, syncStatus',
       restaurantTables: 'id, tenantId, branchId, tableNumber, status, lastSynced, syncStatus',

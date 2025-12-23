@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsUUID, IsNumber, IsString, IsArray, ValidateNested } from 'class-validator';
+import { IsUUID, IsNumber, IsString, IsArray, ValidateNested, IsOptional } from 'class-validator';
 import { Type } from 'class-transformer';
 
 class RecipeIngredientDto {
@@ -17,9 +17,15 @@ class RecipeIngredientDto {
 }
 
 export class CreateRecipeDto {
-  @ApiProperty()
+  @ApiProperty({ required: false })
+  @IsOptional()
   @IsUUID()
-  foodItemId: string;
+  foodItemId?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsUUID()
+  addOnId?: string;
 
   @ApiProperty({ type: [RecipeIngredientDto] })
   @IsArray()

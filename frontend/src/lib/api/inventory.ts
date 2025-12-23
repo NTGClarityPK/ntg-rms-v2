@@ -43,11 +43,16 @@ export interface StockTransaction {
 
 export interface Recipe {
   id: string;
-  foodItemId: string;
+  foodItemId?: string;
+  addOnId?: string;
   ingredientId: string;
   quantity: number;
   unit: string;
   foodItem?: {
+    id: string;
+    name: string;
+  };
+  addOn?: {
     id: string;
     name: string;
   };
@@ -114,7 +119,8 @@ export interface TransferStockDto {
 }
 
 export interface CreateRecipeDto {
-  foodItemId: string;
+  foodItemId?: string;
+  addOnId?: string;
   ingredients: {
     ingredientId: string;
     quantity: number;
@@ -198,9 +204,10 @@ export const inventoryApi = {
     const response = await apiClient.get<StockTransaction[] | PaginatedResponse<StockTransaction>>(`/inventory/stock/transactions?${params.toString()}`);
     return response.data;
   },
-  getRecipes: async (foodItemId?: string, pagination?: PaginationParams): Promise<Recipe[] | PaginatedResponse<Recipe>> => {
+  getRecipes: async (foodItemId?: string, addOnId?: string, pagination?: PaginationParams): Promise<Recipe[] | PaginatedResponse<Recipe>> => {
     const params = new URLSearchParams();
     if (foodItemId) params.append('foodItemId', foodItemId);
+    if (addOnId) params.append('addOnId', addOnId);
     if (pagination?.page) params.append('page', pagination.page.toString());
     if (pagination?.limit) params.append('limit', pagination.limit.toString());
     const response = await apiClient.get<Recipe[] | PaginatedResponse<Recipe>>(`/inventory/recipes${params.toString() ? `?${params.toString()}` : ''}`);
@@ -212,8 +219,14 @@ export const inventoryApi = {
     return response.data;
   },
 
-  deleteRecipe: async (foodItemId: string): Promise<void> => {
-    await apiClient.delete(`/inventory/recipes/food-item/${foodItemId}`);
+  deleteRecipe: async (foodItemId?: string, addOnId?: string): Promise<void> => {
+    if (foodItemId) {
+      await apiClient.delete(`/inventory/recipes/food-item/${foodItemId}`);
+    } else if (addOnId) {
+      await apiClient.delete(`/inventory/recipes/add-on/${addOnId}`);
+    } else {
+      throw new Error('Either foodItemId or addOnId must be provided');
+    }
   },
 
   // Reports

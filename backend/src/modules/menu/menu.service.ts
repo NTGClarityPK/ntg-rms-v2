@@ -20,6 +20,10 @@ import { CreateBuffetDto } from './dto/create-buffet.dto';
 import { UpdateBuffetDto } from './dto/update-buffet.dto';
 import { CreateComboMealDto } from './dto/create-combo-meal.dto';
 import { UpdateComboMealDto } from './dto/update-combo-meal.dto';
+import { CreateVariationGroupDto } from './dto/create-variation-group.dto';
+import { UpdateVariationGroupDto } from './dto/update-variation-group.dto';
+import { CreateVariationDto } from './dto/create-variation.dto';
+import { UpdateVariationDto } from './dto/update-variation.dto';
 import { PaginationParams, PaginatedResponse, getPaginationParams, createPaginatedResponse } from '../../common/dto/pagination.dto';
 
 @Injectable()
@@ -595,14 +599,49 @@ export class MenuService {
 
     // Create variations
     if (createDto.variations && createDto.variations.length > 0) {
-      const variationsData = createDto.variations.map((v, index) => ({
-        food_item_id: foodItem.id,
-        variation_group: v.variationGroup,
-        variation_name: v.variationName,
-        price_adjustment: v.priceAdjustment || 0,
-        stock_quantity: v.stockQuantity || null,
-        display_order: v.displayOrder || index,
-      }));
+      // Look up variation IDs for each variation
+      const variationsData = await Promise.all(
+        createDto.variations.map(async (v, index) => {
+          let variationId = null;
+          
+          // If we have variation_group and variation_name, try to find the variation_id
+          if (v.variationGroup && v.variationName) {
+            // Find the variation group
+            const { data: variationGroup } = await supabase
+              .from('variation_groups')
+              .select('id')
+              .eq('name', v.variationGroup)
+              .eq('tenant_id', tenantId)
+              .is('deleted_at', null)
+              .maybeSingle();
+
+            if (variationGroup) {
+              // Find the variation in that group
+              const { data: variation } = await supabase
+                .from('variations')
+                .select('id, recipe_multiplier')
+                .eq('variation_group_id', variationGroup.id)
+                .eq('name', v.variationName)
+                .is('deleted_at', null)
+                .maybeSingle();
+
+              if (variation) {
+                variationId = variation.id;
+              }
+            }
+          }
+
+          return {
+            food_item_id: foodItem.id,
+            variation_group: v.variationGroup,
+            variation_name: v.variationName,
+            variation_id: variationId,
+            price_adjustment: v.priceAdjustment || 0,
+            stock_quantity: v.stockQuantity || null,
+            display_order: v.displayOrder || index,
+          };
+        })
+      );
 
       await supabase.from('food_item_variations').insert(variationsData);
     }
@@ -890,14 +929,49 @@ export class MenuService {
 
       // Insert new variations
       if (updateDto.variations.length > 0) {
-        const variationsData = updateDto.variations.map((v, index) => ({
-          food_item_id: id,
-          variation_group: v.variationGroup,
-          variation_name: v.variationName,
-          price_adjustment: v.priceAdjustment || 0,
-          stock_quantity: v.stockQuantity || null,
-          display_order: v.displayOrder || index,
-        }));
+        // Look up variation IDs for each variation
+        const variationsData = await Promise.all(
+          updateDto.variations.map(async (v, index) => {
+            let variationId = null;
+            
+            // If we have variation_group and variation_name, try to find the variation_id
+            if (v.variationGroup && v.variationName) {
+              // Find the variation group
+              const { data: variationGroup } = await supabase
+                .from('variation_groups')
+                .select('id')
+                .eq('name', v.variationGroup)
+                .eq('tenant_id', tenantId)
+                .is('deleted_at', null)
+                .maybeSingle();
+
+              if (variationGroup) {
+                // Find the variation in that group
+                const { data: variation } = await supabase
+                  .from('variations')
+                  .select('id, recipe_multiplier')
+                  .eq('variation_group_id', variationGroup.id)
+                  .eq('name', v.variationName)
+                  .is('deleted_at', null)
+                  .maybeSingle();
+
+                if (variation) {
+                  variationId = variation.id;
+                }
+              }
+            }
+
+            return {
+              food_item_id: id,
+              variation_group: v.variationGroup,
+              variation_name: v.variationName,
+              variation_id: variationId,
+              price_adjustment: v.priceAdjustment || 0,
+              stock_quantity: v.stockQuantity || null,
+              display_order: v.displayOrder || index,
+            };
+          })
+        );
 
         await supabase.from('food_item_variations').insert(variationsData);
       }
@@ -2736,5 +2810,481 @@ export class MenuService {
       createdAt: comboMeal.created_at,
       updatedAt: comboMeal.updated_at,
     };
+  }
+
+  // ============================================
+  // VARIATION GROUP MANAGEMENT
+  // ============================================
+
+  async getVariationGroups(tenantId: string, pagination?: PaginationParams): Promise<PaginatedResponse<any> | any[]> {
+    const supabase = this.supabaseService.getServiceRoleClient();
+    
+    // Get total count for pagination
+    const { count: totalCount } = await supabase
+      .from('variation_groups')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+
+    let query = supabase
+      .from('variation_groups')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false });
+
+    // Apply pagination if provided
+    if (pagination) {
+      const { offset, limit } = getPaginationParams(pagination.page, pagination.limit);
+      query = query.range(offset, offset + limit - 1);
+    }
+
+    const { data: variationGroups, error } = await query;
+
+    if (error) {
+      throw new BadRequestException(`Failed to fetch variation groups: ${error.message}`);
+    }
+
+    // Get variations for each group
+    const groupsWithVariations = await Promise.all(
+      variationGroups.map(async (group) => {
+        const { data: variations } = await supabase
+          .from('variations')
+          .select('*')
+          .eq('variation_group_id', group.id)
+          .is('deleted_at', null)
+          .order('display_order', { ascending: true });
+
+        return {
+          id: group.id,
+          name: group.name,
+          createdAt: group.created_at,
+          updatedAt: group.updated_at,
+          variations: variations?.map((variation) => ({
+            id: variation.id,
+            name: variation.name,
+            recipeMultiplier: parseFloat(variation.recipe_multiplier),
+            pricingAdjustment: parseFloat(variation.pricing_adjustment),
+            displayOrder: variation.display_order,
+          })) || [],
+        };
+      })
+    );
+
+    // Return paginated response if pagination is requested
+    if (pagination) {
+      return createPaginatedResponse(groupsWithVariations, totalCount || 0, pagination.page || 1, pagination.limit || 10);
+    }
+
+    return groupsWithVariations;
+  }
+
+  async getVariationGroupById(tenantId: string, id: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+    
+    const { data: variationGroup, error } = await supabase
+      .from('variation_groups')
+      .select('*')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (error || !variationGroup) {
+      throw new NotFoundException('Variation group not found');
+    }
+
+    const { data: variations } = await supabase
+      .from('variations')
+      .select('*')
+      .eq('variation_group_id', id)
+      .is('deleted_at', null)
+      .order('display_order', { ascending: true });
+
+    return {
+      id: variationGroup.id,
+      name: variationGroup.name,
+      createdAt: variationGroup.created_at,
+      updatedAt: variationGroup.updated_at,
+      variations: variations?.map((variation) => ({
+        id: variation.id,
+        name: variation.name,
+        recipeMultiplier: parseFloat(variation.recipe_multiplier),
+        pricingAdjustment: parseFloat(variation.pricing_adjustment),
+        displayOrder: variation.display_order,
+      })) || [],
+    };
+  }
+
+  async createVariationGroup(tenantId: string, createDto: CreateVariationGroupDto) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    const { data: variationGroup, error } = await supabase
+      .from('variation_groups')
+      .insert({
+        tenant_id: tenantId,
+        name: createDto.name.trim(),
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(`Failed to create variation group: ${error.message}`);
+    }
+
+    return {
+      id: variationGroup.id,
+      name: variationGroup.name,
+      createdAt: variationGroup.created_at,
+      updatedAt: variationGroup.updated_at,
+      variations: [],
+    };
+  }
+
+  async updateVariationGroup(tenantId: string, id: string, updateDto: UpdateVariationGroupDto) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Check if variation group exists
+    const { data: existing } = await supabase
+      .from('variation_groups')
+      .select('id')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!existing) {
+      throw new NotFoundException('Variation group not found');
+    }
+
+    const updateData: any = {};
+    if (updateDto.name !== undefined) updateData.name = updateDto.name.trim();
+    updateData.updated_at = new Date().toISOString();
+
+    const { data: variationGroup, error } = await supabase
+      .from('variation_groups')
+      .update(updateData)
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(`Failed to update variation group: ${error.message}`);
+    }
+
+    return this.getVariationGroupById(tenantId, id);
+  }
+
+  async deleteVariationGroup(tenantId: string, id: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Check if variation group exists
+    const { data: existing } = await supabase
+      .from('variation_groups')
+      .select('id')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!existing) {
+      throw new NotFoundException('Variation group not found');
+    }
+
+    // Soft delete
+    const { error } = await supabase
+      .from('variation_groups')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('tenant_id', tenantId);
+
+    if (error) {
+      throw new BadRequestException(`Failed to delete variation group: ${error.message}`);
+    }
+
+    return { message: 'Variation group deleted successfully' };
+  }
+
+  // ============================================
+  // VARIATION MANAGEMENT
+  // ============================================
+
+  async getVariations(tenantId: string, variationGroupId: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Verify variation group belongs to tenant
+    const { data: group } = await supabase
+      .from('variation_groups')
+      .select('id')
+      .eq('id', variationGroupId)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!group) {
+      throw new NotFoundException('Variation group not found');
+    }
+
+    const { data: variations, error } = await supabase
+      .from('variations')
+      .select('*')
+      .eq('variation_group_id', variationGroupId)
+      .is('deleted_at', null)
+      .order('display_order', { ascending: true });
+
+    if (error) {
+      throw new BadRequestException(`Failed to fetch variations: ${error.message}`);
+    }
+
+    return variations?.map((variation) => ({
+      id: variation.id,
+      name: variation.name,
+      recipeMultiplier: parseFloat(variation.recipe_multiplier),
+      pricingAdjustment: parseFloat(variation.pricing_adjustment),
+      displayOrder: variation.display_order,
+      createdAt: variation.created_at,
+      updatedAt: variation.updated_at,
+    })) || [];
+  }
+
+  async getVariationById(tenantId: string, variationGroupId: string, id: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Verify variation group belongs to tenant
+    const { data: group } = await supabase
+      .from('variation_groups')
+      .select('id')
+      .eq('id', variationGroupId)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!group) {
+      throw new NotFoundException('Variation group not found');
+    }
+
+    const { data: variation, error } = await supabase
+      .from('variations')
+      .select('*')
+      .eq('id', id)
+      .eq('variation_group_id', variationGroupId)
+      .is('deleted_at', null)
+      .single();
+
+    if (error || !variation) {
+      throw new NotFoundException('Variation not found');
+    }
+
+    return {
+      id: variation.id,
+      name: variation.name,
+      recipeMultiplier: parseFloat(variation.recipe_multiplier),
+      pricingAdjustment: parseFloat(variation.pricing_adjustment),
+      displayOrder: variation.display_order,
+      createdAt: variation.created_at,
+      updatedAt: variation.updated_at,
+    };
+  }
+
+  async createVariation(tenantId: string, variationGroupId: string, createDto: CreateVariationDto) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Verify variation group belongs to tenant
+    const { data: group } = await supabase
+      .from('variation_groups')
+      .select('id')
+      .eq('id', variationGroupId)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!group) {
+      throw new NotFoundException('Variation group not found');
+    }
+
+    const { data: variation, error } = await supabase
+      .from('variations')
+      .insert({
+        variation_group_id: variationGroupId,
+        name: createDto.name.trim(),
+        recipe_multiplier: createDto.recipeMultiplier || 1.0,
+        pricing_adjustment: createDto.pricingAdjustment || 0,
+        display_order: createDto.displayOrder || 0,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(`Failed to create variation: ${error.message}`);
+    }
+
+    return {
+      id: variation.id,
+      name: variation.name,
+      recipeMultiplier: parseFloat(variation.recipe_multiplier),
+      pricingAdjustment: parseFloat(variation.pricing_adjustment),
+      displayOrder: variation.display_order,
+      createdAt: variation.created_at,
+      updatedAt: variation.updated_at,
+    };
+  }
+
+  async updateVariation(tenantId: string, variationGroupId: string, id: string, updateDto: UpdateVariationDto) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Verify variation group belongs to tenant
+    const { data: group } = await supabase
+      .from('variation_groups')
+      .select('id')
+      .eq('id', variationGroupId)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!group) {
+      throw new NotFoundException('Variation group not found');
+    }
+
+    // Check if variation exists
+    const { data: existing } = await supabase
+      .from('variations')
+      .select('id')
+      .eq('id', id)
+      .eq('variation_group_id', variationGroupId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!existing) {
+      throw new NotFoundException('Variation not found');
+    }
+
+    const updateData: any = {};
+    if (updateDto.name !== undefined) updateData.name = updateDto.name.trim();
+    if (updateDto.recipeMultiplier !== undefined) updateData.recipe_multiplier = updateDto.recipeMultiplier;
+    if (updateDto.pricingAdjustment !== undefined) updateData.pricing_adjustment = updateDto.pricingAdjustment;
+    if (updateDto.displayOrder !== undefined) updateData.display_order = updateDto.displayOrder;
+    updateData.updated_at = new Date().toISOString();
+
+    const { data: variation, error } = await supabase
+      .from('variations')
+      .update(updateData)
+      .eq('id', id)
+      .eq('variation_group_id', variationGroupId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(`Failed to update variation: ${error.message}`);
+    }
+
+    return {
+      id: variation.id,
+      name: variation.name,
+      recipeMultiplier: parseFloat(variation.recipe_multiplier),
+      pricingAdjustment: parseFloat(variation.pricing_adjustment),
+      displayOrder: variation.display_order,
+      createdAt: variation.created_at,
+      updatedAt: variation.updated_at,
+    };
+  }
+
+  async deleteVariation(tenantId: string, variationGroupId: string, id: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Verify variation group belongs to tenant
+    const { data: group } = await supabase
+      .from('variation_groups')
+      .select('id')
+      .eq('id', variationGroupId)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!group) {
+      throw new NotFoundException('Variation group not found');
+    }
+
+    // Check if variation exists
+    const { data: existing } = await supabase
+      .from('variations')
+      .select('id')
+      .eq('id', id)
+      .eq('variation_group_id', variationGroupId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!existing) {
+      throw new NotFoundException('Variation not found');
+    }
+
+    // Soft delete
+    const { error } = await supabase
+      .from('variations')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('variation_group_id', variationGroupId);
+
+    if (error) {
+      throw new BadRequestException(`Failed to delete variation: ${error.message}`);
+    }
+
+    return { message: 'Variation deleted successfully' };
+  }
+
+  // Get food items that use a specific variation group
+  async getFoodItemsWithVariationGroup(tenantId: string, variationGroupId: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Verify variation group belongs to tenant
+    const { data: group } = await supabase
+      .from('variation_groups')
+      .select('id, name')
+      .eq('id', variationGroupId)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!group) {
+      throw new NotFoundException('Variation group not found');
+    }
+
+    // Get food items that have variations with this group name
+    const { data: foodItems, error } = await supabase
+      .from('food_items')
+      .select(`
+        id,
+        name,
+        food_item_variations (
+          id,
+          variation_group,
+          variation_name,
+          price_adjustment,
+          recipe_multiplier,
+          variation_id
+        )
+      `)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+
+    if (error) {
+      throw new BadRequestException(`Failed to fetch food items: ${error.message}`);
+    }
+
+    // Filter food items that have variations matching this variation group name
+    const filteredItems = foodItems
+      .filter((item: any) => {
+        if (!item.food_item_variations || item.food_item_variations.length === 0) {
+          return false;
+        }
+        return item.food_item_variations.some((v: any) => v.variation_group === group.name);
+      })
+      .map((item: any) => ({
+        id: item.id,
+        name: item.name,
+        variations: item.food_item_variations.filter((v: any) => v.variation_group === group.name),
+      }));
+
+    return filteredItems;
   }
 }

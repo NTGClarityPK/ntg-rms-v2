@@ -881,6 +881,11 @@ export class OrdersService {
           .map((item) => ({
             foodItemId: item.foodItemId!,
             quantity: item.quantity,
+            variationId: item.variationId,
+            addOns: item.addOns?.map((addOn) => ({
+              addOnId: addOn.addOnId,
+              quantity: addOn.quantity || 1,
+            })),
           }));
         await this.inventoryService.deductStockForOrder(
           tenantId,
@@ -2154,6 +2159,11 @@ export class OrdersService {
           .map((item) => ({
             foodItemId: item.foodItemId!,
             quantity: item.quantity,
+            variationId: item.variationId,
+            addOns: item.addOns?.map((addOn) => ({
+              addOnId: addOn.addOnId,
+              quantity: addOn.quantity || 1,
+            })),
           }));
         await this.inventoryService.deductStockForOrder(
           tenantId,

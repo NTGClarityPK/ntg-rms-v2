@@ -751,6 +751,7 @@ export class InventoryService {
   async getRecipes(
     tenantId: string,
     foodItemId?: string,
+    addOnId?: string,
     pagination?: PaginationParams,
   ): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
@@ -766,26 +767,71 @@ export class InventoryService {
         `
         *,
         food_item:food_items(id, name),
+        add_on:add_ons(id, name),
         ingredient:ingredients(id, name, unit_of_measurement, current_stock)
       `,
       )
       .order('created_at', { ascending: false });
 
     if (foodItemId) {
-      query = query.eq('food_item_id', foodItemId);
-      countQuery = countQuery.eq('food_item_id', foodItemId);
-    } else {
-      // Filter by tenant through food_items
-      const { data: foodItems } = await supabase
-        .from('food_items')
-        .select('id')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null);
+      query = query.eq('food_item_id', foodItemId).is('add_on_id', null);
+      countQuery = countQuery.eq('food_item_id', foodItemId).is('add_on_id', null);
+    } else if (addOnId) {
+      // Verify add-on belongs to tenant
+      const { data: addOnGroup } = await supabase
+        .from('add_ons')
+        .select('add_on_group_id, add_on_groups!inner(tenant_id)')
+        .eq('id', addOnId)
+        .is('deleted_at', null)
+        .single();
 
-      if (foodItems && foodItems.length > 0) {
-        const foodItemIds = foodItems.map((fi) => fi.id);
-        query = query.in('food_item_id', foodItemIds);
-        countQuery = countQuery.in('food_item_id', foodItemIds);
+      if (!addOnGroup || (addOnGroup as any).add_on_groups.tenant_id !== tenantId) {
+        throw new NotFoundException('Add-on not found');
+      }
+
+      query = query.eq('add_on_id', addOnId).is('food_item_id', null);
+      countQuery = countQuery.eq('add_on_id', addOnId).is('food_item_id', null);
+    } else {
+      // Filter by tenant through food_items and add_ons
+      const [foodItemsResult, addOnGroupsResult] = await Promise.all([
+        supabase
+          .from('food_items')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .is('deleted_at', null),
+        supabase
+          .from('add_on_groups')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .is('deleted_at', null),
+      ]);
+
+      const foodItemIds = foodItemsResult.data?.map((fi) => fi.id) || [];
+      const addOnGroupIds = addOnGroupsResult.data?.map((g) => g.id) || [];
+
+      if (addOnGroupIds.length > 0) {
+        const { data: addOns } = await supabase
+          .from('add_ons')
+          .select('id')
+          .in('add_on_group_id', addOnGroupIds)
+          .is('deleted_at', null);
+        const addOnIds = addOns?.map((a) => a.id) || [];
+
+        if (foodItemIds.length > 0 && addOnIds.length > 0) {
+          query = query.or(`food_item_id.in.(${foodItemIds.join(',')}),add_on_id.in.(${addOnIds.join(',')})`);
+          countQuery = countQuery.or(`food_item_id.in.(${foodItemIds.join(',')}),add_on_id.in.(${addOnIds.join(',')})`);
+        } else if (foodItemIds.length > 0) {
+          query = query.in('food_item_id', foodItemIds).is('add_on_id', null);
+          countQuery = countQuery.in('food_item_id', foodItemIds).is('add_on_id', null);
+        } else if (addOnIds.length > 0) {
+          query = query.in('add_on_id', addOnIds).is('food_item_id', null);
+          countQuery = countQuery.in('add_on_id', addOnIds).is('food_item_id', null);
+        } else {
+          return pagination ? createPaginatedResponse([], 0, pagination.page || 1, pagination.limit || 10) : [];
+        }
+      } else if (foodItemIds.length > 0) {
+        query = query.in('food_item_id', foodItemIds).is('add_on_id', null);
+        countQuery = countQuery.in('food_item_id', foodItemIds).is('add_on_id', null);
       } else {
         return pagination ? createPaginatedResponse([], 0, pagination.page || 1, pagination.limit || 10) : [];
       }
@@ -810,6 +856,7 @@ export class InventoryService {
     const transformedData = (data || []).map((recipe: any) => ({
       id: recipe.id,
       foodItemId: recipe.food_item_id,
+      addOnId: recipe.add_on_id,
       ingredientId: recipe.ingredient_id,
       quantity: Number(recipe.quantity) || 0,
       unit: recipe.unit,
@@ -817,6 +864,12 @@ export class InventoryService {
         ? {
             id: recipe.food_item.id,
             name: recipe.food_item.name,
+          }
+        : undefined,
+      addOn: recipe.add_on
+        ? {
+            id: recipe.add_on.id,
+            name: recipe.add_on.name,
           }
         : undefined,
       ingredient: recipe.ingredient
@@ -828,6 +881,13 @@ export class InventoryService {
           }
         : undefined,
     }));
+
+    // Return paginated response if pagination is requested
+    if (pagination) {
+      return createPaginatedResponse(transformedData, totalCount || 0, pagination.page || 1, pagination.limit || 10);
+    }
+
+    return transformedData;
   }
 
   /**
@@ -888,17 +948,33 @@ export class InventoryService {
   async createOrUpdateRecipe(tenantId: string, createDto: CreateRecipeDto) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Verify food item belongs to tenant
-    const { data: foodItem } = await supabase
-      .from('food_items')
-      .select('id')
-      .eq('id', createDto.foodItemId)
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .single();
+    // Verify either food item or add-on belongs to tenant
+    if (createDto.foodItemId) {
+      const { data: foodItem } = await supabase
+        .from('food_items')
+        .select('id')
+        .eq('id', createDto.foodItemId)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .single();
 
-    if (!foodItem) {
-      throw new NotFoundException('Food item not found');
+      if (!foodItem) {
+        throw new NotFoundException('Food item not found');
+      }
+    } else if (createDto.addOnId) {
+      // Verify add-on belongs to tenant through add-on group
+      const { data: addOn } = await supabase
+        .from('add_ons')
+        .select('add_on_group_id, add_on_groups!inner(tenant_id)')
+        .eq('id', createDto.addOnId)
+        .is('deleted_at', null)
+        .single();
+
+      if (!addOn || (addOn as any).add_on_groups.tenant_id !== tenantId) {
+        throw new NotFoundException('Add-on not found');
+      }
+    } else {
+      throw new BadRequestException('Either foodItemId or addOnId must be provided');
     }
 
     // Verify all ingredients belong to tenant
@@ -914,21 +990,37 @@ export class InventoryService {
       throw new BadRequestException('One or more ingredients not found or do not belong to tenant');
     }
 
-    // Delete existing recipes for this food item
-    const { error: deleteError } = await supabase
-      .from('recipes')
-      .delete()
-      .eq('food_item_id', createDto.foodItemId);
+    // Delete existing recipes
+    if (createDto.foodItemId) {
+      const { error: deleteError } = await supabase
+        .from('recipes')
+        .delete()
+        .eq('food_item_id', createDto.foodItemId)
+        .is('add_on_id', null);
 
-    if (deleteError) {
-      throw new InternalServerErrorException(
-        `Failed to delete existing recipes: ${deleteError.message}`,
-      );
+      if (deleteError) {
+        throw new InternalServerErrorException(
+          `Failed to delete existing recipes: ${deleteError.message}`,
+        );
+      }
+    } else if (createDto.addOnId) {
+      const { error: deleteError } = await supabase
+        .from('recipes')
+        .delete()
+        .eq('add_on_id', createDto.addOnId)
+        .is('food_item_id', null);
+
+      if (deleteError) {
+        throw new InternalServerErrorException(
+          `Failed to delete existing recipes: ${deleteError.message}`,
+        );
+      }
     }
 
     // Insert new recipes
     const recipeData = createDto.ingredients.map((ing) => ({
-      food_item_id: createDto.foodItemId,
+      food_item_id: createDto.foodItemId || null,
+      add_on_id: createDto.addOnId || null,
       ingredient_id: ing.ingredientId,
       quantity: ing.quantity,
       unit: ing.unit,
@@ -952,6 +1044,7 @@ export class InventoryService {
     return (data || []).map((recipe: any) => ({
       id: recipe.id,
       foodItemId: recipe.food_item_id,
+      addOnId: recipe.add_on_id,
       ingredientId: recipe.ingredient_id,
       quantity: Number(recipe.quantity) || 0,
       unit: recipe.unit,
@@ -966,28 +1059,51 @@ export class InventoryService {
   }
 
   /**
-   * Delete recipe for a food item
+   * Delete recipe for a food item or add-on
    */
-  async deleteRecipe(tenantId: string, foodItemId: string) {
+  async deleteRecipe(tenantId: string, foodItemId?: string, addOnId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Verify food item belongs to tenant
-    const { data: foodItem } = await supabase
-      .from('food_items')
-      .select('id')
-      .eq('id', foodItemId)
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .single();
+    if (foodItemId) {
+      // Verify food item belongs to tenant
+      const { data: foodItem } = await supabase
+        .from('food_items')
+        .select('id')
+        .eq('id', foodItemId)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .single();
 
-    if (!foodItem) {
-      throw new NotFoundException('Food item not found');
-    }
+      if (!foodItem) {
+        throw new NotFoundException('Food item not found');
+      }
 
-    const { error } = await supabase.from('recipes').delete().eq('food_item_id', foodItemId);
+      const { error } = await supabase.from('recipes').delete().eq('food_item_id', foodItemId).is('add_on_id', null);
 
-    if (error) {
-      throw new InternalServerErrorException(`Failed to delete recipe: ${error.message}`);
+      if (error) {
+        throw new InternalServerErrorException(`Failed to delete recipe: ${error.message}`);
+      }
+    } else if (addOnId) {
+      // Verify add-on belongs to tenant
+      const { data: addOn } = await supabase
+        .from('add_ons')
+        .select('id')
+        .eq('id', addOnId)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .single();
+
+      if (!addOn) {
+        throw new NotFoundException('Add-on not found');
+      }
+
+      const { error } = await supabase.from('recipes').delete().eq('add_on_id', addOnId).is('food_item_id', null);
+
+      if (error) {
+        throw new InternalServerErrorException(`Failed to delete recipe: ${error.message}`);
+      }
+    } else {
+      throw new BadRequestException('Either foodItemId or addOnId must be provided');
     }
 
     return { message: 'Recipe deleted successfully' };
@@ -1053,55 +1169,187 @@ export class InventoryService {
     tenantId: string,
     userId: string,
     orderId: string,
-    orderItems: Array<{ foodItemId: string; quantity: number }>,
+    orderItems: Array<{ 
+      foodItemId?: string; 
+      quantity: number; 
+      variationId?: string;
+      addOns?: Array<{ addOnId: string; quantity: number }>;
+    }>,
   ) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     const deductions: any[] = [];
 
     for (const item of orderItems) {
+      // Skip if no food item (buffets/combo meals handled separately)
+      if (!item.foodItemId) {
+        continue;
+      }
+
+      // Get variation recipe multiplier if variation is selected
+      let variationMultiplier = 1.0;
+      if (item.variationId) {
+        try {
+          // First try to get from variations table (direct ID match)
+          const { data: variation, error: variationError } = await supabase
+            .from('variations')
+            .select('recipe_multiplier')
+            .eq('id', item.variationId)
+            .is('deleted_at', null)
+            .maybeSingle();
+
+          if (variation && !variationError) {
+            variationMultiplier = Number(variation.recipe_multiplier) || 1.0;
+          } else {
+            // Fallback to food_item_variations table
+            const { data: foodItemVariation, error: foodItemVarError } = await supabase
+              .from('food_item_variations')
+              .select('variation_id, variation_group, variation_name, recipe_multiplier')
+              .eq('id', item.variationId)
+              .maybeSingle();
+
+            if (foodItemVariation && !foodItemVarError) {
+              // If food_item_variations has a variation_id, get multiplier from variations table
+              if (foodItemVariation.variation_id) {
+                const { data: linkedVariation, error: linkedError } = await supabase
+                  .from('variations')
+                  .select('recipe_multiplier')
+                  .eq('id', foodItemVariation.variation_id)
+                  .is('deleted_at', null)
+                  .maybeSingle();
+
+                if (linkedVariation && !linkedError) {
+                  variationMultiplier = Number(linkedVariation.recipe_multiplier) || 1.0;
+                } else if (foodItemVariation.recipe_multiplier) {
+                  // Fallback to food_item_variations.recipe_multiplier if variations lookup fails
+                  variationMultiplier = Number(foodItemVariation.recipe_multiplier) || 1.0;
+                }
+              } else if (foodItemVariation.recipe_multiplier) {
+                // Use recipe_multiplier directly from food_item_variations if available
+                variationMultiplier = Number(foodItemVariation.recipe_multiplier) || 1.0;
+              } else if (foodItemVariation.variation_group && foodItemVariation.variation_name) {
+                // Look up variation by group name and variation name from variations table
+                // First, find the variation group
+                const { data: variationGroup, error: groupError } = await supabase
+                  .from('variation_groups')
+                  .select('id')
+                  .eq('name', foodItemVariation.variation_group)
+                  .eq('tenant_id', tenantId)
+                  .is('deleted_at', null)
+                  .maybeSingle();
+
+                if (variationGroup && !groupError) {
+                  // Now find the variation in that group
+                  const { data: matchedVariation, error: matchError } = await supabase
+                    .from('variations')
+                    .select('recipe_multiplier')
+                    .eq('variation_group_id', variationGroup.id)
+                    .eq('name', foodItemVariation.variation_name)
+                    .is('deleted_at', null)
+                    .maybeSingle();
+
+                  if (matchedVariation && !matchError) {
+                    variationMultiplier = Number(matchedVariation.recipe_multiplier) || 1.0;
+                  }
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error looking up variation multiplier:', error);
+          // Default to 1.0 if lookup fails
+          variationMultiplier = 1.0;
+        }
+      }
+
       // Get recipe for this food item
       const { data: recipes } = await supabase
         .from('recipes')
         .select('*')
-        .eq('food_item_id', item.foodItemId);
+        .eq('food_item_id', item.foodItemId)
+        .is('add_on_id', null); // Only get food item recipes, not add-on recipes
 
-      if (!recipes || recipes.length === 0) {
-        // No recipe defined, skip this item
-        continue;
+      if (recipes && recipes.length > 0) {
+        // Deduct stock for each ingredient in the recipe (with variation multiplier)
+        for (const recipe of recipes) {
+          const baseQuantity = Number(recipe.quantity) * Number(item.quantity);
+          const totalQuantityNeeded = baseQuantity * variationMultiplier;
+
+          // Get ingredient
+          const ingredient = await this.getIngredientById(tenantId, recipe.ingredient_id);
+
+          // Double-check stock availability before deducting (should have been validated earlier)
+          if (Number(ingredient.currentStock) < totalQuantityNeeded) {
+            throw new BadRequestException(
+              `Insufficient stock for ingredient ${ingredient.name || 'Unknown'}. Available: ${ingredient.currentStock}, Required: ${totalQuantityNeeded}`,
+            );
+          }
+
+          // Deduct stock
+          const deductDto: DeductStockDto = {
+            ingredientId: recipe.ingredient_id,
+            quantity: totalQuantityNeeded,
+            reason: `Order ${orderId} - Auto deduction (base recipe × ${variationMultiplier} multiplier)`,
+            referenceId: orderId,
+          };
+
+          const result = await this.deductStock(tenantId, userId, deductDto);
+          deductions.push({
+            ingredientId: recipe.ingredient_id,
+            ingredientName: ingredient.name || 'Unknown',
+            quantity: totalQuantityNeeded,
+            baseQuantity,
+            multiplier: variationMultiplier,
+            result,
+          });
+        }
       }
 
-      // Deduct stock for each ingredient in the recipe
-      for (const recipe of recipes) {
-        const totalQuantityNeeded = Number(recipe.quantity) * Number(item.quantity);
+      // Deduct stock for add-on recipes
+      if (item.addOns && item.addOns.length > 0) {
+        for (const addOn of item.addOns) {
+          // Get recipe for this add-on
+          const { data: addOnRecipes } = await supabase
+            .from('recipes')
+            .select('*')
+            .eq('add_on_id', addOn.addOnId)
+            .is('food_item_id', null); // Only get add-on recipes
 
-        // Get ingredient
-        const ingredient = await this.getIngredientById(tenantId, recipe.ingredient_id);
+          if (addOnRecipes && addOnRecipes.length > 0) {
+            // Deduct stock for each ingredient in the add-on recipe
+            for (const recipe of addOnRecipes) {
+              const totalQuantityNeeded = Number(recipe.quantity) * Number(addOn.quantity) * Number(item.quantity);
 
-        // Double-check stock availability before deducting (should have been validated earlier)
-        if (Number(ingredient.currentStock) < totalQuantityNeeded) {
-          throw new BadRequestException(
-            `Insufficient stock for ingredient ${ingredient.name || 'Unknown'}. Available: ${ingredient.currentStock}, Required: ${totalQuantityNeeded}`,
-          );
+              // Get ingredient
+              const ingredient = await this.getIngredientById(tenantId, recipe.ingredient_id);
+
+              // Double-check stock availability
+              if (Number(ingredient.currentStock) < totalQuantityNeeded) {
+                throw new BadRequestException(
+                  `Insufficient stock for ingredient ${ingredient.name || 'Unknown'} (from add-on). Available: ${ingredient.currentStock}, Required: ${totalQuantityNeeded}`,
+                );
+              }
+
+              // Deduct stock
+              const deductDto: DeductStockDto = {
+                ingredientId: recipe.ingredient_id,
+                quantity: totalQuantityNeeded,
+                reason: `Order ${orderId} - Auto deduction (add-on recipe)`,
+                referenceId: orderId,
+              };
+
+              const result = await this.deductStock(tenantId, userId, deductDto);
+              deductions.push({
+                ingredientId: recipe.ingredient_id,
+                ingredientName: ingredient.name || 'Unknown',
+                quantity: totalQuantityNeeded,
+                source: 'add-on',
+                addOnId: addOn.addOnId,
+                result,
+              });
+            }
+          }
         }
-
-        // Deduct stock
-        // Note: reason will be used to determine transaction_type, but if it's too long,
-        // the deductStock method will default to 'usage' and put the full reason in the reason field
-        const deductDto: DeductStockDto = {
-          ingredientId: recipe.ingredient_id,
-          quantity: totalQuantityNeeded,
-          reason: `Order ${orderId} - Auto deduction`,
-          referenceId: orderId, // Store order ID in reference_id (TEXT field)
-        };
-
-        const result = await this.deductStock(tenantId, userId, deductDto);
-        deductions.push({
-          ingredientId: recipe.ingredient_id,
-          ingredientName: ingredient.name || 'Unknown',
-          quantity: totalQuantityNeeded,
-          result,
-        });
       }
     }
 
