@@ -33,6 +33,8 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { usePermissions } from '@/lib/hooks/use-permissions';
+import { useSyncStatus } from '@/lib/hooks/use-sync-status';
+import { useState, useEffect } from 'react';
 
 const navItems = [
   { href: '/dashboard', icon: IconDashboard, key: 'dashboard', permission: null }, // Dashboard always visible
@@ -64,6 +66,53 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
   const theme = useMantineTheme();
   const primary = useThemeColor();
   const { hasPermission } = usePermissions();
+  const syncStatus = useSyncStatus();
+  const [, forceUpdate] = useState(0);
+  
+  // Check navigator.onLine directly in render (always up-to-date)
+  const navigatorOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+  
+  // Use both navigator and syncStatus - if either says offline, we're offline
+  // Also check if navigator.onLine is explicitly false (most reliable)
+  const isOnline = navigatorOnline && syncStatus.isOnline;
+  
+  // Force re-render when online/offline events fire
+  useEffect(() => {
+    const handleOnline = () => {
+      console.log('🟢 Sidebar: Online event fired, navigator.onLine:', navigator.onLine);
+      forceUpdate(prev => prev + 1);
+    };
+    const handleOffline = () => {
+      console.log('🔴 Sidebar: Offline event fired, navigator.onLine:', navigator.onLine);
+      forceUpdate(prev => prev + 1);
+    };
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    // Also poll navigator.onLine every second as a fallback (in case events don't fire)
+    const pollInterval = setInterval(() => {
+      const currentOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      if (currentOnline !== navigatorOnline) {
+        console.log('🔌 Sidebar: Poll detected change - navigator.onLine:', currentOnline);
+        forceUpdate(prev => prev + 1);
+      }
+    }, 1000);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      clearInterval(pollInterval);
+    };
+  }, [navigatorOnline]);
+  
+  // Debug log
+  useEffect(() => {
+    console.log('🔌 Sidebar render - isOnline:', isOnline, 'navigatorOnline:', navigatorOnline, 'syncStatus.isOnline:', syncStatus.isOnline);
+  }, [isOnline, navigatorOnline, syncStatus.isOnline]);
+
+  // Items that should be disabled when offline
+  const offlineDisabledItems = ['/dashboard', '/employees', '/customers', '/reports'];
 
   // Filter items based on permissions
   // If user has no permissions loaded yet, show all items (fallback for owners/managers)
@@ -110,30 +159,106 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
   };
 
   const renderNavItems = (items: Array<typeof navItems[number]>) => {
+    // Force re-check online status in render
+    const renderTimeOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    const finalIsOnline = renderTimeOnline && syncStatus.isOnline;
+    
     return items.map((item) => {
       const label = t(`navigation.${item.key}` as any, language);
+      const isDisabled = !finalIsOnline && offlineDisabledItems.includes(item.href);
+      
+      // Debug log for disabled items
+      if (isDisabled) {
+        console.log('🚫 Sidebar: Disabling item:', item.href, 'finalIsOnline:', finalIsOnline, 'renderTimeOnline:', renderTimeOnline, 'syncStatus.isOnline:', syncStatus.isOnline);
+      }
+      
+      const handleClick = (e: React.MouseEvent) => {
+        if (isDisabled) {
+          e.preventDefault();
+          e.stopPropagation();
+          return false;
+        }
+        onMobileClose?.();
+      };
+
       const navLink = (
-        <NavLink
-          key={item.href}
-          component={Link}
-          href={item.href}
-          label={collapsed ? undefined : label}
-          leftSection={<item.icon size={20} />}
-          active={isActive(item.href)}
-          onClick={() => {
-            onMobileClose?.();
-          }}
+        <Box
           style={{
-            justifyContent: collapsed ? 'center' : 'flex-start',
-            padding: collapsed ? '0.5rem' : undefined,
+            opacity: isDisabled ? 0.3 : 1,
+            cursor: isDisabled ? 'not-allowed' : 'pointer',
+            pointerEvents: isDisabled ? 'none' : 'auto',
+            backgroundColor: isDisabled ? theme.colors.gray[2] : 'transparent',
+            filter: isDisabled ? 'grayscale(100%) brightness(0.8)' : 'none',
+            borderRadius: '4px',
+            position: 'relative',
           }}
-        />
+        >
+          {isDisabled && (
+            <Box
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.1)',
+                zIndex: 1,
+                pointerEvents: 'none',
+              }}
+            />
+          )}
+          {isDisabled ? (
+            <NavLink
+              key={item.href}
+              component="div"
+              label={collapsed ? undefined : label}
+              leftSection={<item.icon size={20} />}
+              active={isActive(item.href)}
+              onClick={handleClick}
+              style={{
+                justifyContent: collapsed ? 'center' : 'flex-start',
+                padding: collapsed ? '0.5rem' : undefined,
+                position: 'relative',
+                zIndex: 0,
+              }}
+            />
+          ) : (
+            <NavLink
+              key={item.href}
+              component={Link}
+              href={item.href}
+              label={collapsed ? undefined : label}
+              leftSection={<item.icon size={20} />}
+              active={isActive(item.href)}
+              onClick={handleClick}
+              style={{
+                justifyContent: collapsed ? 'center' : 'flex-start',
+                padding: collapsed ? '0.5rem' : undefined,
+                position: 'relative',
+                zIndex: 1,
+              }}
+            />
+          )}
+        </Box>
       );
+
+      const tooltipLabel = isDisabled 
+        ? (t('navigation.offlineDisabled' as any, language) || 'This section is not available offline')
+        : label;
 
       if (collapsed) {
         return (
-          <Tooltip key={item.href} label={label} position="right" withArrow>
-            {navLink}
+          <Tooltip key={item.href} label={tooltipLabel} position="right" withArrow>
+            <Box style={{ display: 'inline-block', width: '100%' }}>{navLink}</Box>
+          </Tooltip>
+        );
+      }
+
+      // For non-collapsed, wrap disabled items in tooltip too
+      if (isDisabled) {
+        return (
+          <Tooltip key={item.href} label={tooltipLabel} position="right" withArrow>
+            <Box style={{ display: 'inline-block', width: '100%' }}>{navLink}</Box>
           </Tooltip>
         );
       }
