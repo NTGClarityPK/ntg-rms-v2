@@ -527,7 +527,7 @@
   "orders": {
     "title": "إدارة الطلبات",
     "allOrders": "جميع الطلبات",
-    "pending": "معلق",
+    "pending": "للطبخ",
     "preparing": "قيد التحضير",
     "ready": "جاهز",
     "served": "تم التقديم",
@@ -559,7 +559,7 @@
     "takeaway": "طلب خارجي",
     "delivery": "توصيل",
     "status": {
-      "pending": "معلق",
+      "pending": "للطبخ",
       "preparing": "قيد التحضير",
       "ready": "جاهز",
       "served": "تم التقديم",
@@ -610,7 +610,6 @@
     "createError": "فشل إنشاء المكون",
     "updateError": "فشل تحديث المكون",
     "deleteError": "فشل حذف المكون",
-    "noIngredients": "لا توجد مكونات",
     "searchIngredients": "البحث في المكونات",
     "filterByCategory": "تصفية حسب الفئة",
     "filterByStatus": "تصفية حسب الحالة",
@@ -955,7 +954,7 @@
     "topSellingItems": "أفضل العناصر مبيعاً",
     "stockLevels": "مستويات المخزون",
     "orderStatus": {
-      "pending": "معلق",
+      "pending": "للطبخ",
       "preparing": "قيد التحضير",
       "ready": "جاهز",
       "served": "تم التقديم",

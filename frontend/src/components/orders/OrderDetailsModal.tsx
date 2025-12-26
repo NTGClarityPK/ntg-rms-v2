@@ -41,7 +41,7 @@ interface OrderDetailsModalProps {
 }
 
 const statusOptions: { value: OrderStatus; label: string }[] = [
-  { value: 'pending', label: 'Pending' },
+  { value: 'pending', label: 'To Cook' },
   { value: 'preparing', label: 'Preparing' },
   { value: 'ready', label: 'Ready' },
   { value: 'served', label: 'Served' },
