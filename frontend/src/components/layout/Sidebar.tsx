@@ -198,7 +198,7 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
 
       const buttonContent = (
         <Button
-          component={isDisabled ? 'div' : Link}
+          component={(isDisabled ? 'div' : Link) as any}
           href={isDisabled ? undefined : item.href}
           variant="subtle"
           size="md"
