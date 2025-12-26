@@ -47,6 +47,9 @@ export function MenusPage() {
   const [selectedMenuType, setSelectedMenuType] = useState<string>('');
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  
+  // Guard to prevent multiple simultaneous assign items operations (race condition prevention)
+  const [isAssignItemsLoading, setIsAssignItemsLoading] = useState(false);
 
   const form = useForm({
     initialValues: {
@@ -150,6 +153,14 @@ export function MenusPage() {
   }, [loadData]);
 
   const handleAssignItems = async (menuType: string) => {
+    // Guard: Prevent multiple simultaneous calls (race condition prevention)
+    if (isAssignItemsLoading) {
+      console.warn('Assign items operation already in progress, ignoring duplicate call');
+      return;
+    }
+
+    setIsAssignItemsLoading(true);
+    
     try {
       // Proactively refresh token if it's expiring soon (before long pagination loop)
       const accessToken = localStorage.getItem('rms_access_token');
@@ -195,30 +206,78 @@ export function MenusPage() {
       
       // Always load fresh food items when opening modal to ensure we have all items
       // Fetch all items by making multiple paginated requests (backend limit is 100)
+      // NOTE: This can take time due to many database queries per item (variations, labels, etc.)
       const allItems: FoodItem[] = [];
       let page = 1;
       let hasMore = true;
       const limit = 100; // Backend max limit
+      const maxRetries = 3; // Maximum retries per page on 401
+      let consecutiveErrors = 0; // Track consecutive errors to prevent infinite loops
       
-      while (hasMore) {
-        const itemsResponse = await menuApi.getFoodItems(undefined, { page, limit });
-        const items = Array.isArray(itemsResponse) ? itemsResponse : (itemsResponse?.data || []);
-        allItems.push(...items);
+      while (hasMore && consecutiveErrors < 5) {
+        let retryCount = 0;
+        let pageSuccess = false;
         
-        // Check if there are more pages
-        if (isPaginatedResponse(itemsResponse)) {
-          hasMore = itemsResponse.pagination?.hasNext || false;
-        } else {
-          // If not paginated, check if we got a full page (might indicate more)
-          hasMore = items.length === limit;
+        while (retryCount < maxRetries && !pageSuccess) {
+          try {
+            const itemsResponse = await menuApi.getFoodItems(undefined, { page, limit });
+            const items = Array.isArray(itemsResponse) ? itemsResponse : (itemsResponse?.data || []);
+            allItems.push(...items);
+            
+            // Check if there are more pages
+            if (isPaginatedResponse(itemsResponse)) {
+              hasMore = itemsResponse.pagination?.hasNext || false;
+            } else {
+              // If not paginated, check if we got a full page (might indicate more)
+              hasMore = items.length === limit;
+            }
+            
+            pageSuccess = true;
+            consecutiveErrors = 0; // Reset error counter on success
+            
+            // Small delay between pages to reduce server load and avoid overwhelming token refresh
+            if (hasMore) {
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+          } catch (err: any) {
+            retryCount++;
+            consecutiveErrors++;
+            
+            // If it's a 401 and we've retried less than maxRetries, wait a bit and retry
+            // The interceptor should have refreshed the token by now
+            if (err?.response?.status === 401 && retryCount < maxRetries) {
+              console.warn(`Page ${page} failed with 401, retrying (attempt ${retryCount}/${maxRetries})...`);
+              // Wait a bit longer for token refresh to complete
+              await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+              continue;
+            }
+            
+            // If it's not a 401 or we've exhausted retries, throw the error
+            if (retryCount >= maxRetries || err?.response?.status !== 401) {
+              throw err;
+            }
+          }
         }
+        
         page++;
+      }
+      
+      if (consecutiveErrors >= 5) {
+        throw new Error('Too many consecutive errors while loading food items. Please try again.');
       }
       
       const itemsWithNames = allItems.filter((item) => item.name && item.name.trim());
       setFoodItems(itemsWithNames);
       
-      const currentItems = await menuApi.getMenuItems(menuType);
+      // Load current menu items
+      let currentItems: string[] = [];
+      try {
+        currentItems = await menuApi.getMenuItems(menuType);
+      } catch (err: any) {
+        console.warn('Failed to load current menu items, continuing with empty selection:', err);
+        // Don't fail the whole operation if we can't load current items
+      }
+      
       // Set all selected items - they should all have names and be in itemsWithNames
       setSelectedItemIds(currentItems);
       setSelectedMenuType(menuType);
@@ -229,6 +288,8 @@ export function MenusPage() {
         message: err.message || 'Failed to load menu items',
         color: errorColor,
       });
+    } finally {
+      setIsAssignItemsLoading(false);
     }
   };
 
@@ -454,6 +515,8 @@ export function MenusPage() {
                 <Button
                   variant="light"
                   onClick={() => handleAssignItems(menu.menuType)}
+                  disabled={isAssignItemsLoading}
+                  loading={isAssignItemsLoading}
                   style={{ color: primaryColor }}
                 >
                   {t('menu.assignItems', language)}
