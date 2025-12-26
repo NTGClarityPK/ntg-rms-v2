@@ -40,6 +40,8 @@ import { db, Order, OrderItem } from '@/lib/indexeddb/database';
 import { CartItem, RestaurantTable } from '@/lib/indexeddb/database';
 import { useThemeColor, useThemeColorShade } from '@/lib/hooks/use-theme-color';
 import { getSuccessColor, getErrorColor } from '@/lib/utils/theme';
+import { useTheme } from '@/lib/hooks/use-theme';
+import { generateThemeColors } from '@/lib/utils/themeColors';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { ItemSelectionModal } from './ItemSelectionModal';
@@ -109,6 +111,8 @@ export function POSCart({
   const primaryShade = useThemeColorShade(6);
   const currency = useCurrency();
   const warningColor = useThemeColor();
+  const { isDark } = useTheme();
+  const themeColors = generateThemeColors(primaryColor, isDark);
   
   // Get settings flags
   const enableTableManagement = settings?.general?.enableTableManagement ?? true;
@@ -1465,7 +1469,7 @@ export function POSCart({
 
           {/* Table Selection (for dine-in) */}
           {orderType === 'dine_in' && enableTableManagement && (
-            <Paper withBorder p="md" radius="md" style={{ backgroundColor: 'var(--mantine-color-gray-0)' }}>
+            <Paper withBorder p="md" radius="md" style={{ backgroundColor: themeColors.colorCard }}>
               <Stack gap="md">
                 <Group justify="space-between" align="center">
                   <Group gap="xs">

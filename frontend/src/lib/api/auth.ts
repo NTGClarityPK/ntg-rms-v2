@@ -73,7 +73,11 @@ export const authApi = {
 
   logout: () => {
     tokenStorage.clearTokens();
+    // Clear restaurant store on logout to prevent stale data
     if (typeof window !== 'undefined') {
+      import('../store/restaurant-store').then(({ useRestaurantStore }) => {
+        useRestaurantStore.getState().setRestaurant(null);
+      });
       window.location.href = '/login';
     }
   },

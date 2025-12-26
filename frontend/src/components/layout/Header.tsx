@@ -127,7 +127,7 @@ export function Header({ mobileOpened, toggleMobile }: HeaderProps = {}) {
             title="NTG Clarity"
           >
             <Image
-              src="/ntg-logo.svg"
+              src="/NTG-Clarity-Logo.svg"
               alt="NTG Clarity"
               width="100%"
               height="100%"

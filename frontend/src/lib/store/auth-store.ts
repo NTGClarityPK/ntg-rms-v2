@@ -34,11 +34,18 @@ export const useAuthStore = create<AuthState>()(
         set((state) => ({
           user: state.user ? { ...state.user, permissions } : null,
         })),
-      logout: () =>
+      logout: () => {
         set({
           user: null,
           isAuthenticated: false,
-        }),
+        });
+        // Also clear restaurant store on logout to prevent stale data
+        if (typeof window !== 'undefined') {
+          import('./restaurant-store').then(({ useRestaurantStore }) => {
+            useRestaurantStore.getState().setRestaurant(null);
+          });
+        }
+      },
     }),
     {
       name: 'rms-auth-storage',

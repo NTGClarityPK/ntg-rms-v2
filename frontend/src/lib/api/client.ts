@@ -106,7 +106,7 @@ apiClient.interceptors.response.use(
       const refreshToken = tokenStorage.getRefreshToken();
       if (!refreshToken) {
         tokenStorage.clearTokens();
-        // Clear auth store
+        // Clear auth store (which will also clear restaurant store)
         if (typeof window !== 'undefined') {
           // Dynamically import to avoid circular dependency
           import('../store/auth-store').then(({ useAuthStore }) => {
@@ -114,9 +114,15 @@ apiClient.interceptors.response.use(
           });
         }
         processQueue(error, null);
-        // Redirect to login
+        // Redirect to login ONLY if we're not already on an auth page
         if (typeof window !== 'undefined') {
-          window.location.href = '/login';
+          const currentPath = window.location.pathname;
+          const isAuthPage = currentPath.startsWith('/login') || 
+                            currentPath.startsWith('/signup') || 
+                            currentPath.startsWith('/auth');
+          if (!isAuthPage) {
+            window.location.href = '/login';
+          }
         }
         return Promise.reject(error);
       }
@@ -137,7 +143,7 @@ apiClient.interceptors.response.use(
         return apiClient(originalRequest);
       } catch (refreshError) {
         tokenStorage.clearTokens();
-        // Clear auth store
+        // Clear auth store (which will also clear restaurant store)
         if (typeof window !== 'undefined') {
           // Dynamically import to avoid circular dependency
           import('../store/auth-store').then(({ useAuthStore }) => {
@@ -145,8 +151,15 @@ apiClient.interceptors.response.use(
           });
         }
         processQueue(refreshError as AxiosError, null);
+        // Redirect to login ONLY if we're not already on an auth page
         if (typeof window !== 'undefined') {
-          window.location.href = '/login';
+          const currentPath = window.location.pathname;
+          const isAuthPage = currentPath.startsWith('/login') || 
+                            currentPath.startsWith('/signup') || 
+                            currentPath.startsWith('/auth');
+          if (!isAuthPage) {
+            window.location.href = '/login';
+          }
         }
         return Promise.reject(refreshError);
       } finally {
