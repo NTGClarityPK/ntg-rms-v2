@@ -26,6 +26,9 @@ import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { useErrorColor, useInfoColor } from '@/lib/hooks/use-theme-colors';
 import { DEFAULT_THEME_COLOR } from '@/lib/utils/theme';
+import { useTheme } from '@/lib/hooks/use-theme';
+import { useThemeColor } from '@/lib/hooks/use-theme-color';
+import { generateThemeColors } from '@/lib/utils/themeColors';
 
 function LoginForm() {
   const router = useRouter();
@@ -34,6 +37,9 @@ function LoginForm() {
   const { setUser } = useAuthStore();
   const errorColor = useErrorColor();
   const infoColor = useInfoColor();
+  const { isDark } = useTheme();
+  const primaryColor = useThemeColor();
+  const themeColors = generateThemeColors(primaryColor, isDark);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const errorProcessedRef = useRef(false);
@@ -115,10 +121,10 @@ function LoginForm() {
     <form onSubmit={form.onSubmit(handleSubmit)}>
       <Stack gap="lg">
         <Box>
-          <Title order={2} size="1.8rem" fw={700} mb="xs" style={{ color: '#1a1a1a' }}>
+          <Title order={2} size="1.8rem" fw={700} mb="xs" style={{ color: themeColors.colorTextDark }}>
             {t('auth.loginTitle', language)}
           </Title>
-          <Text size="sm" style={{ color: '#4a4a4a' }}>
+          <Text size="sm" style={{ color: themeColors.colorTextMedium }}>
             {t('auth.signInToContinue', language)}
           </Text>
         </Box>
@@ -209,7 +215,7 @@ function LoginForm() {
           {t('auth.loginWithGoogle', language)}
         </Button>
 
-        <Text ta="center" size="sm" style={{ color: '#4a4a4a' }}>
+        <Text ta="center" size="sm" style={{ color: themeColors.colorTextMedium }}>
           {t('auth.noAccount', language)}{' '}
           <Anchor href="/signup" size="sm" style={{ color: DEFAULT_THEME_COLOR, fontWeight: 500 }}>
             {t('common.signup' as any, language)}
