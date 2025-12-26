@@ -27,3 +27,4 @@ CREATE INDEX IF NOT EXISTS idx_order_items_buffet_id ON order_items(buffet_id);
 CREATE INDEX IF NOT EXISTS idx_order_items_combo_meal_id ON order_items(combo_meal_id);
 
 
+

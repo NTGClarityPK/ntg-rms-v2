@@ -598,3 +598,22 @@ export function ItemSelectionModal({
   );
 }
 
+
+
+                                  </Text>
+
+                                )}
+
+                              </Group>
+
+                            }
+
+                          />
+
+                        ))}
+
+                      </Stack>
+
+                      </Radio.Group>                    {group.minSelections && (                        {group.maxSelections && ` - ${t('menu.maxSelections', language)}: ${group.maxSelections}`}
+
+
