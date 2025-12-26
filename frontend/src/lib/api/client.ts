@@ -49,6 +49,9 @@ apiClient.interceptors.request.use(
     const token = tokenStorage.getAccessToken();
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
+    } else if (!token && typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+      // Log warning in development if token is missing
+      console.warn('API request made without access token:', config.url);
     }
     return config;
   },
@@ -136,11 +139,28 @@ apiClient.interceptors.response.use(
       }
 
       try {
-        const response = await axios.post(
-          `${API_BASE_URL}/auth/refresh`,
+        // Create a separate axios instance for refresh to avoid interceptors
+        const refreshClient = axios.create({
+          baseURL: API_BASE_URL,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          timeout: 30000,
+        });
+
+        const response = await refreshClient.post(
+          '/auth/refresh',
           { refreshToken }
         );
-        const { accessToken, refreshToken: newRefreshToken } = response.data;
+        
+        // Handle both direct response and nested data structure
+        const responseData = response.data?.data || response.data;
+        const { accessToken, refreshToken: newRefreshToken } = responseData;
+
+        if (!accessToken) {
+          console.error('Token refresh response:', response.data);
+          throw new Error('No access token received from refresh endpoint');
+        }
 
         tokenStorage.setTokens(accessToken, newRefreshToken || refreshToken);
         processQueue(null, accessToken);
@@ -149,18 +169,32 @@ apiClient.interceptors.response.use(
           originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         }
         return apiClient(originalRequest);
-      } catch (refreshError) {
-        tokenStorage.clearTokens();
-        // Clear auth store
-        if (typeof window !== 'undefined') {
-          // Dynamically import to avoid circular dependency
-          import('../store/auth-store').then(({ useAuthStore }) => {
-            useAuthStore.getState().logout();
-          });
+      } catch (refreshError: any) {
+        // Only sign out if it's actually an authentication error (401, 403), not a network error
+        const isAuthError = refreshError?.response?.status === 401 || 
+                           refreshError?.response?.status === 403;
+        
+        // Log the error for debugging
+        if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+          console.error('Token refresh failed:', refreshError);
         }
-        processQueue(refreshError as AxiosError, null);
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login';
+
+        if (isAuthError) {
+          tokenStorage.clearTokens();
+          // Clear auth store
+          if (typeof window !== 'undefined') {
+            // Dynamically import to avoid circular dependency
+            import('../store/auth-store').then(({ useAuthStore }) => {
+              useAuthStore.getState().logout();
+            });
+          }
+          processQueue(refreshError as AxiosError, null);
+          if (typeof window !== 'undefined') {
+            window.location.href = '/login';
+          }
+        } else {
+          // For network errors, don't sign out - just reject the original request
+          processQueue(refreshError as AxiosError, null);
         }
         return Promise.reject(refreshError);
       } finally {
