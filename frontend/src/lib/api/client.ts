@@ -190,29 +190,10 @@ apiClient.interceptors.response.use(
         });
         
         const startTime = Date.now();
-        
-        // Use Promise.race with manual timeout to ensure timeout detection works
-        // This is a safety measure in case axios timeout doesn't fire properly
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => {
-            reject(new Error('Refresh endpoint timeout after 60 seconds'));
-          }, 60000);
-        });
-        
-        const refreshPromise = refreshClient.post(
+        const refreshResponse = await refreshClient.post(
           '/auth/refresh',
           { refreshToken }
-        ).catch((err) => {
-          // Log axios errors for debugging
-          console.error('Refresh endpoint axios error:', {
-            message: err.message,
-            code: err.code,
-            response: err.response?.status,
-          });
-          throw err;
-        });
-        
-        const refreshResponse = await Promise.race([refreshPromise, timeoutPromise]) as any;
+        );
         const duration = Date.now() - startTime;
         
         console.log('Refresh endpoint response received:', {
@@ -242,8 +223,7 @@ apiClient.interceptors.response.use(
         // Check if it's a timeout error
         const isTimeout = refreshError.code === 'ECONNABORTED' || 
                           refreshError.message?.includes('timeout') ||
-                          refreshError.message?.includes('Timeout') ||
-                          refreshError.message?.includes('Refresh endpoint timeout');
+                          refreshError.message?.includes('Timeout');
         
         // Only sign out if it's actually an authentication error (401, 403), not a network error
         const isAuthError = refreshError?.response?.status === 401 || 
@@ -262,11 +242,7 @@ apiClient.interceptors.response.use(
           timestamp: new Date().toISOString(),
         });
 
-        // IMPORTANT: Don't logout on timeout or network errors - only on auth errors
-        // This prevents users from being logged out due to slow VPN/network issues
-        if (isAuthError && !isTimeout) {
-          // Only logout if refresh token is actually invalid (401/403) and not a timeout
-          console.error('Refresh token is invalid/expired, logging out');
+        if (isAuthError) {
           tokenStorage.clearTokens();
           // Clear auth store
           if (typeof window !== 'undefined') {
@@ -280,9 +256,7 @@ apiClient.interceptors.response.use(
             window.location.href = '/login';
           }
         } else {
-          // For timeout/network errors, don't sign out - just reject the original request
-          // The user can retry the operation, and if the token is still valid, it will work
-          console.warn('Refresh failed due to timeout/network error, not logging out. Original request will fail.');
+          // For network errors, don't sign out - just reject the original request
           processQueue(refreshError as AxiosError, null);
         }
         return Promise.reject(refreshError);
