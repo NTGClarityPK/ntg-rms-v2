@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useForm } from '@mantine/form';
+import { useDebouncedValue } from '@mantine/hooks';
 import {
   Title,
   Button,
@@ -34,6 +35,7 @@ import {
   IconToolsKitchen2,
   IconAlertCircle,
   IconCheck,
+  IconSearch,
 } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
@@ -73,6 +75,12 @@ export function FoodItemsPage() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [shouldSubmit, setShouldSubmit] = useState(false);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch] = useDebouncedValue(search, 300);
+  const prevDebouncedSearchRef = useRef<string | null>(null);
+  const debouncedSearchRef = useRef<string>('');
+  const paginationPageRef = useRef<number>(pagination.page);
+  const paginationLimitRef = useRef<number>(pagination.limit);
 
   const form = useForm({
     initialValues: {
@@ -140,9 +148,16 @@ export function FoodItemsPage() {
       setVariationGroups(groupsWithVariations);
 
       // Load food items - use server pagination if online, otherwise load from IndexedDB
+      // Use refs to get the latest values to avoid stale closures
+      const currentSearch = debouncedSearchRef.current;
+      const currentPage = paginationPageRef.current;
+      const currentLimit = paginationLimitRef.current;
       if (navigator.onLine) {
         try {
-          const serverItemsResponse = await menuApi.getFoodItems(undefined, pagination.paginationParams);
+          const serverItemsResponse = await menuApi.getFoodItems(undefined, {
+            page: currentPage,
+            limit: currentLimit,
+          }, currentSearch);
           const serverItems = pagination.extractData(serverItemsResponse);
           
           // Debug: log the response to see what we're getting
@@ -171,13 +186,13 @@ export function FoodItemsPage() {
           if (!paginationInfo && Array.isArray(serverItemsResponse)) {
             console.warn('Server returned plain array instead of paginated response. Cannot determine total count.');
             // Only set pagination if we got exactly the limit (suggesting there might be more)
-            if (serverItemsResponse.length === pagination.limit) {
+            if (serverItemsResponse.length === currentLimit) {
               // We got a full page, so there might be more - but we don't know the total
               // Set a minimum total to show pagination
               pagination.setTotal(serverItemsResponse.length);
               pagination.setTotalPages(1);
               pagination.setHasNext(true); // Assume there might be more
-              pagination.setHasPrev(pagination.page > 1);
+              pagination.setHasPrev(currentPage > 1);
             } else {
               // We got less than a full page, so this is likely all items
               pagination.setTotal(serverItemsResponse.length);
@@ -338,17 +353,28 @@ export function FoodItemsPage() {
             })
           );
           
+          // Apply search filter if provided
+          let filteredItems = itemsWithRelations;
+          if (currentSearch && currentSearch.trim()) {
+            const searchLower = currentSearch.toLowerCase();
+            filteredItems = itemsWithRelations.filter((item) => {
+              const name = (item.name || '').toLowerCase();
+              const description = (item.description || '').toLowerCase();
+              return name.includes(searchLower) || description.includes(searchLower);
+            });
+          }
+          
           // Apply local pagination
-          const startIndex = (pagination.page - 1) * pagination.limit;
-          const endIndex = startIndex + pagination.limit;
-          const paginatedItems = itemsWithRelations.slice(startIndex, endIndex);
+          const startIndex = (currentPage - 1) * currentLimit;
+          const endIndex = startIndex + currentLimit;
+          const paginatedItems = filteredItems.slice(startIndex, endIndex);
           
           setFoodItems(paginatedItems);
           // Set pagination info for offline mode
-          pagination.setTotal(itemsWithRelations.length);
-          pagination.setTotalPages(Math.ceil(itemsWithRelations.length / pagination.limit));
-          pagination.setHasNext(endIndex < itemsWithRelations.length);
-          pagination.setHasPrev(pagination.page > 1);
+          pagination.setTotal(filteredItems.length);
+          pagination.setTotalPages(Math.ceil(filteredItems.length / currentLimit));
+          pagination.setHasNext(endIndex < filteredItems.length);
+          pagination.setHasPrev(currentPage > 1);
         }
       } else {
         // Offline mode - load from IndexedDB with local pagination
@@ -406,26 +432,66 @@ export function FoodItemsPage() {
           })
         );
         
+          // Apply search filter if provided
+          let filteredItems = itemsWithRelations;
+          if (currentSearch && currentSearch.trim()) {
+            const searchLower = currentSearch.toLowerCase();
+          filteredItems = itemsWithRelations.filter((item) => {
+            const name = (item.name || '').toLowerCase();
+            const description = (item.description || '').toLowerCase();
+            return name.includes(searchLower) || description.includes(searchLower);
+          });
+        }
+        
         // Apply local pagination
-        const startIndex = (pagination.page - 1) * pagination.limit;
-        const endIndex = startIndex + pagination.limit;
-        const paginatedItems = itemsWithRelations.slice(startIndex, endIndex);
+        const startIndex = (currentPage - 1) * currentLimit;
+        const endIndex = startIndex + currentLimit;
+        const paginatedItems = filteredItems.slice(startIndex, endIndex);
         
         setFoodItems(paginatedItems);
         // Set pagination info for offline mode
-        pagination.setTotal(itemsWithRelations.length);
-        pagination.setTotalPages(Math.ceil(itemsWithRelations.length / pagination.limit));
-        pagination.setHasNext(endIndex < itemsWithRelations.length);
-        pagination.setHasPrev(pagination.page > 1);
+        pagination.setTotal(filteredItems.length);
+        pagination.setTotalPages(Math.ceil(filteredItems.length / currentLimit));
+        pagination.setHasNext(endIndex < filteredItems.length);
+        pagination.setHasPrev(currentPage > 1);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to load data');
     } finally {
       setLoading(false);
     }
-  }, [user?.tenantId, pagination]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.tenantId]);
+
+  // Handle search changes: update ref and reset page if needed
+  useEffect(() => {
+    const currentSearch = debouncedSearch || '';
+    const prevSearch = prevDebouncedSearchRef.current;
+    
+    // Update ref immediately so loadData always has latest value
+    debouncedSearchRef.current = currentSearch;
+    
+    // Only reset page/reload if search actually changed (skip initial mount when prevSearch is null)
+    if (prevSearch !== null && prevSearch !== currentSearch) {
+      // Search changed - reset page to 1 (this will trigger the main effect via pagination.page dependency)
+      if (pagination.page !== 1) {
+        pagination.setPage(1);
+      } else {
+        // Page is already 1, trigger loadData directly since page change won't trigger reload
+        loadData();
+      }
+    }
+    
+    // Always update the previous search ref
+    prevDebouncedSearchRef.current = currentSearch;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
 
   useEffect(() => {
+    // Update refs before calling loadData to ensure latest values are used
+    paginationPageRef.current = pagination.page;
+    paginationLimitRef.current = pagination.limit;
+    
     loadData();
     
     // Listen for data updates from other tabs
@@ -448,7 +514,9 @@ export function FoodItemsPage() {
       unsubscribe2();
       unsubscribe3();
     };
-  }, [loadData, pagination.page, pagination.limit]);
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pagination.page, pagination.limit]);
 
   // Helper function to get menu name from menu type
   const getMenuName = (menuType: string): string => {
@@ -984,7 +1052,14 @@ export function FoodItemsPage() {
 
   return (
     <Stack gap="md">
-      <Group justify="flex-end">
+      <Group justify="space-between">
+        <TextInput
+          placeholder={t('common.search', language) || 'Search food items...'}
+          leftSection={<IconSearch size={16} />}
+          value={search}
+          onChange={(e) => setSearch(e.currentTarget.value)}
+          style={{ flex: 1, maxWidth: 400 }}
+        />
         <Button
           leftSection={<IconPlus size={16} />}
           onClick={() => handleOpenModal()}

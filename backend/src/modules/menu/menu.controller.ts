@@ -128,11 +128,12 @@ export class MenuController {
     @CurrentUser() user: any,
     @Query('categoryId') categoryId?: string,
     @Query('onlyActiveMenus') onlyActiveMenus?: string,
+    @Query('search') search?: string,
     @Query() paginationDto?: PaginationDto,
   ) {
     // Default to false (show all items) unless explicitly set to true
     const filterByActiveMenus = onlyActiveMenus === 'true' ? true : false;
-    return this.menuService.getFoodItems(user.tenantId, categoryId, paginationDto, filterByActiveMenus);
+    return this.menuService.getFoodItems(user.tenantId, categoryId, paginationDto, filterByActiveMenus, search);
   }
 
   @Get('food-items/:id')

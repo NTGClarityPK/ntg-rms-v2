@@ -337,7 +337,7 @@ export class MenuService {
   // FOOD ITEM MANAGEMENT
   // ============================================
 
-  async getFoodItems(tenantId: string, categoryId?: string, pagination?: PaginationParams, onlyActiveMenus: boolean = false): Promise<PaginatedResponse<any> | any[]> {
+  async getFoodItems(tenantId: string, categoryId?: string, pagination?: PaginationParams, onlyActiveMenus: boolean = false, search?: string): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
     
     // Get food items (without pagination first to get accurate count)
@@ -349,6 +349,12 @@ export class MenuService {
 
     if (categoryId) {
       query = query.eq('category_id', categoryId);
+    }
+
+    // Apply search filter if provided
+    if (search && search.trim()) {
+      const searchTerm = search.trim();
+      query = query.or(`name.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
     }
 
     const { data: allFoodItems, error } = await query.order('display_order', { ascending: true });
