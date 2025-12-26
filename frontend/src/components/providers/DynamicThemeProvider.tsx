@@ -3,6 +3,7 @@
 import { useEffect, useMemo } from 'react';
 import { useMantineTheme } from '@mantine/core';
 import { useDynamicTheme } from '@/lib/hooks/useDynamicTheme';
+import { useDynamicTheme as useTenantTheme } from '@/lib/hooks/use-dynamic-theme';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useThemeStore } from '@/lib/store/theme-store';
 import { useTheme } from '@/lib/hooks/use-theme';
@@ -20,6 +21,8 @@ import type { ThemeConfig } from '@/lib/theme/themeConfig';
 export function DynamicThemeProvider({ children }: { children: React.ReactNode }) {
   const theme = useMantineTheme();
   const dynamicTheme = useDynamicTheme();
+  // Load tenant theme on every page load/refresh - this updates the store with tenant's primaryColor
+  useTenantTheme();
   const { language } = useLanguageStore();
   const { primaryColor: storeColor, themeVersion } = useThemeStore();
   const { isDark } = useTheme();
