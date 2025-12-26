@@ -115,11 +115,36 @@ export function MenusPage() {
       const menuList = Array.isArray(menuListResponse) ? menuListResponse : (menuListResponse?.data || []);
       setMenus(menuList);
 
-      // Load food items (all items, not just active, for menu assignment)
-      const itemsResponse = await menuApi.getFoodItems();
-      const items = Array.isArray(itemsResponse) ? itemsResponse : (itemsResponse?.data || []);
-      // Filter out items without names, but keep all items (active and inactive) for menu assignment
-      setFoodItems(items.filter((item) => item.name && item.name.trim()));
+      // Load all food items for menu assignment (paginate through all pages)
+      let allItems: FoodItem[] = [];
+      let currentPage = 1;
+      const pageLimit = 100; // Backend max limit
+      let hasMore = true;
+      
+      while (hasMore) {
+        const itemsResponse = await menuApi.getFoodItems(undefined, { page: currentPage, limit: pageLimit });
+        const items = Array.isArray(itemsResponse) ? itemsResponse : (itemsResponse?.data || []);
+        
+        allItems = [...allItems, ...items];
+        
+        // Check if there are more pages
+        if (isPaginatedResponse(itemsResponse)) {
+          // Check pagination info
+          hasMore = currentPage < itemsResponse.pagination.totalPages;
+          currentPage++;
+        } else {
+          // If response is an array, check if we got a full page
+          // If we got less than the limit, we're done
+          hasMore = items.length === pageLimit;
+          currentPage++;
+        }
+      }
+      
+      // Filter out any items without names (these would show as IDs)
+      // All food items should have names from seed data
+      const validItems = allItems.filter(item => item.name && item.name.trim() !== '');
+      
+      setFoodItems(validItems);
     } catch (err: any) {
       setError(err.message || 'Failed to load menus');
     } finally {
@@ -447,7 +472,7 @@ export function MenusPage() {
             label={t('menu.foodItems', language)}
             data={foodItems.map((item) => ({
               value: item.id,
-              label: item.name,
+              label: item.name || item.id || 'Unknown Item',
             }))}
             value={selectedItemIds}
             onChange={(value) => setSelectedItemIds(value)}

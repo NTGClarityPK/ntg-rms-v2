@@ -127,12 +127,15 @@ export class MenuController {
   @ApiOperation({ summary: 'Get all food items' })
   getFoodItems(
     @CurrentUser() user: any,
-    @Query() queryDto: GetFoodItemsDto,
+    @Query('categoryId') categoryId?: string,
+    @Query('onlyActiveMenus') onlyActiveMenus?: string,
+    @Query('search') search?: string,
+    @Query() paginationDto?: PaginationDto,
   ) {
     const { categoryId, onlyActiveMenus, ...paginationDto } = queryDto;
     // Default to false (show all items) unless explicitly set to true
-    const filterByActiveMenus = onlyActiveMenus === true;
-    return this.menuService.getFoodItems(user.tenantId, categoryId, paginationDto, filterByActiveMenus);
+    const filterByActiveMenus = onlyActiveMenus === 'true' ? true : false;
+    return this.menuService.getFoodItems(user.tenantId, categoryId, paginationDto, filterByActiveMenus, search);
   }
 
   @Get('food-items/:id')

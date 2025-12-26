@@ -1289,7 +1289,7 @@ export class InventoryService {
           const deductDto: DeductStockDto = {
             ingredientId: recipe.ingredient_id,
             quantity: totalQuantityNeeded,
-            reason: `Order ${orderId} - Auto deduction (base recipe × ${variationMultiplier} multiplier)`,
+            reason: `Auto deduction`,
             referenceId: orderId,
           };
 
@@ -1334,7 +1334,7 @@ export class InventoryService {
               const deductDto: DeductStockDto = {
                 ingredientId: recipe.ingredient_id,
                 quantity: totalQuantityNeeded,
-                reason: `Order ${orderId} - Auto deduction (add-on recipe)`,
+                reason: `Auto deduction`,
                 referenceId: orderId,
               };
 

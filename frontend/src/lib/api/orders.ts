@@ -121,6 +121,8 @@ export interface GetOrdersParams {
   offset?: number;
   page?: number;
   includeItems?: boolean;
+  search?: string;
+  waiterEmail?: string;
 }
 
 export interface UpdateOrderStatusDto {

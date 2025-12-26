@@ -1034,6 +1034,8 @@ export class OrdersService {
       offset?: number;
       page?: number;
       includeItems?: boolean;
+      search?: string;
+      waiterEmail?: string;
     } = {},
   ): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
@@ -1052,6 +1054,23 @@ export class OrdersService {
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
+
+    // Handle search: if search query provided, find matching customer IDs first
+    let matchingCustomerIds: string[] | null = null;
+    if (filters.search && filters.search.trim()) {
+      const searchTerm = filters.search.trim();
+      
+      // Search in customers table for matching name or phone
+      const { data: matchingCustomers } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .or(`name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`);
+      
+      if (matchingCustomers && matchingCustomers.length > 0) {
+        matchingCustomerIds = matchingCustomers.map((c: any) => c.id);
+      }
+    }
 
     // Apply filters to both count and data queries
     const applyFilters = (q: any) => {
@@ -1082,6 +1101,32 @@ export class OrdersService {
 
       if (filters.endDate) {
         q = q.lte('order_date', filters.endDate);
+      }
+
+      if (filters.waiterEmail) {
+        q = q.eq('waiter_email', filters.waiterEmail);
+      }
+
+      // Apply search filter
+      if (filters.search && filters.search.trim()) {
+        const searchTerm = filters.search.trim();
+        const searchConditions: string[] = [];
+        
+        // Search in order_number and token_number (direct fields in orders table)
+        searchConditions.push(`order_number.ilike.%${searchTerm}%`);
+        searchConditions.push(`token_number.ilike.%${searchTerm}%`);
+        
+        // If we found matching customers, add customer_id condition to the or filter
+        if (matchingCustomerIds && matchingCustomerIds.length > 0) {
+          // Supabase PostgREST supports mixing ilike and in in or conditions
+          // Format: customer_id.in.(id1,id2,id3)
+          searchConditions.push(`customer_id.in.(${matchingCustomerIds.join(',')})`);
+        }
+        
+        // Use 'or' to combine all search conditions
+        if (searchConditions.length > 0) {
+          q = q.or(searchConditions.join(','));
+        }
       }
 
       return q;

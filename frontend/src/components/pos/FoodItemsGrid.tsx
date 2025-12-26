@@ -101,7 +101,7 @@ export function FoodItemsGrid({
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, selectedCategoryId, searchQuery, foodItemsPagination.page, foodItemsPagination.limit, buffetsPagination.page, buffetsPagination.limit, comboMealsPagination.page, comboMealsPagination.limit, itemType, orderType]);
+  }, [tenantId, selectedCategoryId, searchQuery, foodItemsPagination.page, foodItemsPagination.limit, buffetsPagination.page, buffetsPagination.limit, comboMealsPagination.page, comboMealsPagination.limit, itemType]);
 
   const loadData = async () => {
     try {
@@ -117,6 +117,7 @@ export function FoodItemsGrid({
       setCategories(cats);
 
       // Load active menus from API (menus are not stored in IndexedDB)
+      // This is only needed for buffets and combo meals which still use client-side filtering
       let activeMenuTypes: string[] = [];
       try {
         if (navigator.onLine) {
@@ -154,37 +155,22 @@ export function FoodItemsGrid({
       } else if (itemType === 'combo-meals') {
         await loadComboMeals(activeMenuTypes);
       } else {
-        // Load food items - use server pagination if online, otherwise use IndexedDB with local pagination
+        // Load food items - use server pagination with backend filtering for active menus
         if (navigator.onLine) {
           try {
-            // Load from server with pagination and server-side active menu filtering
+            // Use backend filtering for active menus and search
             const serverItemsResponse = await menuApi.getFoodItems(
               selectedCategoryId || undefined,
               foodItemsPagination.paginationParams,
-              true // onlyActiveMenus = true - filter on server side
+              searchQuery.trim() || undefined,
+              true // onlyActiveMenus = true - filter by active menus on backend
             ).catch((error) => {
-              // If API call fails, throw to trigger offline fallback
               console.warn('⚠️ Failed to load food items from API, using offline fallback:', error);
               throw error;
             });
-            const serverItems: FoodItem[] = foodItemsPagination.extractData(serverItemsResponse) as FoodItem[];
+            const serverItems = foodItemsPagination.extractData(serverItemsResponse) as FoodItem[];
             foodItemsPagination.extractPagination(serverItemsResponse);
-            
-            // Filter by search query on client side (since backend doesn't support search yet)
-            let filteredItems: FoodItem[] = serverItems;
-            if (searchQuery.trim()) {
-              const query = searchQuery.toLowerCase();
-              filteredItems = serverItems.filter(
-                (item) =>
-                  item.name?.toLowerCase().includes(query) ||
-                  item.description?.toLowerCase().includes(query),
-              );
-              // If search is active, we need to adjust pagination manually
-              // But since we're filtering client-side, pagination from server is still correct
-              // We'll show all filtered results on current page
-            }
-            
-            setFoodItems(filteredItems);
+            setFoodItems(serverItems);
             
             // Update IndexedDB cache (but don't wait for it)
             serverItems.forEach((item: FoodItem) => {
