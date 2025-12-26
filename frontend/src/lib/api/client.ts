@@ -84,6 +84,20 @@ apiClient.interceptors.response.use(
 
     // If error is 401 and we haven't tried to refresh yet
     if (error.response?.status === 401 && !originalRequest._retry) {
+      // Don't retry refresh endpoint itself - it means refresh token is invalid/expired
+      if (originalRequest.url?.includes('/auth/refresh')) {
+        tokenStorage.clearTokens();
+        if (typeof window !== 'undefined') {
+          import('../store/auth-store').then(({ useAuthStore }) => {
+            useAuthStore.getState().logout();
+          });
+          if (!window.location.pathname.includes('/login')) {
+            window.location.href = '/login';
+          }
+        }
+        return Promise.reject(error);
+      }
+
       if (isRefreshing) {
         // If already refreshing, queue this request
         return new Promise((resolve, reject) => {
