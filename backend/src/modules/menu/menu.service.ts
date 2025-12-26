@@ -776,7 +776,8 @@ export class MenuService {
     if (updateDto.menuType !== undefined) updateData.menu_type = updateDto.menuType;
     if (updateDto.ageLimit !== undefined) updateData.age_limit = updateDto.ageLimit;
     if (updateDto.displayOrder !== undefined) updateData.display_order = updateDto.displayOrder;
-    if (updateDto.isActive !== undefined) updateData.is_active = updateDto.isActive;
+    // Always set is_active to true - all food items are active
+    updateData.is_active = true;
     updateData.updated_at = new Date().toISOString();
 
     const { error: updateError } = await supabase

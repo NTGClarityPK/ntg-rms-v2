@@ -117,6 +117,7 @@ export function FoodItemsGrid({
       setCategories(cats);
 
       // Load active menus from API (menus are not stored in IndexedDB)
+      // This is only needed for buffets and combo meals which still use client-side filtering
       let activeMenuTypes: string[] = [];
       try {
         if (navigator.onLine) {
@@ -154,45 +155,22 @@ export function FoodItemsGrid({
       } else if (itemType === 'combo-meals') {
         await loadComboMeals(activeMenuTypes);
       } else {
-        // Load food items - use server pagination if online, otherwise use IndexedDB with local pagination
+        // Load food items - use server pagination with backend filtering for active menus
         if (navigator.onLine) {
           try {
-            // Load from server with pagination
+            // Use backend filtering for active menus and search
             const serverItemsResponse = await menuApi.getFoodItems(
               selectedCategoryId || undefined,
-              foodItemsPagination.paginationParams
+              foodItemsPagination.paginationParams,
+              searchQuery.trim() || undefined,
+              true // onlyActiveMenus = true - filter by active menus on backend
             ).catch((error) => {
-              // If API call fails, throw to trigger offline fallback
               console.warn('⚠️ Failed to load food items from API, using offline fallback:', error);
               throw error;
             });
-            const serverItems: FoodItem[] = foodItemsPagination.extractData(serverItemsResponse) as FoodItem[];
+            const serverItems = foodItemsPagination.extractData(serverItemsResponse) as FoodItem[];
             foodItemsPagination.extractPagination(serverItemsResponse);
-            
-            // Filter food items to only include those in active menus
-            let filteredItems: FoodItem[] = serverItems;
-            if (activeMenuTypes.length > 0) {
-              filteredItems = serverItems.filter((item) => {
-                // Check if item belongs to at least one active menu
-                const itemMenuTypes = item.menuTypes || (item.menuType ? [item.menuType] : []);
-                return itemMenuTypes.some((menuType: string) => activeMenuTypes.includes(menuType));
-              });
-            } else {
-              // If no active menus, show no items
-              filteredItems = [];
-            }
-            
-            // Filter by search query on client side (since backend doesn't support search yet)
-            if (searchQuery.trim()) {
-              const query = searchQuery.toLowerCase();
-              filteredItems = filteredItems.filter(
-                (item) =>
-                  item.name?.toLowerCase().includes(query) ||
-                  item.description?.toLowerCase().includes(query),
-              );
-            }
-            
-            setFoodItems(filteredItems);
+            setFoodItems(serverItems);
             
             // Update IndexedDB cache (but don't wait for it)
             serverItems.forEach((item: FoodItem) => {

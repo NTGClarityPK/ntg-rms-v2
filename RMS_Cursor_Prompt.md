@@ -619,7 +619,7 @@ Create a granular permission system where each role has specific permissions for
 
 #### 4.6 Menu Type Setup
 - **Create Menu Types**:
-  - All Day Menu
+  - All Day
   - Breakfast Menu (with time restrictions)
   - Lunch Menu (11 AM - 4 PM)
   - Dinner Menu (4 PM - 11 PM)

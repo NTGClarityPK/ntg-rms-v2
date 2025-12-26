@@ -1026,7 +1026,7 @@ export class AuthService {
         {
           tenant_id: tenantId,
           menu_type: 'all_day',
-          name: 'All Day Menu',
+          name: 'All Day',
           is_active: true,
         },
       ];

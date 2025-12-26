@@ -92,10 +92,36 @@ export function ComboMealPage() {
       const menuList = Array.isArray(menuListResponse) ? menuListResponse : (menuListResponse?.data || []);
       setMenus(menuList);
 
-      // Load food items for selection
-      const itemsResponse = await menuApi.getFoodItems();
-      const items = Array.isArray(itemsResponse) ? itemsResponse : (itemsResponse?.data || []);
-      setFoodItems(items.filter((item) => item.isActive));
+      // Load food items for selection - fetch all items with a high limit
+      let allFoodItems: FoodItem[] = [];
+      let currentPage = 1;
+      const pageLimit = 100; // Fetch 100 items per page
+      let hasMore = true;
+
+      while (hasMore) {
+        const itemsResponse = await menuApi.getFoodItems(undefined, {
+          page: currentPage,
+          limit: pageLimit,
+        });
+        
+        const items = Array.isArray(itemsResponse) 
+          ? itemsResponse 
+          : (itemsResponse?.data || []);
+        
+        allFoodItems = [...allFoodItems, ...items];
+        
+        // Check if there are more pages
+        if (isPaginatedResponse(itemsResponse)) {
+          const totalPages = itemsResponse.pagination.totalPages;
+          hasMore = currentPage < totalPages;
+          currentPage++;
+        } else {
+          // If not paginated, assume we got all items
+          hasMore = false;
+        }
+      }
+      
+      setFoodItems(allFoodItems.filter((item) => item.isActive));
 
       // Load combo meals
       if (navigator.onLine) {
@@ -121,12 +147,18 @@ export function ComboMealPage() {
   useEffect(() => {
     loadData();
 
-    const unsubscribe = onMenuDataUpdate('combo-meals-updated', () => {
+    const unsubscribe1 = onMenuDataUpdate('combo-meals-updated', () => {
+      loadData();
+    });
+
+    // Also listen for food items updates so new items appear in combo selection
+    const unsubscribe2 = onMenuDataUpdate('food-items-updated', () => {
       loadData();
     });
 
     return () => {
-      unsubscribe();
+      unsubscribe1();
+      unsubscribe2();
     };
   }, [loadData, pagination.page, pagination.limit]);
 
