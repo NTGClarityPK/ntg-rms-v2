@@ -1307,9 +1307,9 @@ async function seedAddOns(tenantId: string): Promise<{ addOnGroupIds: string[]; 
 
   // Create Add-on Groups
   const addOnGroups = [
-    { name: 'Extra Toppings', selection_type: 'multiple', is_required: false },
-    { name: 'Spice Level', selection_type: 'single', is_required: true },
-    { name: 'Side Dishes', selection_type: 'multiple', is_required: false },
+    { name: 'Extra Toppings', selection_type: 'multiple', is_required: false, category: 'Add' },
+    { name: 'Spice Level', selection_type: 'single', is_required: true, category: 'Change' },
+    { name: 'Side Dishes', selection_type: 'multiple', is_required: false, category: 'Add' },
   ];
 
   const addOnGroupIds: string[] = [];

@@ -100,6 +100,7 @@ export default function SignupPage() {
           isRequired: false,
           minSelections: 0,
           maxSelections: undefined,
+          category: 'Add',
         });
 
         await menuApi.createAddOn(sampleGroup.id, {

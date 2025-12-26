@@ -56,7 +56,7 @@ function question(query: string): Promise<string> {
   });
 }
 
-const TENANT_ID = '11665ce4-8873-428b-9ac2-50e81871769b';
+const TENANT_ID = 'acaf465a-55c5-43c4-8d91-67e7b381d01c';
 
 async function deleteTenantData() {
   try {
