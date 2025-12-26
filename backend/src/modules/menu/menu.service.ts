@@ -340,76 +340,109 @@ export class MenuService {
   async getFoodItems(tenantId: string, categoryId?: string, pagination?: PaginationParams, onlyActiveMenus: boolean = false, search?: string): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
     
-    // Get food items (without pagination first to get accurate count)
-    let query = supabase
+    // Build base query for counting and fetching
+    let baseQuery = supabase
       .from('food_items')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('tenant_id', tenantId)
       .is('deleted_at', null);
 
     if (categoryId) {
-      query = query.eq('category_id', categoryId);
+      baseQuery = baseQuery.eq('category_id', categoryId);
     }
 
     // Apply search filter if provided
     if (search && search.trim()) {
       const searchTerm = search.trim();
-      query = query.or(`name.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
+      baseQuery = baseQuery.or(`name.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
     }
 
-    const { data: allFoodItems, error } = await query.order('display_order', { ascending: true });
-
-    if (error) {
-      throw new BadRequestException(`Failed to fetch food items: ${error.message}`);
-    }
-
-    let filteredFoodItems = allFoodItems || [];
-
-    // If filtering by active menus is enabled
+    // Handle onlyActiveMenus filter - if enabled, we need to filter by menu_items join
+    let foodItemsQuery = baseQuery;
+    let totalCount: number;
+    let foodItemIdsInActiveMenus: string[] = [];
+    let activeMenuTypes: string[] = [];
+    
     if (onlyActiveMenus) {
-      // Get all active menu types
+      // Get all active menu types first
       const { data: activeMenus } = await supabase
         .from('menus')
         .select('menu_type')
         .eq('tenant_id', tenantId)
         .eq('is_active', true);
 
-      const activeMenuTypes = activeMenus?.map((m: any) => m.menu_type) || [];
+      activeMenuTypes = activeMenus?.map((m: any) => m.menu_type) || [];
 
-      // If there are active menus, filter items to only those in active menus
       if (activeMenuTypes.length > 0) {
-        // Query menu_items directly for items in active menus (more efficient)
-        // This avoids the need to use .in() with potentially large arrays
+        // Get food item IDs that belong to active menus
         const { data: allMenuItems } = await supabase
           .from('menu_items')
           .select('food_item_id')
           .in('menu_type', activeMenuTypes)
           .eq('tenant_id', tenantId);
 
-        // Create a set of food item IDs that belong to active menus
-        const foodItemsInActiveMenus = new Set(
-          allMenuItems?.map((mi: any) => mi.food_item_id) || []
-        );
+        foodItemIdsInActiveMenus = allMenuItems?.map((mi: any) => mi.food_item_id) || [];
 
-        // Filter food items to only include those in active menus
-        filteredFoodItems = filteredFoodItems.filter((item: any) =>
-          foodItemsInActiveMenus.has(item.id)
-        );
+        if (foodItemIdsInActiveMenus.length > 0) {
+          // Filter base query to only include items in active menus
+          foodItemsQuery = baseQuery.in('id', foodItemIdsInActiveMenus);
+        } else {
+          // No items in active menus, return empty result
+          if (pagination) {
+            return createPaginatedResponse([], 0, pagination.page || 1, pagination.limit || 10);
+          }
+          return [];
+        }
       } else {
-        // If no active menus exist, show no items (for POS, not admin management)
-        filteredFoodItems = [];
+        // No active menus exist, return empty result
+        if (pagination) {
+          return createPaginatedResponse([], 0, pagination.page || 1, pagination.limit || 10);
+        }
+        return [];
       }
     }
 
-    // Get accurate total count
-    const totalCount = filteredFoodItems.length;
+    // Get total count (before pagination) - use a separate count query
+    let countQuery = supabase
+      .from('food_items')
+      .select('*', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
 
-    // Apply pagination to items
-    let paginatedFoodItems = filteredFoodItems;
+    if (categoryId) {
+      countQuery = countQuery.eq('category_id', categoryId);
+    }
+
+    if (search && search.trim()) {
+      const searchTerm = search.trim();
+      countQuery = countQuery.or(`name.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
+    }
+
+    // Apply onlyActiveMenus filter to count query if needed
+    if (onlyActiveMenus && activeMenuTypes.length > 0 && foodItemIdsInActiveMenus.length > 0) {
+      countQuery = countQuery.in('id', foodItemIdsInActiveMenus);
+    }
+
+    const { count, error: countError } = await countQuery;
+    if (countError) {
+      throw new BadRequestException(`Failed to count food items: ${countError.message}`);
+    }
+    totalCount = count || 0;
+
+    // Apply pagination at database level
     if (pagination) {
       const { offset, limit } = getPaginationParams(pagination.page, pagination.limit);
-      paginatedFoodItems = filteredFoodItems.slice(offset, offset + limit);
+      foodItemsQuery = foodItemsQuery.range(offset, offset + limit - 1);
     }
+
+    // Fetch paginated items from database
+    const { data: foodItems, error } = await foodItemsQuery.order('display_order', { ascending: true });
+
+    if (error) {
+      throw new BadRequestException(`Failed to fetch food items: ${error.message}`);
+    }
+
+    const paginatedFoodItems = foodItems || [];
 
     // Get variations, labels, and add-on groups for each item
     const itemsWithDetails = await Promise.all(
