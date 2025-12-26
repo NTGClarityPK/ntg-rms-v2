@@ -180,18 +180,26 @@ apiClient.interceptors.response.use(
           headers: {
             'Content-Type': 'application/json',
           },
-          timeout: 30000,
+          // Increased timeout for refresh endpoint (60 seconds for slow VPN)
+          timeout: 60000,
         });
 
-        console.log('Calling refresh endpoint...');
+        console.log('Calling refresh endpoint...', {
+          refreshTokenExists: !!refreshToken,
+          timestamp: new Date().toISOString(),
+        });
+        
+        const startTime = Date.now();
         const refreshResponse = await refreshClient.post(
           '/auth/refresh',
           { refreshToken }
         );
+        const duration = Date.now() - startTime;
         
         console.log('Refresh endpoint response received:', {
           status: refreshResponse.status,
           hasData: !!refreshResponse.data,
+          durationMs: duration,
         });
         
         // Handle both direct response and nested data structure
@@ -212,6 +220,11 @@ apiClient.interceptors.response.use(
         }
         return apiClient(originalRequest);
       } catch (refreshError: any) {
+        // Check if it's a timeout error
+        const isTimeout = refreshError.code === 'ECONNABORTED' || 
+                          refreshError.message?.includes('timeout') ||
+                          refreshError.message?.includes('Timeout');
+        
         // Only sign out if it's actually an authentication error (401, 403), not a network error
         const isAuthError = refreshError?.response?.status === 401 || 
                            refreshError?.response?.status === 403;
@@ -221,9 +234,11 @@ apiClient.interceptors.response.use(
           status: refreshError?.response?.status,
           statusText: refreshError?.response?.statusText,
           message: refreshError?.message,
+          code: refreshError?.code,
+          isTimeout,
+          isAuthError,
           data: refreshError?.response?.data,
           originalRequestUrl: originalRequest.url,
-          isAuthError,
           timestamp: new Date().toISOString(),
         });
 

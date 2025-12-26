@@ -26,6 +26,7 @@ import { menuApi, FoodItem } from '@/lib/api/menu';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
+import { API_BASE_URL } from '@/lib/constants/api';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getBadgeColorForText } from '@/lib/utils/theme';
@@ -150,6 +151,48 @@ export function MenusPage() {
 
   const handleAssignItems = async (menuType: string) => {
     try {
+      // Proactively refresh token if it's expiring soon (before long pagination loop)
+      const accessToken = localStorage.getItem('rms_access_token');
+      if (accessToken) {
+        try {
+          const payload = JSON.parse(atob(accessToken.split('.')[1]));
+          const now = Math.floor(Date.now() / 1000);
+          const exp = payload.exp;
+          const timeUntilExpiry = exp - now;
+          
+          // If token expires within 5 minutes, refresh it proactively
+          if (timeUntilExpiry < 300) {
+            const refreshToken = localStorage.getItem('rms_refresh_token');
+            if (refreshToken) {
+              try {
+                const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ refreshToken }),
+                });
+                
+                if (response.ok) {
+                  const data = await response.json();
+                  const responseData = data?.data || data;
+                  if (responseData.accessToken) {
+                    localStorage.setItem('rms_access_token', responseData.accessToken);
+                    if (responseData.refreshToken) {
+                      localStorage.setItem('rms_refresh_token', responseData.refreshToken);
+                    }
+                    console.log('Token proactively refreshed before pagination');
+                  }
+                }
+              } catch (refreshErr) {
+                console.warn('Proactive token refresh failed, continuing anyway:', refreshErr);
+              }
+            }
+          }
+        } catch (decodeErr) {
+          // If we can't decode token, continue anyway
+          console.warn('Could not decode token for proactive refresh check');
+        }
+      }
+      
       // Always load fresh food items when opening modal to ensure we have all items
       // Fetch all items by making multiple paginated requests (backend limit is 100)
       const allItems: FoodItem[] = [];
