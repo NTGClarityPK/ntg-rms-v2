@@ -97,13 +97,14 @@ export default function OrdersPage() {
       setLoading(true);
     }
     try {
-      // Load orders from backend - no status filter at API level, filter client-side
-      const status = undefined;
+      // Load orders from backend with all filters including search
       const params = {
-        status,
+        status: selectedStatuses.length > 0 ? (selectedStatuses as OrderStatus[]) : undefined,
         branchId: selectedBranch || undefined,
         orderType: selectedOrderType as OrderType | undefined,
         paymentStatus: selectedPaymentStatus as PaymentStatus | undefined,
+        search: searchQuery.trim() || undefined,
+        waiterEmail: showMyOrdersOnly && user?.email ? user.email : undefined,
         ...pagination.paginationParams,
       };
       
@@ -127,12 +128,14 @@ export default function OrdersPage() {
         
         // Only need to fetch all orders if we're filtering by status
         // This is needed to check if IndexedDB orders exist in backend with different statuses
-        if (status) {
+        if (selectedStatuses.length > 0) {
           try {
             const allBackendParams = {
               branchId: selectedBranch || undefined,
               orderType: selectedOrderType as OrderType | undefined,
               paymentStatus: selectedPaymentStatus as PaymentStatus | undefined,
+              search: searchQuery.trim() || undefined,
+              waiterEmail: showMyOrdersOnly && user?.email ? user.email : undefined,
               // No status filter - get all orders
               // Don't paginate this query - we need all orders for exclusion check
             };
@@ -149,10 +152,22 @@ export default function OrdersPage() {
           .where('tenantId')
           .equals(user.tenantId)
           .filter((order) => {
-            if (status && order.status !== status) return false;
+            if (selectedStatuses.length > 0 && !selectedStatuses.includes(order.status)) return false;
             if (selectedBranch && order.branchId !== selectedBranch) return false;
             if (selectedOrderType && order.orderType !== selectedOrderType) return false;
             if (selectedPaymentStatus && order.paymentStatus !== selectedPaymentStatus) return false;
+            if (showMyOrdersOnly && user?.email && (order as any).waiterEmail !== user.email) return false;
+            // Apply search filter to IndexedDB orders as well
+            if (searchQuery.trim()) {
+              const query = searchQuery.toLowerCase().trim();
+              const matchesOrderNumber = order.orderNumber?.toLowerCase().includes(query);
+              const matchesTokenNumber = order.tokenNumber?.toLowerCase().includes(query);
+              if (!matchesOrderNumber && !matchesTokenNumber) {
+                // For customer name/phone, we'd need to load customer data, but for simplicity
+                // we'll just check orderNumber and tokenNumber for IndexedDB
+                return false;
+              }
+            }
             return !order.deletedAt;
           })
           .toArray();
@@ -308,7 +323,7 @@ export default function OrdersPage() {
         setLoading(false);
       }
     }
-  }, [selectedBranch, selectedOrderType, selectedPaymentStatus, language, user?.tenantId, pagination]);
+  }, [selectedBranch, selectedOrderType, selectedPaymentStatus, selectedStatuses, searchQuery, showMyOrdersOnly, user?.tenantId, user?.email, language, pagination]);
 
   // Update ref whenever loadOrders changes
   useEffect(() => {
@@ -324,7 +339,7 @@ export default function OrdersPage() {
   useEffect(() => {
     loadOrders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedBranch, selectedOrderType, selectedPaymentStatus, pagination.page, pagination.limit]);
+  }, [selectedBranch, selectedOrderType, selectedPaymentStatus, selectedStatuses, searchQuery, showMyOrdersOnly, pagination.page, pagination.limit]);
 
   // Set up Supabase Realtime subscription for cross-browser updates
   useEffect(() => {
@@ -440,29 +455,9 @@ export default function OrdersPage() {
     };
   }, [loadOrders]);
 
-  const filteredOrders = orders.filter((order) => {
-    // First apply "My Orders" filter
-    if (showMyOrdersOnly && user?.email && order.waiterEmail !== user.email) {
-      return false;
-    }
-
-    // Then apply status filter (multi-select)
-    // If no statuses selected, show all orders
-    if (selectedStatuses.length > 0 && !selectedStatuses.includes(order.status)) {
-      return false;
-    }
-    
-    // Then apply search query filter
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      order.orderNumber.toLowerCase().includes(query) ||
-      order.tokenNumber?.toLowerCase().includes(query) ||
-      order.customer?.name?.toLowerCase().includes(query) ||
-      order.customer?.name?.toLowerCase().includes(query) ||
-      order.customer?.phone?.includes(query)
-    );
-  });
+  // No client-side filtering needed - all filtering is done on the backend
+  // The orders array already contains filtered results from the backend
+  const filteredOrders = orders;
 
   const handleViewOrder = (order: Order) => {
     setSelectedOrder(order);

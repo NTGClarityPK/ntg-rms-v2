@@ -46,6 +46,8 @@ export class OrdersController {
   @ApiQuery({ name: 'offset', required: false, type: Number })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'includeItems', required: false, type: Boolean, description: 'Include order items in response' })
+  @ApiQuery({ name: 'search', required: false, type: String, description: 'Search query for order number, token number, customer name, or customer phone' })
+  @ApiQuery({ name: 'waiterEmail', required: false, type: String, description: 'Filter by waiter email (for My Orders filter)' })
   getOrders(
     @CurrentUser() user: any,
     @Query('status') status?: string,
@@ -58,6 +60,8 @@ export class OrdersController {
     @Query('offset') offset?: string,
     @Query('page') page?: string,
     @Query('includeItems') includeItems?: string,
+    @Query('search') search?: string,
+    @Query('waiterEmail') waiterEmail?: string,
   ) {
     // Parse status: support comma-separated values like "pending,preparing"
     const statusArray = status?.includes(',') ? status.split(',').map(s => s.trim()) : status ? [status] : undefined;
@@ -73,6 +77,8 @@ export class OrdersController {
       offset: offset ? parseInt(offset, 10) : undefined,
       page: page ? parseInt(page, 10) : undefined,
       includeItems: includeItems === 'true' || includeItems === '1',
+      search,
+      waiterEmail,
     });
   }
 
