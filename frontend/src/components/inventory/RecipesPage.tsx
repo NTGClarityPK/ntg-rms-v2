@@ -98,7 +98,7 @@ export function RecipesPage() {
           const localFoodItems = await db.foodItems
             .where('tenantId')
             .equals(user.tenantId)
-            .filter((item) => !item.deletedAt && item.isActive)
+            .filter((item) => !item.deletedAt)
             .toArray();
           
           // Apply local pagination for IndexedDB
@@ -136,7 +136,7 @@ export function RecipesPage() {
         const localFoodItems = await db.foodItems
           .where('tenantId')
           .equals(user.tenantId)
-          .filter((item) => !item.deletedAt && item.isActive)
+          .filter((item) => !item.deletedAt)
           .toArray();
         
         // Apply local pagination for IndexedDB

@@ -36,6 +36,7 @@ import { UpdateVariationGroupDto } from './dto/update-variation-group.dto';
 import { CreateVariationDto } from './dto/create-variation.dto';
 import { UpdateVariationDto } from './dto/update-variation.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
+import { GetFoodItemsDto } from './dto/get-food-items.dto';
 
 @ApiTags('menu')
 @Controller('menu')
@@ -126,12 +127,11 @@ export class MenuController {
   @ApiOperation({ summary: 'Get all food items' })
   getFoodItems(
     @CurrentUser() user: any,
-    @Query('categoryId') categoryId?: string,
-    @Query('onlyActiveMenus') onlyActiveMenus?: string,
-    @Query() paginationDto?: PaginationDto,
+    @Query() queryDto: GetFoodItemsDto,
   ) {
+    const { categoryId, onlyActiveMenus, ...paginationDto } = queryDto;
     // Default to false (show all items) unless explicitly set to true
-    const filterByActiveMenus = onlyActiveMenus === 'true' ? true : false;
+    const filterByActiveMenus = onlyActiveMenus === true;
     return this.menuService.getFoodItems(user.tenantId, categoryId, paginationDto, filterByActiveMenus);
   }
 

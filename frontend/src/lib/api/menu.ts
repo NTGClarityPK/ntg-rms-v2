@@ -177,11 +177,12 @@ export const menuApi = {
   },
 
   // Food Items
-  getFoodItems: async (categoryId?: string, pagination?: PaginationParams): Promise<FoodItem[] | PaginatedResponse<FoodItem>> => {
+  getFoodItems: async (categoryId?: string, pagination?: PaginationParams, onlyActiveMenus?: boolean): Promise<FoodItem[] | PaginatedResponse<FoodItem>> => {
     const params = new URLSearchParams();
     if (categoryId) params.append('categoryId', categoryId);
     if (pagination?.page) params.append('page', pagination.page.toString());
     if (pagination?.limit) params.append('limit', pagination.limit.toString());
+    if (onlyActiveMenus) params.append('onlyActiveMenus', 'true');
     const { data } = await apiClient.get(`/menu/food-items${params.toString() ? `?${params.toString()}` : ''}`);
     return data;
   },

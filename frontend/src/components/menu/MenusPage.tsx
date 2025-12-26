@@ -30,6 +30,7 @@ import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hoo
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getBadgeColorForText } from '@/lib/utils/theme';
 import { onMenuDataUpdate, notifyMenuDataUpdate } from '@/lib/utils/menu-events';
+import { isPaginatedResponse } from '@/lib/types/pagination.types';
 
 export function MenusPage() {
   const { language } = useLanguageStore();
@@ -114,10 +115,11 @@ export function MenusPage() {
       const menuList = Array.isArray(menuListResponse) ? menuListResponse : (menuListResponse?.data || []);
       setMenus(menuList);
 
-      // Load food items
+      // Load food items (all items, not just active, for menu assignment)
       const itemsResponse = await menuApi.getFoodItems();
       const items = Array.isArray(itemsResponse) ? itemsResponse : (itemsResponse?.data || []);
-      setFoodItems(items.filter((item) => item.isActive));
+      // Filter out items without names, but keep all items (active and inactive) for menu assignment
+      setFoodItems(items.filter((item) => item.name && item.name.trim()));
     } catch (err: any) {
       setError(err.message || 'Failed to load menus');
     } finally {
@@ -148,7 +150,33 @@ export function MenusPage() {
 
   const handleAssignItems = async (menuType: string) => {
     try {
+      // Always load fresh food items when opening modal to ensure we have all items
+      // Fetch all items by making multiple paginated requests (backend limit is 100)
+      const allItems: FoodItem[] = [];
+      let page = 1;
+      let hasMore = true;
+      const limit = 100; // Backend max limit
+      
+      while (hasMore) {
+        const itemsResponse = await menuApi.getFoodItems(undefined, { page, limit });
+        const items = Array.isArray(itemsResponse) ? itemsResponse : (itemsResponse?.data || []);
+        allItems.push(...items);
+        
+        // Check if there are more pages
+        if (isPaginatedResponse(itemsResponse)) {
+          hasMore = itemsResponse.pagination?.hasNext || false;
+        } else {
+          // If not paginated, check if we got a full page (might indicate more)
+          hasMore = items.length === limit;
+        }
+        page++;
+      }
+      
+      const itemsWithNames = allItems.filter((item) => item.name && item.name.trim());
+      setFoodItems(itemsWithNames);
+      
       const currentItems = await menuApi.getMenuItems(menuType);
+      // Set all selected items - they should all have names and be in itemsWithNames
       setSelectedItemIds(currentItems);
       setSelectedMenuType(menuType);
       setAssignModalOpened(true);
@@ -419,7 +447,7 @@ export function MenusPage() {
             label={t('menu.foodItems', language)}
             data={foodItems.map((item) => ({
               value: item.id,
-              label: item.name || '',
+              label: item.name,
             }))}
             value={selectedItemIds}
             onChange={(value) => setSelectedItemIds(value)}
@@ -461,7 +489,7 @@ export function MenusPage() {
               placeholder={t('menu.selectFoodItems' as any, language) || 'Select food items (optional)'}
               data={foodItems.map((item) => ({
                 value: item.id,
-                label: item.name || '',
+                label: item.name,
               }))}
               {...form.getInputProps('foodItemIds')}
               searchable

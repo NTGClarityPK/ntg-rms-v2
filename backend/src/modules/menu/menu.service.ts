@@ -372,12 +372,13 @@ export class MenuService {
 
       // If there are active menus, filter items to only those in active menus
       if (activeMenuTypes.length > 0) {
-        const allFoodItemIds = filteredFoodItems.map((item: any) => item.id);
+        // Query menu_items directly for items in active menus (more efficient)
+        // This avoids the need to use .in() with potentially large arrays
         const { data: allMenuItems } = await supabase
           .from('menu_items')
-          .select('food_item_id, menu_type')
-          .in('food_item_id', allFoodItemIds)
-          .in('menu_type', activeMenuTypes);
+          .select('food_item_id')
+          .in('menu_type', activeMenuTypes)
+          .eq('tenant_id', tenantId);
 
         // Create a set of food item IDs that belong to active menus
         const foodItemsInActiveMenus = new Set(
@@ -388,8 +389,10 @@ export class MenuService {
         filteredFoodItems = filteredFoodItems.filter((item: any) =>
           foodItemsInActiveMenus.has(item.id)
         );
+      } else {
+        // If no active menus exist, show no items (for POS, not admin management)
+        filteredFoodItems = [];
       }
-      // If no active menus exist, show all items (fallback for admin management)
     }
 
     // Get accurate total count

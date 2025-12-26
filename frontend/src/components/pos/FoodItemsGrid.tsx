@@ -157,10 +157,11 @@ export function FoodItemsGrid({
         // Load food items - use server pagination if online, otherwise use IndexedDB with local pagination
         if (navigator.onLine) {
           try {
-            // Load from server with pagination
+            // Load from server with pagination and server-side active menu filtering
             const serverItemsResponse = await menuApi.getFoodItems(
               selectedCategoryId || undefined,
-              foodItemsPagination.paginationParams
+              foodItemsPagination.paginationParams,
+              true // onlyActiveMenus = true - filter on server side
             ).catch((error) => {
               // If API call fails, throw to trigger offline fallback
               console.warn('⚠️ Failed to load food items from API, using offline fallback:', error);
@@ -169,27 +170,18 @@ export function FoodItemsGrid({
             const serverItems: FoodItem[] = foodItemsPagination.extractData(serverItemsResponse) as FoodItem[];
             foodItemsPagination.extractPagination(serverItemsResponse);
             
-            // Filter food items to only include those in active menus
-            let filteredItems: FoodItem[] = serverItems;
-            if (activeMenuTypes.length > 0) {
-              filteredItems = serverItems.filter((item) => {
-                // Check if item belongs to at least one active menu
-                const itemMenuTypes = item.menuTypes || (item.menuType ? [item.menuType] : []);
-                return itemMenuTypes.some((menuType: string) => activeMenuTypes.includes(menuType));
-              });
-            } else {
-              // If no active menus, show no items
-              filteredItems = [];
-            }
-            
             // Filter by search query on client side (since backend doesn't support search yet)
+            let filteredItems: FoodItem[] = serverItems;
             if (searchQuery.trim()) {
               const query = searchQuery.toLowerCase();
-              filteredItems = filteredItems.filter(
+              filteredItems = serverItems.filter(
                 (item) =>
                   item.name?.toLowerCase().includes(query) ||
                   item.description?.toLowerCase().includes(query),
               );
+              // If search is active, we need to adjust pagination manually
+              // But since we're filtering client-side, pagination from server is still correct
+              // We'll show all filtered results on current page
             }
             
             setFoodItems(filteredItems);

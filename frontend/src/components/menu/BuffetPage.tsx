@@ -162,7 +162,7 @@ export function BuffetPage() {
             }
           })
         );
-        allItems.push(...items.filter((item): item is FoodItem => item !== null && item.isActive));
+        allItems.push(...items.filter((item): item is FoodItem => item !== null));
       }
       // Remove duplicates
       const uniqueItems = Array.from(new Map(allItems.map(item => [item.id, item])).values());

@@ -95,7 +95,7 @@ export function ComboMealPage() {
       // Load food items for selection
       const itemsResponse = await menuApi.getFoodItems();
       const items = Array.isArray(itemsResponse) ? itemsResponse : (itemsResponse?.data || []);
-      setFoodItems(items.filter((item) => item.isActive));
+      setFoodItems(items);
 
       // Load combo meals
       if (navigator.onLine) {
