@@ -1,6 +1,9 @@
 import apiClient from './client';
 import { API_ENDPOINTS } from '../constants/api';
 import { tokenStorage } from './client';
+import { useRestaurantStore } from '../store/restaurant-store';
+import { useThemeStore } from '../store/theme-store';
+import { DEFAULT_THEME_COLOR } from '../utils/theme';
 
 export interface LoginCredentials {
   email: string;
@@ -73,7 +76,20 @@ export const authApi = {
 
   logout: () => {
     tokenStorage.clearTokens();
+    // Clear tenant-specific theme data on logout
     if (typeof window !== 'undefined') {
+      // Clear restaurant store state and localStorage (contains primaryColor)
+      const { setRestaurant } = useRestaurantStore.getState();
+      setRestaurant(null);
+      localStorage.removeItem('rms-restaurant-storage');
+      
+      // Clear theme color from localStorage
+      localStorage.removeItem('rms_theme_color');
+      
+      // Reset theme store to default
+      const { setPrimaryColor } = useThemeStore.getState();
+      setPrimaryColor(DEFAULT_THEME_COLOR);
+      
       window.location.href = '/login';
     }
   },

@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { Role, Permission } from '../api/roles';
+import { useThemeStore } from './theme-store';
+import { useRestaurantStore } from './restaurant-store';
+import { DEFAULT_THEME_COLOR } from '../utils/theme';
 
 export interface User {
   id: string;
@@ -34,11 +37,22 @@ export const useAuthStore = create<AuthState>()(
         set((state) => ({
           user: state.user ? { ...state.user, permissions } : null,
         })),
-      logout: () =>
+      logout: () => {
+        // Clear tenant-specific theme color on logout
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('rms_theme_color');
+          // Clear restaurant store (contains primaryColor)
+          const { setRestaurant } = useRestaurantStore.getState();
+          setRestaurant(null);
+          // Reset theme store to default
+          const { setPrimaryColor } = useThemeStore.getState();
+          setPrimaryColor(DEFAULT_THEME_COLOR);
+        }
         set({
           user: null,
           isAuthenticated: false,
-        }),
+        });
+      },
     }),
     {
       name: 'rms-auth-storage',
