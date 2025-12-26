@@ -87,6 +87,15 @@ apiClient.interceptors.response.use(
 
     // If error is 401 and we haven't tried to refresh yet
     if (error.response?.status === 401 && !originalRequest._retry) {
+      // Log 401 error details for debugging
+      console.warn('401 Unauthorized error:', {
+        url: originalRequest.url,
+        method: originalRequest.method,
+        timestamp: new Date().toISOString(),
+        hasRefreshToken: !!tokenStorage.getRefreshToken(),
+        isRefreshing,
+      });
+      
       // Don't retry refresh endpoint itself - it means refresh token is invalid/expired
       if (originalRequest.url?.includes('/auth/refresh')) {
         tokenStorage.clearTokens();
@@ -174,10 +183,16 @@ apiClient.interceptors.response.use(
         const isAuthError = refreshError?.response?.status === 401 || 
                            refreshError?.response?.status === 403;
         
-        // Log the error for debugging
-        if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-          console.error('Token refresh failed:', refreshError);
-        }
+        // Log the error for debugging (always log, not just in dev)
+        console.error('Token refresh failed:', {
+          status: refreshError?.response?.status,
+          statusText: refreshError?.response?.statusText,
+          message: refreshError?.message,
+          data: refreshError?.response?.data,
+          originalRequestUrl: originalRequest.url,
+          isAuthError,
+          timestamp: new Date().toISOString(),
+        });
 
         if (isAuthError) {
           tokenStorage.clearTokens();

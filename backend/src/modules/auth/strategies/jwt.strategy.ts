@@ -34,6 +34,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
+    // Log token expiry info for debugging (only in development/staging)
+    if (process.env.NODE_ENV !== 'production') {
+      const now = Math.floor(Date.now() / 1000);
+      const exp = payload.exp;
+      const timeUntilExpiry = exp - now;
+      console.log(`[JWT Strategy] Token validation - Expiry in ${timeUntilExpiry}s, Current time: ${now}, Expiry time: ${exp}`);
+    }
+    
     const user = await this.authService.validateUser(payload.sub);
     if (!user) {
       throw new UnauthorizedException();

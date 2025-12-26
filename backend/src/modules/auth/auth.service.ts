@@ -3,6 +3,8 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../../database/supabase.service';
 import { RolesService } from '../roles/roles.service';
+import { SubscriptionService } from '../subscription/subscription.service';
+import { PlanId } from '../subscription/dto/create-subscription.dto';
 import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
@@ -15,6 +17,7 @@ export class AuthService {
     private configService: ConfigService,
     private supabaseService: SupabaseService,
     private rolesService: RolesService,
+    private subscriptionService: SubscriptionService,
   ) {}
 
   async signup(signupDto: SignupDto) {
@@ -177,6 +180,15 @@ export class AuthService {
       } catch (error) {
         console.error('Error creating default branch:', error);
         // Don't fail signup if branch creation fails
+      }
+
+      // Create trial subscription for new tenant
+      try {
+        await this.subscriptionService.createTrialSubscription(tenantId, PlanId.STARTER);
+        console.log('Trial subscription created for tenant:', tenantId);
+      } catch (subscriptionError) {
+        console.error('Failed to create trial subscription:', subscriptionError);
+        // Don't fail signup if subscription creation fails, but log it
       }
     }
 
@@ -364,6 +376,8 @@ export class AuthService {
     try {
       const payload = this.jwtService.verify(refreshTokenDto.refreshToken, {
         secret: this.configService.get<string>('jwt.refreshSecret'),
+        // Add clock tolerance to handle clock skew and network latency (60 seconds)
+        clockTolerance: 60,
       });
 
       // Get user from database
