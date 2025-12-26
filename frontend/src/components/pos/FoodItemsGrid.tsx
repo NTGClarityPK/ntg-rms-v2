@@ -137,26 +137,10 @@ export function FoodItemsGrid({
           throw new Error('Offline'); // Trigger offline fallback
         }
       } catch (error) {
-        // Offline fallback: use food items' menuTypes to infer active menus
-        try {
-          const allItems = await db.foodItems
-            .where('tenantId')
-            .equals(tenantId)
-            .filter((item) => item.isActive && !item.deletedAt)
-            .toArray();
-          const allMenuTypes = new Set<string>();
-          allItems.forEach((item) => {
-            if (item.menuTypes) {
-              item.menuTypes.forEach((mt) => allMenuTypes.add(mt));
-            } else if (item.menuType) {
-              allMenuTypes.add(item.menuType);
-            }
-          });
-          activeMenuTypes = Array.from(allMenuTypes);
-        } catch (dbError) {
-          console.error('Failed to load active menus from IndexedDB:', dbError);
-          // Continue with empty array - will show no items if no active menus
-        }
+        // Offline fallback: Cannot determine active menus without API access
+        // Show no items when offline since we need to know which menus are active
+        console.warn('⚠️ Cannot load active menus while offline. No items will be shown.');
+        activeMenuTypes = [];
       }
 
       // Load items based on selected type
@@ -185,11 +169,23 @@ export function FoodItemsGrid({
             const serverItems: FoodItem[] = foodItemsPagination.extractData(serverItemsResponse) as FoodItem[];
             foodItemsPagination.extractPagination(serverItemsResponse);
             
-            // Filter by search query on client side (since backend doesn't support search yet)
+            // Filter food items to only include those in active menus
             let filteredItems: FoodItem[] = serverItems;
+            if (activeMenuTypes.length > 0) {
+              filteredItems = serverItems.filter((item) => {
+                // Check if item belongs to at least one active menu
+                const itemMenuTypes = item.menuTypes || (item.menuType ? [item.menuType] : []);
+                return itemMenuTypes.some((menuType: string) => activeMenuTypes.includes(menuType));
+              });
+            } else {
+              // If no active menus, show no items
+              filteredItems = [];
+            }
+            
+            // Filter by search query on client side (since backend doesn't support search yet)
             if (searchQuery.trim()) {
               const query = searchQuery.toLowerCase();
-              filteredItems = serverItems.filter(
+              filteredItems = filteredItems.filter(
                 (item) =>
                   item.name?.toLowerCase().includes(query) ||
                   item.description?.toLowerCase().includes(query),
@@ -238,10 +234,12 @@ export function FoodItemsGrid({
 
   const loadFromIndexedDB = async (activeMenuTypes: string[]) => {
     // Load food items from IndexedDB
+    // Only filter by deletedAt - isActive is no longer used for food items
+    // Items show/hide based on menu membership only
     let itemsQuery = db.foodItems
       .where('tenantId')
       .equals(tenantId)
-      .filter((item) => item.isActive && !item.deletedAt);
+      .filter((item) => !item.deletedAt);
 
     if (selectedCategoryId) {
       itemsQuery = itemsQuery.filter((item) => {

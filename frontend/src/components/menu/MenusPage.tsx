@@ -202,6 +202,9 @@ export function MenusPage() {
     try {
       await menuApi.activateMenu(menuType, isActive);
       
+      // Reload data to ensure consistency with server (without showing loading state)
+      await loadData(false);
+      
       notifications.show({
         title: t('common.success' as any, language) || 'Success',
         message: isActive
@@ -209,9 +212,7 @@ export function MenusPage() {
           : t('menu.deactivate', language) + ' ' + (t('common.success' as any, language) || 'Success'),
         color: successColor,
       });
-
-      // Reload data to ensure consistency with server (without showing loading state)
-      loadData(false);
+      
       // Notify other tabs that menus have been updated
       notifyMenuDataUpdate('menus-updated');
     } catch (err: any) {
@@ -438,6 +439,53 @@ export function MenusPage() {
             </Button>
           </Group>
         </Stack>
+      </Modal>
+
+      <Modal
+        opened={createModalOpened}
+        onClose={handleCloseCreateModal}
+        title={t('menu.createMenu', language) || 'Create Menu'}
+        size="lg"
+      >
+        <form onSubmit={form.onSubmit(handleCreateMenu)}>
+          <Stack gap="md">
+            <TextInput
+              label={t('menu.menuName', language) || 'Menu Name'}
+              placeholder={t('menu.menuNamePlaceholder' as any, language) || 'Enter menu name'}
+              required
+              {...form.getInputProps('name')}
+            />
+
+            <MultiSelect
+              label={t('menu.foodItems', language)}
+              placeholder={t('menu.selectFoodItems' as any, language) || 'Select food items (optional)'}
+              data={foodItems.map((item) => ({
+                value: item.id,
+                label: item.name || '',
+              }))}
+              {...form.getInputProps('foodItemIds')}
+              searchable
+              clearable
+            />
+
+            <Switch
+              label={t('menu.isActive' as any, language) || 'Active'}
+              {...form.getInputProps('isActive', { type: 'checkbox' })}
+            />
+
+            <Group justify="flex-end" mt="md">
+              <Button variant="subtle" onClick={handleCloseCreateModal}>
+                {t('common.cancel' as any, language) || 'Cancel'}
+              </Button>
+              <Button
+                type="submit"
+                style={{ backgroundColor: primaryColor }}
+              >
+                {t('common.create' as any, language) || 'Create'}
+              </Button>
+            </Group>
+          </Stack>
+        </form>
       </Modal>
     </Stack>
   );

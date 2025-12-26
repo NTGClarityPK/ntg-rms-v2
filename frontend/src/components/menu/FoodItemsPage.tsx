@@ -1002,15 +1002,14 @@ export function FoodItemsPage() {
 
       {loading ? (
         <Paper withBorder>
-        <Table>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t('menu.foodItemName', language)}</Table.Th>
-              <Table.Th>{t('menu.categoryName', language)}</Table.Th>
-              <Table.Th>{t('menu.basePrice', language)}</Table.Th>
-              <Table.Th>{t('menu.menuType', language)}</Table.Th>
-              <Table.Th>{t('menu.active', language)}</Table.Th>
-              <Table.Th>{t('menu.actions', language)}</Table.Th>
+          <Table>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>{t('menu.foodItemName', language)}</Table.Th>
+                <Table.Th>{t('menu.categoryName', language)}</Table.Th>
+                <Table.Th>{t('menu.basePrice', language)}</Table.Th>
+                <Table.Th>{t('menu.menuType', language)}</Table.Th>
+                <Table.Th>{t('menu.actions', language)}</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -1025,7 +1024,6 @@ export function FoodItemsPage() {
                   <Table.Td><Skeleton height={16} width={100} /></Table.Td>
                   <Table.Td><Skeleton height={16} width={80} /></Table.Td>
                   <Table.Td><Skeleton height={24} width={80} radius="xl" /></Table.Td>
-                  <Table.Td><Skeleton height={24} width={60} radius="xl" /></Table.Td>
                   <Table.Td>
                     <Group gap="xs">
                       <Skeleton height={32} width={32} radius="md" />
@@ -1054,7 +1052,6 @@ export function FoodItemsPage() {
                     <Table.Th style={{ minWidth: 120 }}>{t('menu.categoryName', language)}</Table.Th>
                     <Table.Th style={{ minWidth: 100, width: 100 }}>{t('menu.basePrice', language)}</Table.Th>
                     <Table.Th style={{ minWidth: 180, width: 200 }}>{t('menu.menuType', language)}</Table.Th>
-                    <Table.Th style={{ minWidth: 90, width: 100 }}>{t('menu.active', language)}</Table.Th>
                     <Table.Th style={{ minWidth: 100, width: 100 }}>{t('menu.actions', language)}</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
@@ -1159,15 +1156,6 @@ export function FoodItemsPage() {
                           ) : (
                             <Text c="dimmed" size="sm">-</Text>
                           )}
-                        </Table.Td>
-                        <Table.Td>
-                        <Badge 
-                          variant="light"
-                          color={getBadgeColorForText(item.isActive ? t('menu.active', language) : t('menu.inactive', language))} 
-                          size="sm"
-                        >
-                          {item.isActive ? t('menu.active', language) : t('menu.inactive', language)}
-                        </Badge>
                         </Table.Td>
                         <Table.Td>
                           <Group gap="xs" wrap="nowrap">
