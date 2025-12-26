@@ -166,12 +166,12 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
     (item) =>
       item.href === '/dashboard' ||
       item.href.startsWith('/pos') ||
-      item.href === '/menu' ||
       item.href === '/orders' ||
       item.href === '/delivery'
   );
   const managementItems = visibleItems.filter(
     (item) =>
+      item.href === '/menu' ||
       item.href === '/customers' ||
       item.href === '/inventory' ||
       item.href === '/recipes' ||
