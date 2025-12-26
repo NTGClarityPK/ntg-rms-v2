@@ -101,7 +101,7 @@ export function FoodItemsGrid({
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, selectedCategoryId, searchQuery, foodItemsPagination.page, foodItemsPagination.limit, buffetsPagination.page, buffetsPagination.limit, comboMealsPagination.page, comboMealsPagination.limit, itemType, orderType]);
+  }, [tenantId, selectedCategoryId, searchQuery, foodItemsPagination.page, foodItemsPagination.limit, buffetsPagination.page, buffetsPagination.limit, comboMealsPagination.page, comboMealsPagination.limit, itemType]);
 
   const loadData = async () => {
     try {
