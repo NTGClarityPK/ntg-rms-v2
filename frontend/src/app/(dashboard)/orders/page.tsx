@@ -73,6 +73,7 @@ export default function OrdersPage() {
   const [branches, setBranches] = useState<{ value: string; label: string }[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [detailsModalOpened, { open: openDetailsModal, close: closeDetailsModal }] = useDisclosure(false);
+  const [markingAsPaidOrderId, setMarkingAsPaidOrderId] = useState<string | null>(null);
 
   // Ref to store the latest loadOrders function for use in subscriptions
   // This prevents subscription recreation while ensuring we always use the latest function
@@ -470,6 +471,7 @@ export default function OrdersPage() {
   };
 
   const handleMarkAsPaid = async (order: Order) => {
+    setMarkingAsPaidOrderId(order.id);
     try {
       await ordersApi.updatePaymentStatus(order.id, {
         paymentStatus: 'paid',
@@ -480,13 +482,15 @@ export default function OrdersPage() {
         message: t('orders.paymentStatusUpdated', language),
         color: getSuccessColor(),
       });
-      loadOrders();
+      await loadOrders();
     } catch (error: any) {
       notifications.show({
         title: t('common.error' as any, language),
         message: error?.response?.data?.message || t('orders.updateError', language),
         color: getErrorColor(),
       });
+    } finally {
+      setMarkingAsPaidOrderId(null);
     }
   };
 
@@ -731,10 +735,16 @@ export default function OrdersPage() {
                         {order.paymentStatus === 'unpaid' && (
                           <Button
                             size="sm"
-                            variant="light"
+                            variant={markingAsPaidOrderId === order.id ? "filled" : "light"}
                             color={getSuccessColor()}
-                            leftSection={<IconCheck size={16} />}
-                            onClick={() => handleMarkAsPaid(order)}
+                            leftSection={markingAsPaidOrderId !== order.id ? <IconCheck size={16} /> : undefined}
+                            onClick={() => {
+                              if (markingAsPaidOrderId !== order.id) {
+                                handleMarkAsPaid(order);
+                              }
+                            }}
+                            loading={markingAsPaidOrderId === order.id}
+                            disabled={markingAsPaidOrderId === order.id}
                           >
                             {t('orders.markAsPaid', language)}
                           </Button>
@@ -756,6 +766,7 @@ export default function OrdersPage() {
                               <Menu.Item
                                 leftSection={<IconCheck size={16} />}
                                 onClick={() => handleMarkAsPaid(order)}
+                                disabled={markingAsPaidOrderId === order.id}
                               >
                                 {t('orders.markAsPaid', language)}
                               </Menu.Item>
