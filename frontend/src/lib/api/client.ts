@@ -87,6 +87,52 @@ apiClient.interceptors.response.use(
 
     // If error is 401 and we haven't tried to refresh yet
     if (error.response?.status === 401 && !originalRequest._retry) {
+      const accessToken = tokenStorage.getAccessToken();
+      const currentRefreshToken = tokenStorage.getRefreshToken();
+      
+      // Decode token to check expiry
+      let tokenExpiryInfo = null;
+      if (accessToken) {
+        try {
+          const payload = JSON.parse(atob(accessToken.split('.')[1]));
+          const now = Math.floor(Date.now() / 1000);
+          const exp = payload.exp;
+          tokenExpiryInfo = {
+            expiresAt: new Date(exp * 1000).toISOString(),
+            expiresInSeconds: exp - now,
+            isExpired: exp < now,
+          };
+        } catch (e) {
+          tokenExpiryInfo = { error: 'Could not decode token' };
+        }
+      }
+      
+      // Log 401 error details for debugging
+      console.warn('401 Unauthorized error:', {
+        url: originalRequest.url,
+        method: originalRequest.method,
+        timestamp: new Date().toISOString(),
+        hasRefreshToken: !!currentRefreshToken,
+        hasAccessToken: !!accessToken,
+        tokenExpiryInfo,
+        isRefreshing,
+        willAttemptRefresh: !originalRequest.url?.includes('/auth/refresh'),
+      });
+      
+      // Don't retry refresh endpoint itself - it means refresh token is invalid/expired
+      if (originalRequest.url?.includes('/auth/refresh')) {
+        tokenStorage.clearTokens();
+        if (typeof window !== 'undefined') {
+          import('../store/auth-store').then(({ useAuthStore }) => {
+            useAuthStore.getState().logout();
+          });
+          if (!window.location.pathname.includes('/login')) {
+            window.location.href = '/login';
+          }
+        }
+        return Promise.reject(error);
+      }
+
       if (isRefreshing) {
         // If already refreshing, queue this request
         return new Promise((resolve, reject) => {
@@ -105,9 +151,12 @@ apiClient.interceptors.response.use(
 
       originalRequest._retry = true;
       isRefreshing = true;
+      
+      console.log('Starting token refresh attempt...');
 
       const refreshToken = tokenStorage.getRefreshToken();
       if (!refreshToken) {
+        console.error('No refresh token available');
         tokenStorage.clearTokens();
         // Clear auth store
         if (typeof window !== 'undefined') {
@@ -131,23 +180,38 @@ apiClient.interceptors.response.use(
           headers: {
             'Content-Type': 'application/json',
           },
-          timeout: 30000,
+          // Increased timeout for refresh endpoint (60 seconds for slow VPN)
+          timeout: 60000,
         });
 
-        const response = await refreshClient.post(
+        console.log('Calling refresh endpoint...', {
+          refreshTokenExists: !!refreshToken,
+          timestamp: new Date().toISOString(),
+        });
+        
+        const startTime = Date.now();
+        const refreshResponse = await refreshClient.post(
           '/auth/refresh',
           { refreshToken }
         );
+        const duration = Date.now() - startTime;
+        
+        console.log('Refresh endpoint response received:', {
+          status: refreshResponse.status,
+          hasData: !!refreshResponse.data,
+          durationMs: duration,
+        });
         
         // Handle both direct response and nested data structure
-        const responseData = response.data?.data || response.data;
+        const responseData = refreshResponse.data?.data || refreshResponse.data;
         const { accessToken, refreshToken: newRefreshToken } = responseData;
 
         if (!accessToken) {
-          console.error('Token refresh response:', response.data);
+          console.error('Token refresh response:', refreshResponse.data);
           throw new Error('No access token received from refresh endpoint');
         }
 
+        console.log('Token refresh successful, updating tokens and retrying original request');
         tokenStorage.setTokens(accessToken, newRefreshToken || refreshToken);
         processQueue(null, accessToken);
 
@@ -156,14 +220,27 @@ apiClient.interceptors.response.use(
         }
         return apiClient(originalRequest);
       } catch (refreshError: any) {
+        // Check if it's a timeout error
+        const isTimeout = refreshError.code === 'ECONNABORTED' || 
+                          refreshError.message?.includes('timeout') ||
+                          refreshError.message?.includes('Timeout');
+        
         // Only sign out if it's actually an authentication error (401, 403), not a network error
         const isAuthError = refreshError?.response?.status === 401 || 
                            refreshError?.response?.status === 403;
         
-        // Log the error for debugging
-        if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-          console.error('Token refresh failed:', refreshError);
-        }
+        // Log the error for debugging (always log, not just in dev)
+        console.error('Token refresh failed:', {
+          status: refreshError?.response?.status,
+          statusText: refreshError?.response?.statusText,
+          message: refreshError?.message,
+          code: refreshError?.code,
+          isTimeout,
+          isAuthError,
+          data: refreshError?.response?.data,
+          originalRequestUrl: originalRequest.url,
+          timestamp: new Date().toISOString(),
+        });
 
         if (isAuthError) {
           tokenStorage.clearTokens();

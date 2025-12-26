@@ -8,6 +8,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { GoogleOAuthStrategy } from '../auth/strategies/google-oauth.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesModule } from '../roles/roles.module';
+import { SubscriptionModule } from '../subscription/subscription.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { RolesModule } from '../roles/roles.module';
       inject: [ConfigService],
     }),
     RolesModule,
+    SubscriptionModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, GoogleOAuthStrategy, JwtAuthGuard],
