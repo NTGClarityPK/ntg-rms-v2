@@ -76,20 +76,11 @@ export const authApi = {
 
   logout: () => {
     tokenStorage.clearTokens();
-    // Clear tenant-specific theme data on logout
+    // Clear restaurant store on logout to prevent stale data
     if (typeof window !== 'undefined') {
-      // Clear restaurant store state and localStorage (contains primaryColor)
-      const { setRestaurant } = useRestaurantStore.getState();
-      setRestaurant(null);
-      localStorage.removeItem('rms-restaurant-storage');
-      
-      // Clear theme color from localStorage
-      localStorage.removeItem('rms_theme_color');
-      
-      // Reset theme store to default
-      const { setPrimaryColor } = useThemeStore.getState();
-      setPrimaryColor(DEFAULT_THEME_COLOR);
-      
+      import('../store/restaurant-store').then(({ useRestaurantStore }) => {
+        useRestaurantStore.getState().setRestaurant(null);
+      });
       window.location.href = '/login';
     }
   },

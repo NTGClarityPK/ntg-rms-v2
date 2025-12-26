@@ -9,7 +9,6 @@ import {
   Tooltip,
   Box,
   Button,
-  NavLink,
 } from '@mantine/core';
 import {
   IconDashboard,
@@ -75,7 +74,6 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
   const navigatorOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
   
   // Use both navigator and syncStatus - if either says offline, we're offline
-  // Also check if navigator.onLine is explicitly false (most reliable)
   const isOnline = navigatorOnline && syncStatus.isOnline;
   
   // Force re-render when online/offline events fire
@@ -92,7 +90,7 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     
-    // Also poll navigator.onLine every second as a fallback (in case events don't fire)
+    // Also poll navigator.onLine every second as a fallback
     const pollInterval = setInterval(() => {
       const currentOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
       if (currentOnline !== navigatorOnline) {
@@ -117,16 +115,12 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
   const offlineDisabledItems = ['/dashboard', '/employees', '/customers', '/reports'];
 
   // Filter items based on permissions
-  // If user has no permissions loaded yet, show items based on role (fallback)
   const visibleItems = navItems.filter((item) => {
     if (!item.permission) return true; // Dashboard always visible
     
     // If permissions aren't loaded yet, show items based on role as fallback
     const { user } = useAuthStore.getState();
     if (!user?.permissions || user.permissions.length === 0) {
-      // Define role-based fallback paths based on RBAC permissions
-      // These fallbacks ensure users can access navigation items even if permissions haven't loaded yet
-      // The fallbacks match the permissions defined in the RBAC migration (013_create_rbac_tables.sql)
       const roleFallbacks: Record<string, string[]> = {
         // Super Admin: Full access to everything (legacy role, treat as manager)
         super_admin: ['/menu', '/pos', '/orders', '/inventory', '/recipes', '/employees', '/customers', '/delivery', '/coupons', '/reports', '/settings'],
@@ -137,24 +131,16 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
         // Cashier: Orders (full), Menu (view), Customers (view/create/update), Reports (view)
         // Permissions: orders (view/create/update/delete), menu (view), customers (view/create/update), reports (view)
         cashier: ['/pos', '/orders', '/menu', '/customers', '/reports'],
-        // Kitchen Staff: Orders (view/update), Menu (view), Inventory (view)
-        // Permissions: orders (view/update), menu (view), inventory (view)
         kitchen_staff: ['/orders', '/menu', '/inventory'],
-        // Waiter: Orders (view/create/update), Menu (view), Customers (view/create/update), Reservations (view/create/update)
-        // Permissions: orders (view/create/update), menu (view), customers (view/create/update), reservations (view/create/update)
         waiter: ['/pos', '/orders', '/menu', '/customers'],
-        // Delivery: Orders (view/update), Deliveries (view/assign/update), Customers (view)
-        // Permissions: orders (view/update), deliveries (view/assign/update), customers (view)
         delivery: ['/orders', '/delivery', '/customers'],
       };
       
-      // Get fallback paths for user's role
       const userRole = user?.role;
       if (userRole && roleFallbacks[userRole]) {
         return roleFallbacks[userRole].includes(item.href);
       }
       
-      // If role not found in fallbacks, deny access (security-first approach)
       return false;
     }
     
@@ -189,6 +175,7 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
   };
 
   const navbarConfig = themeConfig?.components?.navbar;
+  const navButtonConfig = themeConfig?.components?.navButton;
 
   const renderNavItems = (items: Array<typeof navItems[number]>) => {
     // Force re-check online status in render
@@ -198,11 +185,7 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
     return items.map((item) => {
       const label = t(`navigation.${item.key}` as any, language);
       const isDisabled = !finalIsOnline && offlineDisabledItems.includes(item.href);
-      
-      // Debug log for disabled items
-      if (isDisabled) {
-        console.log('🚫 Sidebar: Disabling item:', item.href, 'finalIsOnline:', finalIsOnline, 'renderTimeOnline:', renderTimeOnline, 'syncStatus.isOnline:', syncStatus.isOnline);
-      }
+      const active = isActive(item.href);
       
       const handleClick = (e: React.MouseEvent) => {
         if (isDisabled) {
@@ -213,65 +196,44 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
         onMobileClose?.();
       };
 
-      const navLink = (
-        <Box
+      const buttonContent = (
+        <Button
+          component={isDisabled ? 'div' : Link}
+          href={isDisabled ? undefined : item.href}
+          variant="subtle"
+          size="md"
+          fullWidth={!collapsed}
+          leftSection={collapsed ? undefined : <item.icon size={24} />}
+          className="nav-item-button"
+          data-active={active}
+          data-collapsed={collapsed}
+          onClick={handleClick}
+          disabled={isDisabled}
           style={{
+            backgroundColor: active 
+              ? navbarConfig?.activeBackground 
+              : navButtonConfig?.backgroundColor || 'transparent',
+            color: active 
+              ? navbarConfig?.activeTextColor 
+              : navButtonConfig?.textColor || navbarConfig?.textColor,
             opacity: isDisabled ? 0.3 : 1,
             cursor: isDisabled ? 'not-allowed' : 'pointer',
-            pointerEvents: isDisabled ? 'none' : 'auto',
-            backgroundColor: isDisabled ? theme.colors.gray[2] : 'transparent',
-            filter: isDisabled ? 'grayscale(100%) brightness(0.8)' : 'none',
-            borderRadius: '4px',
-            position: 'relative',
+          }}
+          styles={{
+            root: {
+              '&:hover:not(:disabled)': {
+                backgroundColor: active 
+                  ? navbarConfig?.activeBackground 
+                  : navbarConfig?.hoverBackground,
+                color: active 
+                  ? navbarConfig?.activeTextColor 
+                  : navbarConfig?.hoverTextColor,
+              },
+            },
           }}
         >
-          {isDisabled && (
-            <Box
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                backgroundColor: 'rgba(0, 0, 0, 0.1)',
-                zIndex: 1,
-                pointerEvents: 'none',
-              }}
-            />
-          )}
-          {isDisabled ? (
-            <NavLink
-              key={item.href}
-              component="div"
-              label={collapsed ? undefined : label}
-              leftSection={<item.icon size={20} />}
-              active={isActive(item.href)}
-              onClick={handleClick}
-              style={{
-                justifyContent: collapsed ? 'center' : 'flex-start',
-                padding: collapsed ? '0.5rem' : undefined,
-                position: 'relative',
-                zIndex: 0,
-              }}
-            />
-          ) : (
-            <NavLink
-              key={item.href}
-              component={Link}
-              href={item.href}
-              label={collapsed ? undefined : label}
-              leftSection={<item.icon size={20} />}
-              active={isActive(item.href)}
-              onClick={handleClick}
-              style={{
-                justifyContent: collapsed ? 'center' : 'flex-start',
-                padding: collapsed ? '0.5rem' : undefined,
-                position: 'relative',
-                zIndex: 1,
-              }}
-            />
-          )}
-        </Box>
+          {collapsed ? <item.icon size={24} /> : label}
+        </Button>
       );
 
       const tooltipLabel = isDisabled 
@@ -281,7 +243,7 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
       if (collapsed) {
         return (
           <Tooltip key={item.href} label={tooltipLabel} position="right" withArrow>
-            <Box style={{ display: 'inline-block', width: '100%' }}>{navLink}</Box>
+            <Box style={{ display: 'inline-block', width: '100%' }}>{buttonContent}</Box>
           </Tooltip>
         );
       }
@@ -290,12 +252,12 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
       if (isDisabled) {
         return (
           <Tooltip key={item.href} label={tooltipLabel} position="right" withArrow>
-            <Box style={{ display: 'inline-block', width: '100%' }}>{navLink}</Box>
+            <Box style={{ display: 'inline-block', width: '100%' }}>{buttonContent}</Box>
           </Tooltip>
         );
       }
 
-      return <Box key={item.href}>{navLink}</Box>;
+      return <Box key={item.href}>{buttonContent}</Box>;
     });
   };
 

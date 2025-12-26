@@ -155,8 +155,16 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       .mantine-AppShell-navbar {
         background-color: ${config.components.navbar.backgroundColor} !important;
         border-right-color: ${config.components.navbar.borderColor} !important;
+        border-left-color: ${config.components.navbar.borderColor} !important;
         color: ${config.components.navbar.textColor} !important;
         font-family: ${config.typography.fontFamily.primary} !important;
+      }
+      
+      /* RTL - Remove navbar border to match LTR */
+      html[dir="rtl"] .mantine-AppShell-navbar,
+      [dir="rtl"] .mantine-AppShell-navbar {
+        border-right: none !important;
+        border-left: none !important;
       }
       
       /* Header */
@@ -200,11 +208,11 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       /* Adjust for collapsed navbar (desktop) - use data attribute for reliable targeting */
       @media (min-width: 768px) {
         body[data-navbar-collapsed="true"] .page-title-bar {
-          left: 80px !important;
+          left: 85px !important;
         }
         
         body[data-navbar-collapsed="true"] .page-sub-title-bar {
-          left: 80px !important;
+          left: 85px !important;
         }
       }
       
@@ -241,14 +249,14 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       @media (min-width: 768px) {
         html[dir="rtl"] body[data-navbar-collapsed="true"] .page-title-bar,
         [dir="rtl"] body[data-navbar-collapsed="true"] .page-title-bar {
-          right: 80px !important;
-          width: calc(100% - 80px) !important;
+          right: 85px !important;
+          width: calc(100% - 85px) !important;
         }
         
         html[dir="rtl"] body[data-navbar-collapsed="true"] .page-sub-title-bar,
         [dir="rtl"] body[data-navbar-collapsed="true"] .page-sub-title-bar {
-          right: 80px !important;
-          width: calc(100% - 80px) !important;
+          right: 85px !important;
+          width: calc(100% - 85px) !important;
         }
       }
       
@@ -367,7 +375,7 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
         justify-content: center !important;
         width: auto !important;
         min-width: auto !important;
-        padding: 0.5rem !important;
+        padding: 0.75rem !important;
         margin: 0 auto !important;
       }
       
@@ -387,6 +395,7 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       .nav-item-button[data-collapsed="false"] {
         justify-content: flex-start !important;
         width: 100% !important;
+        padding: 0.5rem 1rem !important;
       }
       
       /* Active state */
@@ -396,10 +405,16 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
         font-weight: 600 !important;
       }
       
-      /* Hover state */
-      .nav-item-button:hover {
+      /* Hover state - only apply if not active */
+      .nav-item-button:hover:not([data-active="true"]) {
         background-color: ${config.components.navbar.hoverBackground} !important;
         color: ${config.components.navbar.hoverTextColor} !important;
+      }
+      
+      /* Active state hover - keep active colors */
+      .nav-item-button[data-active="true"]:hover {
+        background-color: ${config.components.navbar.activeBackground} !important;
+        color: ${config.components.navbar.activeTextColor} !important;
       }
       
       /* Active state in collapsed mode - more prominent */

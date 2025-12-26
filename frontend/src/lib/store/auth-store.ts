@@ -38,20 +38,16 @@ export const useAuthStore = create<AuthState>()(
           user: state.user ? { ...state.user, permissions } : null,
         })),
       logout: () => {
-        // Clear tenant-specific theme color on logout
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('rms_theme_color');
-          // Clear restaurant store (contains primaryColor)
-          const { setRestaurant } = useRestaurantStore.getState();
-          setRestaurant(null);
-          // Reset theme store to default
-          const { setPrimaryColor } = useThemeStore.getState();
-          setPrimaryColor(DEFAULT_THEME_COLOR);
-        }
         set({
           user: null,
           isAuthenticated: false,
         });
+        // Also clear restaurant store on logout to prevent stale data
+        if (typeof window !== 'undefined') {
+          import('./restaurant-store').then(({ useRestaurantStore }) => {
+            useRestaurantStore.getState().setRestaurant(null);
+          });
+        }
       },
     }),
     {
