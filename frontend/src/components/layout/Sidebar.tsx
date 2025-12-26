@@ -13,7 +13,6 @@ import {
 } from '@mantine/core';
 import {
   IconDashboard,
-  IconBuildingStore,
   IconMenu2,
   IconShoppingCart,
   IconClipboardList,
@@ -42,7 +41,6 @@ import type { ThemeConfig } from '@/lib/theme/themeConfig';
 
 const navItems = [
   { href: '/dashboard', icon: IconDashboard, key: 'dashboard', permission: null }, // Dashboard always visible
-  { href: '/restaurant', icon: IconBuildingStore, key: 'restaurant', permission: { resource: 'restaurant', action: 'view' } },
   { href: '/menu', icon: IconMenu2, key: 'menu', permission: { resource: 'menu', action: 'view' } },
   { href: '/pos', icon: IconShoppingCart, key: 'pos', permission: { resource: 'orders', action: 'create' } },
   { href: '/orders', icon: IconClipboardList, key: 'orders', permission: { resource: 'orders', action: 'view' } },
@@ -131,11 +129,11 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
       // The fallbacks match the permissions defined in the RBAC migration (013_create_rbac_tables.sql)
       const roleFallbacks: Record<string, string[]> = {
         // Super Admin: Full access to everything (legacy role, treat as manager)
-        super_admin: ['/restaurant', '/menu', '/pos', '/orders', '/inventory', '/recipes', '/employees', '/customers', '/delivery', '/coupons', '/reports', '/settings'],
+        super_admin: ['/menu', '/pos', '/orders', '/inventory', '/recipes', '/employees', '/customers', '/delivery', '/coupons', '/reports', '/settings'],
         // Manager: Full access to everything
-        manager: ['/restaurant', '/menu', '/pos', '/orders', '/inventory', '/recipes', '/employees', '/customers', '/delivery', '/coupons', '/reports', '/settings'],
+        manager: ['/menu', '/pos', '/orders', '/inventory', '/recipes', '/employees', '/customers', '/delivery', '/coupons', '/reports', '/settings'],
         // Tenant Owner: Full access to everything
-        tenant_owner: ['/restaurant', '/menu', '/pos', '/orders', '/inventory', '/recipes', '/employees', '/customers', '/delivery', '/coupons', '/reports', '/settings'],
+        tenant_owner: ['/menu', '/pos', '/orders', '/inventory', '/recipes', '/employees', '/customers', '/delivery', '/coupons', '/reports', '/settings'],
         // Cashier: Orders (full), Menu (view), Customers (view/create/update), Reports (view)
         // Permissions: orders (view/create/update/delete), menu (view), customers (view/create/update), reports (view)
         cashier: ['/pos', '/orders', '/menu', '/customers', '/reports'],
@@ -174,7 +172,6 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
   );
   const managementItems = visibleItems.filter(
     (item) =>
-      item.href === '/restaurant' ||
       item.href === '/customers' ||
       item.href === '/inventory' ||
       item.href === '/recipes' ||
