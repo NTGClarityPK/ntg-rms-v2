@@ -216,7 +216,7 @@ export function FoodItemsPage() {
               basePrice: item.basePrice,
               stockType: item.stockType,
               stockQuantity: item.stockQuantity,
-              menuType: item.menuType || 'all_day', // Legacy field, default for compatibility
+              menuType: item.menuType, // Legacy field, no default - show "-" if not set
               menuTypes: item.menuTypes || (item.menuType ? [item.menuType] : []),
               ageLimit: item.ageLimit,
               displayOrder: item.displayOrder,
@@ -323,7 +323,7 @@ export function FoodItemsPage() {
                 basePrice: item.basePrice,
                 stockType: item.stockType,
                 stockQuantity: item.stockQuantity,
-                menuType: item.menuType || 'all_day',
+                menuType: item.menuType, // No default - show "-" if not set
                 menuTypes: item.menuTypes || (item.menuType ? [item.menuType] : []),
                 ageLimit: item.ageLimit,
                 displayOrder: item.displayOrder,
@@ -402,7 +402,7 @@ export function FoodItemsPage() {
               basePrice: item.basePrice,
               stockType: item.stockType,
               stockQuantity: item.stockQuantity,
-              menuType: item.menuType || 'all_day',
+              menuType: item.menuType, // No default - show "-" if not set
               menuTypes: item.menuTypes || (item.menuType ? [item.menuType] : []),
               ageLimit: item.ageLimit,
               displayOrder: item.displayOrder,
@@ -890,7 +890,7 @@ export function FoodItemsPage() {
           id: savedItem.id,
           tenantId: user.tenantId,
           ...itemData,
-            menuType: savedItem.menuType || 'all_day', // Legacy field
+            menuType: savedItem.menuType, // Legacy field, no default
             menuTypes: savedItem.menuTypes || [], // Array of menu types
             imageUrl: savedItem.imageUrl,
           displayOrder: savedItem.displayOrder,
@@ -1224,10 +1224,6 @@ export function FoodItemsPage() {
                               );
                             })}
                             </Group>
-                          ) : item.menuType ? (
-                            <Badge variant="light" size="sm" style={{ color: primaryColor }}>
-                              {getMenuName(item.menuType)}
-                            </Badge>
                           ) : (
                             <Text c="dimmed" size="sm">-</Text>
                           )}

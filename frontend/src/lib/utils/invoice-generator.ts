@@ -161,9 +161,33 @@ export class InvoiceGenerator {
       text-align: center;
       margin: 10px 0;
     }
+    .print-button {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: #4c6ef5;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      z-index: 1000;
+    }
+    .print-button:hover {
+      background: #364fc7;
+    }
+    @media print {
+      .print-button {
+        display: none;
+      }
+    }
   </style>
 </head>
 <body>
+  <button class="print-button" onclick="window.print()">${isRTL ? 'طباعة' : 'Print'}</button>
   <div class="header">
     ${headerText ? `<div class="info" style="margin-bottom: 5px;">${headerText}</div>` : ''}
     ${showLogo && tenant.logoUrl ? `<img src="${tenant.logoUrl}" alt="Logo" class="logo" />` : ''}
@@ -430,9 +454,33 @@ export class InvoiceGenerator {
       border-radius: 5px;
       margin-top: 20px;
     }
+    .print-button {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: #4c6ef5;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      z-index: 1000;
+    }
+    .print-button:hover {
+      background: #364fc7;
+    }
+    @media print {
+      .print-button {
+        display: none;
+      }
+    }
   </style>
 </head>
 <body>
+  <button class="print-button" onclick="window.print()">${isRTL ? 'طباعة' : 'Print'}</button>
   <div class="header">
     ${headerText ? `<div class="info" style="margin-bottom: 10px; text-align: center; font-weight: bold;">${headerText}</div>` : ''}
     <div class="header-left">
@@ -589,10 +637,8 @@ export class InvoiceGenerator {
     printWindow.document.close();
     printWindow.focus();
     
-    // Wait for content to load, then print
-    setTimeout(() => {
-      printWindow.print();
-    }, 250);
+    // Don't automatically call print() as it blocks the main thread
+    // User can click the print button in the invoice window when ready
   }
 
   /**
@@ -606,10 +652,8 @@ export class InvoiceGenerator {
     printWindow.document.close();
     printWindow.focus();
     
-    // Trigger print dialog, user can save as PDF
-    setTimeout(() => {
-      printWindow.print();
-    }, 250);
+    // Don't automatically call print() as it blocks the main thread
+    // User can click the print button in the invoice window when ready
   }
 }
 

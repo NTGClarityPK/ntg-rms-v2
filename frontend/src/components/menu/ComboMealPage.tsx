@@ -102,7 +102,7 @@ export function ComboMealPage() {
         const itemsResponse = await menuApi.getFoodItems(undefined, {
           page: currentPage,
           limit: pageLimit,
-        });
+        }, undefined, false); // Explicitly pass onlyActiveMenus: false to show all items
         
         const items = Array.isArray(itemsResponse) 
           ? itemsResponse 

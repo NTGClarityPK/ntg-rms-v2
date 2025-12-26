@@ -867,7 +867,7 @@ export function StockManagementPage() {
   };
 
   return (
-    <Stack gap="md">
+    <Stack gap="md" pt="sm">
       <Group justify="flex-end">
         <Group gap="xs">
           <Button
