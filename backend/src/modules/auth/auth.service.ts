@@ -158,6 +158,7 @@ export class AuthService {
     }
 
     // Create a default branch for the tenant if this is a new tenant
+    let branchId: string | null = null;
     if (!signupDto.tenantId) {
       try {
         const { data: branchData, error: branchError } = await supabase
@@ -175,7 +176,16 @@ export class AuthService {
           console.error('Failed to create default branch:', branchError);
           // Don't fail signup if branch creation fails, but log it
         } else {
+          branchId = branchData.id;
           console.log('Default branch created:', branchData.id);
+          
+          // Seed sample data for new tenant
+          try {
+            await this.seedSampleData(tenantId, branchId, userData.id);
+          } catch (seedError) {
+            console.error('Failed to seed sample data:', seedError);
+            // Don't fail signup if sample data seeding fails
+          }
         }
       } catch (error) {
         console.error('Error creating default branch:', error);
@@ -339,6 +349,14 @@ export class AuthService {
             // Don't fail login if branch creation fails, but log it
           } else {
             console.log('Default branch created:', branchData.id);
+            
+            // Seed sample data for new tenant
+            try {
+              await this.seedSampleData(tenantId, branchData.id, user.id);
+            } catch (seedError) {
+              console.error('Failed to seed sample data:', seedError);
+              // Don't fail login if sample data seeding fails
+            }
           }
         } catch (error) {
           console.error('Error creating default branch:', error);
@@ -660,6 +678,14 @@ export class AuthService {
           // Don't fail user creation if branch creation fails, but log it
         } else {
           console.log('Default branch created:', branchData.id);
+          
+          // Seed sample data for new tenant
+          try {
+            await this.seedSampleData(tenantId, branchData.id, newUser.id);
+          } catch (seedError) {
+            console.error('Failed to seed sample data:', seedError);
+            // Don't fail user creation if sample data seeding fails
+          }
         }
       } catch (error) {
         console.error('Error creating default branch:', error);
@@ -743,6 +769,398 @@ export class AuthService {
       tenantId: updatedUser.tenant_id as string,
       updatedAt: updatedUser.updated_at as string,
     };
+  }
+
+  private async seedSampleData(tenantId: string, branchId: string, userId: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+    console.log('Seeding sample data for new tenant...');
+
+    try {
+      // 1. Create Categories (1-2)
+      const categories = [
+        {
+          tenant_id: tenantId,
+          name: 'Main Courses',
+          description: 'Hearty main dishes',
+          category_type: 'food',
+          display_order: 1,
+          is_active: true,
+        },
+        {
+          tenant_id: tenantId,
+          name: 'Beverages',
+          description: 'Drinks and beverages',
+          category_type: 'beverage',
+          display_order: 2,
+          is_active: true,
+        },
+      ];
+
+      const categoryIds: string[] = [];
+      for (const category of categories) {
+        const { data: newCategory, error } = await supabase
+          .from('categories')
+          .insert(category)
+          .select('id')
+          .single();
+
+        if (!error && newCategory) {
+          categoryIds.push(newCategory.id);
+          console.log(`Created category: ${category.name}`);
+        }
+      }
+
+      if (categoryIds.length === 0) {
+        console.error('No categories created, skipping food items');
+        return;
+      }
+
+      // 2. Create Food Items (1-2)
+      const foodItems = [
+        {
+          tenant_id: tenantId,
+          category_id: categoryIds[0],
+          name: 'Grilled Chicken',
+          description: 'Tender marinated grilled chicken with rice and salad',
+          base_price: 15000,
+          stock_type: 'unlimited',
+          display_order: 1,
+          is_active: true,
+          labels: ['popular', 'halal'],
+        },
+        {
+          tenant_id: tenantId,
+          category_id: categoryIds[1],
+          name: 'Fresh Orange Juice',
+          description: 'Freshly squeezed orange juice',
+          base_price: 5000,
+          stock_type: 'unlimited',
+          display_order: 1,
+          is_active: true,
+          labels: ['popular'],
+        },
+      ];
+
+      const foodItemIds: string[] = [];
+      const foodItemMap = new Map<string, string>();
+      for (const foodItem of foodItems) {
+        // Extract labels before inserting
+        const { labels, ...foodItemData } = foodItem;
+        const { data: newFoodItem, error } = await supabase
+          .from('food_items')
+          .insert(foodItemData)
+          .select('id')
+          .single();
+
+        if (!error && newFoodItem) {
+          foodItemIds.push(newFoodItem.id);
+          foodItemMap.set(foodItem.name, newFoodItem.id);
+          console.log(`Created food item: ${foodItem.name}`);
+
+          // Add labels if provided
+          if (labels && labels.length > 0) {
+            for (const label of labels) {
+              await supabase.from('food_item_labels').upsert({
+                food_item_id: newFoodItem.id,
+                label: label,
+              }, { onConflict: 'food_item_id,label' });
+            }
+          }
+        }
+      }
+
+      // 3. Create Ingredients (1-2)
+      const ingredients = [
+        {
+          tenant_id: tenantId,
+          name: 'Chicken',
+          category: 'meats',
+          unit_of_measurement: 'kg',
+          current_stock: 50,
+          minimum_threshold: 10,
+          cost_per_unit: 8000,
+          storage_location: 'Main Storage',
+          is_active: true,
+        },
+        {
+          tenant_id: tenantId,
+          name: 'Oranges',
+          category: 'fruits',
+          unit_of_measurement: 'kg',
+          current_stock: 20,
+          minimum_threshold: 5,
+          cost_per_unit: 3000,
+          storage_location: 'Main Storage',
+          is_active: true,
+        },
+      ];
+
+      const ingredientIds: string[] = [];
+      const ingredientMap = new Map<string, string>();
+      for (const ingredient of ingredients) {
+        const { data: newIngredient, error } = await supabase
+          .from('ingredients')
+          .insert(ingredient)
+          .select('id')
+          .single();
+
+        if (!error && newIngredient) {
+          ingredientIds.push(newIngredient.id);
+          ingredientMap.set(ingredient.name, newIngredient.id);
+          console.log(`Created ingredient: ${ingredient.name}`);
+        }
+      }
+
+      // 4. Create Recipes (linking food items to ingredients)
+      if (foodItemMap.has('Grilled Chicken') && ingredientMap.has('Chicken')) {
+        await supabase.from('recipes').insert({
+          food_item_id: foodItemMap.get('Grilled Chicken'),
+          ingredient_id: ingredientMap.get('Chicken'),
+          quantity: 0.3,
+          unit: 'kg',
+        });
+        console.log('Created recipe for Grilled Chicken');
+      }
+
+      if (foodItemMap.has('Fresh Orange Juice') && ingredientMap.has('Oranges')) {
+        await supabase.from('recipes').insert({
+          food_item_id: foodItemMap.get('Fresh Orange Juice'),
+          ingredient_id: ingredientMap.get('Oranges'),
+          quantity: 0.5,
+          unit: 'kg',
+        });
+        console.log('Created recipe for Fresh Orange Juice');
+      }
+
+      // 5. Create Add-ons (1-2 groups with 1-2 add-ons each)
+      const addOnGroups = [
+        {
+          tenant_id: tenantId,
+          name: 'Spice Level',
+          selection_type: 'single',
+          is_required: true,
+          category: 'Change',
+          display_order: 1,
+          is_active: true,
+        },
+        {
+          tenant_id: tenantId,
+          name: 'Side Dishes',
+          selection_type: 'multiple',
+          is_required: false,
+          category: 'Add',
+          display_order: 2,
+          is_active: true,
+        },
+      ];
+
+      const addOnGroupIds: string[] = [];
+      for (const group of addOnGroups) {
+        const { data: newGroup, error: groupError } = await supabase
+          .from('add_on_groups')
+          .insert(group)
+          .select('id')
+          .single();
+
+        if (!groupError && newGroup) {
+          addOnGroupIds.push(newGroup.id);
+          console.log(`Created add-on group: ${group.name}`);
+
+          // Create add-ons for this group
+          let addOns: Array<{ name: string; price: number }> = [];
+          if (group.name === 'Spice Level') {
+            addOns = [
+              { name: 'Mild', price: 0 },
+              { name: 'Hot', price: 0 },
+            ];
+          } else if (group.name === 'Side Dishes') {
+            addOns = [
+              { name: 'French Fries', price: 2000 },
+              { name: 'Rice', price: 1500 },
+            ];
+          }
+
+          for (const addOn of addOns) {
+            await supabase.from('add_ons').insert({
+              add_on_group_id: newGroup.id,
+              name: addOn.name,
+              price: addOn.price,
+              display_order: addOns.indexOf(addOn) + 1,
+              is_active: true,
+            });
+            console.log(`Created add-on: ${addOn.name}`);
+          }
+        }
+      }
+
+      // 6. Create Variation Groups (1-2 groups with variations)
+      const variationGroups = [
+        {
+          tenant_id: tenantId,
+          name: 'Size',
+        },
+      ];
+
+      const variationGroupMap = new Map<string, string>();
+      for (const group of variationGroups) {
+        const { data: newGroup, error: groupError } = await supabase
+          .from('variation_groups')
+          .insert(group)
+          .select('id')
+          .single();
+
+        if (!groupError && newGroup) {
+          variationGroupMap.set(group.name, newGroup.id);
+          console.log(`Created variation group: ${group.name}`);
+
+          // Create variations for this group
+          let variations: Array<{ name: string; pricing_adjustment: number; recipe_multiplier: number }> = [];
+          if (group.name === 'Size') {
+            variations = [
+              { name: 'Small', pricing_adjustment: 0, recipe_multiplier: 1.0 },
+              { name: 'Large', pricing_adjustment: 1000, recipe_multiplier: 1.5 },
+            ];
+          }
+
+          for (const variation of variations) {
+            await supabase.from('variations').insert({
+              variation_group_id: newGroup.id,
+              name: variation.name,
+              pricing_adjustment: variation.pricing_adjustment,
+              recipe_multiplier: variation.recipe_multiplier,
+              display_order: variations.indexOf(variation) + 1,
+            });
+            console.log(`Created variation: ${variation.name}`);
+          }
+        }
+      }
+
+      // 7. Create Menus and assign food items
+      const menus = [
+        {
+          tenant_id: tenantId,
+          menu_type: 'all_day',
+          name: 'All Day',
+          is_active: true,
+        },
+      ];
+
+      for (const menu of menus) {
+        // Check if menu exists, if not create it
+        const { data: existingMenu } = await supabase
+          .from('menus')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .eq('menu_type', menu.menu_type)
+          .maybeSingle();
+
+        let menuId: string;
+        if (existingMenu) {
+          menuId = existingMenu.id;
+          // Update to ensure it's active
+          await supabase
+            .from('menus')
+            .update({ is_active: true, name: menu.name })
+            .eq('id', menuId);
+        } else {
+          const { data: newMenu, error: menuError } = await supabase
+            .from('menus')
+            .insert(menu)
+            .select('id')
+            .single();
+
+          if (!menuError && newMenu) {
+            menuId = newMenu.id;
+            console.log(`Created menu: ${menu.name}`);
+          } else {
+            continue;
+          }
+        }
+
+        // Assign food items to menu via menu_items junction table
+        for (const foodItemId of foodItemIds) {
+          const { data: existingMenuItem } = await supabase
+            .from('menu_items')
+            .select('id')
+            .eq('tenant_id', tenantId)
+            .eq('food_item_id', foodItemId)
+            .eq('menu_type', menu.menu_type)
+            .maybeSingle();
+
+          if (!existingMenuItem) {
+            await supabase.from('menu_items').insert({
+              tenant_id: tenantId,
+              food_item_id: foodItemId,
+              menu_type: menu.menu_type,
+              display_order: foodItemIds.indexOf(foodItemId) + 1,
+            });
+          }
+        }
+        console.log(`Assigned ${foodItemIds.length} food items to ${menu.name}`);
+      }
+
+      // 8. Create Buffets (1-2)
+      const buffets = [
+        {
+          tenant_id: tenantId,
+          name: 'Weekend Buffet',
+          description: 'All-you-can-eat weekend special',
+          price_per_person: 25000,
+          min_persons: 2,
+          max_persons: 20,
+          duration: 120, // 2 hours
+          menu_types: ['all_day'],
+          display_order: 1,
+          is_active: true,
+        },
+      ];
+
+      for (const buffet of buffets) {
+        const { data: newBuffet, error: buffetError } = await supabase
+          .from('buffets')
+          .insert(buffet)
+          .select('id')
+          .single();
+
+        if (!buffetError && newBuffet) {
+          console.log(`Created buffet: ${buffet.name}`);
+        }
+      }
+
+      // 9. Create Combo Meals (1-2)
+      if (foodItemIds.length >= 2) {
+        const comboMeals = [
+          {
+            tenant_id: tenantId,
+            name: 'Chicken Combo',
+            description: 'Grilled Chicken with Fresh Orange Juice',
+            base_price: 18000, // Slightly discounted from individual prices
+            food_item_ids: foodItemIds.slice(0, 2), // Use first 2 food items
+            menu_types: ['all_day'],
+            discount_percentage: 10,
+            display_order: 1,
+            is_active: true,
+          },
+        ];
+
+        for (const comboMeal of comboMeals) {
+          const { data: newComboMeal, error: comboError } = await supabase
+            .from('combo_meals')
+            .insert(comboMeal)
+            .select('id')
+            .single();
+
+          if (!comboError && newComboMeal) {
+            console.log(`Created combo meal: ${comboMeal.name}`);
+          }
+        }
+      }
+
+      console.log('Sample data seeding completed successfully');
+    } catch (error) {
+      console.error('Error seeding sample data:', error);
+      throw error;
+    }
   }
 
   private async generateTokens(user: any) {

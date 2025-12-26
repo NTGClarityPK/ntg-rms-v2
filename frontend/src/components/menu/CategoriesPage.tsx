@@ -51,7 +51,6 @@ export function CategoriesPage() {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -184,46 +183,8 @@ export function CategoriesPage() {
     };
     reader.readAsDataURL(file);
 
-    // Store file for upload
+    // Store file for upload - will be uploaded when form is submitted
     setImageFile(file);
-
-    // If editing existing category, upload immediately
-    if (editingCategory) {
-      try {
-        setUploadingImage(true);
-        const updated = await menuApi.uploadCategoryImage(editingCategory.id, file);
-        
-        // Update IndexedDB
-        await db.categories.update(editingCategory.id, {
-          imageUrl: updated.imageUrl,
-          updatedAt: new Date().toISOString(),
-        });
-
-        form.setFieldValue('imageUrl', updated.imageUrl || '');
-        setImagePreview(updated.imageUrl || null);
-        
-        notifications.show({
-          title: t('common.success' as any, language) || 'Success',
-          message: t('menu.uploadSuccess', language),
-          color: successColor,
-        });
-
-        loadCategories();
-        // Notify other tabs that categories have been updated
-        notifyMenuDataUpdate('categories-updated');
-        // Also notify food items tab since it depends on categories
-        notifyMenuDataUpdate('food-items-updated');
-      } catch (err: any) {
-        notifications.show({
-          title: t('common.error' as any, language) || 'Error',
-          message: err.message || 'Failed to upload image',
-          color: errorColor,
-        });
-      } finally {
-        setUploadingImage(false);
-      }
-    }
-    // If creating, the image will be uploaded after category creation in handleSubmit
   };
 
   const handleSubmit = async (values: typeof form.values) => {
@@ -248,9 +209,22 @@ export function CategoriesPage() {
         // Update
         savedCategory = await menuApi.updateCategory(editingCategory.id, categoryData);
         
+        // If image was selected during editing, upload it now
+        if (imageFile) {
+          try {
+            const updated = await menuApi.uploadCategoryImage(savedCategory.id, imageFile);
+            savedCategory = updated; // Update with image URL
+            categoryData.imageUrl = updated.imageUrl;
+          } catch (err: any) {
+            console.warn('Failed to upload image after category update:', err);
+            // Continue even if image upload fails
+          }
+        }
+        
         // Update IndexedDB
         await db.categories.update(editingCategory.id, {
           ...categoryData,
+          imageUrl: savedCategory.imageUrl,
           updatedAt: new Date().toISOString(),
           lastSynced: new Date().toISOString(),
           syncStatus: 'synced',
@@ -601,11 +575,11 @@ export function CategoriesPage() {
                       <Button
                         {...props}
                         leftSection={<IconUpload size={16} />}
-                        loading={uploadingImage && !!editingCategory}
                         variant="outline"
                         style={{ color: primaryColor }}
+                        disabled={submitting}
                       >
-                        {editingCategory ? t('menu.uploadImage', language) : t('menu.uploadImage', language)}
+                        {t('menu.uploadImage', language)}
                       </Button>
                     )}
                   </FileButton>

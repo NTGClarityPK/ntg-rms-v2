@@ -105,7 +105,6 @@ async function createNewTenant(): Promise<{ tenantId: string; ownerCredentials: 
       subdomain: subdomain,
       email: ownerEmail,
       default_currency: 'IQD',
-      is_active: true,
     })
     .select('id')
     .single();
@@ -125,7 +124,6 @@ async function createNewTenant(): Promise<{ tenantId: string; ownerCredentials: 
       email: ownerEmail,
       name: 'Aurooba Parker',
       role: 'tenant_owner',
-      is_active: true,
     });
 
   if (userError) {
@@ -172,7 +170,6 @@ async function getOrCreateBranch(tenantId: string): Promise<string> {
       address: '123 Main Street, Baghdad',
       city: 'Baghdad',
       country: 'Iraq',
-      is_active: true,
     })
     .select('id')
     .single();
@@ -209,7 +206,6 @@ async function getOrCreateCounter(branchId: string): Promise<string> {
       branch_id: branchId,
       name: 'Counter 1',
       code: 'CNT-001',
-      is_active: true,
     })
     .select('id')
     .single();
@@ -252,7 +248,6 @@ async function createEmployeeWithAuth(
       name: name || 'Employee',
       role: role,
       employee_id: employeeId,
-      is_active: true,
     })
     .select('id')
     .single();
@@ -382,7 +377,6 @@ async function seedTaxes(tenantId: string): Promise<string[]> {
       name: 'VAT',
       tax_code: 'VAT-001',
       rate: 5.0,
-      is_active: true,
       applies_to: 'order',
       applies_to_delivery: true,
       applies_to_service_charge: false,
@@ -392,7 +386,6 @@ async function seedTaxes(tenantId: string): Promise<string[]> {
       name: 'Service Charge',
       tax_code: 'SRV-001',
       rate: 10.0,
-      is_active: true,
       applies_to: 'order',
       applies_to_delivery: false,
       applies_to_service_charge: true,
@@ -402,7 +395,6 @@ async function seedTaxes(tenantId: string): Promise<string[]> {
       name: 'City Tax',
       tax_code: 'CITY-001',
       rate: 2.0,
-      is_active: true,
       applies_to: 'order',
       applies_to_delivery: false,
       applies_to_service_charge: false,
@@ -455,7 +447,6 @@ async function seedCategories(tenantId: string): Promise<string[]> {
       image_url: 'https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=800',
       category_type: 'food',
       display_order: 1,
-      is_active: true,
     },
     {
       tenant_id: tenantId,
@@ -464,7 +455,6 @@ async function seedCategories(tenantId: string): Promise<string[]> {
       image_url: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800',
       category_type: 'food',
       display_order: 2,
-      is_active: true,
     },
     {
       tenant_id: tenantId,
@@ -473,7 +463,6 @@ async function seedCategories(tenantId: string): Promise<string[]> {
       image_url: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=800',
       category_type: 'food',
       display_order: 3,
-      is_active: true,
     },
     {
       tenant_id: tenantId,
@@ -482,7 +471,6 @@ async function seedCategories(tenantId: string): Promise<string[]> {
       image_url: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=800',
       category_type: 'beverage',
       display_order: 4,
-      is_active: true,
     },
     {
       tenant_id: tenantId,
@@ -491,7 +479,6 @@ async function seedCategories(tenantId: string): Promise<string[]> {
       image_url: 'https://images.unsplash.com/photo-1551024506-0bccd828d307?w=800',
       category_type: 'dessert',
       display_order: 5,
-      is_active: true,
     },
     {
       tenant_id: tenantId,
@@ -500,7 +487,6 @@ async function seedCategories(tenantId: string): Promise<string[]> {
       image_url: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=800',
       category_type: 'food',
       display_order: 6,
-      is_active: true,
     },
   ];
 
@@ -554,7 +540,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'all_day',
       display_order: 1,
-      is_active: true,
       labels: ['vegetarian', 'popular'],
     },
     {
@@ -567,7 +552,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'all_day',
       display_order: 2,
-      is_active: true,
       labels: ['vegetarian', 'healthy'],
     },
     {
@@ -580,7 +564,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'all_day',
       display_order: 3,
-      is_active: true,
       labels: ['vegetarian'],
     },
     {
@@ -593,7 +576,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'all_day',
       display_order: 4,
-      is_active: true,
       labels: ['popular', 'halal'],
     },
     {
@@ -606,7 +588,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'all_day',
       display_order: 5,
-      is_active: true,
       labels: ['popular'],
     },
     // Main Courses (categoryIds[1])
@@ -620,7 +601,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'all_day',
       display_order: 1,
-      is_active: true,
       labels: ['popular', 'halal'],
     },
     {
@@ -633,7 +613,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'all_day',
       display_order: 2,
-      is_active: true,
       labels: ['halal', 'chefs_special'],
     },
     {
@@ -646,7 +625,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'all_day',
       display_order: 3,
-      is_active: true,
       labels: ['healthy'],
     },
     {
@@ -659,7 +637,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'all_day',
       display_order: 4,
-      is_active: true,
       labels: ['popular', 'halal'],
     },
     // Traditional Iraqi Dishes (categoryIds[2])
@@ -673,7 +650,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'all_day',
       display_order: 1,
-      is_active: true,
       labels: ['popular', 'chefs_special'],
     },
     {
@@ -686,7 +662,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'all_day',
       display_order: 2,
-      is_active: true,
       labels: ['popular', 'halal'],
     },
     {
@@ -699,7 +674,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'all_day',
       display_order: 3,
-      is_active: true,
       labels: ['popular'],
     },
     {
@@ -712,7 +686,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'all_day',
       display_order: 4,
-      is_active: true,
       labels: ['popular', 'halal'],
     },
     {
@@ -725,7 +698,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'all_day',
       display_order: 5,
-      is_active: true,
       labels: ['chefs_special', 'halal'],
     },
     // Beverages (categoryIds[3])
@@ -739,7 +711,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'all_day',
       display_order: 1,
-      is_active: true,
       labels: ['healthy'],
     },
     {
@@ -752,7 +723,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'all_day',
       display_order: 2,
-      is_active: true,
       labels: ['healthy'],
     },
     {
@@ -765,7 +735,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'all_day',
       display_order: 3,
-      is_active: true,
       labels: ['popular'],
     },
     {
@@ -778,7 +747,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'all_day',
       display_order: 4,
-      is_active: true,
       labels: ['healthy'],
     },
     {
@@ -791,7 +759,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'all_day',
       display_order: 5,
-      is_active: true,
       labels: ['healthy', 'popular'],
     },
     // Desserts (categoryIds[4])
@@ -805,7 +772,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'all_day',
       display_order: 1,
-      is_active: true,
       labels: ['popular'],
     },
     {
@@ -818,7 +784,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'all_day',
       display_order: 2,
-      is_active: true,
       labels: ['popular', 'chefs_special'],
     },
     {
@@ -831,7 +796,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'all_day',
       display_order: 3,
-      is_active: true,
       labels: ['popular'],
     },
     {
@@ -844,7 +808,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'all_day',
       display_order: 4,
-      is_active: true,
       labels: ['popular'],
     },
     // Breakfast (categoryIds[5])
@@ -858,7 +821,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'breakfast',
       display_order: 1,
-      is_active: true,
       labels: ['vegetarian', 'popular'],
     },
     {
@@ -871,7 +833,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'breakfast',
       display_order: 2,
-      is_active: true,
       labels: ['popular'],
     },
     {
@@ -884,7 +845,6 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       stock_type: 'unlimited',
       menu_type: 'breakfast',
       display_order: 3,
-      is_active: true,
       labels: ['vegetarian', 'healthy'],
     },
   ];
@@ -908,11 +868,12 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       console.log(`   ⏭️  Food item "${item.name}" already exists`);
       itemId = existing.id;
     } else {
-      // Remove labels from item before inserting
+      // Remove labels from item before inserting and always set is_active = true
       const { labels: _, ...itemData } = item;
+      const itemDataWithActive = { ...itemData, is_active: true }; // Always set to true
     const { data: newItem, error } = await supabase
       .from('food_items')
-        .insert(itemData)
+        .insert(itemDataWithActive)
       .select('id')
       .single();
 
@@ -976,32 +937,27 @@ async function seedMenus(tenantId: string): Promise<void> {
     {
       tenant_id: tenantId,
       menu_type: 'all_day',
-      name: 'All Day Menu',
-      is_active: true,
+      name: 'All Day',
     },
     {
       tenant_id: tenantId,
       menu_type: 'breakfast',
-      name: 'Breakfast Menu',
-      is_active: true,
+      name: 'Breakfast',
     },
     {
       tenant_id: tenantId,
       menu_type: 'lunch',
-      name: 'Lunch Menu',
-      is_active: true,
+      name: 'Lunch',
     },
     {
       tenant_id: tenantId,
       menu_type: 'dinner',
-      name: 'Dinner Menu',
-      is_active: true,
+      name: 'Dinner',
     },
     {
       tenant_id: tenantId,
       menu_type: 'kids_special',
-      name: 'Kids Special Menu',
-      is_active: true,
+      name: 'Kids Special',
     },
   ];
 
@@ -1213,7 +1169,6 @@ async function seedIngredients(tenantId: string): Promise<{ ingredientIds: strin
           tenant_id: tenantId,
           ...ing,
           storage_location: 'Main Storage',
-          is_active: true,
         })
         .select('id')
         .single();
@@ -1322,7 +1277,6 @@ async function seedAddOns(tenantId: string): Promise<{ addOnGroupIds: string[]; 
         tenant_id: tenantId,
         ...group,
         display_order: addOnGroupIds.length + 1,
-        is_active: true,
       })
       .select('id')
       .single();
@@ -1366,7 +1320,6 @@ async function seedAddOns(tenantId: string): Promise<{ addOnGroupIds: string[]; 
           add_on_group_id: newGroup.id,
           ...addOn,
           display_order: addOnIds.length + 1,
-          is_active: true,
         })
         .select('id')
         .single();
