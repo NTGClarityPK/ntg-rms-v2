@@ -25,6 +25,7 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { useErrorColor, useInfoColor } from '@/lib/hooks/use-theme-colors';
+import { DEFAULT_THEME_COLOR } from '@/lib/utils/theme';
 
 function LoginForm() {
   const router = useRouter();
@@ -114,10 +115,10 @@ function LoginForm() {
     <form onSubmit={form.onSubmit(handleSubmit)}>
       <Stack gap="lg">
         <Box>
-          <Title order={2} size="1.8rem" fw={700} mb="xs">
+          <Title order={2} size="1.8rem" fw={700} mb="xs" style={{ color: '#1a1a1a' }}>
             {t('auth.loginTitle', language)}
           </Title>
-          <Text c="dimmed" size="sm">
+          <Text size="sm" style={{ color: '#4a4a4a' }}>
             {t('auth.signInToContinue', language)}
           </Text>
         </Box>
@@ -168,7 +169,7 @@ function LoginForm() {
           />
           <Text
             size="sm"
-            style={{ color: infoColor, cursor: 'pointer' }}
+            style={{ color: DEFAULT_THEME_COLOR, cursor: 'pointer', fontWeight: 500 }}
             onClick={() => {
               // TODO: Implement password reset
             }}
@@ -183,6 +184,10 @@ function LoginForm() {
           loading={loading}
           size="lg"
           radius="md"
+          style={{
+            backgroundColor: DEFAULT_THEME_COLOR,
+            color: 'white',
+          }}
         >
           {t('common.login' as any, language)}
         </Button>
@@ -196,13 +201,17 @@ function LoginForm() {
           onClick={handleGoogleLogin}
           size="lg"
           radius="md"
+          style={{
+            borderColor: DEFAULT_THEME_COLOR,
+            color: DEFAULT_THEME_COLOR,
+          }}
         >
           {t('auth.loginWithGoogle', language)}
         </Button>
 
-        <Text ta="center" size="sm">
+        <Text ta="center" size="sm" style={{ color: '#4a4a4a' }}>
           {t('auth.noAccount', language)}{' '}
-          <Anchor href="/signup" size="sm">
+          <Anchor href="/signup" size="sm" style={{ color: DEFAULT_THEME_COLOR, fontWeight: 500 }}>
             {t('common.signup' as any, language)}
           </Anchor>
         </Text>

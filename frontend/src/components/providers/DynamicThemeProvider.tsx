@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo } from 'react';
+import { usePathname } from 'next/navigation';
 import { useMantineTheme } from '@mantine/core';
 import { useDynamicTheme } from '@/lib/hooks/useDynamicTheme';
 import { useDynamicTheme as useTenantTheme } from '@/lib/hooks/use-dynamic-theme';
@@ -19,6 +20,7 @@ import type { ThemeConfig } from '@/lib/theme/themeConfig';
  * 3. Direct DOM manipulation for components with inline style overrides (mantine-datatable)
  */
 export function DynamicThemeProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const theme = useMantineTheme();
   const dynamicTheme = useDynamicTheme();
   // Load tenant theme on every page load/refresh - this updates the store with tenant's primaryColor
@@ -26,6 +28,9 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
   const { language } = useLanguageStore();
   const { primaryColor: storeColor, themeVersion } = useThemeStore();
   const { isDark } = useTheme();
+  
+  // Check if we're on an auth page - don't apply theme to auth pages
+  const isAuthPage = pathname?.startsWith('/login') || pathname?.startsWith('/signup');
   
   // Get theme config from Mantine theme as fallback
   const mantineThemeConfig = (theme.other as any) as ThemeConfig | undefined;
@@ -57,6 +62,8 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     if (typeof document === 'undefined' || !themeConfig) return;
+    // Skip theme application on auth pages
+    if (isAuthPage) return;
 
     const config = themeConfig;
 
@@ -109,11 +116,13 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
     document.body.style.backgroundColor = config.components.page.backgroundColor;
     document.body.style.color = config.colors.text;
     document.body.style.fontFamily = config.typography.fontFamily.primary;
-  }, [themeConfig]);
+  }, [themeConfig, isAuthPage]);
 
   // 3. CSS Injection for components using CSS classes (Navbar, Header, etc.)
   useEffect(() => {
     if (typeof document === 'undefined' || !themeConfig) return;
+    // Skip theme application on auth pages
+    if (isAuthPage) return;
 
     const config = themeConfig;
     
@@ -995,11 +1004,13 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
         color: ${config.components.filterChip.selectedTextColor} !important;
       }
     `;
-  }, [themeConfig]);
+  }, [themeConfig, isAuthPage]);
 
   // 4. Direct DOM manipulation for headers (Title and section headers)
   useEffect(() => {
     if (typeof document === 'undefined' || !themeConfig) return;
+    // Skip theme application on auth pages
+    if (isAuthPage) return;
 
     const config = themeConfig;
     
@@ -1092,11 +1103,13 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       observer.disconnect();
       clearInterval(interval);
     };
-  }, [themeConfig]);
+  }, [themeConfig, isAuthPage]);
 
   // 5. Direct DOM manipulation for inputs (ensures styling applies)
   useEffect(() => {
     if (typeof document === 'undefined' || !themeConfig) return;
+    // Skip theme application on auth pages
+    if (isAuthPage) return;
 
     const config = themeConfig;
     
@@ -1173,11 +1186,13 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       observer.disconnect();
       clearInterval(interval);
     };
-  }, [themeConfig]);
+  }, [themeConfig, isAuthPage]);
 
   // 6. Direct DOM manipulation for Mantine Table (overrides inline styles)
   useEffect(() => {
     if (typeof document === 'undefined' || !themeConfig) return;
+    // Skip theme application on auth pages
+    if (isAuthPage) return;
 
     const config = themeConfig;
     
@@ -1256,7 +1271,7 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       observer.disconnect();
       clearInterval(interval);
     };
-  }, [themeConfig]);
+  }, [themeConfig, isAuthPage]);
 
 
   return <>{children}</>;
