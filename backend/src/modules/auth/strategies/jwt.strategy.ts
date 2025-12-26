@@ -25,6 +25,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       ]),
       ignoreExpiration: false,
       secretOrKey: secret,
+      // Add clock tolerance to handle clock skew and network latency
+      // 60 seconds = 1 minute leeway for clock differences and network delays
+      // This prevents false 401 errors when tokens are valid but server clock
+      // is slightly ahead or network latency causes delays
+      clockTolerance: 60, // seconds
     });
   }
 
