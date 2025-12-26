@@ -87,13 +87,36 @@ apiClient.interceptors.response.use(
 
     // If error is 401 and we haven't tried to refresh yet
     if (error.response?.status === 401 && !originalRequest._retry) {
+      const accessToken = tokenStorage.getAccessToken();
+      const currentRefreshToken = tokenStorage.getRefreshToken();
+      
+      // Decode token to check expiry
+      let tokenExpiryInfo = null;
+      if (accessToken) {
+        try {
+          const payload = JSON.parse(atob(accessToken.split('.')[1]));
+          const now = Math.floor(Date.now() / 1000);
+          const exp = payload.exp;
+          tokenExpiryInfo = {
+            expiresAt: new Date(exp * 1000).toISOString(),
+            expiresInSeconds: exp - now,
+            isExpired: exp < now,
+          };
+        } catch (e) {
+          tokenExpiryInfo = { error: 'Could not decode token' };
+        }
+      }
+      
       // Log 401 error details for debugging
       console.warn('401 Unauthorized error:', {
         url: originalRequest.url,
         method: originalRequest.method,
         timestamp: new Date().toISOString(),
-        hasRefreshToken: !!tokenStorage.getRefreshToken(),
+        hasRefreshToken: !!currentRefreshToken,
+        hasAccessToken: !!accessToken,
+        tokenExpiryInfo,
         isRefreshing,
+        willAttemptRefresh: !originalRequest.url?.includes('/auth/refresh'),
       });
       
       // Don't retry refresh endpoint itself - it means refresh token is invalid/expired
@@ -128,9 +151,12 @@ apiClient.interceptors.response.use(
 
       originalRequest._retry = true;
       isRefreshing = true;
+      
+      console.log('Starting token refresh attempt...');
 
       const refreshToken = tokenStorage.getRefreshToken();
       if (!refreshToken) {
+        console.error('No refresh token available');
         tokenStorage.clearTokens();
         // Clear auth store
         if (typeof window !== 'undefined') {
@@ -157,20 +183,27 @@ apiClient.interceptors.response.use(
           timeout: 30000,
         });
 
-        const response = await refreshClient.post(
+        console.log('Calling refresh endpoint...');
+        const refreshResponse = await refreshClient.post(
           '/auth/refresh',
           { refreshToken }
         );
         
+        console.log('Refresh endpoint response received:', {
+          status: refreshResponse.status,
+          hasData: !!refreshResponse.data,
+        });
+        
         // Handle both direct response and nested data structure
-        const responseData = response.data?.data || response.data;
+        const responseData = refreshResponse.data?.data || refreshResponse.data;
         const { accessToken, refreshToken: newRefreshToken } = responseData;
 
         if (!accessToken) {
-          console.error('Token refresh response:', response.data);
+          console.error('Token refresh response:', refreshResponse.data);
           throw new Error('No access token received from refresh endpoint');
         }
 
+        console.log('Token refresh successful, updating tokens and retrying original request');
         tokenStorage.setTokens(accessToken, newRefreshToken || refreshToken);
         processQueue(null, accessToken);
 
