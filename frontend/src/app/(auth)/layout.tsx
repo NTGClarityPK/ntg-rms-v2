@@ -136,7 +136,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
             >
               RMS
             </Title>
-            <Text c="dimmed" size="sm" fw={500}>
+            <Text size="sm" fw={500} style={{ color: '#4a4a4a' }}>
               {language === 'ar' ? 'نظام إدارة المطاعم' : 'Restaurant Management System'}
             </Text>
           </Box>
@@ -148,6 +148,9 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
               leftSection={<IconLanguage size={16} />}
               onClick={toggleLanguage}
               size="sm"
+              style={{
+                color: primary,
+              }}
             >
               {language === 'en' ? 'العربية' : 'English'}
             </Button>

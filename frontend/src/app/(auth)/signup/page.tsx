@@ -24,6 +24,7 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { useErrorColor, useInfoColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
+import { DEFAULT_THEME_COLOR } from '@/lib/utils/theme';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -126,10 +127,10 @@ export default function SignupPage() {
     <form onSubmit={form.onSubmit(handleSubmit)}>
       <Stack gap="lg">
         <Box>
-          <Title order={2} size="1.8rem" fw={700} mb="xs">
+          <Title order={2} size="1.8rem" fw={700} mb="xs" style={{ color: '#1a1a1a' }}>
           {t('auth.signupTitle', language)}
         </Title>
-          <Text c="dimmed" size="sm">
+          <Text size="sm" style={{ color: '#4a4a4a' }}>
             {t('auth.createAccountToStart', language)}
           </Text>
         </Box>
@@ -249,25 +250,25 @@ export default function SignupPage() {
           >
             <Stack gap="md" mt="xl">
               <Box>
-                <Text size="sm" c="dimmed" mb="xs">{t('common.email' as any, language)}</Text>
-                <Text fw={500}>{form.values.email}</Text>
+                <Text size="sm" mb="xs" style={{ color: '#4a4a4a' }}>{t('common.email' as any, language)}</Text>
+                <Text fw={500} style={{ color: '#1a1a1a' }}>{form.values.email}</Text>
               </Box>
 
               <Box>
-                <Text size="sm" c="dimmed" mb="xs">Name</Text>
-                <Text fw={500}>{form.values.name}</Text>
+                <Text size="sm" mb="xs" style={{ color: '#4a4a4a' }}>Name</Text>
+                <Text fw={500} style={{ color: '#1a1a1a' }}>{form.values.name}</Text>
               </Box>
 
               {form.values.phone && (
                 <Box>
-                  <Text size="sm" c="dimmed" mb="xs">{t('common.phone' as any, language)}</Text>
-                  <Text fw={500}>{form.values.phone}</Text>
+                  <Text size="sm" mb="xs" style={{ color: '#4a4a4a' }}>{t('common.phone' as any, language)}</Text>
+                  <Text fw={500} style={{ color: '#1a1a1a' }}>{form.values.phone}</Text>
                 </Box>
               )}
 
               <Box>
-                <Text size="sm" c="dimmed" mb="xs">{t('auth.currency', language)}</Text>
-                <Text fw={500}>
+                <Text size="sm" mb="xs" style={{ color: '#4a4a4a' }}>{t('auth.currency', language)}</Text>
+                <Text fw={500} style={{ color: '#1a1a1a' }}>
                   {form.values.defaultCurrency === 'IQD' && (language === 'ar' ? 'IQD - الدينار العراقي' : 'IQD - Iraqi Dinar')}
                   {form.values.defaultCurrency === 'USD' && (language === 'ar' ? 'USD - الدولار الأمريكي' : 'USD - US Dollar')}
                   {form.values.defaultCurrency === 'EUR' && (language === 'ar' ? 'EUR - اليورو' : 'EUR - Euro')}
@@ -317,7 +318,16 @@ export default function SignupPage() {
 
         <Group justify="space-between" mt="xl">
           {active > 0 && (
-            <Button variant="default" onClick={prevStep} disabled={loading}>
+            <Button 
+              variant="default" 
+              onClick={prevStep} 
+              disabled={loading}
+              style={{
+                backgroundColor: '#f5f5f5',
+                color: '#1a1a1a',
+                borderColor: '#e0e0e0',
+              }}
+            >
               {t('common.previousStep' as any, language)}
             </Button>
           )}
@@ -325,7 +335,14 @@ export default function SignupPage() {
             <div /> // Spacer
           )}
           {active < 2 ? (
-            <Button onClick={nextStep} disabled={loading}>
+            <Button 
+              onClick={nextStep} 
+              disabled={loading}
+              style={{
+                backgroundColor: DEFAULT_THEME_COLOR,
+                color: 'white',
+              }}
+            >
               {t('common.nextStep' as any, language)}
             </Button>
           ) : (
@@ -335,15 +352,19 @@ export default function SignupPage() {
               size="lg"
               radius="md"
               leftSection={<IconCheck size={16} />}
+              style={{
+                backgroundColor: DEFAULT_THEME_COLOR,
+                color: 'white',
+              }}
             >
               {t('common.signup' as any, language)}
             </Button>
           )}
         </Group>
 
-        <Text ta="center" size="sm">
+        <Text ta="center" size="sm" style={{ color: '#4a4a4a' }}>
           {t('auth.hasAccount', language)}{' '}
-          <Anchor href="/login" size="sm">
+          <Anchor href="/login" size="sm" style={{ color: DEFAULT_THEME_COLOR, fontWeight: 500 }}>
             {t('common.login' as any, language)}
           </Anchor>
         </Text>
