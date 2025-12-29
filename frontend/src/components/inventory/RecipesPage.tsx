@@ -65,9 +65,11 @@ export function RecipesPage() {
   const primaryColor = useThemeColor();
   const foodItemsPagination = usePagination<FoodItem>({ initialPage: 1, initialLimit: 10 });
   const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
+  const [allFoodItems, setAllFoodItems] = useState<FoodItem[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [opened, setOpened] = useState(false);
   const [selectedFoodItem, setSelectedFoodItem] = useState<FoodItem | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -174,6 +176,92 @@ export function RecipesPage() {
     }
   }, [user?.tenantId, foodItemsPagination]);
 
+  const loadAllFoodItems = useCallback(async () => {
+    if (!user?.tenantId) return;
+
+    try {
+      // Load from server if online
+      if (navigator.onLine) {
+        try {
+          const allFoodItems: FoodItem[] = [];
+          let page = 1;
+          const limit = 100; // Fetch in larger batches
+          let hasMore = true;
+
+          // Fetch all pages sequentially
+          while (hasMore) {
+            const response = await menuApi.getFoodItems(undefined, { page, limit });
+            
+            if (isPaginatedResponse(response)) {
+              allFoodItems.push(...response.data);
+              hasMore = response.pagination.hasNext;
+              page++;
+            } else {
+              // Non-paginated response - treat as single page
+              allFoodItems.push(...(Array.isArray(response) ? response : []));
+              hasMore = false;
+            }
+          }
+
+          setAllFoodItems(allFoodItems);
+        } catch (err: any) {
+          console.warn('Failed to sync all food items from server:', err);
+          // Fallback to IndexedDB
+          const localFoodItems = await db.foodItems
+            .where('tenantId')
+            .equals(user.tenantId)
+            .filter((item) => !item.deletedAt)
+            .toArray();
+          
+          setAllFoodItems(localFoodItems.map((item) => ({
+            id: item.id,
+            name: (item as any).name || (item as any).nameEn || (item as any).nameAr || '',
+            description: (item as any).description || (item as any).descriptionEn || (item as any).descriptionAr || undefined,
+            imageUrl: item.imageUrl,
+            categoryId: item.categoryId,
+            basePrice: item.basePrice,
+            stockType: item.stockType,
+            stockQuantity: item.stockQuantity,
+            menuType: item.menuType,
+            menuTypes: item.menuTypes,
+            ageLimit: item.ageLimit,
+            displayOrder: item.displayOrder,
+            isActive: item.isActive,
+            createdAt: item.createdAt,
+            updatedAt: item.updatedAt,
+          })));
+        }
+      } else {
+        // Load from IndexedDB when offline
+        const localFoodItems = await db.foodItems
+          .where('tenantId')
+          .equals(user.tenantId)
+          .filter((item) => !item.deletedAt)
+          .toArray();
+        
+        setAllFoodItems(localFoodItems.map((item) => ({
+          id: item.id,
+          name: (item as any).name || (item as any).nameEn || (item as any).nameAr || '',
+          description: (item as any).description || (item as any).descriptionEn || (item as any).descriptionAr || undefined,
+          imageUrl: item.imageUrl,
+          categoryId: item.categoryId,
+          basePrice: item.basePrice,
+          stockType: item.stockType,
+          stockQuantity: item.stockQuantity,
+          menuType: item.menuType,
+          menuTypes: item.menuTypes,
+          ageLimit: item.ageLimit,
+          displayOrder: item.displayOrder,
+          isActive: item.isActive,
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt,
+        })));
+      }
+    } catch (err: any) {
+      console.error('Failed to load all food items:', err);
+    }
+  }, [user?.tenantId]);
+
   const loadIngredients = useCallback(async () => {
     if (!user?.tenantId) return;
 
@@ -221,14 +309,28 @@ export function RecipesPage() {
       // Sync from server if online
       if (navigator.onLine) {
         try {
-          const serverIngredientsResponse = await inventoryApi.getIngredients({ isActive: true });
-          // Handle both paginated and non-paginated responses
-          const serverIngredients: Ingredient[] = Array.isArray(serverIngredientsResponse) 
-            ? serverIngredientsResponse 
-            : (serverIngredientsResponse?.data || []);
+          const allServerIngredients: Ingredient[] = [];
+          let page = 1;
+          const limit = 100; // Fetch in larger batches
+          let hasMore = true;
+
+          // Fetch all pages sequentially
+          while (hasMore) {
+            const response = await inventoryApi.getIngredients({ isActive: true }, { page, limit });
+            
+            if (isPaginatedResponse(response)) {
+              allServerIngredients.push(...response.data);
+              hasMore = response.pagination.hasNext;
+              page++;
+            } else {
+              // Non-paginated response - treat as single page
+              allServerIngredients.push(...(Array.isArray(response) ? response : []));
+              hasMore = false;
+            }
+          }
           
           // Deduplicate server ingredients
-          const serverById = new Map(serverIngredients.map((ing: Ingredient) => [ing.id, ing]));
+          const serverById = new Map(allServerIngredients.map((ing: Ingredient) => [ing.id, ing]));
           const serverByName = new Map<string, Ingredient>();
           
           for (const ing of Array.from(serverById.values())) {
@@ -332,7 +434,7 @@ export function RecipesPage() {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      await Promise.all([loadFoodItems(), loadIngredients()]);
+      await Promise.all([loadFoodItems(), loadAllFoodItems(), loadIngredients()]);
       setLoading(false);
     };
     loadData();
@@ -355,11 +457,14 @@ export function RecipesPage() {
       .filter((ing) => ing.name)
       .map((ing) => ({
         value: ing.id,
-        label: ing.name || '',
+        label: ing.unitOfMeasurement 
+          ? `${ing.name || ''} (${ing.unitOfMeasurement})`
+          : ing.name || '',
       }));
   }, [ingredients]);
 
   const handleOpenModal = (foodItem?: FoodItem) => {
+    // Open modal immediately
     if (foodItem) {
       setSelectedFoodItem(foodItem);
       
@@ -383,12 +488,19 @@ export function RecipesPage() {
       form.reset();
     }
     setOpened(true);
+    
+    // Refresh all food items in the background to ensure dropdown has latest data
+    loadAllFoodItems().catch((err) => {
+      console.warn('Failed to refresh food items:', err);
+    });
   };
 
   const handleCloseModal = () => {
+    if (submitting) return;
     setOpened(false);
     setSelectedFoodItem(null);
     form.reset();
+    setSubmitting(false);
   };
 
   const handleAddIngredient = () => {
@@ -415,6 +527,7 @@ export function RecipesPage() {
     if (!user?.tenantId) return;
 
     try {
+      setSubmitting(true);
       setError(null);
 
       if (values.ingredients.length === 0) {
@@ -497,6 +610,8 @@ export function RecipesPage() {
         message: errorMsg,
         color: errorColor,
       });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -719,6 +834,9 @@ export function RecipesPage() {
       <Modal
         opened={opened}
         onClose={handleCloseModal}
+        closeOnClickOutside={!submitting}
+        closeOnEscape={!submitting}
+        withCloseButton={!submitting}
         title={
           selectedFoodItem
             ? `${t('inventory.linkIngredients', language)} - ${selectedFoodItem.name}`
@@ -733,7 +851,7 @@ export function RecipesPage() {
                 label={t('inventory.foodItem', language)}
                 placeholder={t('inventory.selectFoodItem', language)}
                 required
-                data={foodItems
+                data={allFoodItems
                   .filter((item) => item.name)
                   .map((item) => ({
                     value: item.id,
@@ -814,10 +932,10 @@ export function RecipesPage() {
             )}
 
             <Group justify="flex-end" mt="md">
-              <Button variant="subtle" onClick={handleCloseModal}>
+              <Button variant="subtle" onClick={handleCloseModal} disabled={submitting}>
                 {t('common.cancel' as any, language) || 'Cancel'}
               </Button>
-              <Button type="submit" style={{ backgroundColor: primaryColor }}>
+              <Button type="submit" style={{ backgroundColor: primaryColor }} loading={submitting}>
                 {t('common.save' as any, language) || 'Save'}
               </Button>
             </Group>

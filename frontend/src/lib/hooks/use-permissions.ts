@@ -7,15 +7,16 @@ import { hasPermission, canView, canCreate, canUpdate, canDelete } from '../util
 export function usePermissions() {
   const { user } = useAuthStore();
   const permissions = user?.permissions || [];
+  const userRole = user?.role;
 
   return {
     permissions,
     hasPermission: (resource: string, action: string) =>
-      hasPermission(permissions, resource, action),
-    canView: (resource: string) => canView(permissions, resource),
-    canCreate: (resource: string) => canCreate(permissions, resource),
-    canUpdate: (resource: string) => canUpdate(permissions, resource),
-    canDelete: (resource: string) => canDelete(permissions, resource),
+      hasPermission(permissions, resource, action, userRole),
+    canView: (resource: string) => canView(permissions, resource, userRole),
+    canCreate: (resource: string) => canCreate(permissions, resource, userRole),
+    canUpdate: (resource: string) => canUpdate(permissions, resource, userRole),
+    canDelete: (resource: string) => canDelete(permissions, resource, userRole),
   };
 }
 

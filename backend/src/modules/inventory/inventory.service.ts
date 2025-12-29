@@ -1178,6 +1178,15 @@ export class InventoryService {
   ) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
+    // Fetch token number from order
+    const { data: order } = await supabase
+      .from('orders')
+      .select('token_number')
+      .eq('id', orderId)
+      .maybeSingle();
+    
+    const tokenNumber = order?.token_number || 'N/A';
+
     const deductions: any[] = [];
 
     for (const item of orderItems) {
@@ -1289,7 +1298,7 @@ export class InventoryService {
           const deductDto: DeductStockDto = {
             ingredientId: recipe.ingredient_id,
             quantity: totalQuantityNeeded,
-            reason: `Auto deduction`,
+            reason: `Auto deduction - Token: ${tokenNumber}`,
             referenceId: orderId,
           };
 
@@ -1334,7 +1343,7 @@ export class InventoryService {
               const deductDto: DeductStockDto = {
                 ingredientId: recipe.ingredient_id,
                 quantity: totalQuantityNeeded,
-                reason: `Auto deduction`,
+                reason: `Auto deduction - Token: ${tokenNumber}`,
                 referenceId: orderId,
               };
 

@@ -26,6 +26,7 @@ import {
   MultiSelect,
   Table,
   Textarea,
+  Loader,
 } from '@mantine/core';
 import {
   IconPlus,
@@ -81,6 +82,7 @@ export function FoodItemsPage() {
   const debouncedSearchRef = useRef<string>('');
   const paginationPageRef = useRef<number>(pagination.page);
   const paginationLimitRef = useRef<number>(pagination.limit);
+  const [pendingItem, setPendingItem] = useState<Partial<FoodItem> | null>(null);
 
   const form = useForm({
     initialValues: {
@@ -636,6 +638,7 @@ export function FoodItemsPage() {
     setImagePreview(null);
     setImageFile(null);
     setShouldSubmit(false);
+    // Don't clear pendingItem here - it should only be cleared after API call completes
   };
 
   const nextStep = (e?: React.MouseEvent) => {
@@ -769,6 +772,26 @@ export function FoodItemsPage() {
     const currentEditingItem = editingItem;
     const currentImageFile = imageFile;
     handleCloseModal();
+
+    // If creating a new item, add a skeleton item to show progress
+    if (!wasEditing) {
+      const category = categories.find((c) => c.id === values.categoryId);
+      setPendingItem({
+        id: `pending-${Date.now()}`,
+        name: values.name,
+        description: values.description,
+        categoryId: values.categoryId,
+        basePrice: values.basePrice,
+        stockType: values.stockType,
+        stockQuantity: values.stockQuantity,
+        menuTypes: values.menuTypes || [],
+        ageLimit: values.ageLimit,
+        imageUrl: values.imageUrl || undefined,
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
 
     // Run API calls in background
     (async () => {
@@ -967,6 +990,9 @@ export function FoodItemsPage() {
         color: successColor,
       });
 
+      // Remove pending item skeleton
+      setPendingItem(null);
+
       loadData();
         // Notify other tabs that food items have been updated
         notifyMenuDataUpdate('food-items-updated');
@@ -977,6 +1003,9 @@ export function FoodItemsPage() {
         message: errorMsg,
         color: errorColor,
       });
+      
+      // Remove pending item skeleton on error
+      setPendingItem(null);
     }
     })();
   };
@@ -1131,6 +1160,111 @@ export function FoodItemsPage() {
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
+                  {/* Show pending skeleton item at the top when creating */}
+                  {pendingItem && !editingItem && (
+                    <Table.Tr key={pendingItem.id} style={{ opacity: 0.7, position: 'relative' }}>
+                      <Table.Td style={{ maxWidth: 300 }}>
+                        <Group gap="sm" wrap="nowrap">
+                          {pendingItem.imageUrl ? (
+                            <Box
+                              w={40}
+                              h={40}
+                              style={{
+                                flexShrink: 0,
+                                borderRadius: 'var(--mantine-radius-sm)',
+                                overflow: 'hidden',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                backgroundColor: `${primaryColor}15`,
+                              }}
+                            >
+                              <Image
+                                src={pendingItem.imageUrl}
+                                alt={pendingItem.name || ''}
+                                width={40}
+                                height={40}
+                                fit="cover"
+                                style={{
+                                  width: '100%',
+                                  height: '100%',
+                                  objectFit: 'cover',
+                                }}
+                              />
+                            </Box>
+                          ) : (
+                            <Box
+                              w={40}
+                              h={40}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                backgroundColor: `${primaryColor}15`,
+                                borderRadius: '4px',
+                                flexShrink: 0,
+                              }}
+                            >
+                              <IconToolsKitchen2 size={20} color={primaryColor} />
+                            </Box>
+                          )}
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <Group gap="xs" wrap="nowrap">
+                              <Text fw={500} truncate>
+                                {pendingItem.name || ''}
+                              </Text>
+                              <Loader size={16} style={{ flexShrink: 0 }} />
+                            </Group>
+                            {pendingItem.description && (
+                              <Text size="xs" c="dimmed" lineClamp={1}>
+                                {pendingItem.description || ''}
+                              </Text>
+                            )}
+                          </div>
+                        </Group>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text truncate>
+                          {categories.find((c) => c.id === pendingItem.categoryId)?.name || '-'}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text fw={500}>{pendingItem.basePrice?.toFixed(2) || '0.00'}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        {pendingItem.menuTypes && pendingItem.menuTypes.length > 0 ? (
+                          <Group gap={4} wrap="wrap" style={{ maxWidth: 200 }}>
+                            {pendingItem.menuTypes.map((menuType) => {
+                              const menuTypeLabel = menuType === 'all_day' ? t('menu.allDay', language) :
+                                menuType === 'breakfast' ? t('menu.breakfast', language) :
+                                menuType === 'lunch' ? t('menu.lunch', language) :
+                                menuType === 'dinner' ? t('menu.dinner', language) :
+                                menuType === 'kids_special' ? t('menu.kidsSpecial', language) :
+                                menuType;
+                              return (
+                                <Badge
+                                  key={menuType}
+                                  variant="light"
+                                  size="sm"
+                                  color={getBadgeColorForText(menuTypeLabel)}
+                                >
+                                  {menuTypeLabel}
+                                </Badge>
+                              );
+                            })}
+                          </Group>
+                        ) : (
+                          <Text c="dimmed" size="sm">-</Text>
+                        )}
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap="xs" wrap="nowrap">
+                          <Skeleton height={32} width={32} radius="md" />
+                          <Skeleton height={32} width={32} radius="md" />
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  )}
                   {foodItems.map((item) => {
                     const category = categories.find((c) => c.id === item.categoryId);
                     return (
