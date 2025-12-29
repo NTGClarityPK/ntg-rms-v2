@@ -93,7 +93,7 @@ export function StockManagementPage() {
       .filter((ing) => ing.name)
       .map((ing) => ({
         value: ing.id,
-        label: ing.name || '',
+        label: `${ing.name || ''}${ing.unitOfMeasurement ? ` (${ing.unitOfMeasurement})` : ''}`,
       }));
   }, [ingredients]);
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
@@ -221,14 +221,32 @@ export function StockManagementPage() {
       // Sync from server if online
       if (navigator.onLine) {
         try {
-          const serverIngredientsResponse = await inventoryApi.getIngredients({ isActive: true });
-          // Handle both paginated and non-paginated responses
-          const serverIngredients: Ingredient[] = Array.isArray(serverIngredientsResponse) 
-            ? serverIngredientsResponse 
-            : (serverIngredientsResponse?.data || []);
+          // Fetch all pages of ingredients
+          let allServerIngredients: Ingredient[] = [];
+          let page = 1;
+          const limit = 100; // Fetch 100 items per page
+          let hasMore = true;
+
+          while (hasMore) {
+            const serverIngredientsResponse = await inventoryApi.getIngredients(
+              { isActive: true },
+              { page, limit }
+            );
+
+            if (isPaginatedResponse(serverIngredientsResponse)) {
+              // Handle paginated response
+              allServerIngredients = [...allServerIngredients, ...serverIngredientsResponse.data];
+              hasMore = serverIngredientsResponse.pagination.hasNext;
+              page++;
+            } else {
+              // Handle non-paginated response (array)
+              allServerIngredients = serverIngredientsResponse;
+              hasMore = false;
+            }
+          }
           
           // Deduplicate server ingredients
-          const serverById = new Map(serverIngredients.map((ing: Ingredient) => [ing.id, ing]));
+          const serverById = new Map(allServerIngredients.map((ing: Ingredient) => [ing.id, ing]));
           const serverByName = new Map<string, Ingredient>();
           
           for (const ing of Array.from(serverById.values())) {
