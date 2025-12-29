@@ -31,6 +31,7 @@ import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors } from '@/lib/hooks/use-theme-colors';
 import { useErrorColor, useSuccessColor, useInfoColor } from '@/lib/hooks/use-theme-colors';
+import { generateUUID } from '@/lib/utils/uuid';
 
 export default function CountersPage() {
   const { language } = useLanguageStore();
@@ -158,7 +159,7 @@ export default function CountersPage() {
       } else {
         // Create counter
         // Queue sync
-        const newId = crypto.randomUUID();
+        const newId = generateUUID();
         await syncService.queueChange('counters', 'CREATE', newId, values);
 
         // Try to sync immediately if online

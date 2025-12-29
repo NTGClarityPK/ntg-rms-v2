@@ -33,6 +33,7 @@ import { t } from '@/lib/utils/translations';
 import { useNotificationColors } from '@/lib/hooks/use-theme-colors';
 import { useErrorColor, useSuccessColor, useInfoColor } from '@/lib/hooks/use-theme-colors';
 import { PermissionGuard } from '@/components/common/PermissionGuard';
+import { generateUUID } from '@/lib/utils/uuid';
 
 export default function BranchesPage() {
   const { language } = useLanguageStore();
@@ -217,7 +218,7 @@ export default function BranchesPage() {
         }
       } else {
         // Create branch
-        const newId = crypto.randomUUID();
+        const newId = generateUUID();
         const branchData: Branch = {
           id: newId,
           tenantId: user.tenantId,

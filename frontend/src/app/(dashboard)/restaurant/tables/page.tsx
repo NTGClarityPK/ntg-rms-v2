@@ -30,6 +30,7 @@ import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors } from '@/lib/hooks/use-theme-colors';
 import { useErrorColor, useSuccessColor, useInfoColor, useWarningColor } from '@/lib/hooks/use-theme-colors';
+import { generateUUID } from '@/lib/utils/uuid';
 
 // TABLE_STATUS_COLORS will be generated dynamically based on theme
 
@@ -180,7 +181,7 @@ export default function TablesPage() {
       } else {
         // Create table
         // Queue sync
-        const newId = crypto.randomUUID();
+        const newId = generateUUID();
         await syncService.queueChange('tables', 'CREATE', newId, values);
 
         // Try to sync immediately if online
