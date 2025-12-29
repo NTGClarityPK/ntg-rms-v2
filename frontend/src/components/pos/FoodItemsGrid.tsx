@@ -311,6 +311,18 @@ export function FoodItemsGrid({
     currentSearchRef.current = debouncedSearchQuery;
   }, [debouncedSearchQuery]);
 
+  // Reset pagination to page 1 when search or category changes
+  useEffect(() => {
+    if (itemType === 'food-items') {
+      foodItemsPagination.setPage(1);
+    } else if (itemType === 'buffets') {
+      buffetsPagination.setPage(1);
+    } else if (itemType === 'combo-meals') {
+      comboMealsPagination.setPage(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearchQuery, selectedCategoryId, itemType]);
+
   useEffect(() => {
     loadData();
   }, [loadData]);
@@ -416,6 +428,9 @@ export function FoodItemsGrid({
             const buffetMenuTypes = buffet.menuTypes || [];
             return buffetMenuTypes.some((mt) => activeMenuTypes.includes(mt));
           });
+        } else {
+          // If no active menus, show no items
+          filtered = [];
         }
         
         if (debouncedSearchQuery.trim()) {
@@ -427,19 +442,42 @@ export function FoodItemsGrid({
           );
         }
         
-          setBuffets(filtered);
+        // Update pagination totals based on filtered results
+        // Since filtering happens client-side, we update totals to reflect filtered count
+        const filteredTotal = filtered.length;
+        buffetsPagination.setTotal(filteredTotal);
+        buffetsPagination.setTotalPages(Math.ceil(filteredTotal / buffetsPagination.limit));
+        buffetsPagination.setHasNext(false); // Client-side filtering, no next page from server
+        buffetsPagination.setHasPrev(buffetsPagination.page > 1);
+        
+        setBuffets(filtered);
         } catch (apiError) {
           // Network error - fall back to empty array (buffets not stored in IndexedDB)
           console.warn('⚠️ Failed to load buffets from API:', apiError);
           setBuffets([]);
+          // Reset pagination when error occurs
+          buffetsPagination.setTotal(0);
+          buffetsPagination.setTotalPages(0);
+          buffetsPagination.setHasNext(false);
+          buffetsPagination.setHasPrev(false);
         }
       } else {
         // Offline: buffets not available offline (not stored in IndexedDB)
         setBuffets([]);
+        // Reset pagination when offline
+        buffetsPagination.setTotal(0);
+        buffetsPagination.setTotalPages(0);
+        buffetsPagination.setHasNext(false);
+        buffetsPagination.setHasPrev(false);
       }
     } catch (error) {
       console.error('Failed to load buffets:', error);
       setBuffets([]);
+      // Reset pagination when error occurs
+      buffetsPagination.setTotal(0);
+      buffetsPagination.setTotalPages(0);
+      buffetsPagination.setHasNext(false);
+      buffetsPagination.setHasPrev(false);
     }
   };
 
@@ -459,6 +497,9 @@ export function FoodItemsGrid({
             const comboMenuTypes = combo.menuTypes || [];
             return comboMenuTypes.some((mt) => activeMenuTypes.includes(mt));
           });
+        } else {
+          // If no active menus, show no items
+          filtered = [];
         }
         
         if (debouncedSearchQuery.trim()) {
@@ -470,19 +511,42 @@ export function FoodItemsGrid({
           );
         }
         
-          setComboMeals(filtered);
+        // Update pagination totals based on filtered results
+        // Since filtering happens client-side, we update totals to reflect filtered count
+        const filteredTotal = filtered.length;
+        comboMealsPagination.setTotal(filteredTotal);
+        comboMealsPagination.setTotalPages(Math.ceil(filteredTotal / comboMealsPagination.limit));
+        comboMealsPagination.setHasNext(false); // Client-side filtering, no next page from server
+        comboMealsPagination.setHasPrev(comboMealsPagination.page > 1);
+        
+        setComboMeals(filtered);
         } catch (apiError) {
           // Network error - fall back to empty array (combo meals not stored in IndexedDB)
           console.warn('⚠️ Failed to load combo meals from API:', apiError);
           setComboMeals([]);
+          // Reset pagination when error occurs
+          comboMealsPagination.setTotal(0);
+          comboMealsPagination.setTotalPages(0);
+          comboMealsPagination.setHasNext(false);
+          comboMealsPagination.setHasPrev(false);
         }
       } else {
         // Offline: combo meals not available offline (not stored in IndexedDB)
         setComboMeals([]);
+        // Reset pagination when offline
+        comboMealsPagination.setTotal(0);
+        comboMealsPagination.setTotalPages(0);
+        comboMealsPagination.setHasNext(false);
+        comboMealsPagination.setHasPrev(false);
       }
     } catch (error) {
       console.error('Failed to load combo meals:', error);
       setComboMeals([]);
+      // Reset pagination when error occurs
+      comboMealsPagination.setTotal(0);
+      comboMealsPagination.setTotalPages(0);
+      comboMealsPagination.setHasNext(false);
+      comboMealsPagination.setHasPrev(false);
     }
   };
 

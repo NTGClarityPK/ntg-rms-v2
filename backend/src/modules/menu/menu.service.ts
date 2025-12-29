@@ -407,32 +407,37 @@ export class MenuService {
         activeMenuTypes = activeMenus?.map((m: any) => m.menu_type) || [];
       }
 
-      // Optimize: Get all menu types with items and all existing menu types in parallel
-      const [allMenuItemsResult, existingMenusResult] = await Promise.all([
-        supabase
-          .from('menu_items')
-          .select('menu_type')
-          .eq('tenant_id', tenantId),
-        activeMenuTypes.length > 0
-          ? supabase
-              .from('menus')
-              .select('menu_type')
-              .eq('tenant_id', tenantId)
-          : Promise.resolve({ data: [], error: null }),
-      ]);
+      // Only process legacy menu types if we have at least one active menu
+      // When filtering by active menus, we should NOT include legacy menu types if no menus are active
+      // This ensures that when there are no active menus, no items are shown in POS
+      if (activeMenuTypes.length > 0) {
+        // Optimize: Get all menu types with items and all existing menu types in parallel
+        const [allMenuItemsResult, existingMenusResult] = await Promise.all([
+          supabase
+            .from('menu_items')
+            .select('menu_type')
+            .eq('tenant_id', tenantId),
+          supabase
+            .from('menus')
+            .select('menu_type')
+            .eq('tenant_id', tenantId),
+        ]);
 
-      // Process legacy menu types (menu_items without menu records)
-      if (allMenuItemsResult.data) {
-        const allMenuTypesWithItems = [...new Set(allMenuItemsResult.data.map((mi: any) => mi.menu_type))];
-        const allExistingMenuTypes = (existingMenusResult.data || []).map((m: any) => m.menu_type);
-        
-        // Get menu types that have items but don't have a record in menus table
-        const menuTypesToInclude = allMenuTypesWithItems.filter(
-          (menuType) => !allExistingMenuTypes.includes(menuType)
-        );
+        // Process legacy menu types (menu_items without menu records)
+        // Only include these if we already have some active menus
+        if (allMenuItemsResult.data) {
+          const allMenuTypesWithItems = [...new Set(allMenuItemsResult.data.map((mi: any) => mi.menu_type))];
+          const allExistingMenuTypes = (existingMenusResult.data || []).map((m: any) => m.menu_type);
+          
+          // Get menu types that have items but don't have a record in menus table
+          const menuTypesToInclude = allMenuTypesWithItems.filter(
+            (menuType) => !allExistingMenuTypes.includes(menuType)
+          );
 
-        // Include these menu types as active (they have items but no menu record)
-        activeMenuTypes = [...activeMenuTypes, ...menuTypesToInclude];
+          // Include these menu types as active (they have items but no menu record)
+          // But only if we already have at least one active menu
+          activeMenuTypes = [...activeMenuTypes, ...menuTypesToInclude];
+        }
       }
 
       // If there are active menus, filter items to only those in active menus
