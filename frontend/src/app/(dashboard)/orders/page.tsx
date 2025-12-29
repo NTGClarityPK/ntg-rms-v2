@@ -32,7 +32,7 @@ import { t } from '@/lib/utils/translations';
 import { ordersApi, Order, OrderStatus, OrderType, PaymentStatus } from '@/lib/api/orders';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { notifications } from '@mantine/notifications';
-import { useDisclosure } from '@mantine/hooks';
+import { useDisclosure, useDebouncedValue } from '@mantine/hooks';
 import { OrderDetailsModal } from '@/components/orders/OrderDetailsModal';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getStatusColor, getPaymentStatusColor, getSuccessColor, getErrorColor, getBadgeColorForText } from '@/lib/utils/theme';
@@ -66,6 +66,7 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery] = useDebouncedValue(searchQuery, 300);
   const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
   const [selectedOrderType, setSelectedOrderType] = useState<string | null>(null);
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState<string | null>(null);
@@ -105,7 +106,7 @@ export default function OrdersPage() {
       branchId: selectedBranch,
       orderType: selectedOrderType,
       paymentStatus: selectedPaymentStatus,
-      search: searchQuery.trim(),
+      search: debouncedSearchQuery.trim(),
       waiterEmail: showMyOrdersOnly && user?.email ? user.email : undefined,
       page: pagination.page,
       limit: pagination.limit,
@@ -137,7 +138,7 @@ export default function OrdersPage() {
         branchId: selectedBranch || undefined,
         orderType: selectedOrderType as OrderType | undefined,
         paymentStatus: selectedPaymentStatus as PaymentStatus | undefined,
-        search: searchQuery.trim() || undefined,
+        search: debouncedSearchQuery.trim() || undefined,
         waiterEmail: showMyOrdersOnly && user?.email ? user.email : undefined,
         ...pagination.paginationParams,
       };
@@ -175,7 +176,7 @@ export default function OrdersPage() {
               branchId: selectedBranch || undefined,
               orderType: selectedOrderType as OrderType | undefined,
               paymentStatus: selectedPaymentStatus as PaymentStatus | undefined,
-              search: searchQuery.trim() || undefined,
+              search: debouncedSearchQuery.trim() || undefined,
               waiterEmail: showMyOrdersOnly && user?.email ? user.email : undefined,
               // No status filter - get all orders
               // Don't paginate this query - we need all orders for exclusion check
@@ -206,8 +207,8 @@ export default function OrdersPage() {
             if (selectedPaymentStatus && order.paymentStatus !== selectedPaymentStatus) return false;
             if (showMyOrdersOnly && user?.email && (order as any).waiterEmail !== user.email) return false;
             // Apply search filter to IndexedDB orders as well
-            if (searchQuery.trim()) {
-              const query = searchQuery.toLowerCase().trim();
+            if (debouncedSearchQuery.trim()) {
+              const query = debouncedSearchQuery.toLowerCase().trim();
               const matchesOrderNumber = order.orderNumber?.toLowerCase().includes(query);
               const matchesTokenNumber = order.tokenNumber?.toLowerCase().includes(query);
               if (!matchesOrderNumber && !matchesTokenNumber) {
@@ -372,7 +373,7 @@ export default function OrdersPage() {
       }
       loadingOrdersRef.current = false;
     }
-  }, [selectedBranch, selectedOrderType, selectedPaymentStatus, selectedStatuses, searchQuery, showMyOrdersOnly, user?.tenantId, user?.email, language, pagination]);
+  }, [selectedBranch, selectedOrderType, selectedPaymentStatus, selectedStatuses, debouncedSearchQuery, showMyOrdersOnly, user?.tenantId, user?.email, language, pagination]);
 
   // Update ref whenever loadOrders changes
   useEffect(() => {
@@ -385,6 +386,7 @@ export default function OrdersPage() {
 
   // FIXED: Combined redundant useEffects into one with proper dependencies
   // This prevents loadOrders from being called multiple times when dependencies change
+  // Note: searchQuery is debounced via debouncedSearchQuery, so we use that in dependencies
   useEffect(() => {
     // Use a small timeout to debounce rapid changes and prevent duplicate calls
     const timeoutId = setTimeout(() => {
@@ -395,7 +397,7 @@ export default function OrdersPage() {
       clearTimeout(timeoutId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedBranch, selectedOrderType, selectedPaymentStatus, selectedStatuses, searchQuery, showMyOrdersOnly, pagination.page, pagination.limit]);
+  }, [selectedBranch, selectedOrderType, selectedPaymentStatus, selectedStatuses, debouncedSearchQuery, showMyOrdersOnly, pagination.page, pagination.limit]);
 
   // Set up Supabase Realtime subscription for cross-browser updates
   useEffect(() => {
