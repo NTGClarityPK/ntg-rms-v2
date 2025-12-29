@@ -1072,21 +1072,74 @@ export class OrdersService {
         addOns: orderItem.id ? (addOnsByOrderItemId.get(orderItem.id) || []) : [],
       }));
 
-      // Construct full order response
-      const fullOrder = {
-          ...order,
-        items: orderItemsWithAddOns,
+      // Map order to camelCase format (same as getOrderById)
+      const mappedOrder = {
+        id: order.id,
+        tenantId: order.tenant_id,
+        branchId: order.branch_id,
+        branch: null, // Can be populated if needed
+        counterId: order.counter_id || null,
+        counter: null, // Can be populated if needed
+        tableId: order.table_id || null,
+        table: null, // Can be populated if needed
+        tableIds: tableIdsToValidate,
+        tables: [], // Can be populated if needed
+        customerId: order.customer_id || null,
+        customer: null, // Can be populated if needed
+        cashierId: order.cashier_id || null,
+        cashier: null, // Can be populated if needed
+        waiterEmail: order.waiter_email || null,
+        orderNumber: order.order_number,
+        tokenNumber: order.token_number || null,
+        orderType: order.order_type,
+        status: order.status,
+        paymentStatus: order.payment_status,
+        subtotal: Number(order.subtotal) || 0,
+        discountAmount: Number(order.discount_amount) || 0,
+        taxAmount: Number(order.tax_amount) || 0,
+        deliveryCharge: Number(order.delivery_charge) || 0,
+        totalAmount: Number(order.total_amount) || 0,
+        couponCode: order.coupon_code || null,
+        couponDiscount: totals.couponDiscount ? Number(totals.couponDiscount) : null,
+        specialInstructions: order.special_instructions || null,
+        numberOfPersons: createDto.numberOfPersons || null,
+        orderDate: order.order_date || order.placed_at || order.created_at,
+        placedAt: order.placed_at || null,
+        paidAt: order.paid_at || null,
+        completedAt: order.completed_at || null,
+        cancelledAt: order.cancelled_at || null,
+        cancellationReason: order.cancellation_reason || null,
+        createdAt: order.created_at,
+        updatedAt: order.updated_at,
+        items: orderItemsWithAddOns.map((item: any) => ({
+          id: item.id,
+          orderId: item.order_id,
+          foodItemId: item.food_item_id || null,
+          buffetId: item.buffet_id || null,
+          comboMealId: item.combo_meal_id || null,
+          variationId: item.variation_id || null,
+          quantity: item.quantity,
+          unitPrice: Number(item.unit_price) || 0,
+          discountAmount: Number(item.discount_amount) || 0,
+          taxAmount: Number(item.tax_amount) || 0,
+          subtotal: Number(item.subtotal) || 0,
+          specialInstructions: item.special_instructions || null,
+          status: item.status || 'pending',
+          addOns: item.addOns || [],
+          createdAt: item.created_at,
+          updatedAt: item.updated_at,
+        })),
         payments: createDto.paymentMethod && createDto.paymentTiming === 'pay_first'
           ? [{
               id: 'pending', // Payment ID will be set when payment is processed
-              order_id: order.id,
+              orderId: order.id,
               amount: totals.totalAmount,
-              payment_method: createDto.paymentMethod,
+              paymentMethod: createDto.paymentMethod,
               status: 'pending',
             }]
           : [],
-          timeline: [{ event: 'Order Placed', timestamp: order.placed_at || order.created_at }],
-        };
+        timeline: [{ event: 'Order Placed', timestamp: order.placed_at || order.created_at }],
+      };
       
       // Emit SSE event for new order
       console.log(`📡 Emitting ORDER_CREATED event for order ${order.id}, tenant ${tenantId}`);
@@ -1094,10 +1147,10 @@ export class OrdersService {
         type: 'ORDER_CREATED',
         tenantId,
         orderId: order.id,
-        order: fullOrder,
+        order: mappedOrder,
       });
       
-      return fullOrder;
+      return mappedOrder;
     } catch (error) {
       if (error instanceof BadRequestException || error instanceof NotFoundException) {
         throw error;

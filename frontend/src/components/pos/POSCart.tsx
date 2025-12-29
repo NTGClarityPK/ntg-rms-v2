@@ -2137,7 +2137,11 @@ export function POSCart({
               <Group justify="space-between">
                 <Text fw={700} size="lg">{t('pos.grandTotal', language)}:</Text>
                 <Text fw={700} size="xl" c={primaryColor}>
-                  {formatCurrency(placedOrder.totalAmount, currency)}
+                  {formatCurrency(
+                    placedOrder.totalAmount || 
+                    (placedOrder.subtotal - (placedOrder.discountAmount || 0) + (placedOrder.taxAmount || 0) + (placedOrder.deliveryCharge || 0)),
+                    currency
+                  )}
                 </Text>
               </Group>
             </Stack>
