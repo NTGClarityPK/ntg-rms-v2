@@ -387,10 +387,13 @@ export class OrdersService {
 
     try {
       // Handle missing or empty branchId: use default branch or create one
+      // Optimize: fetch default branch once and reuse
       let effectiveBranchId = createDto.branchId;
+      let defaultBranchCache: { id: string } | null = null;
       
-      if (!effectiveBranchId || effectiveBranchId.trim() === '') {
-        // Try to get the first active branch for this tenant
+      const getDefaultBranch = async () => {
+        if (defaultBranchCache) return defaultBranchCache;
+        
         const { data: defaultBranch } = await supabase
           .from('branches')
           .select('id')
@@ -400,6 +403,14 @@ export class OrdersService {
           .order('created_at', { ascending: true })
           .limit(1)
           .maybeSingle();
+        
+        defaultBranchCache = defaultBranch;
+        return defaultBranch;
+      };
+      
+      if (!effectiveBranchId || effectiveBranchId.trim() === '') {
+        // Try to get the first active branch for this tenant
+        const defaultBranch = await getDefaultBranch();
 
         if (defaultBranch) {
           effectiveBranchId = defaultBranch.id;
@@ -425,6 +436,7 @@ export class OrdersService {
           }
 
           effectiveBranchId = newBranch.id;
+          defaultBranchCache = { id: newBranch.id };
           console.log(`Created default branch ${effectiveBranchId} for tenant ${tenantId}`);
         }
       } else {
@@ -440,15 +452,7 @@ export class OrdersService {
         if (!branch) {
           // Branch doesn't exist - try to get default branch or create one
           console.log(`Branch ${effectiveBranchId} not found. Attempting to use default branch...`);
-          const { data: defaultBranch } = await supabase
-            .from('branches')
-            .select('id')
-            .eq('tenant_id', tenantId)
-            .eq('is_active', true)
-            .is('deleted_at', null)
-            .order('created_at', { ascending: true })
-            .limit(1)
-            .maybeSingle();
+          const defaultBranch = await getDefaultBranch();
 
           if (defaultBranch) {
             effectiveBranchId = defaultBranch.id;
@@ -473,6 +477,7 @@ export class OrdersService {
             }
 
             effectiveBranchId = newBranch.id;
+            defaultBranchCache = { id: newBranch.id };
             console.log(`Created default branch ${effectiveBranchId} for tenant ${tenantId}`);
           }
         }
@@ -498,10 +503,10 @@ export class OrdersService {
         const [settings, tablesResult, activeOrdersByTableIdResult, orderTablesResult] = await Promise.all([
           this.settingsService.getSettings(tenantId),
           supabase
-            .from('tables')
-            .select('table_number, id')
-            .in('id', uniqueTableIds)
-            .eq('branch_id', createDto.branchId)
+          .from('tables')
+          .select('table_number, id')
+          .in('id', uniqueTableIds)
+          .eq('branch_id', createDto.branchId)
             .is('deleted_at', null),
           supabase
             .from('orders')
@@ -595,16 +600,41 @@ export class OrdersService {
         throw new BadRequestException('Order must contain at least one item');
       }
 
-      // Validate stock availability BEFORE creating the order
-      const orderItemsForValidation = createDto.items.map((item) => ({
-        foodItemId: item.foodItemId,
+      // Parallelize stock validation and totals calculation (they don't depend on each other)
+      const orderItemsForValidation = createDto.items
+        .filter((item) => item.foodItemId) // Only validate food items
+        .map((item) => ({
+          foodItemId: item.foodItemId!,
         quantity: item.quantity,
       }));
       
-      const stockValidation = await this.inventoryService.validateStockForOrder(
+      const [stockValidation, totals, orderNumber, tokenNumberResult, counterResult] = await Promise.all([
+        orderItemsForValidation.length > 0
+          ? this.inventoryService.validateStockForOrder(tenantId, orderItemsForValidation)
+          : Promise.resolve({ isValid: true, insufficientItems: [] }),
+        this.calculateOrderTotals(
         tenantId,
-        orderItemsForValidation,
-      );
+        createDto.items,
+        createDto.extraDiscountAmount || 0,
+        createDto.couponCode,
+        createDto.orderType,
+        createDto.customerId,
+        ),
+        this.generateOrderNumber(tenantId, createDto.branchId),
+        createDto.tokenNumber 
+          ? Promise.resolve(createDto.tokenNumber)
+          : this.generateTokenNumber(tenantId, createDto.branchId),
+        createDto.counterId
+          ? Promise.resolve({ data: { id: createDto.counterId }, error: null })
+          : supabase
+          .from('counters')
+          .select('id')
+          .eq('branch_id', createDto.branchId)
+          .eq('is_active', true)
+          .is('deleted_at', null)
+          .limit(1)
+              .maybeSingle(),
+      ]);
 
       if (!stockValidation.isValid) {
         const insufficientItemsList = stockValidation.insufficientItems
@@ -614,32 +644,6 @@ export class OrdersService {
           `Cannot create order: Insufficient inventory. ${insufficientItemsList}`,
         );
       }
-
-      // Parallelize independent operations
-      const [totals, orderNumber, tokenNumberResult, counterResult] = await Promise.all([
-        this.calculateOrderTotals(
-          tenantId,
-          createDto.items,
-          createDto.extraDiscountAmount || 0,
-          createDto.couponCode,
-          createDto.orderType,
-          createDto.customerId,
-        ),
-        this.generateOrderNumber(tenantId, createDto.branchId),
-        createDto.tokenNumber 
-          ? Promise.resolve(createDto.tokenNumber)
-          : this.generateTokenNumber(tenantId, createDto.branchId),
-        createDto.counterId
-          ? Promise.resolve({ data: { id: createDto.counterId }, error: null })
-          : supabase
-              .from('counters')
-              .select('id')
-              .eq('branch_id', createDto.branchId)
-              .eq('is_active', true)
-              .is('deleted_at', null)
-              .limit(1)
-              .maybeSingle(),
-      ]);
 
       const tokenNumber = tokenNumberResult;
       let counterId = createDto.counterId;
@@ -822,13 +826,13 @@ export class OrdersService {
 
           // Calculate add-on prices
           if (item.addOns && item.addOns.length > 0) {
-            for (const addOn of item.addOns) {
+              for (const addOn of item.addOns) {
               const addOnData = addOnMap.get(addOn.addOnId);
-              if (addOnData) {
+                if (addOnData) {
                 unitPrice += addOnData.price * (addOn.quantity || 1);
+                }
               }
             }
-          }
         } else {
           throw new BadRequestException('Order item must have either foodItemId, buffetId, or comboMealId');
         }
@@ -858,17 +862,17 @@ export class OrdersService {
 
         // Store order item data for batch insert
         orderItemsToInsert.push({
-          order_id: order.id,
-          food_item_id: foodItemId || null,
-          buffet_id: buffetId || null,
-          combo_meal_id: comboMealId || null,
-          variation_id: item.variationId || null,
-          quantity: item.quantity,
-          unit_price: unitPrice,
-          discount_amount: itemDiscount,
-          tax_amount: itemTaxAmount,
-          subtotal: itemTotal,
-          special_instructions: item.specialInstructions || null,
+            order_id: order.id,
+            food_item_id: foodItemId || null,
+            buffet_id: buffetId || null,
+            combo_meal_id: comboMealId || null,
+            variation_id: item.variationId || null,
+            quantity: item.quantity,
+            unit_price: unitPrice,
+            discount_amount: itemDiscount,
+            tax_amount: itemTaxAmount,
+            subtotal: itemTotal,
+            special_instructions: item.specialInstructions || null,
           status: 'pending',
         });
 
@@ -910,34 +914,16 @@ export class OrdersService {
           unit_price: addOn.unit_price,
         }));
 
-        const { error: addOnError } = await supabase
-          .from('order_item_add_ons')
-          .insert(addOnInserts);
+            const { error: addOnError } = await supabase
+              .from('order_item_add_ons')
+              .insert(addOnInserts);
 
-        if (addOnError) {
-          throw new InternalServerErrorException(`Failed to create order item add-ons: ${addOnError.message}`);
+            if (addOnError) {
+              throw new InternalServerErrorException(`Failed to create order item add-ons: ${addOnError.message}`);
         }
       }
 
-      // Record coupon usage if coupon was applied
-      if (totals.couponId && totals.couponDiscount > 0) {
-        try {
-          await this.couponsService.recordCouponUsage(
-            tenantId,
-            totals.couponId,
-            order.id,
-            createDto.customerId,
-          );
-        } catch (error) {
-          // Log error but don't fail the order
-          console.error('Failed to record coupon usage:', error);
-        }
-      }
-
-      // Auto-deduct stock for order items based on recipes
-      // Note: Stock was already validated before order creation, so this should not fail
-      // But if it does fail (e.g., due to race condition), we need to handle it
-      try {
+      // Prepare operations that can run in parallel after order creation
         const orderItemsForDeduction = createDto.items
           .filter((item) => item.foodItemId) // Only include food items
           .map((item) => ({
@@ -949,120 +935,160 @@ export class OrdersService {
               quantity: addOn.quantity || 1,
             })),
           }));
-        await this.inventoryService.deductStockForOrder(
-          tenantId,
-          userId,
-          order.id,
-          orderItemsForDeduction,
-        );
-      } catch (error) {
-        // If stock deduction fails after order creation, delete the order and throw error
-        // This should rarely happen since we validate before creating the order
+
+      // Build delivery notes if needed
+      let deliveryNotes: string | null = null;
+      if (createDto.orderType === 'delivery' && !createDto.customerAddressId && (createDto.deliveryAddress || createDto.deliveryAddress)) {
+        const addressData = {
+          address: createDto.deliveryAddress || null,
+          city: createDto.deliveryAddressCity || null,
+          state: createDto.deliveryAddressState || null,
+          country: createDto.deliveryAddressCountry || null,
+        };
+        deliveryNotes = JSON.stringify(addressData);
+      }
+
+      // Parallelize all post-order operations
+      const postOrderOperations: Promise<any>[] = [
+        // Stock deduction (critical - must succeed)
+        orderItemsForDeduction.length > 0
+          ? this.inventoryService.deductStockForOrder(tenantId, userId, order.id, orderItemsForDeduction)
+              .catch(async (error) => {
+                // If stock deduction fails, delete the order and throw error
         await supabase
           .from('orders')
           .update({ deleted_at: new Date().toISOString() })
           .eq('id', order.id);
-        
         throw new BadRequestException(
           `Failed to deduct stock for order: ${error instanceof Error ? error.message : 'Unknown error'}. Order has been cancelled.`,
         );
-      }
-
-      // Update table status if dine-in and table exists in tables table
-      // Note: tableId can be any value, so we only update if it exists
-      if (createDto.orderType === 'dine_in' && createDto.tableId) {
-        const { data: existingTable } = await supabase
-          .from('tables')
-          .select('id')
-          .eq('id', createDto.tableId)
-          .eq('tenant_id', tenantId)
-          .is('deleted_at', null)
-          .single();
+              })
+          : Promise.resolve(),
         
-        if (existingTable) {
-          await supabase
-            .from('tables')
-            .update({ status: 'occupied', updated_at: new Date().toISOString() })
-            .eq('id', createDto.tableId)
-            .eq('tenant_id', tenantId);
-        }
-        // If table doesn't exist, that's okay - we allow any table number
-      }
-
-      // Create payment record if payment method is provided and payment timing is pay_first
-      // Note: Order remains unpaid until explicitly marked as paid via updatePaymentStatus
-      if (createDto.paymentMethod && createDto.paymentTiming === 'pay_first') {
-        try {
-          const { error: paymentError } = await supabase
+        // Coupon usage recording (non-critical)
+        totals.couponId && totals.couponDiscount > 0
+          ? this.couponsService.recordCouponUsage(tenantId, totals.couponId, order.id, createDto.customerId)
+              .catch((error) => {
+                console.error('Failed to record coupon usage:', error);
+              })
+          : Promise.resolve(),
+        
+        // Payment record creation (non-critical)
+        createDto.paymentMethod && createDto.paymentTiming === 'pay_first'
+          ? Promise.resolve(
+              supabase
             .from('payments')
             .insert({
               order_id: order.id,
               amount: totals.totalAmount,
               payment_method: createDto.paymentMethod,
-              status: 'pending', // Payment is pending until order is marked as paid
-            });
-
-          if (paymentError) {
-            console.error('Failed to create payment record:', paymentError);
-            // Don't fail the order if payment record creation fails
-          }
-        } catch (error) {
-          // Log error but don't fail the order
+                  status: 'pending',
+                })
+            ).then(({ error }) => {
+              if (error) {
           console.error('Failed to create payment record:', error);
         }
-      }
-
-      // Create delivery record if order type is delivery
-      if (createDto.orderType === 'delivery') {
-        try {
-          // Build address notes for walk-in customers (store as JSON for language-based display)
-          let deliveryNotes: string | null = null;
-          if (!createDto.customerAddressId && (createDto.deliveryAddress || createDto.deliveryAddress)) {
-            const addressData = {
-              address: createDto.deliveryAddress || null,
-              city: createDto.deliveryAddressCity || null,
-              state: createDto.deliveryAddressState || null,
-              country: createDto.deliveryAddressCountry || null,
-            };
-            deliveryNotes = JSON.stringify(addressData);
-          }
-
-          await this.deliveryService.createDeliveryForOrder(
+            }).catch((error) => {
+              console.error('Failed to create payment record:', error);
+            })
+          : Promise.resolve(),
+        
+        // Delivery record creation (non-critical)
+        createDto.orderType === 'delivery'
+          ? this.deliveryService.createDeliveryForOrder(
             tenantId,
             order.id,
             createDto.customerAddressId,
             totals.deliveryCharge,
             deliveryNotes,
-          );
-        } catch (error) {
+            ).catch((error) => {
           console.error('Failed to create delivery record:', error);
-          // Don't fail order creation if delivery record creation fails
-        }
-      }
-
-      // Trigger Supabase Realtime event for new order
-      await supabase
+            })
+          : Promise.resolve(),
+        
+        // Table status update (non-critical)
+        createDto.orderType === 'dine_in' && createDto.tableId
+          ? Promise.resolve(
+              supabase
+                .from('tables')
+                .select('id')
+                .eq('id', createDto.tableId)
+                .eq('tenant_id', tenantId)
+                .is('deleted_at', null)
+                .single()
+            ).then(({ data: existingTable }) => {
+              if (existingTable) {
+                return Promise.resolve(
+                  supabase
+                    .from('tables')
+                    .update({ status: 'occupied', updated_at: new Date().toISOString() })
+                    .eq('id', createDto.tableId)
+                    .eq('tenant_id', tenantId)
+                );
+              }
+            }).catch((error) => {
+              // Log but don't fail - table might not exist and that's okay
+              console.warn('Failed to update table status:', error);
+            })
+          : Promise.resolve(),
+        
+        // Trigger Supabase Realtime event (non-critical)
+        Promise.resolve(
+          supabase
         .from('orders')
         .update({ updated_at: new Date().toISOString() })
-        .eq('id', order.id);
+            .eq('id', order.id)
+        ).catch((error) => {
+          console.warn('Failed to update order for realtime:', error);
+        }),
+      ];
 
-      // Try to get full order details for response
-      // If getOrderById fails (e.g., due to RLS or timing), return the basic order
-      let fullOrder;
-      try {
-        fullOrder = await this.getOrderById(tenantId, order.id);
-      } catch (error) {
-        // If getOrderById fails, create basic order object
-        console.warn(`Failed to fetch full order details for ${order.id}, using basic order:`, error instanceof Error ? error.message : 'Unknown error');
-        fullOrder = {
+      // Execute all post-order operations in parallel
+      await Promise.all(postOrderOperations);
+
+      // Construct order response directly instead of calling getOrderById (saves a database query)
+      // Batch fetch all add-ons for all order items at once
+      const orderItemIds = orderItems.map((item) => item.id).filter(Boolean) as string[];
+      const { data: allAddOns } = orderItemIds.length > 0
+        ? await supabase
+            .from('order_item_add_ons')
+            .select('*, add_ons(*), order_item_id')
+            .in('order_item_id', orderItemIds)
+        : { data: [] };
+      
+      // Group add-ons by order_item_id
+      const addOnsByOrderItemId = new Map<string, any[]>();
+      (allAddOns || []).forEach((addOn: any) => {
+        const orderItemId = addOn.order_item_id;
+        if (!addOnsByOrderItemId.has(orderItemId)) {
+          addOnsByOrderItemId.set(orderItemId, []);
+        }
+        addOnsByOrderItemId.get(orderItemId)!.push(addOn);
+      });
+      
+      // Map order items with their add-ons
+      const orderItemsWithAddOns = orderItems.map((orderItem) => ({
+        ...orderItem,
+        addOns: orderItem.id ? (addOnsByOrderItemId.get(orderItem.id) || []) : [],
+      }));
+
+      // Construct full order response
+      const fullOrder = {
           ...order,
-          items: orderItems,
-          payments: [],
+        items: orderItemsWithAddOns,
+        payments: createDto.paymentMethod && createDto.paymentTiming === 'pay_first'
+          ? [{
+              id: 'pending', // Payment ID will be set when payment is processed
+              order_id: order.id,
+              amount: totals.totalAmount,
+              payment_method: createDto.paymentMethod,
+              status: 'pending',
+            }]
+          : [],
           timeline: [{ event: 'Order Placed', timestamp: order.placed_at || order.created_at }],
         };
-      }
       
-      // Emit SSE event for new order (always emit, even if getOrderById failed)
+      // Emit SSE event for new order
       console.log(`📡 Emitting ORDER_CREATED event for order ${order.id}, tenant ${tenantId}`);
       this.ordersSseService.emitOrderUpdate({
         type: 'ORDER_CREATED',
