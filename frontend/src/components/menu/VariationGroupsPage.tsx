@@ -56,6 +56,7 @@ export function VariationGroupsPage() {
   const [selectedGroup, setSelectedGroup] = useState<VariationGroup | null>(null);
   const [variations, setVariations] = useState<Variation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingVariations, setLoadingVariations] = useState(false);
   const [groupModalOpened, setGroupModalOpened] = useState(false);
   const [variationModalOpened, setVariationModalOpened] = useState(false);
   const [editingGroup, setEditingGroup] = useState<VariationGroup | null>(null);
@@ -171,10 +172,13 @@ export function VariationGroupsPage() {
 
   const loadVariations = useCallback(async (groupId: string) => {
     try {
+      setLoadingVariations(true);
       const items = await menuApi.getVariations(groupId);
       setVariations(items);
     } catch (err: any) {
       console.error('Failed to load variations:', err);
+    } finally {
+      setLoadingVariations(false);
     }
   }, []);
 
@@ -201,8 +205,11 @@ export function VariationGroupsPage() {
 
   useEffect(() => {
     if (selectedGroup) {
+      setVariations([]); // Clear previous variations while loading
       loadVariations(selectedGroup.id);
       loadFoodItemsWithGroup(selectedGroup.id);
+    } else {
+      setVariations([]); // Clear when no group is selected
     }
   }, [selectedGroup, loadVariations, loadFoodItemsWithGroup]);
 
@@ -627,12 +634,26 @@ export function VariationGroupsPage() {
                   leftSection={<IconPlus size={14} />}
                   onClick={() => handleOpenVariationModal()}
                   style={{ backgroundColor: primaryColor }}
+                  disabled={loadingVariations}
                 >
                   {t('menu.createVariation', language)}
                 </Button>
               </Group>
 
-              {variations.length === 0 ? (
+              {loadingVariations ? (
+                <Stack gap="md">
+                  <Skeleton height={20} width={200} />
+                  <Stack gap="xs">
+                    {[1, 2, 3].map((i) => (
+                      <Group key={i} justify="space-between">
+                        <Skeleton height={16} width={150} />
+                        <Skeleton height={16} width={80} />
+                        <Skeleton height={32} width={32} radius="md" />
+                      </Group>
+                    ))}
+                  </Stack>
+                </Stack>
+              ) : variations.length === 0 ? (
                 <Text ta="center" c="dimmed" size="sm">
                   {t('menu.noVariations', language)}
                 </Text>

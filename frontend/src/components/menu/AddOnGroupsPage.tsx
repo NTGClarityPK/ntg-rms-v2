@@ -57,6 +57,7 @@ export function AddOnGroupsPage() {
   const [selectedGroup, setSelectedGroup] = useState<AddOnGroup | null>(null);
   const [addOns, setAddOns] = useState<AddOn[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingAddOns, setLoadingAddOns] = useState(false);
   const [groupModalOpened, setGroupModalOpened] = useState(false);
   const [addOnModalOpened, setAddOnModalOpened] = useState(false);
   const [editingGroup, setEditingGroup] = useState<AddOnGroup | null>(null);
@@ -198,10 +199,13 @@ export function AddOnGroupsPage() {
 
   const loadAddOns = useCallback(async (groupId: string) => {
     try {
+      setLoadingAddOns(true);
       const items = await menuApi.getAddOns(groupId);
       setAddOns(items);
     } catch (err: any) {
       console.error('Failed to load add-ons:', err);
+    } finally {
+      setLoadingAddOns(false);
     }
   }, []);
 
@@ -261,7 +265,10 @@ export function AddOnGroupsPage() {
 
   useEffect(() => {
     if (selectedGroup) {
+      setAddOns([]); // Clear previous add-ons while loading
       loadAddOns(selectedGroup.id);
+    } else {
+      setAddOns([]); // Clear when no group is selected
     }
   }, [selectedGroup, loadAddOns]);
 
@@ -730,12 +737,26 @@ export function AddOnGroupsPage() {
                   leftSection={<IconPlus size={14} />}
                   onClick={() => handleOpenAddOnModal()}
                   style={{ backgroundColor: primaryColor }}
+                  disabled={loadingAddOns}
                 >
                   {t('menu.createAddOn', language)}
                 </Button>
               </Group>
 
-              {addOns.length === 0 ? (
+              {loadingAddOns ? (
+                <Stack gap="md">
+                  <Skeleton height={20} width={200} />
+                  <Stack gap="xs">
+                    {[1, 2, 3].map((i) => (
+                      <Group key={i} justify="space-between">
+                        <Skeleton height={16} width={150} />
+                        <Skeleton height={16} width={80} />
+                        <Skeleton height={32} width={32} radius="md" />
+                      </Group>
+                    ))}
+                  </Stack>
+                </Stack>
+              ) : addOns.length === 0 ? (
                 <Text ta="center" c="dimmed" size="sm">
                   {t('menu.noAddOns', language)}
                 </Text>
