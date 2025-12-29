@@ -76,3 +76,4 @@ CREATE TRIGGER update_variations_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 
 
+
