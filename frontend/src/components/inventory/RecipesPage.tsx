@@ -368,11 +368,15 @@ export function RecipesPage() {
       
       form.setValues({
         foodItemId: foodItem.id,
-        ingredients: existingRecipe.map((r) => ({
-          ingredientId: r.ingredientId,
-          quantity: r.quantity,
-          unit: r.unit,
-        })),
+        ingredients: existingRecipe.map((r) => {
+          // Use the ingredient's current unitOfMeasurement instead of stored unit
+          const ingredient = ingredients.find((ing) => ing.id === r.ingredientId);
+          return {
+            ingredientId: r.ingredientId,
+            quantity: r.quantity,
+            unit: ingredient?.unitOfMeasurement || r.unit,
+          };
+        }),
       });
     } else {
       setSelectedFoodItem(null);
@@ -393,6 +397,14 @@ export function RecipesPage() {
       quantity: 0,
       unit: '',
     });
+  };
+
+  const handleIngredientChange = (index: number, ingredientId: string) => {
+    const ingredient = ingredients.find((ing) => ing.id === ingredientId);
+    if (ingredient) {
+      form.setFieldValue(`ingredients.${index}.unit`, ingredient.unitOfMeasurement);
+    }
+    form.setFieldValue(`ingredients.${index}.ingredientId`, ingredientId);
   };
 
   const handleRemoveIngredient = (index: number) => {
@@ -761,31 +773,28 @@ export function RecipesPage() {
                 {form.values.ingredients.map((ingredient, index) => (
                   <Paper key={index} p="md" withBorder>
                     <Grid>
-                      <Grid.Col span={5}>
+                      <Grid.Col span={7}>
                         <Select
                           label={t('inventory.ingredient', language)}
                           placeholder={t('inventory.selectIngredient', language)}
                           required
                           data={getIngredientOptions()}
                           searchable
-                          {...form.getInputProps(`ingredients.${index}.ingredientId`)}
+                          value={form.values.ingredients[index].ingredientId}
+                          onChange={(value) => {
+                            if (value) {
+                              handleIngredientChange(index, value);
+                            }
+                          }}
                         />
                       </Grid.Col>
-                      <Grid.Col span={3}>
+                      <Grid.Col span={4}>
                         <NumberInput
                           label={t('inventory.quantity', language)}
                           required
                           min={0.001}
                           decimalScale={3}
                           {...form.getInputProps(`ingredients.${index}.quantity`)}
-                        />
-                      </Grid.Col>
-                      <Grid.Col span={3}>
-                        <TextInput
-                          label={t('inventory.unit', language) || 'Unit'}
-                          placeholder="kg, g, liter, etc."
-                          required
-                          {...form.getInputProps(`ingredients.${index}.unit`)}
                         />
                       </Grid.Col>
                       <Grid.Col span={1}>
