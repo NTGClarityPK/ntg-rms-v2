@@ -19,7 +19,6 @@ import {
 import { useForm } from '@mantine/form';
 import { IconAlertCircle, IconMail, IconLock, IconUser, IconPhone, IconCheck } from '@tabler/icons-react';
 import { authApi } from '@/lib/api/auth';
-import { menuApi } from '@/lib/api/menu';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
@@ -89,30 +88,6 @@ export default function SignupPage() {
         name: response.user.name || (response.user as any).nameEn || (response.user as any).nameAr || 'User',
       };
       setUser(user);
-
-      // Create a sample add-on group and add-on to help users understand the feature
-      try {
-        const sampleGroupName = language === 'ar' ? 'إضافات إضافية (مثال)' : 'Extra Toppings (Sample)';
-        const sampleAddOnName = language === 'ar' ? 'جبن إضافي' : 'Extra Cheese';
-        
-        const sampleGroup = await menuApi.createAddOnGroup({
-          name: sampleGroupName,
-          selectionType: 'multiple',
-          isRequired: false,
-          minSelections: 0,
-          maxSelections: undefined,
-          category: 'Add',
-        });
-
-        await menuApi.createAddOn(sampleGroup.id, {
-          name: sampleAddOnName,
-          price: 0,
-          isActive: true,
-        });
-      } catch (sampleErr) {
-        // Don't fail signup if sample creation fails, just log it
-        console.warn('Failed to create sample add-on:', sampleErr);
-      }
 
       router.push('/dashboard');
     } catch (err: any) {

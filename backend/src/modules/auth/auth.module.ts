@@ -9,6 +9,8 @@ import { GoogleOAuthStrategy } from '../auth/strategies/google-oauth.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesModule } from '../roles/roles.module';
 import { SubscriptionModule } from '../subscription/subscription.module';
+import { MenuModule } from '../menu/menu.module';
+import { InventoryModule } from '../inventory/inventory.module';
 
 @Module({
   imports: [
@@ -31,6 +33,8 @@ import { SubscriptionModule } from '../subscription/subscription.module';
     }),
     RolesModule,
     SubscriptionModule,
+    MenuModule,
+    InventoryModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, GoogleOAuthStrategy, JwtAuthGuard],
