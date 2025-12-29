@@ -180,6 +180,35 @@ export class AuthService {
           // Don't fail signup if branch creation fails, but log it
         } else {
           console.log('Default branch created:', branchData.id);
+          
+          // Create default tables (5 tables) for the branch
+          try {
+            const defaultTables = [];
+            for (let i = 1; i <= 5; i++) {
+              defaultTables.push({
+                branch_id: branchData.id,
+                table_number: i.toString(),
+                seating_capacity: 4,
+                table_type: 'regular',
+                status: 'available',
+              });
+            }
+            
+            const { data: tablesData, error: tablesError } = await supabase
+              .from('tables')
+              .insert(defaultTables)
+              .select();
+            
+            if (tablesError) {
+              console.error('Failed to create default tables:', tablesError);
+              // Don't fail signup if table creation fails, but log it
+            } else {
+              console.log(`Created ${tablesData?.length || 0} default tables for branch:`, branchData.id);
+            }
+          } catch (tablesError) {
+            console.error('Error creating default tables:', tablesError);
+            // Don't fail signup if table creation fails
+          }
         }
       } catch (error) {
         console.error('Error creating default branch:', error);
@@ -352,6 +381,35 @@ export class AuthService {
             // Don't fail login if branch creation fails, but log it
           } else {
             console.log('Default branch created:', branchData.id);
+            
+            // Create default tables (5 tables) for the branch
+            try {
+              const defaultTables = [];
+              for (let i = 1; i <= 5; i++) {
+                defaultTables.push({
+                  branch_id: branchData.id,
+                  table_number: i.toString(),
+                  seating_capacity: 4,
+                  table_type: 'regular',
+                  status: 'available',
+                });
+              }
+              
+              const { data: tablesData, error: tablesError } = await serviceSupabase
+                .from('tables')
+                .insert(defaultTables)
+                .select();
+              
+              if (tablesError) {
+                console.error('Failed to create default tables:', tablesError);
+                // Don't fail login if table creation fails, but log it
+              } else {
+                console.log(`Created ${tablesData?.length || 0} default tables for branch:`, branchData.id);
+              }
+            } catch (tablesError) {
+              console.error('Error creating default tables:', tablesError);
+              // Don't fail login if table creation fails
+            }
           }
         } catch (error) {
           console.error('Error creating default branch:', error);
@@ -673,6 +731,35 @@ export class AuthService {
           // Don't fail user creation if branch creation fails, but log it
         } else {
           console.log('Default branch created:', branchData.id);
+          
+          // Create default tables (5 tables) for the branch
+          try {
+            const defaultTables = [];
+            for (let i = 1; i <= 5; i++) {
+              defaultTables.push({
+                branch_id: branchData.id,
+                table_number: i.toString(),
+                seating_capacity: 4,
+                table_type: 'regular',
+                status: 'available',
+              });
+            }
+            
+            const { data: tablesData, error: tablesError } = await supabase
+              .from('tables')
+              .insert(defaultTables)
+              .select();
+            
+            if (tablesError) {
+              console.error('Failed to create default tables:', tablesError);
+              // Don't fail user creation if table creation fails, but log it
+            } else {
+              console.log(`Created ${tablesData?.length || 0} default tables for branch:`, branchData.id);
+            }
+          } catch (tablesError) {
+            console.error('Error creating default tables:', tablesError);
+            // Don't fail user creation if table creation fails
+          }
         }
       } catch (error) {
         console.error('Error creating default branch:', error);
