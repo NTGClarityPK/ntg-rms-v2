@@ -78,6 +78,11 @@ export default function OrdersPage() {
   // Ref to store the latest loadOrders function for use in subscriptions
   // This prevents subscription recreation while ensuring we always use the latest function
   const loadOrdersRef = useRef<(silent?: boolean) => Promise<void>>();
+  
+  // Refs to prevent duplicate API calls (especially in React StrictMode)
+  const loadingOrdersRef = useRef(false);
+  const lastOrdersRequestRef = useRef<string>('');
+  const ordersRequestSequenceRef = useRef<number>(0);
 
   const loadBranches = useCallback(async () => {
     try {
@@ -94,6 +99,34 @@ export default function OrdersPage() {
   }, []);
 
   const loadOrders = useCallback(async (silent = false) => {
+    // Create a unique key for this request to prevent duplicates
+    const requestKey = JSON.stringify({
+      status: selectedStatuses,
+      branchId: selectedBranch,
+      orderType: selectedOrderType,
+      paymentStatus: selectedPaymentStatus,
+      search: searchQuery.trim(),
+      waiterEmail: showMyOrdersOnly && user?.email ? user.email : undefined,
+      page: pagination.page,
+      limit: pagination.limit,
+    });
+    
+    // Prevent duplicate calls with the same parameters
+    if (lastOrdersRequestRef.current === requestKey && loadingOrdersRef.current && !silent) {
+      return;
+    }
+    
+    // Increment request sequence to track the order of requests
+    const currentRequestSequence = ++ordersRequestSequenceRef.current;
+    lastOrdersRequestRef.current = requestKey;
+    
+    // Prevent duplicate calls if already loading (unless it's a silent refresh)
+    if (loadingOrdersRef.current && !silent) {
+      return;
+    }
+    
+    loadingOrdersRef.current = true;
+    
     if (!silent) {
       setLoading(true);
     }
@@ -113,6 +146,13 @@ export default function OrdersPage() {
       let backendResponse: Order[] | any = null;
       try {
         backendResponse = await ordersApi.getOrders(params);
+        
+        // Check if this is still the latest request
+        if (currentRequestSequence !== ordersRequestSequenceRef.current) {
+          console.log('⚠️ Ignoring outdated orders request response');
+          return;
+        }
+        
         backendOrders = pagination.extractData(backendResponse);
         pagination.extractPagination(backendResponse);
       } catch (error: any) {
@@ -141,6 +181,13 @@ export default function OrdersPage() {
               // Don't paginate this query - we need all orders for exclusion check
             };
             const allBackendResponse = await ordersApi.getOrders(allBackendParams);
+            
+            // Check if this is still the latest request
+            if (currentRequestSequence !== ordersRequestSequenceRef.current) {
+              console.log('⚠️ Ignoring outdated all-orders request response');
+              return;
+            }
+            
             allBackendOrders = Array.isArray(allBackendResponse) ? allBackendResponse : (allBackendResponse?.data || []);
           } catch (error: any) {
             console.error('Failed to load all orders from backend for exclusion check:', error);
@@ -323,6 +370,7 @@ export default function OrdersPage() {
       if (!silent) {
         setLoading(false);
       }
+      loadingOrdersRef.current = false;
     }
   }, [selectedBranch, selectedOrderType, selectedPaymentStatus, selectedStatuses, searchQuery, showMyOrdersOnly, user?.tenantId, user?.email, language, pagination]);
 
@@ -338,7 +386,14 @@ export default function OrdersPage() {
   // FIXED: Combined redundant useEffects into one with proper dependencies
   // This prevents loadOrders from being called multiple times when dependencies change
   useEffect(() => {
-    loadOrders();
+    // Use a small timeout to debounce rapid changes and prevent duplicate calls
+    const timeoutId = setTimeout(() => {
+      loadOrders();
+    }, 0);
+    
+    return () => {
+      clearTimeout(timeoutId);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBranch, selectedOrderType, selectedPaymentStatus, selectedStatuses, searchQuery, showMyOrdersOnly, pagination.page, pagination.limit]);
 

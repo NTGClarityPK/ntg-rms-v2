@@ -18,5 +18,10 @@ export class GetFoodItemsDto extends PaginationDto {
   })
   @IsBoolean()
   onlyActiveMenus?: boolean;
+
+  @ApiPropertyOptional({ description: 'Search query for food items (searches name and description)' })
+  @IsOptional()
+  @IsString()
+  search?: string;
 }
 

@@ -123,55 +123,108 @@ export class OrdersService {
     // Calculate subtotal and item-level discounts
     const orderItemsForTax: Array<{ foodItemId?: string; categoryId?: string; subtotal: number }> = [];
     
+    // Collect all IDs for batch fetching (optimization: reduce N+1 queries)
+    const buffetIds = items.filter((item) => item.buffetId).map((item) => item.buffetId!);
+    const comboMealIds = items.filter((item) => item.comboMealId).map((item) => item.comboMealId!);
+    const foodItemIds = items.filter((item) => item.foodItemId).map((item) => item.foodItemId!);
+    const variationIds = items.filter((item) => item.variationId && item.foodItemId).map((item) => item.variationId!);
+    const allAddOnIds = items
+      .filter((item) => item.addOns && item.addOns.length > 0 && item.foodItemId)
+      .flatMap((item) => item.addOns!.map((a) => a.addOnId));
+    const uniqueAddOnIds = [...new Set(allAddOnIds)];
+
+    // Batch fetch all items in parallel
+    const [buffetsResult, comboMealsResult, foodItemsResult, variationsResult, addOnsResult] = await Promise.all([
+      buffetIds.length > 0
+        ? supabase
+            .from('buffets')
+            .select('id, price_per_person')
+            .in('id', buffetIds)
+            .eq('tenant_id', tenantId)
+            .is('deleted_at', null)
+        : Promise.resolve({ data: [], error: null }),
+      comboMealIds.length > 0
+        ? supabase
+            .from('combo_meals')
+            .select('id, base_price')
+            .in('id', comboMealIds)
+            .eq('tenant_id', tenantId)
+            .is('deleted_at', null)
+        : Promise.resolve({ data: [], error: null }),
+      foodItemIds.length > 0
+        ? supabase
+            .from('food_items')
+            .select('id, base_price, stock_type, stock_quantity, category_id')
+            .in('id', foodItemIds)
+            .eq('tenant_id', tenantId)
+            .is('deleted_at', null)
+        : Promise.resolve({ data: [], error: null }),
+      variationIds.length > 0
+        ? supabase
+            .from('food_item_variations')
+            .select('id, price_adjustment')
+            .in('id', variationIds)
+        : Promise.resolve({ data: [], error: null }),
+      uniqueAddOnIds.length > 0
+        ? supabase
+            .from('add_ons')
+            .select('id, price')
+            .in('id', uniqueAddOnIds)
+            .eq('tenant_id', tenantId)
+            .is('deleted_at', null)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    // Create lookup maps for O(1) access
+    const buffetMap = new Map((buffetsResult.data || []).map((b: any) => [b.id, b]));
+    const comboMealMap = new Map((comboMealsResult.data || []).map((c: any) => [c.id, c]));
+    const foodItemMap = new Map((foodItemsResult.data || []).map((f: any) => [f.id, f]));
+    const variationMap = new Map((variationsResult.data || []).map((v: any) => [v.id, v]));
+    const addOnMap = new Map((addOnsResult.data || []).map((a: any) => [a.id, a]));
+
+    // Batch fetch discounts for all food items
+    const now = new Date().toISOString();
+    const discountsResult = foodItemIds.length > 0
+      ? await supabase
+          .from('food_item_discounts')
+          .select('food_item_id, discount_type, discount_value')
+          .in('food_item_id', foodItemIds)
+          .eq('is_active', true)
+          .lte('start_date', now)
+          .gte('end_date', now)
+      : { data: [], error: null };
+    const allDiscounts = discountsResult.data;
+
+    // Group discounts by food_item_id
+    const discountsMap = new Map<string, any[]>();
+    (allDiscounts || []).forEach((d: any) => {
+      if (!discountsMap.has(d.food_item_id)) {
+        discountsMap.set(d.food_item_id, []);
+      }
+      discountsMap.get(d.food_item_id)!.push(d);
+    });
+
+    // Process each item using the batch-fetched data
     for (const item of items) {
       let unitPrice = 0;
       let categoryId: string | undefined;
       let foodItemId: string | undefined;
 
-      // Handle different item types
+      // Handle different item types using batch-fetched data
       if (item.buffetId) {
-        // Handle buffet
-        const { data: buffet } = await supabase
-          .from('buffets')
-          .select('price_per_person')
-          .eq('id', item.buffetId)
-          .eq('tenant_id', tenantId)
-          .is('deleted_at', null)
-          .single();
-
+        const buffet = buffetMap.get(item.buffetId);
         if (!buffet) {
           throw new NotFoundException(`Buffet ${item.buffetId} not found`);
         }
-
-        // For buffets, quantity represents number of persons
         unitPrice = buffet.price_per_person;
-        // Buffets don't have categoryId for tax calculation
       } else if (item.comboMealId) {
-        // Handle combo meal
-        const { data: comboMeal } = await supabase
-          .from('combo_meals')
-          .select('base_price')
-          .eq('id', item.comboMealId)
-          .eq('tenant_id', tenantId)
-          .is('deleted_at', null)
-          .single();
-
+        const comboMeal = comboMealMap.get(item.comboMealId);
         if (!comboMeal) {
           throw new NotFoundException(`Combo meal ${item.comboMealId} not found`);
         }
-
         unitPrice = comboMeal.base_price;
-        // Combo meals don't have categoryId for tax calculation
       } else if (item.foodItemId) {
-        // Handle regular food item
-        const { data: foodItem } = await supabase
-          .from('food_items')
-          .select('base_price, stock_type, stock_quantity, category_id')
-          .eq('id', item.foodItemId)
-          .eq('tenant_id', tenantId)
-          .is('deleted_at', null)
-          .single();
-
+        const foodItem = foodItemMap.get(item.foodItemId);
         if (!foodItem) {
           throw new NotFoundException(`Food item ${item.foodItemId} not found`);
         }
@@ -192,12 +245,7 @@ export class OrdersService {
 
       // Get variation price adjustment if applicable (only for food items)
       if (item.variationId && item.foodItemId) {
-        const { data: variation } = await supabase
-          .from('food_item_variations')
-          .select('price_adjustment')
-          .eq('id', item.variationId)
-          .single();
-
+        const variation = variationMap.get(item.variationId);
         if (variation) {
           unitPrice += variation.price_adjustment;
         }
@@ -206,20 +254,10 @@ export class OrdersService {
       // Get add-on prices (only for food items)
       let addOnTotal = 0;
       if (item.addOns && item.addOns.length > 0 && item.foodItemId) {
-        const addOnIds = item.addOns.map((a) => a.addOnId);
-        const { data: addOns } = await supabase
-          .from('add_ons')
-          .select('id, price')
-          .in('id', addOnIds)
-          .eq('tenant_id', tenantId)
-          .is('deleted_at', null);
-
-        if (addOns) {
-          for (const addOn of item.addOns) {
-            const addOnData = addOns.find((a) => a.id === addOn.addOnId);
-            if (addOnData) {
-              addOnTotal += addOnData.price * (addOn.quantity || 1);
-            }
+        for (const addOn of item.addOns) {
+          const addOnData = addOnMap.get(addOn.addOnId);
+          if (addOnData) {
+            addOnTotal += addOnData.price * (addOn.quantity || 1);
           }
         }
       }
@@ -244,27 +282,19 @@ export class OrdersService {
 
       // Check for active discounts on this food item (only for food items)
       if (item.foodItemId) {
-        const now = new Date().toISOString();
-        const { data: discounts } = await supabase
-          .from('food_item_discounts')
-          .select('discount_type, discount_value')
-          .eq('food_item_id', item.foodItemId)
-          .eq('is_active', true)
-          .lte('start_date', now)
-          .gte('end_date', now);
-
-      if (discounts && discounts.length > 0) {
-        // Apply the first active discount (or highest discount - you can customize this logic)
-        const discount = discounts[0];
-        let discountAmount = 0;
-        if (discount.discount_type === 'percentage') {
-          discountAmount = (itemSubtotal * discount.discount_value) / 100;
-        } else {
-          discountAmount = discount.discount_value * item.quantity;
+        const discounts = discountsMap.get(item.foodItemId);
+        if (discounts && discounts.length > 0) {
+          // Apply the first active discount (or highest discount - you can customize this logic)
+          const discount = discounts[0];
+          let discountAmount = 0;
+          if (discount.discount_type === 'percentage') {
+            discountAmount = (itemSubtotal * discount.discount_value) / 100;
+          } else {
+            discountAmount = discount.discount_value * item.quantity;
+          }
+          itemDiscounts += discountAmount;
         }
-        itemDiscounts += discountAmount;
       }
-    }
     }
 
     // Apply extra discount

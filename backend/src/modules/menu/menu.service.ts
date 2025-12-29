@@ -367,7 +367,8 @@ export class MenuService {
 
     // If filtering by active menus is enabled
     if (onlyActiveMenus) {
-      // Get all active menu types from menus table
+      // Optimize: Use a single query with join to get active menu types and their food items
+      // First, get active menu types from menus table
       let activeMenusQuery = supabase
         .from('menus')
         .select('menu_type')
@@ -375,7 +376,6 @@ export class MenuService {
         .eq('is_active', true);
       
       // Check for soft-deleted menus if the table has deleted_at column
-      // Note: Some databases might not have this column, so we'll handle gracefully
       try {
         activeMenusQuery = activeMenusQuery.is('deleted_at', null);
       } catch (e) {
@@ -407,38 +407,32 @@ export class MenuService {
         activeMenuTypes = activeMenus?.map((m: any) => m.menu_type) || [];
       }
 
-      // Also get menu types from menu_items that don't have records in menus table
-      // (legacy menus created before menu records were required)
-      // These should be considered active by default since they have items assigned
-      const { data: allMenuItemsForComparison } = await supabase
-        .from('menu_items')
-        .select('menu_type')
-        .eq('tenant_id', tenantId);
+      // Optimize: Get all menu types with items and all existing menu types in parallel
+      const [allMenuItemsResult, existingMenusResult] = await Promise.all([
+        supabase
+          .from('menu_items')
+          .select('menu_type')
+          .eq('tenant_id', tenantId),
+        activeMenuTypes.length > 0
+          ? supabase
+              .from('menus')
+              .select('menu_type')
+              .eq('tenant_id', tenantId)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
 
-      if (allMenuItemsForComparison) {
-        const allMenuTypesWithItems = [...new Set(allMenuItemsForComparison.map((mi: any) => mi.menu_type))];
+      // Process legacy menu types (menu_items without menu records)
+      if (allMenuItemsResult.data) {
+        const allMenuTypesWithItems = [...new Set(allMenuItemsResult.data.map((mi: any) => mi.menu_type))];
+        const allExistingMenuTypes = (existingMenusResult.data || []).map((m: any) => m.menu_type);
         
         // Get menu types that have items but don't have a record in menus table
-        const menuTypesWithoutRecords = allMenuTypesWithItems.filter(
-          (menuType) => !activeMenuTypes.includes(menuType)
+        const menuTypesToInclude = allMenuTypesWithItems.filter(
+          (menuType) => !allExistingMenuTypes.includes(menuType)
         );
 
-        // Check which of these menu types don't exist in menus table at all
-        if (menuTypesWithoutRecords.length > 0) {
-          const { data: existingMenus } = await supabase
-            .from('menus')
-            .select('menu_type')
-            .eq('tenant_id', tenantId)
-            .in('menu_type', menuTypesWithoutRecords);
-
-          const existingMenuTypes = existingMenus?.map((m: any) => m.menu_type) || [];
-          const menuTypesToInclude = menuTypesWithoutRecords.filter(
-            (menuType) => !existingMenuTypes.includes(menuType)
-          );
-
-          // Include these menu types as active (they have items but no menu record)
-          activeMenuTypes = [...activeMenuTypes, ...menuTypesToInclude];
-        }
+        // Include these menu types as active (they have items but no menu record)
+        activeMenuTypes = [...activeMenuTypes, ...menuTypesToInclude];
       }
 
       // If there are active menus, filter items to only those in active menus
@@ -479,72 +473,127 @@ export class MenuService {
       paginatedFoodItems = filteredFoodItems.slice(offset, offset + limit);
     }
 
-    // Get variations, labels, and add-on groups for each item
-    const itemsWithDetails = await Promise.all(
-      paginatedFoodItems.map(async (item) => {
-        const [variations, labels, addOnGroups, discounts, menuItems] = await Promise.all([
-          supabase
-            .from('food_item_variations')
-            .select('*')
-            .eq('food_item_id', item.id)
-            .order('display_order', { ascending: true }),
-          supabase
-            .from('food_item_labels')
-            .select('label')
-            .eq('food_item_id', item.id),
-          supabase
-            .from('food_item_add_on_groups')
-            .select('add_on_group_id')
-            .eq('food_item_id', item.id),
-          supabase
-            .from('food_item_discounts')
-            .select('*')
-            .eq('food_item_id', item.id)
-            .eq('is_active', true)
-            .gte('end_date', new Date().toISOString()),
-          supabase
-            .from('menu_items')
-            .select('menu_type')
-            .eq('food_item_id', item.id),
-        ]);
+    // If no items after pagination, return empty result
+    if (paginatedFoodItems.length === 0) {
+      if (pagination) {
+        return createPaginatedResponse([], totalCount, pagination.page || 1, pagination.limit || 10);
+      }
+      return [];
+    }
 
-        return {
-          id: item.id,
-          name: item.name,
-          description: item.description,
-          imageUrl: item.image_url,
-          categoryId: item.category_id,
-          basePrice: parseFloat(item.base_price),
-          stockType: item.stock_type,
-          stockQuantity: item.stock_quantity,
-          menuType: item.menu_type, // Legacy field
-          menuTypes: menuItems.data?.map((m: any) => m.menu_type) || [], // Array of menu types
-          ageLimit: item.age_limit,
-          displayOrder: item.display_order,
-          isActive: item.is_active,
-          createdAt: item.created_at,
-          updatedAt: item.updated_at,
-          variations: variations.data?.map((v) => ({
-            id: v.id,
-            variationGroup: v.variation_group,
-            variationName: v.variation_name,
-            priceAdjustment: parseFloat(v.price_adjustment),
-            stockQuantity: v.stock_quantity,
-            displayOrder: v.display_order,
-          })) || [],
-          labels: labels.data?.map((l) => l.label) || [],
-          addOnGroupIds: addOnGroups.data?.map((a) => a.add_on_group_id) || [],
-          activeDiscounts: discounts.data?.map((d) => ({
-            id: d.id,
-            discountType: d.discount_type,
-            discountValue: parseFloat(d.discount_value),
-            startDate: d.start_date,
-            endDate: d.end_date,
-            reason: d.reason,
-          })) || [],
-        };
-      })
-    );
+    // Collect all food item IDs for batch fetching
+    const foodItemIds = paginatedFoodItems.map((item) => item.id);
+
+    // Batch fetch all related data in parallel (fixes N+1 query problem)
+    const [variationsResult, labelsResult, addOnGroupsResult, discountsResult, menuItemsResult] = await Promise.all([
+      supabase
+        .from('food_item_variations')
+        .select('*')
+        .in('food_item_id', foodItemIds)
+        .order('display_order', { ascending: true }),
+      supabase
+        .from('food_item_labels')
+        .select('food_item_id, label')
+        .in('food_item_id', foodItemIds),
+      supabase
+        .from('food_item_add_on_groups')
+        .select('food_item_id, add_on_group_id')
+        .in('food_item_id', foodItemIds),
+      supabase
+        .from('food_item_discounts')
+        .select('*')
+        .in('food_item_id', foodItemIds)
+        .eq('is_active', true)
+        .gte('end_date', new Date().toISOString()),
+      supabase
+        .from('menu_items')
+        .select('food_item_id, menu_type')
+        .in('food_item_id', foodItemIds),
+    ]);
+
+    // Create lookup maps for O(1) access
+    const variationsMap = new Map<string, any[]>();
+    const labelsMap = new Map<string, string[]>();
+    const addOnGroupsMap = new Map<string, string[]>();
+    const discountsMap = new Map<string, any[]>();
+    const menuItemsMap = new Map<string, string[]>();
+
+    // Group variations by food_item_id
+    (variationsResult.data || []).forEach((v: any) => {
+      if (!variationsMap.has(v.food_item_id)) {
+        variationsMap.set(v.food_item_id, []);
+      }
+      variationsMap.get(v.food_item_id)!.push({
+        id: v.id,
+        variationGroup: v.variation_group,
+        variationName: v.variation_name,
+        priceAdjustment: parseFloat(v.price_adjustment),
+        stockQuantity: v.stock_quantity,
+        displayOrder: v.display_order,
+      });
+    });
+
+    // Group labels by food_item_id
+    (labelsResult.data || []).forEach((l: any) => {
+      if (!labelsMap.has(l.food_item_id)) {
+        labelsMap.set(l.food_item_id, []);
+      }
+      labelsMap.get(l.food_item_id)!.push(l.label);
+    });
+
+    // Group add-on groups by food_item_id
+    (addOnGroupsResult.data || []).forEach((a: any) => {
+      if (!addOnGroupsMap.has(a.food_item_id)) {
+        addOnGroupsMap.set(a.food_item_id, []);
+      }
+      addOnGroupsMap.get(a.food_item_id)!.push(a.add_on_group_id);
+    });
+
+    // Group discounts by food_item_id
+    (discountsResult.data || []).forEach((d: any) => {
+      if (!discountsMap.has(d.food_item_id)) {
+        discountsMap.set(d.food_item_id, []);
+      }
+      discountsMap.get(d.food_item_id)!.push({
+        id: d.id,
+        discountType: d.discount_type,
+        discountValue: parseFloat(d.discount_value),
+        startDate: d.start_date,
+        endDate: d.end_date,
+        reason: d.reason,
+      });
+    });
+
+    // Group menu items by food_item_id
+    (menuItemsResult.data || []).forEach((m: any) => {
+      if (!menuItemsMap.has(m.food_item_id)) {
+        menuItemsMap.set(m.food_item_id, []);
+      }
+      menuItemsMap.get(m.food_item_id)!.push(m.menu_type);
+    });
+
+    // Map items with their related data (no additional queries)
+    const itemsWithDetails = paginatedFoodItems.map((item) => ({
+      id: item.id,
+      name: item.name,
+      description: item.description,
+      imageUrl: item.image_url,
+      categoryId: item.category_id,
+      basePrice: parseFloat(item.base_price),
+      stockType: item.stock_type,
+      stockQuantity: item.stock_quantity,
+      menuType: item.menu_type, // Legacy field
+      menuTypes: menuItemsMap.get(item.id) || [], // Array of menu types
+      ageLimit: item.age_limit,
+      displayOrder: item.display_order,
+      isActive: item.is_active,
+      createdAt: item.created_at,
+      updatedAt: item.updated_at,
+      variations: variationsMap.get(item.id) || [],
+      labels: labelsMap.get(item.id) || [],
+      addOnGroupIds: addOnGroupsMap.get(item.id) || [],
+      activeDiscounts: discountsMap.get(item.id) || [],
+    }));
 
     // Return paginated response if pagination is requested
     if (pagination) {

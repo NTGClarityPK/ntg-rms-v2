@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box,
   TextInput,
@@ -76,6 +76,28 @@ export function FoodItemsGrid({
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState<FoodItem | Buffet | ComboMeal | null>(null);
   const [modalOpened, setModalOpened] = useState(false);
+  
+  // Debounced search query - updates after user stops typing for 500ms
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState<string>(searchQuery);
+  
+  // Ref to prevent duplicate API calls (especially in React StrictMode)
+  const loadingRef = useRef(false);
+  const lastRequestRef = useRef<string>('');
+  // Ref to track the current search query to prevent race conditions
+  const currentSearchRef = useRef<string>(searchQuery);
+  // Ref to track request sequence to handle out-of-order responses
+  const requestSequenceRef = useRef<number>(0);
+  
+  // Debounce search query - wait 500ms after user stops typing
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 500);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [searchQuery]);
 
   // Get current pagination based on item type
   const currentPagination = itemType === 'buffets' 
@@ -98,12 +120,30 @@ export function FoodItemsGrid({
     }
   }, [itemType, onItemTypeChange]);
 
-  useEffect(() => {
-    loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, selectedCategoryId, searchQuery, foodItemsPagination.page, foodItemsPagination.limit, buffetsPagination.page, buffetsPagination.limit, comboMealsPagination.page, comboMealsPagination.limit, itemType]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    // Use debounced search query for API calls to reduce requests
+    const effectiveSearchQuery = debouncedSearchQuery;
+    
+    // Create a unique key for this request to prevent duplicates
+    const requestKey = `${tenantId}-${selectedCategoryId}-${effectiveSearchQuery}-${itemType}-${foodItemsPagination.page}-${foodItemsPagination.limit}-${buffetsPagination.page}-${buffetsPagination.limit}-${comboMealsPagination.page}-${comboMealsPagination.limit}`;
+    
+    // Prevent duplicate calls with the same parameters (handles React StrictMode double renders)
+    if (lastRequestRef.current === requestKey && loadingRef.current) {
+      return;
+    }
+    
+    // Increment request sequence to track the order of requests
+    const currentRequestSequence = ++requestSequenceRef.current;
+    
+    // Allow new requests even if one is in progress - stale responses will be ignored
+    // This ensures that when user types quickly, the latest search is always sent
+    lastRequestRef.current = requestKey;
+    loadingRef.current = true;
+    
+    // Capture the search query and request sequence at the start
+    const requestSearchQuery = effectiveSearchQuery;
+    const requestSequence = currentRequestSequence;
+    
     try {
       setLoading(true);
 
@@ -162,12 +202,27 @@ export function FoodItemsGrid({
             const serverItemsResponse = await menuApi.getFoodItems(
               selectedCategoryId || undefined,
               foodItemsPagination.paginationParams,
-              searchQuery.trim() || undefined,
+              requestSearchQuery.trim() || undefined,
               true // onlyActiveMenus = true - filter by active menus on backend
             ).catch((error) => {
               console.warn('⚠️ Failed to load food items from API, using offline fallback:', error);
               throw error;
             });
+            
+            // Check if this response is still relevant (search query hasn't changed)
+            if (currentSearchRef.current !== requestSearchQuery) {
+              // Search query changed while request was in flight, ignore this response
+              console.log('⚠️ Ignoring stale search results for:', requestSearchQuery);
+              return;
+            }
+            
+            // Check if this is still the latest request
+            if (requestSequence !== requestSequenceRef.current) {
+              // A newer request was made, ignore this response
+              console.log('⚠️ Ignoring outdated request response');
+              return;
+            }
+            
             const serverItems = foodItemsPagination.extractData(serverItemsResponse) as FoodItem[];
             foodItemsPagination.extractPagination(serverItemsResponse);
             setFoodItems(serverItems);
@@ -194,23 +249,49 @@ export function FoodItemsGrid({
               } as any).catch(console.error);
             });
           } catch (error) {
+            // Check if this request is still relevant before falling back to IndexedDB
+            if (currentSearchRef.current !== requestSearchQuery || requestSequence !== requestSequenceRef.current) {
+              console.log('⚠️ Ignoring stale IndexedDB fallback for:', requestSearchQuery);
+              return;
+            }
             console.error('Failed to load food items from server, falling back to IndexedDB:', error);
             // Fall through to IndexedDB loading
-            await loadFromIndexedDB(activeMenuTypes);
+            await loadFromIndexedDB(activeMenuTypes, requestSearchQuery, requestSequence);
           }
         } else {
           // Offline: load from IndexedDB with local pagination
-          await loadFromIndexedDB(activeMenuTypes);
+          await loadFromIndexedDB(activeMenuTypes, requestSearchQuery, requestSequence);
         }
       }
     } catch (error) {
       console.error('Failed to load food items:', error);
     } finally {
       setLoading(false);
+      loadingRef.current = false;
     }
-  };
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId, selectedCategoryId, debouncedSearchQuery, itemType, foodItemsPagination.page, foodItemsPagination.limit, buffetsPagination.page, buffetsPagination.limit, comboMealsPagination.page, comboMealsPagination.limit, orderType]);
 
-  const loadFromIndexedDB = async (activeMenuTypes: string[]) => {
+  // Update currentSearchRef when debounced search changes
+  useEffect(() => {
+    currentSearchRef.current = debouncedSearchQuery;
+  }, [debouncedSearchQuery]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const loadFromIndexedDB = async (activeMenuTypes: string[], requestSearchQuery?: string, requestSequence?: number) => {
+    // Check if this request is still relevant
+    if (requestSearchQuery !== undefined && currentSearchRef.current !== requestSearchQuery) {
+      console.log('⚠️ Ignoring stale IndexedDB results for:', requestSearchQuery);
+      return;
+    }
+    
+    if (requestSequence !== undefined && requestSequence !== requestSequenceRef.current) {
+      console.log('⚠️ Ignoring outdated IndexedDB request');
+      return;
+    }
     // Load food items from IndexedDB
     // Only filter by deletedAt - isActive is no longer used for food items
     // Items show/hide based on menu membership only
@@ -240,9 +321,10 @@ export function FoodItemsGrid({
       filteredItems = [];
     }
 
-    // Filter by search query
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
+    // Filter by search query (use debounced search query)
+    const searchQueryToUse = requestSearchQuery || debouncedSearchQuery;
+    if (searchQueryToUse.trim()) {
+      const query = searchQueryToUse.toLowerCase();
       filteredItems = filteredItems.filter(
         (item) =>
           item.name?.toLowerCase().includes(query) ||
@@ -302,8 +384,8 @@ export function FoodItemsGrid({
           });
         }
         
-        if (searchQuery.trim()) {
-          const query = searchQuery.toLowerCase();
+        if (debouncedSearchQuery.trim()) {
+          const query = debouncedSearchQuery.toLowerCase();
           filtered = filtered.filter(
             (buffet) =>
               buffet.name?.toLowerCase().includes(query) ||
@@ -345,8 +427,8 @@ export function FoodItemsGrid({
           });
         }
         
-        if (searchQuery.trim()) {
-          const query = searchQuery.toLowerCase();
+        if (debouncedSearchQuery.trim()) {
+          const query = debouncedSearchQuery.toLowerCase();
           filtered = filtered.filter(
             (combo) =>
               combo.name?.toLowerCase().includes(query) ||
