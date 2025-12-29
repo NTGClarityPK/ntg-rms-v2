@@ -113,6 +113,40 @@ export function FoodItemsGrid({
     }
   }, [orderType, itemType]);
 
+  // Reload buffets only when order type changes and we're on buffets tab
+  // This prevents full menu reload when switching between dine_in, takeaway, and delivery
+  useEffect(() => {
+    if (itemType === 'buffets' && orderType === 'dine_in') {
+      // Only reload buffets if we're on the buffets tab and it's dine_in
+      // Fetch active menus first, then load buffets
+      const reloadBuffets = async () => {
+        try {
+          let activeMenuTypes: string[] = [];
+          if (navigator.onLine) {
+            try {
+              const menusResponse = await menuApi.getMenus();
+              const menus = Array.isArray(menusResponse) ? menusResponse : (menusResponse?.data || []);
+              activeMenuTypes = menus
+                .filter((menu) => menu.isActive)
+                .map((menu) => menu.menuType)
+                .filter(Boolean);
+            } catch (error) {
+              console.warn('⚠️ Failed to load menus for buffets reload:', error);
+            }
+          }
+          await loadBuffets(activeMenuTypes);
+        } catch (error) {
+          console.error('Failed to reload buffets:', error);
+        }
+      };
+      reloadBuffets();
+    } else if (itemType === 'buffets' && orderType !== 'dine_in') {
+      // Clear buffets if order type is not dine_in
+      setBuffets([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderType, itemType]);
+
   // Notify parent when item type changes
   useEffect(() => {
     if (onItemTypeChange) {
@@ -270,7 +304,7 @@ export function FoodItemsGrid({
       loadingRef.current = false;
     }
      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, selectedCategoryId, debouncedSearchQuery, itemType, foodItemsPagination.page, foodItemsPagination.limit, buffetsPagination.page, buffetsPagination.limit, comboMealsPagination.page, comboMealsPagination.limit, orderType]);
+  }, [tenantId, selectedCategoryId, debouncedSearchQuery, itemType, foodItemsPagination.page, foodItemsPagination.limit, buffetsPagination.page, buffetsPagination.limit, comboMealsPagination.page, comboMealsPagination.limit]);
 
   // Update currentSearchRef when debounced search changes
   useEffect(() => {

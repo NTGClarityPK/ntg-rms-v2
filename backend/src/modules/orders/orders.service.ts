@@ -491,20 +491,41 @@ export class OrdersService {
       }
 
       if (createDto.orderType === 'dine_in' && tableIdsToValidate.length > 0) {
-        // Get settings to check totalTables
-        const settings = await this.settingsService.getSettings(tenantId);
-        const totalTables = settings.general?.totalTables || 0;
-
         // Remove duplicates
         const uniqueTableIds = [...new Set(tableIdsToValidate)];
 
-        // Validate all tables exist and are in range
-        const { data: tables } = await supabase
-          .from('tables')
-          .select('table_number, id')
-          .in('id', uniqueTableIds)
-          .eq('branch_id', createDto.branchId)
-          .is('deleted_at', null);
+        // Parallelize table validation queries
+        const [settings, tablesResult, activeOrdersByTableIdResult, orderTablesResult] = await Promise.all([
+          this.settingsService.getSettings(tenantId),
+          supabase
+            .from('tables')
+            .select('table_number, id')
+            .in('id', uniqueTableIds)
+            .eq('branch_id', createDto.branchId)
+            .is('deleted_at', null),
+          supabase
+            .from('orders')
+            .select('id, order_number, status, table_id')
+            .eq('tenant_id', tenantId)
+            .eq('branch_id', createDto.branchId)
+            .in('table_id', uniqueTableIds)
+            .eq('order_type', 'dine_in')
+            .not('status', 'in', '(completed,cancelled)')
+            .is('deleted_at', null),
+          supabase
+            .from('order_tables')
+            .select(`
+              order_id,
+              table_id,
+              orders!inner(id, order_number, status, tenant_id, branch_id, order_type, deleted_at)
+            `)
+            .in('table_id', uniqueTableIds),
+        ]);
+
+        const totalTables = settings.general?.totalTables || 0;
+        const tables = tablesResult.data;
+        const activeOrdersByTableId = activeOrdersByTableIdResult.data;
+        const orderTables = orderTablesResult.data;
 
         if (!tables || tables.length !== uniqueTableIds.length) {
           throw new BadRequestException('One or more tables not found');
@@ -521,28 +542,6 @@ export class OrdersService {
             }
           }
         }
-
-        // Check if any of the tables have active orders (not completed or cancelled)
-        // Check both old table_id field and new order_tables junction table
-        const { data: activeOrdersByTableId } = await supabase
-          .from('orders')
-          .select('id, order_number, status, table_id')
-          .eq('tenant_id', tenantId)
-          .eq('branch_id', createDto.branchId)
-          .in('table_id', uniqueTableIds)
-          .eq('order_type', 'dine_in')
-          .not('status', 'in', '(completed,cancelled)')
-          .is('deleted_at', null);
-
-        // Also check order_tables junction table
-        const { data: orderTables } = await supabase
-          .from('order_tables')
-          .select(`
-            order_id,
-            table_id,
-            orders!inner(id, order_number, status, tenant_id, branch_id, order_type, deleted_at)
-          `)
-          .in('table_id', uniqueTableIds);
 
         const activeOrdersFromJunction = (orderTables || [])
           .filter((ot: any) => {
@@ -616,35 +615,36 @@ export class OrdersService {
         );
       }
 
-      // Calculate totals
-      const totals = await this.calculateOrderTotals(
-        tenantId,
-        createDto.items,
-        createDto.extraDiscountAmount || 0,
-        createDto.couponCode,
-        createDto.orderType,
-        createDto.customerId,
-      );
+      // Parallelize independent operations
+      const [totals, orderNumber, tokenNumberResult, counterResult] = await Promise.all([
+        this.calculateOrderTotals(
+          tenantId,
+          createDto.items,
+          createDto.extraDiscountAmount || 0,
+          createDto.couponCode,
+          createDto.orderType,
+          createDto.customerId,
+        ),
+        this.generateOrderNumber(tenantId, createDto.branchId),
+        createDto.tokenNumber 
+          ? Promise.resolve(createDto.tokenNumber)
+          : this.generateTokenNumber(tenantId, createDto.branchId),
+        createDto.counterId
+          ? Promise.resolve({ data: { id: createDto.counterId }, error: null })
+          : supabase
+              .from('counters')
+              .select('id')
+              .eq('branch_id', createDto.branchId)
+              .eq('is_active', true)
+              .is('deleted_at', null)
+              .limit(1)
+              .maybeSingle(),
+      ]);
 
-      // Generate order number and token
-      const orderNumber = await this.generateOrderNumber(tenantId, createDto.branchId);
-      const tokenNumber = createDto.tokenNumber || (await this.generateTokenNumber(tenantId, createDto.branchId));
-
-      // Get counter ID if not provided (use first active counter for branch)
+      const tokenNumber = tokenNumberResult;
       let counterId = createDto.counterId;
-      if (!counterId) {
-        const { data: counter } = await supabase
-          .from('counters')
-          .select('id')
-          .eq('branch_id', createDto.branchId)
-          .eq('is_active', true)
-          .is('deleted_at', null)
-          .limit(1)
-          .single();
-
-        if (counter) {
-          counterId = counter.id;
-        }
+      if (!counterId && counterResult.data) {
+        counterId = counterResult.data.id;
       }
 
       // Determine table_id for backward compatibility (use first table if multiple)
@@ -701,99 +701,134 @@ export class OrdersService {
         }
       }
 
-      // Create order items
-      const orderItems = [];
-      for (const item of createDto.items) {
+      // Batch fetch all data needed for order items (reuse same logic as calculateOrderTotals)
+      const buffetIds = createDto.items.filter((item) => item.buffetId).map((item) => item.buffetId!);
+      const comboMealIds = createDto.items.filter((item) => item.comboMealId).map((item) => item.comboMealId!);
+      const foodItemIds = createDto.items.filter((item) => item.foodItemId).map((item) => item.foodItemId!);
+      const variationIds = createDto.items.filter((item) => item.variationId && item.foodItemId).map((item) => item.variationId!);
+      const allAddOnIds = createDto.items
+        .filter((item) => item.addOns && item.addOns.length > 0 && item.foodItemId)
+        .flatMap((item) => item.addOns!.map((a) => a.addOnId));
+      const uniqueAddOnIds = [...new Set(allAddOnIds)];
+
+      // Batch fetch all items in parallel
+      const [buffetsResult, comboMealsResult, foodItemsResult, variationsResult, addOnsResult, discountsResult] = await Promise.all([
+        buffetIds.length > 0
+          ? supabase
+              .from('buffets')
+              .select('id, price_per_person')
+              .in('id', buffetIds)
+              .eq('tenant_id', tenantId)
+              .is('deleted_at', null)
+          : Promise.resolve({ data: [], error: null }),
+        comboMealIds.length > 0
+          ? supabase
+              .from('combo_meals')
+              .select('id, base_price')
+              .in('id', comboMealIds)
+              .eq('tenant_id', tenantId)
+              .is('deleted_at', null)
+          : Promise.resolve({ data: [], error: null }),
+        foodItemIds.length > 0
+          ? supabase
+              .from('food_items')
+              .select('id, base_price')
+              .in('id', foodItemIds)
+              .eq('tenant_id', tenantId)
+              .is('deleted_at', null)
+          : Promise.resolve({ data: [], error: null }),
+        variationIds.length > 0
+          ? supabase
+              .from('food_item_variations')
+              .select('id, price_adjustment')
+              .in('id', variationIds)
+          : Promise.resolve({ data: [], error: null }),
+        uniqueAddOnIds.length > 0
+          ? supabase
+              .from('add_ons')
+              .select('id, price')
+              .in('id', uniqueAddOnIds)
+              .eq('tenant_id', tenantId)
+              .is('deleted_at', null)
+          : Promise.resolve({ data: [], error: null }),
+        foodItemIds.length > 0
+          ? supabase
+              .from('food_item_discounts')
+              .select('food_item_id, discount_type, discount_value')
+              .in('food_item_id', foodItemIds)
+              .eq('is_active', true)
+              .lte('start_date', new Date().toISOString())
+              .gte('end_date', new Date().toISOString())
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+
+      // Create lookup maps for O(1) access
+      const buffetMap = new Map((buffetsResult.data || []).map((b: any) => [b.id, b]));
+      const comboMealMap = new Map((comboMealsResult.data || []).map((c: any) => [c.id, c]));
+      const foodItemMap = new Map((foodItemsResult.data || []).map((f: any) => [f.id, f]));
+      const variationMap = new Map((variationsResult.data || []).map((v: any) => [v.id, v]));
+      const addOnMap = new Map((addOnsResult.data || []).map((a: any) => [a.id, a]));
+      
+      // Group discounts by food_item_id
+      const discountsMap = new Map<string, any[]>();
+      (discountsResult.data || []).forEach((d: any) => {
+        if (!discountsMap.has(d.food_item_id)) {
+          discountsMap.set(d.food_item_id, []);
+        }
+        discountsMap.get(d.food_item_id)!.push(d);
+      });
+
+      // Prepare all order items for batch insert
+      const orderItemsToInsert = [];
+      const addOnsToInsert: Array<{ itemIndex: number; add_on_id: string; quantity: number; unit_price: number }> = [];
+
+      for (let i = 0; i < createDto.items.length; i++) {
+        const item = createDto.items[i];
         let unitPrice = 0;
         let foodItemId: string | null = null;
         let buffetId: string | null = null;
         let comboMealId: string | null = null;
 
-        // Handle different item types
+        // Handle different item types using batch-fetched data
         if (item.buffetId) {
-          // Handle buffet
-          const { data: buffet } = await supabase
-            .from('buffets')
-            .select('price_per_person')
-            .eq('id', item.buffetId)
-            .eq('tenant_id', tenantId)
-            .is('deleted_at', null)
-            .single();
-
+          const buffet = buffetMap.get(item.buffetId);
           if (!buffet) {
             throw new NotFoundException(`Buffet ${item.buffetId} not found`);
           }
-
           unitPrice = buffet.price_per_person;
           buffetId = item.buffetId;
         } else if (item.comboMealId) {
-          // Handle combo meal
-          const { data: comboMeal } = await supabase
-            .from('combo_meals')
-            .select('base_price')
-            .eq('id', item.comboMealId)
-            .eq('tenant_id', tenantId)
-            .is('deleted_at', null)
-            .single();
-
+          const comboMeal = comboMealMap.get(item.comboMealId);
           if (!comboMeal) {
             throw new NotFoundException(`Combo meal ${item.comboMealId} not found`);
           }
-
           unitPrice = comboMeal.base_price;
           comboMealId = item.comboMealId;
         } else if (item.foodItemId) {
-          // Handle regular food item
-          const { data: foodItem } = await supabase
-            .from('food_items')
-            .select('base_price')
-            .eq('id', item.foodItemId)
-            .eq('tenant_id', tenantId)
-            .is('deleted_at', null)
-            .single();
-
+          const foodItem = foodItemMap.get(item.foodItemId);
           if (!foodItem) {
             throw new NotFoundException(`Food item ${item.foodItemId} not found`);
           }
-
           unitPrice = foodItem.base_price;
           foodItemId = item.foodItemId;
 
-          // Get variation price adjustment (if variation exists)
+          // Get variation price adjustment if applicable
           if (item.variationId) {
-            const { data: variation } = await supabase
-              .from('food_item_variations')
-              .select('price_adjustment')
-              .eq('id', item.variationId)
-              .single();
-
+            const variation = variationMap.get(item.variationId);
             if (variation) {
               unitPrice += variation.price_adjustment;
             }
           }
 
-          // Calculate add-on prices (only for food items)
-          let addOnTotal = 0;
+          // Calculate add-on prices
           if (item.addOns && item.addOns.length > 0) {
-            const addOnIds = item.addOns.map((a) => a.addOnId);
-            const { data: addOns } = await supabase
-              .from('add_ons')
-              .select('id, price')
-              .in('id', addOnIds)
-              .eq('tenant_id', tenantId)
-              .is('deleted_at', null);
-
-            if (addOns) {
-              for (const addOn of item.addOns) {
-                const addOnData = addOns.find((a) => a.id === addOn.addOnId);
-                if (addOnData) {
-                  addOnTotal += addOnData.price * (addOn.quantity || 1);
-                }
+            for (const addOn of item.addOns) {
+              const addOnData = addOnMap.get(addOn.addOnId);
+              if (addOnData) {
+                unitPrice += addOnData.price * (addOn.quantity || 1);
               }
             }
           }
-
-          unitPrice += addOnTotal;
         } else {
           throw new BadRequestException('Order item must have either foodItemId, buffetId, or comboMealId');
         }
@@ -801,15 +836,7 @@ export class OrdersService {
         // Calculate item discount (only for food items)
         let itemDiscount = 0;
         if (foodItemId) {
-          const now = new Date().toISOString();
-          const { data: discounts } = await supabase
-            .from('food_item_discounts')
-            .select('discount_type, discount_value')
-            .eq('food_item_id', foodItemId)
-            .eq('is_active', true)
-            .lte('start_date', now)
-            .gte('end_date', now);
-
+          const discounts = discountsMap.get(foodItemId);
           if (discounts && discounts.length > 0) {
             const discount = discounts[0];
             const itemSubtotal = unitPrice * item.quantity;
@@ -829,62 +856,67 @@ export class OrdersService {
 
         const itemTotal = itemSubtotal - itemDiscount + itemTaxAmount;
 
-        // Create order item
-        const { data: orderItem, error: itemError } = await supabase
-          .from('order_items')
-          .insert({
-            order_id: order.id,
-            food_item_id: foodItemId || null,
-            buffet_id: buffetId || null,
-            combo_meal_id: comboMealId || null,
-            variation_id: item.variationId || null,
-            quantity: item.quantity,
-            unit_price: unitPrice,
-            discount_amount: itemDiscount,
-            tax_amount: itemTaxAmount,
-            subtotal: itemTotal,
-            special_instructions: item.specialInstructions || null,
-            status: 'pending', // Default status for new items
-          })
-          .select()
-          .single();
+        // Store order item data for batch insert
+        orderItemsToInsert.push({
+          order_id: order.id,
+          food_item_id: foodItemId || null,
+          buffet_id: buffetId || null,
+          combo_meal_id: comboMealId || null,
+          variation_id: item.variationId || null,
+          quantity: item.quantity,
+          unit_price: unitPrice,
+          discount_amount: itemDiscount,
+          tax_amount: itemTaxAmount,
+          subtotal: itemTotal,
+          special_instructions: item.specialInstructions || null,
+          status: 'pending',
+        });
 
-        if (itemError) {
-          throw new InternalServerErrorException(`Failed to create order item: ${itemError.message}`);
-        }
-
-        // Create order item add-ons
-        if (item.addOns && item.addOns.length > 0) {
-          const addOnInserts = [];
+        // Prepare add-ons for batch insert (we'll link them after order items are created)
+        // Supabase insert().select() returns items in insertion order, so we can use array index
+        if (item.addOns && item.addOns.length > 0 && foodItemId) {
           for (const addOn of item.addOns) {
-            const { data: addOnData } = await supabase
-              .from('add_ons')
-              .select('price')
-              .eq('id', addOn.addOnId)
-              .single();
-
+            const addOnData = addOnMap.get(addOn.addOnId);
             if (addOnData) {
-              addOnInserts.push({
-                order_item_id: orderItem.id,
+              addOnsToInsert.push({
+                itemIndex: i,
                 add_on_id: addOn.addOnId,
                 quantity: addOn.quantity || 1,
                 unit_price: addOnData.price,
               });
             }
           }
-
-          if (addOnInserts.length > 0) {
-            const { error: addOnError } = await supabase
-              .from('order_item_add_ons')
-              .insert(addOnInserts);
-
-            if (addOnError) {
-              throw new InternalServerErrorException(`Failed to create order item add-ons: ${addOnError.message}`);
-            }
-          }
         }
+      }
 
-        orderItems.push(orderItem);
+      // Batch insert all order items at once
+      // Note: Supabase insert().select() returns items in the same order they were inserted
+      const { data: orderItems, error: orderItemsError } = await supabase
+        .from('order_items')
+        .insert(orderItemsToInsert)
+        .select();
+
+      if (orderItemsError || !orderItems) {
+        throw new InternalServerErrorException(`Failed to create order items: ${orderItemsError?.message || 'Unknown error'}`);
+      }
+
+      // Batch insert all add-ons at once
+      if (addOnsToInsert.length > 0) {
+        // Match add-ons to order items using array index (Supabase preserves insertion order)
+        const addOnInserts = addOnsToInsert.map((addOn) => ({
+          order_item_id: orderItems[addOn.itemIndex].id,
+          add_on_id: addOn.add_on_id,
+          quantity: addOn.quantity,
+          unit_price: addOn.unit_price,
+        }));
+
+        const { error: addOnError } = await supabase
+          .from('order_item_add_ons')
+          .insert(addOnInserts);
+
+        if (addOnError) {
+          throw new InternalServerErrorException(`Failed to create order item add-ons: ${addOnError.message}`);
+        }
       }
 
       // Record coupon usage if coupon was applied
