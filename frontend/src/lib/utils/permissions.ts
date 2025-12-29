@@ -7,7 +7,13 @@ export function hasPermission(
   userPermissions: Permission[] | undefined,
   resource: string,
   action: string,
+  userRole?: string,
 ): boolean {
+  // Owners have full access to everything
+  if (userRole === 'tenant_owner') {
+    return true;
+  }
+
   if (!userPermissions || userPermissions.length === 0) {
     return false;
   }
@@ -18,29 +24,29 @@ export function hasPermission(
 /**
  * Check if user can view a resource
  */
-export function canView(userPermissions: Permission[] | undefined, resource: string): boolean {
-  return hasPermission(userPermissions, resource, 'view');
+export function canView(userPermissions: Permission[] | undefined, resource: string, userRole?: string): boolean {
+  return hasPermission(userPermissions, resource, 'view', userRole);
 }
 
 /**
  * Check if user can create a resource
  */
-export function canCreate(userPermissions: Permission[] | undefined, resource: string): boolean {
-  return hasPermission(userPermissions, resource, 'create');
+export function canCreate(userPermissions: Permission[] | undefined, resource: string, userRole?: string): boolean {
+  return hasPermission(userPermissions, resource, 'create', userRole);
 }
 
 /**
  * Check if user can update a resource
  */
-export function canUpdate(userPermissions: Permission[] | undefined, resource: string): boolean {
-  return hasPermission(userPermissions, resource, 'update');
+export function canUpdate(userPermissions: Permission[] | undefined, resource: string, userRole?: string): boolean {
+  return hasPermission(userPermissions, resource, 'update', userRole);
 }
 
 /**
  * Check if user can delete a resource
  */
-export function canDelete(userPermissions: Permission[] | undefined, resource: string): boolean {
-  return hasPermission(userPermissions, resource, 'delete');
+export function canDelete(userPermissions: Permission[] | undefined, resource: string, userRole?: string): boolean {
+  return hasPermission(userPermissions, resource, 'delete', userRole);
 }
 
 /**
