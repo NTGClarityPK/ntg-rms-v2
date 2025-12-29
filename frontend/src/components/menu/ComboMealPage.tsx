@@ -121,7 +121,7 @@ export function ComboMealPage() {
         }
       }
       
-      setFoodItems(allFoodItems.filter((item) => item.isActive));
+      setFoodItems(allFoodItems); // Show all items regardless of active status
 
       // Load combo meals
       if (navigator.onLine) {
