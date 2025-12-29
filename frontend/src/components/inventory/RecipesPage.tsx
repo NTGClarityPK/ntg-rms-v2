@@ -463,10 +463,8 @@ export function RecipesPage() {
       }));
   }, [ingredients]);
 
-  const handleOpenModal = async (foodItem?: FoodItem) => {
-    // Refresh all food items when opening modal to ensure dropdown has latest data
-    await loadAllFoodItems();
-    
+  const handleOpenModal = (foodItem?: FoodItem) => {
+    // Open modal immediately
     if (foodItem) {
       setSelectedFoodItem(foodItem);
       
@@ -490,6 +488,11 @@ export function RecipesPage() {
       form.reset();
     }
     setOpened(true);
+    
+    // Refresh all food items in the background to ensure dropdown has latest data
+    loadAllFoodItems().catch((err) => {
+      console.warn('Failed to refresh food items:', err);
+    });
   };
 
   const handleCloseModal = () => {
