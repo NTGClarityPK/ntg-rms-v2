@@ -158,7 +158,7 @@ apiClient.interceptors.response.use(
       if (!refreshToken) {
         console.error('No refresh token available');
         tokenStorage.clearTokens();
-        // Clear auth store (which will also clear restaurant store)
+        // Clear auth store
         if (typeof window !== 'undefined') {
           // Dynamically import to avoid circular dependency
           import('../store/auth-store').then(({ useAuthStore }) => {
@@ -166,15 +166,9 @@ apiClient.interceptors.response.use(
           });
         }
         processQueue(error, null);
-        // Redirect to login ONLY if we're not already on an auth page
+        // Redirect to login
         if (typeof window !== 'undefined') {
-          const currentPath = window.location.pathname;
-          const isAuthPage = currentPath.startsWith('/login') || 
-                            currentPath.startsWith('/signup') || 
-                            currentPath.startsWith('/auth');
-          if (!isAuthPage) {
-            window.location.href = '/login';
-          }
+          window.location.href = '/login';
         }
         return Promise.reject(error);
       }
@@ -225,25 +219,45 @@ apiClient.interceptors.response.use(
           originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         }
         return apiClient(originalRequest);
-      } catch (refreshError) {
-        tokenStorage.clearTokens();
-        // Clear auth store (which will also clear restaurant store)
-        if (typeof window !== 'undefined') {
-          // Dynamically import to avoid circular dependency
-          import('../store/auth-store').then(({ useAuthStore }) => {
-            useAuthStore.getState().logout();
-          });
-        }
-        processQueue(refreshError as AxiosError, null);
-        // Redirect to login ONLY if we're not already on an auth page
-        if (typeof window !== 'undefined') {
-          const currentPath = window.location.pathname;
-          const isAuthPage = currentPath.startsWith('/login') || 
-                            currentPath.startsWith('/signup') || 
-                            currentPath.startsWith('/auth');
-          if (!isAuthPage) {
+      } catch (refreshError: any) {
+        // Check if it's a timeout error
+        const isTimeout = refreshError.code === 'ECONNABORTED' || 
+                          refreshError.message?.includes('timeout') ||
+                          refreshError.message?.includes('Timeout');
+        
+        // Only sign out if it's actually an authentication error (401, 403), not a network error
+        const isAuthError = refreshError?.response?.status === 401 || 
+                           refreshError?.response?.status === 403;
+        
+        // Log the error for debugging (always log, not just in dev)
+        console.error('Token refresh failed:', {
+          status: refreshError?.response?.status,
+          statusText: refreshError?.response?.statusText,
+          message: refreshError?.message,
+          code: refreshError?.code,
+          isTimeout,
+          isAuthError,
+          data: refreshError?.response?.data,
+          originalRequestUrl: originalRequest.url,
+          timestamp: new Date().toISOString(),
+        });
+
+        if (isAuthError) {
+          tokenStorage.clearTokens();
+          // Clear auth store
+          if (typeof window !== 'undefined') {
+            // Dynamically import to avoid circular dependency
+            import('../store/auth-store').then(({ useAuthStore }) => {
+              useAuthStore.getState().logout();
+            });
+          }
+          processQueue(refreshError as AxiosError, null);
+          if (typeof window !== 'undefined') {
             window.location.href = '/login';
           }
+        } else {
+          // For network errors, don't sign out - just reject the original request
+          processQueue(refreshError as AxiosError, null);
         }
         return Promise.reject(refreshError);
       } finally {
