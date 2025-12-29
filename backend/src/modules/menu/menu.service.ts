@@ -367,24 +367,92 @@ export class MenuService {
 
     // If filtering by active menus is enabled
     if (onlyActiveMenus) {
-      // Get all active menu types
-      const { data: activeMenus } = await supabase
+      // Get all active menu types from menus table
+      let activeMenusQuery = supabase
         .from('menus')
         .select('menu_type')
         .eq('tenant_id', tenantId)
         .eq('is_active', true);
+      
+      // Check for soft-deleted menus if the table has deleted_at column
+      // Note: Some databases might not have this column, so we'll handle gracefully
+      try {
+        activeMenusQuery = activeMenusQuery.is('deleted_at', null);
+      } catch (e) {
+        // If deleted_at column doesn't exist, continue without it
+      }
 
-      const activeMenuTypes = activeMenus?.map((m: any) => m.menu_type) || [];
+      const { data: activeMenus, error: activeMenusError } = await activeMenusQuery;
+
+      let activeMenuTypes: string[] = [];
+
+      if (activeMenusError) {
+        // If error is about column not existing, retry without deleted_at check
+        if (activeMenusError.message?.includes('deleted_at') || activeMenusError.message?.includes('column')) {
+          const { data: retryActiveMenus, error: retryError } = await supabase
+            .from('menus')
+            .select('menu_type')
+            .eq('tenant_id', tenantId)
+            .eq('is_active', true);
+          
+          if (retryError) {
+            throw new BadRequestException(`Failed to fetch active menus: ${retryError.message}`);
+          }
+          
+          activeMenuTypes = retryActiveMenus?.map((m: any) => m.menu_type) || [];
+        } else {
+          throw new BadRequestException(`Failed to fetch active menus: ${activeMenusError.message}`);
+        }
+      } else {
+        activeMenuTypes = activeMenus?.map((m: any) => m.menu_type) || [];
+      }
+
+      // Also get menu types from menu_items that don't have records in menus table
+      // (legacy menus created before menu records were required)
+      // These should be considered active by default since they have items assigned
+      const { data: allMenuItemsForComparison } = await supabase
+        .from('menu_items')
+        .select('menu_type')
+        .eq('tenant_id', tenantId);
+
+      if (allMenuItemsForComparison) {
+        const allMenuTypesWithItems = [...new Set(allMenuItemsForComparison.map((mi: any) => mi.menu_type))];
+        
+        // Get menu types that have items but don't have a record in menus table
+        const menuTypesWithoutRecords = allMenuTypesWithItems.filter(
+          (menuType) => !activeMenuTypes.includes(menuType)
+        );
+
+        // Check which of these menu types don't exist in menus table at all
+        if (menuTypesWithoutRecords.length > 0) {
+          const { data: existingMenus } = await supabase
+            .from('menus')
+            .select('menu_type')
+            .eq('tenant_id', tenantId)
+            .in('menu_type', menuTypesWithoutRecords);
+
+          const existingMenuTypes = existingMenus?.map((m: any) => m.menu_type) || [];
+          const menuTypesToInclude = menuTypesWithoutRecords.filter(
+            (menuType) => !existingMenuTypes.includes(menuType)
+          );
+
+          // Include these menu types as active (they have items but no menu record)
+          activeMenuTypes = [...activeMenuTypes, ...menuTypesToInclude];
+        }
+      }
 
       // If there are active menus, filter items to only those in active menus
       if (activeMenuTypes.length > 0) {
         // Query menu_items directly for items in active menus (more efficient)
-        // This avoids the need to use .in() with potentially large arrays
-        const { data: allMenuItems } = await supabase
+        const { data: allMenuItems, error: menuItemsError } = await supabase
           .from('menu_items')
           .select('food_item_id')
           .in('menu_type', activeMenuTypes)
           .eq('tenant_id', tenantId);
+
+        if (menuItemsError) {
+          throw new BadRequestException(`Failed to fetch menu items: ${menuItemsError.message}`);
+        }
 
         // Create a set of food item IDs that belong to active menus
         const foodItemsInActiveMenus = new Set(
@@ -1817,6 +1885,37 @@ export class MenuService {
 
       if (insertError) {
         throw new BadRequestException(`Failed to assign items to menu: ${insertError.message}`);
+      }
+
+      // Ensure menu record exists in menus table
+      // Check if menu record exists
+      const { data: existingMenu } = await supabase
+        .from('menus')
+        .select('menu_type')
+        .eq('tenant_id', tenantId)
+        .eq('menu_type', menuType)
+        .limit(1);
+
+      if (!existingMenu || existingMenu.length === 0) {
+        // Create menu record if it doesn't exist
+        // Generate display name from menu_type
+        const displayName = menuType.charAt(0).toUpperCase() + menuType.slice(1).replace(/_/g, ' ');
+        const { error: menuInsertError } = await supabase
+          .from('menus')
+          .insert({
+            tenant_id: tenantId,
+            menu_type: menuType,
+            name: displayName,
+            is_active: true, // Default to active when items are assigned
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+
+        // If table doesn't exist or insert fails, we'll continue (menu will still work)
+        if (menuInsertError && !menuInsertError.message.includes('relation') && !menuInsertError.message.includes('does not exist')) {
+          // Log error but don't throw - menu_items assignment was successful
+          console.warn(`Failed to create menu record: ${menuInsertError.message}`);
+        }
       }
     }
 
