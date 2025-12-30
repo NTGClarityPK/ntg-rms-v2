@@ -1,9 +1,10 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { API_BASE_URL } from '../constants/api';
+import { STORAGE_KEYS, API_TIMEOUT_CONFIG } from '@/shared/constants/app.constants';
 
-// Token storage keys
-const ACCESS_TOKEN_KEY = 'rms_access_token';
-const REFRESH_TOKEN_KEY = 'rms_refresh_token';
+// Token storage keys - using centralized constants
+const ACCESS_TOKEN_KEY = STORAGE_KEYS.ACCESS_TOKEN;
+const REFRESH_TOKEN_KEY = STORAGE_KEYS.REFRESH_TOKEN;
 
 // Token management
 export const tokenStorage = {
@@ -40,7 +41,7 @@ const apiClient: AxiosInstance = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000,
+  timeout: API_TIMEOUT_CONFIG.DEFAULT,
 });
 
 // Request interceptor - Add JWT token to requests
@@ -180,8 +181,8 @@ apiClient.interceptors.response.use(
           headers: {
             'Content-Type': 'application/json',
           },
-          // Increased timeout for refresh endpoint (60 seconds for slow VPN)
-          timeout: 60000,
+          // Increased timeout for refresh endpoint (for slow connections)
+          timeout: API_TIMEOUT_CONFIG.REFRESH_TOKEN,
         });
 
         console.log('Calling refresh endpoint...', {

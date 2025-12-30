@@ -1,6 +1,7 @@
 import apiClient from './client';
 import { API_ENDPOINTS } from '../constants/api';
 import { PaginationParams, PaginatedResponse } from '../types/pagination.types';
+import { createCrudApi, extendCrudApi } from '@/shared/services/api/factory';
 
 export interface Role {
   id: string;
@@ -70,41 +71,21 @@ export interface UpdateEmployeeDto {
   branchIds?: string[];
 }
 
+// Use factory for base CRUD operations on employees
+const baseEmployeesApi = createCrudApi<Employee>(API_ENDPOINTS.EMPLOYEES);
+
 export const employeesApi = {
+  // Employees - Using factory for CRUD operations
   getEmployees: async (
     filters?: { branchId?: string; role?: string; status?: string },
     pagination?: PaginationParams,
   ): Promise<Employee[] | PaginatedResponse<Employee>> => {
-    const params = new URLSearchParams();
-    if (filters?.branchId) params.append('branchId', filters.branchId);
-    if (filters?.role) params.append('role', filters.role);
-    if (filters?.status) params.append('status', filters.status);
-    if (pagination?.page) params.append('page', pagination.page.toString());
-    if (pagination?.limit) params.append('limit', pagination.limit.toString());
-
-    const response = await apiClient.get<Employee[] | PaginatedResponse<Employee>>(
-      `${API_ENDPOINTS.EMPLOYEES}${params.toString() ? `?${params.toString()}` : ''}`,
-    );
-    return response.data;
+    // Use base API but add custom filter handling
+    return baseEmployeesApi.getAll(filters, pagination);
   },
 
-  getEmployeeById: async (id: string): Promise<Employee> => {
-    const response = await apiClient.get<Employee>(`${API_ENDPOINTS.EMPLOYEES}/${id}`);
-    return response.data;
-  },
-
-  createEmployee: async (data: CreateEmployeeDto): Promise<Employee> => {
-    const response = await apiClient.post<Employee>(API_ENDPOINTS.EMPLOYEES, data);
-    return response.data;
-  },
-
-  updateEmployee: async (id: string, data: UpdateEmployeeDto): Promise<Employee> => {
-    const response = await apiClient.put<Employee>(`${API_ENDPOINTS.EMPLOYEES}/${id}`, data);
-    return response.data;
-  },
-
-  deleteEmployee: async (id: string): Promise<void> => {
-    await apiClient.delete(`${API_ENDPOINTS.EMPLOYEES}/${id}`);
-  },
+  getEmployeeById: baseEmployeesApi.getById,
+  createEmployee: baseEmployeesApi.create,
+  updateEmployee: baseEmployeesApi.update,
+  deleteEmployee: baseEmployeesApi.delete,
 };
-

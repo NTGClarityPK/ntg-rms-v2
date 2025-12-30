@@ -36,6 +36,7 @@ import { useNotificationColors, useErrorColor, useSuccessColor, useInfoColor } f
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getBadgeColorForText } from '@/lib/utils/theme';
 import { onMenuDataUpdate, notifyMenuDataUpdate } from '@/lib/utils/menu-events';
+import { handleApiError } from '@/shared/utils/error-handler';
 
 export function CategoriesPage() {
   const { language } = useLanguageStore();
@@ -126,7 +127,12 @@ export function CategoriesPage() {
         }
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to load categories');
+      const errorMsg = handleApiError(err, {
+        defaultMessage: 'Failed to load categories',
+        language,
+        showNotification: false, // Don't show notification for load errors
+      });
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }

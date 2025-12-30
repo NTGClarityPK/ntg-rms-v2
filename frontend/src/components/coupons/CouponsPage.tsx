@@ -36,6 +36,9 @@ import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { useCurrency } from '@/lib/hooks/use-currency';
+import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
+import { handleApiError } from '@/shared/utils/error-handler';
+import { DISCOUNT_TYPES, type DiscountType } from '@/shared/constants/menu.constants';
 
 export function CouponsPage() {
   const { language } = useLanguageStore();
@@ -45,7 +48,10 @@ export function CouponsPage() {
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
   const currency = useCurrency();
-  const pagination = usePagination<Coupon>({ initialPage: 1, initialLimit: 10 });
+  const pagination = usePagination<Coupon>({ 
+    initialPage: DEFAULT_PAGINATION.page, 
+    initialLimit: DEFAULT_PAGINATION.limit 
+  });
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [loading, setLoading] = useState(true);
   const [opened, setOpened] = useState(false);
@@ -185,13 +191,12 @@ export function CouponsPage() {
       handleCloseModal();
       loadCoupons();
     } catch (err: any) {
-      const errorMsg = err.response?.data?.message || err.message || t('coupons.createError', language) || 'Failed to save coupon';
-      setError(errorMsg);
-      notifications.show({
-        title: t('common.error', language) || 'Error',
-        message: errorMsg,
-        color: errorColor,
+      const errorMsg = handleApiError(err, {
+        defaultMessage: t('coupons.createError', language) || 'Failed to save coupon',
+        language,
+        errorColor,
       });
+      setError(errorMsg);
     }
   };
 
@@ -218,10 +223,10 @@ export function CouponsPage() {
           });
           loadCoupons();
         } catch (err: any) {
-          notifications.show({
-            title: t('common.error', language) || 'Error',
-            message: err.response?.data?.message || err.message || t('coupons.deleteError', language) || 'Failed to delete coupon',
-            color: errorColor,
+          handleApiError(err, {
+            defaultMessage: t('coupons.deleteError', language) || 'Failed to delete coupon',
+            language,
+            errorColor,
           });
         }
       },
@@ -448,10 +453,10 @@ export function CouponsPage() {
 
             <Select
               label={t('coupons.discountType', language) || 'Discount Type'}
-              data={[
-                { value: 'fixed', label: t('coupons.fixed', language) || 'Fixed Amount' },
-                { value: 'percentage', label: t('coupons.percentage', language) || 'Percentage' },
-              ]}
+              data={DISCOUNT_TYPES.map((type) => ({
+                value: type.value,
+                label: t(`coupons.${type.value}` as any, language) || type.label,
+              }))}
               required
               {...form.getInputProps('discountType')}
             />

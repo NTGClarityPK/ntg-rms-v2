@@ -48,6 +48,7 @@ import { useInventoryRefresh } from '@/lib/contexts/inventory-refresh-context';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
 import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
+import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
 
 interface RecipeIngredient {
   ingredientId: string;
@@ -63,7 +64,10 @@ export function RecipesPage() {
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
-  const foodItemsPagination = usePagination<FoodItem>({ initialPage: 1, initialLimit: 10 });
+  const foodItemsPagination = usePagination<FoodItem>({ 
+    initialPage: DEFAULT_PAGINATION.page, 
+    initialLimit: DEFAULT_PAGINATION.limit 
+  });
   const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
   const [allFoodItems, setAllFoodItems] = useState<FoodItem[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);

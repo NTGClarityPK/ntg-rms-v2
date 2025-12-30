@@ -6,6 +6,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { Response } from 'express';
+import { transformToStandardError } from '../utils/error-handler.util';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -18,19 +19,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
-    const message =
+    // Use standardized error transformation
+    const errorResponse = transformToStandardError(
       exception instanceof HttpException
-        ? exception.getResponse()
-        : 'Internal server error';
+        ? exception
+        : new HttpException('Internal server error', HttpStatus.INTERNAL_SERVER_ERROR),
+    );
 
-    response.status(status).json({
-      success: false,
-      error: {
-        code: exception instanceof HttpException ? exception.name : 'INTERNAL_ERROR',
-        message: typeof message === 'string' ? message : (message as any).message,
-        details: typeof message === 'object' ? message : undefined,
-      },
-    });
+    response.status(status).json(errorResponse);
   }
 }
 

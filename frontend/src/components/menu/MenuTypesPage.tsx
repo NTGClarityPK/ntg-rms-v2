@@ -6,18 +6,16 @@ import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getBadgeColorForText } from '@/lib/utils/theme';
+import { MENU_TYPES } from '@/shared/constants/menu.constants';
 
 export function MenuTypesPage() {
   const { language } = useLanguageStore();
   const primaryColor = useThemeColor();
 
-  const menuTypes = [
-    { value: 'all_day', label: t('menu.allDay', language) },
-    { value: 'breakfast', label: t('menu.breakfast', language) },
-    { value: 'lunch', label: t('menu.lunch', language) },
-    { value: 'dinner', label: t('menu.dinner', language) },
-    { value: 'kids_special', label: t('menu.kidsSpecial', language) },
-  ];
+  const menuTypes = MENU_TYPES.map(type => ({
+    value: type.value,
+    label: t(`menu.${type.value}` as any, language) || type.label,
+  }));
 
   return (
     <Container size="xl" py="xl">

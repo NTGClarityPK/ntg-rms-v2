@@ -1,6 +1,7 @@
 import apiClient from './client';
 import { API_ENDPOINTS } from '../constants/api';
 import { PaginationParams, PaginatedResponse } from '../types/pagination.types';
+import { createCrudApi, extendCrudApi } from '@/shared/services/api/factory';
 
 // Types
 export interface Coupon {
@@ -43,50 +44,39 @@ export interface UpdateCouponDto {
   validUntil?: string;
 }
 
+// Use factory for base CRUD operations on coupons
+const baseCouponsApi = createCrudApi<Coupon>(API_ENDPOINTS.COUPONS.BASE);
+
 export const couponsApi = {
   /**
-   * Get all coupons
+   * Get all coupons - Using factory
    */
   async getCoupons(
     filters?: Record<string, any>,
     pagination?: PaginationParams,
   ): Promise<PaginatedResponse<Coupon> | Coupon[]> {
-    const response = await apiClient.get(API_ENDPOINTS.COUPONS.BASE, {
-      params: { ...filters, ...pagination },
-    });
-    return response.data;
+    return baseCouponsApi.getAll(filters, pagination);
   },
 
   /**
-   * Get coupon by ID
+   * Get coupon by ID - Using factory
    */
-  async getCouponById(id: string): Promise<Coupon> {
-    const response = await apiClient.get(`${API_ENDPOINTS.COUPONS.BASE}/${id}`);
-    return response.data;
-  },
+  getCouponById: baseCouponsApi.getById,
 
   /**
-   * Create coupon
+   * Create coupon - Using factory
    */
-  async createCoupon(createDto: CreateCouponDto): Promise<Coupon> {
-    const response = await apiClient.post(API_ENDPOINTS.COUPONS.BASE, createDto);
-    return response.data;
-  },
+  createCoupon: baseCouponsApi.create,
 
   /**
-   * Update coupon
+   * Update coupon - Using factory
    */
-  async updateCoupon(id: string, updateDto: UpdateCouponDto): Promise<Coupon> {
-    const response = await apiClient.put(`${API_ENDPOINTS.COUPONS.BASE}/${id}`, updateDto);
-    return response.data;
-  },
+  updateCoupon: baseCouponsApi.update,
 
   /**
-   * Delete coupon
+   * Delete coupon - Using factory
    */
-  async deleteCoupon(id: string): Promise<void> {
-    await apiClient.delete(`${API_ENDPOINTS.COUPONS.BASE}/${id}`);
-  },
+  deleteCoupon: baseCouponsApi.delete,
 
   /**
    * Validate coupon code

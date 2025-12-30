@@ -32,6 +32,7 @@ import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getBadgeColorForText } from '@/lib/utils/theme';
 import { onMenuDataUpdate, notifyMenuDataUpdate } from '@/lib/utils/menu-events';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
+import { handleApiError } from '@/shared/utils/error-handler';
 
 export function MenusPage() {
   const { language } = useLanguageStore();
@@ -224,10 +225,10 @@ export function MenusPage() {
       setSelectedMenuType(menuType);
       setAssignModalOpened(true);
     } catch (err: any) {
-      notifications.show({
-        title: t('common.error' as any, language) || 'Error',
-        message: err.message || 'Failed to load menu items',
-        color: errorColor,
+      handleApiError(err, {
+        defaultMessage: 'Failed to load menu items',
+        language,
+        errorColor,
       });
     }
   };

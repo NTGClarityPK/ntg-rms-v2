@@ -37,25 +37,9 @@ import { useInventoryRefresh } from '@/lib/contexts/inventory-refresh-context';
 import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
-
-const CATEGORIES = [
-  { value: 'vegetables', label: 'Vegetables' },
-  { value: 'meats', label: 'Meats' },
-  { value: 'dairy', label: 'Dairy' },
-  { value: 'spices', label: 'Spices' },
-  { value: 'beverages', label: 'Beverages' },
-  { value: 'other', label: 'Other' },
-];
-
-const UNITS = [
-  { value: 'kg', label: 'kg' },
-  { value: 'g', label: 'g' },
-  { value: 'liter', label: 'liter' },
-  { value: 'ml', label: 'ml' },
-  { value: 'piece', label: 'piece' },
-  { value: 'box', label: 'box' },
-  { value: 'pack', label: 'pack' },
-];
+import { INGREDIENT_CATEGORIES, MEASUREMENT_UNITS } from '@/shared/constants/ingredients.constants';
+import { handleApiError } from '@/shared/utils/error-handler';
+import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
 
 export function IngredientsPage() {
   const { language } = useLanguageStore();
@@ -65,7 +49,10 @@ export function IngredientsPage() {
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
-  const pagination = usePagination<Ingredient>({ initialPage: 1, initialLimit: 10 });
+  const pagination = usePagination<Ingredient>({ 
+    initialPage: DEFAULT_PAGINATION.page, 
+    initialLimit: DEFAULT_PAGINATION.limit 
+  });
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [loading, setLoading] = useState(true);
   const [opened, setOpened] = useState(false);
@@ -435,10 +422,10 @@ export function IngredientsPage() {
           loadIngredients();
           triggerRefresh(); // Trigger refresh for all tabs
         } catch (err: any) {
-          notifications.show({
-            title: t('common.error' as any, language) || 'Error',
-            message: err.message || t('inventory.deleteError', language),
-            color: errorColor,
+          handleApiError(err, {
+            defaultMessage: t('inventory.deleteError', language),
+            language,
+            errorColor,
           });
         }
       },
@@ -491,7 +478,7 @@ export function IngredientsPage() {
               placeholder={t('inventory.filterByCategory', language)}
               data={[
                 { value: '', label: String(t('inventory.allCategories', language) || 'All Categories') },
-                ...CATEGORIES.map(cat => {
+                ...INGREDIENT_CATEGORIES.map(cat => {
                   const label = t(`inventory.${cat.value}` as any, language) || cat.label || '';
                   return {
                     value: cat.value,
@@ -659,7 +646,7 @@ export function IngredientsPage() {
             <Select
               label={t('inventory.category', language)}
               placeholder={t('inventory.category', language)}
-              data={CATEGORIES.map(cat => {
+              data={INGREDIENT_CATEGORIES.map(cat => {
                 const label = t(`inventory.${cat.value}` as any, language) || cat.label || '';
                 return {
                   value: cat.value,
@@ -672,7 +659,7 @@ export function IngredientsPage() {
               label={t('inventory.unitOfMeasurement', language)}
               placeholder={t('inventory.unitOfMeasurement', language)}
               required
-              data={UNITS.map(unit => {
+              data={MEASUREMENT_UNITS.map(unit => {
                 const label = t(`inventory.${unit.value}` as any, language) || unit.label || '';
                 return {
                   value: unit.value,

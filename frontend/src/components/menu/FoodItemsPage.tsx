@@ -54,6 +54,9 @@ import { onMenuDataUpdate, notifyMenuDataUpdate } from '@/lib/utils/menu-events'
 import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
+import { FOOD_ITEM_LABELS, MENU_TYPES, STOCK_TYPES, DISCOUNT_TYPES } from '@/shared/constants/menu.constants';
+import { handleApiError } from '@/shared/utils/error-handler';
+import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
 
 export function FoodItemsPage() {
   const { language } = useLanguageStore();
@@ -61,7 +64,10 @@ export function FoodItemsPage() {
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
-  const pagination = usePagination<FoodItem>({ initialPage: 1, initialLimit: 10 });
+  const pagination = usePagination<FoodItem>({ 
+    initialPage: DEFAULT_PAGINATION.page, 
+    initialLimit: DEFAULT_PAGINATION.limit 
+  });
   const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [addOnGroups, setAddOnGroups] = useState<any[]>([]);
@@ -118,12 +124,12 @@ export function FoodItemsPage() {
       // Load categories (only active ones for selection)
       const catsResponse = await menuApi.getCategories();
       const cats = Array.isArray(catsResponse) ? catsResponse : (catsResponse?.data || []);
-      setCategories(cats.filter((cat) => cat.isActive));
+      setCategories((cats as Category[]).filter((cat: Category) => cat.isActive));
 
       // Load add-on groups (only active ones for selection)
       const groupsResponse = await menuApi.getAddOnGroups();
       const groups = Array.isArray(groupsResponse) ? groupsResponse : (groupsResponse?.data || []);
-      setAddOnGroups(groups.filter((group) => group.isActive));
+      setAddOnGroups((groups as any[]).filter((group: any) => group.isActive));
 
       // Load menus for menu type selection
       const menuListResponse = await menuApi.getMenus();
@@ -997,11 +1003,10 @@ export function FoodItemsPage() {
         // Notify other tabs that food items have been updated
         notifyMenuDataUpdate('food-items-updated');
     } catch (err: any) {
-      const errorMsg = err.response?.data?.message || err.message || 'Failed to save food item';
-      notifications.show({
-        title: t('common.error' as any, language) || 'Error',
-        message: errorMsg,
-        color: errorColor,
+      handleApiError(err, {
+        defaultMessage: 'Failed to save food item',
+        language,
+        errorColor,
       });
       
       // Remove pending item skeleton on error
@@ -1037,46 +1042,21 @@ export function FoodItemsPage() {
       // Notify other tabs that food items have been updated
       notifyMenuDataUpdate('food-items-updated');
         } catch (err: any) {
-          // Extract error message from NestJS response
-          // The global exception filter formats errors as: { success: false, error: { message: "..." } }
-          let errorMessage = 'Failed to delete food item';
-          
-          if (err.response?.data) {
-            const data = err.response.data;
-            // Check the custom error format from HttpExceptionFilter first
-            if (data.error?.message) {
-              errorMessage = data.error.message;
-            } else if (typeof data === 'object' && data.message) {
-              // Fallback to standard NestJS format
-              errorMessage = data.message;
-            } else if (typeof data === 'string') {
-              errorMessage = data;
-            }
-          } else if (err.message && !err.message.includes('status code')) {
-            // Only use err.message if it's not the generic Axios status code message
-            errorMessage = err.message;
-          }
-          
-          notifications.show({
-            title: t('common.error' as any, language) || 'Error',
-            message: errorMessage,
-            color: errorColor,
+          handleApiError(err, {
+            defaultMessage: 'Failed to delete food item',
+            language,
+            errorColor,
           });
         }
       },
     });
   };
 
-  const labelOptions = [
-    { value: 'spicy', label: String(t('menu.spicy', language) || 'Spicy') },
-    { value: 'vegetarian', label: String(t('menu.vegetarian', language) || 'Vegetarian') },
-    { value: 'vegan', label: String(t('menu.vegan', language) || 'Vegan') },
-    { value: 'gluten_free', label: String(t('menu.glutenFree', language) || 'Gluten Free') },
-    { value: 'halal', label: String(t('menu.halal', language) || 'Halal') },
-    { value: 'new', label: String(t('menu.new', language) || 'New') },
-    { value: 'popular', label: String(t('menu.popular', language) || 'Popular') },
-    { value: 'chefs_special', label: String(t('menu.chefsSpecial', language) || 'Chef\'s Special') },
-  ];
+  // Use constants for labels
+  const labelOptions = FOOD_ITEM_LABELS.map(label => ({
+    value: label.value,
+    label: String(t(`menu.${label.value}` as any, language) || label.label),
+  }));
 
 
   return (
@@ -1492,11 +1472,10 @@ export function FoodItemsPage() {
                   <Grid.Col span={{ base: 12, md: 6 }}>
                     <Select
                       label={t('menu.stockType', language)}
-                      data={[
-                        { value: 'unlimited', label: t('menu.unlimited', language) },
-                        { value: 'limited', label: t('menu.limited', language) },
-                        { value: 'daily_limited', label: t('menu.dailyLimited', language) },
-                      ]}
+                      data={STOCK_TYPES.map(type => ({
+                        value: type.value,
+                        label: t(`menu.${type.value}` as any, language) || type.label,
+                      }))}
                       {...form.getInputProps('stockType')}
                     />
                   </Grid.Col>
@@ -1746,10 +1725,10 @@ export function FoodItemsPage() {
                       <Grid.Col span={{ base: 12, md: 3 }}>
                         <Select
                           label={t('menu.discountType', language)}
-                          data={[
-                            { value: 'percentage', label: t('menu.percentage', language) },
-                            { value: 'fixed', label: t('menu.fixed', language) },
-                          ]}
+                          data={DISCOUNT_TYPES.map(type => ({
+                            value: type.value,
+                            label: t(`menu.${type.value}` as any, language) || type.label,
+                          }))}
                           {...form.getInputProps(`discounts.${index}.discountType`)}
                         />
                       </Grid.Col>

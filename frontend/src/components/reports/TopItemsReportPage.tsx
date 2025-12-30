@@ -17,6 +17,7 @@ import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { notifications } from '@mantine/notifications';
 import { db } from '@/lib/indexeddb/database';
 import { useSyncStatus } from '@/lib/hooks/use-sync-status';
+import { handleApiError } from '@/shared/utils/error-handler';
 
 export default function TopItemsReportPage() {
   const language = useLanguageStore((state) => state.language);
@@ -55,7 +56,10 @@ export default function TopItemsReportPage() {
       }
       setReport(data);
     } catch (error: any) {
-      notifications.show({ title: t('common.error' as any, language), message: error?.message || t('reports.error' as any, language) || 'Failed to load report', color: getErrorColor() });
+      handleApiError(error, {
+        defaultMessage: t('reports.error' as any, language) || 'Failed to load report',
+        language,
+      });
     } finally {
       if (!silent) {
         setLoading(false);
@@ -89,7 +93,10 @@ export default function TopItemsReportPage() {
       window.URL.revokeObjectURL(url);
       notifications.show({ title: t('common.success' as any, language), message: t('reports.exportSuccess' as any, language) || 'Report exported successfully', color: getSuccessColor() });
     } catch (error: any) {
-      notifications.show({ title: t('common.error' as any, language), message: error?.message || 'Failed to export report', color: getErrorColor() });
+      handleApiError(error, {
+        defaultMessage: 'Failed to export report',
+        language,
+      });
     }
   };
   const handlePrint = () => window.print();

@@ -45,6 +45,7 @@ import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { onMenuDataUpdate, notifyMenuDataUpdate } from '@/lib/utils/menu-events';
 import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
+import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
 
 export function ComboMealPage() {
@@ -53,7 +54,10 @@ export function ComboMealPage() {
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
-  const pagination = usePagination<ComboMeal>({ initialPage: 1, initialLimit: 10 });
+  const pagination = usePagination<ComboMeal>({ 
+    initialPage: DEFAULT_PAGINATION.page, 
+    initialLimit: DEFAULT_PAGINATION.limit 
+  });
   const [comboMeals, setComboMeals] = useState<ComboMeal[]>([]);
   const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
   const [menus, setMenus] = useState<any[]>([]);

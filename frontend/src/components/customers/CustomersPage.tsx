@@ -51,12 +51,9 @@ import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
 import { Fragment } from 'react';
-const LOYALTY_TIERS = {
-  regular: { label: 'Regular', color: 'gray', discount: 0 },
-  silver: { label: 'Silver', color: 'gray', discount: 5 },
-  gold: { label: 'Gold', color: 'yellow', discount: 10 },
-  platinum: { label: 'Platinum', color: 'blue', discount: 15 },
-};
+import { LOYALTY_TIERS } from '@/shared/constants/customers.constants';
+import { handleApiError } from '@/shared/utils/error-handler';
+import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
 
 interface CustomersPageProps {
   addTrigger?: number;
@@ -71,7 +68,10 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
   const primaryColor = useThemeColor();
   const infoColor = getInfoColor();
   const currency = useCurrency();
-  const pagination = usePagination<Customer>({ initialPage: 1, initialLimit: 10 });
+  const pagination = usePagination<Customer>({ 
+    initialPage: DEFAULT_PAGINATION.page, 
+    initialLimit: DEFAULT_PAGINATION.limit 
+  });
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
@@ -191,17 +191,16 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
         }
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to load customers');
-      notifications.show({
-        title: t('common.error' as any, language) || 'Error',
-        message: err.message || 'Failed to load customers',
-        color: notificationColors.error,
-        icon: <IconAlertCircle size={16} />,
+      const errorMsg = handleApiError(err, {
+        defaultMessage: 'Failed to load customers',
+        language,
+        showNotification: false, // Don't show notification for load errors
       });
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
-  }, [user?.tenantId, searchQuery, pagination, language, notificationColors.error]);
+  }, [user?.tenantId, searchQuery, pagination, language]);
 
   useEffect(() => {
     loadCustomers();
@@ -226,7 +225,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
           customerWithAddresses = await customersApi.getCustomerById(customer.id);
         } catch (error) {
           console.error('Failed to fetch customer addresses:', error);
-          // Use the customer data we have
+          // Use the customer data we have - don't show error for optional data
         }
       }
       
@@ -287,11 +286,10 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
       }
       setProfileOpened(true);
     } catch (err: any) {
-      notifications.show({
-        title: t('common.error' as any, language) || 'Error',
-        message: err.message || 'Failed to load customer profile',
-        color: notificationColors.error,
-        icon: <IconAlertCircle size={16} />,
+      handleApiError(err, {
+        defaultMessage: 'Failed to load customer profile',
+        language,
+        errorColor: notificationColors.error,
       });
     }
   };

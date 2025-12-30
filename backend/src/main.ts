@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import helmet from 'helmet';
@@ -14,28 +15,25 @@ async function bootstrap() {
       logger: ['error', 'warn', 'log', 'debug', 'verbose'],
     });
 
-    const port = process.env.PORT || 8001;
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:8000';
+    const configService = app.get(ConfigService);
+    const appConfig = configService.get('app');
+    const port = appConfig.port;
+    const frontendUrl = appConfig.frontendUrl;
 
     // CORS - Enable before everything
-    app.enableCors({
-      origin: frontendUrl,
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-    });
+    app.enableCors(appConfig.cors);
 
     // Global prefix - MUST be before Swagger
-    app.setGlobalPrefix('api/v1');
+    app.setGlobalPrefix(appConfig.apiPrefix);
 
     // ⭐ Swagger documentation - BEFORE HELMET
-    const config = new DocumentBuilder()
+    const swaggerConfig = new DocumentBuilder()
       .setTitle('RMS API')
       .setDescription('Restaurant Management System API Documentation')
       .setVersion('1.0')
-      .addServer(`http://localhost:${port}`, 'Local Development')
-      .addServer('http://192.168.50.50:5001', 'Production Server')
-      .addServer('http://192.168.50.50:8001', 'Staging Server')
+      .addServer(appConfig.servers.development, 'Local Development')
+      .addServer(appConfig.servers.production, 'Production Server')
+      .addServer(appConfig.servers.staging, 'Staging Server')
       .addBearerAuth(
         {
           type: 'http',
@@ -60,7 +58,7 @@ async function bootstrap() {
       .addTag('sync', 'Offline sync endpoints')
       .build();
 
-    const document = SwaggerModule.createDocument(app, config);
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup('api/docs', app, document, {
       swaggerOptions: {
         persistAuthorization: true,

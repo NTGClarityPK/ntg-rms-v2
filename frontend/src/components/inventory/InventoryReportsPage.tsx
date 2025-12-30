@@ -33,15 +33,11 @@ import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getWarningColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
+import { INGREDIENT_CATEGORIES } from '@/shared/constants/ingredients.constants';
 
 const CATEGORIES = [
   { value: '', label: 'All Categories' },
-  { value: 'vegetables', label: 'Vegetables' },
-  { value: 'meats', label: 'Meats' },
-  { value: 'dairy', label: 'Dairy' },
-  { value: 'spices', label: 'Spices' },
-  { value: 'beverages', label: 'Beverages' },
-  { value: 'other', label: 'Other' },
+  ...INGREDIENT_CATEGORIES,
 ];
 
 export function InventoryReportsPage() {

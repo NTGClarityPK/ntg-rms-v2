@@ -1,5 +1,6 @@
 import apiClient from './client';
 import { API_ENDPOINTS } from '../constants/api';
+import { createCrudApi } from '@/shared/services/api/factory';
 
 export interface RestaurantInfo {
   id: string;
@@ -143,6 +144,9 @@ export interface UpdateTableDto {
   qrCode?: string;
 }
 
+// Use factory for base CRUD operations on branches
+const baseBranchesApi = createCrudApi<Branch>(API_ENDPOINTS.RESTAURANT.BRANCHES);
+
 export const restaurantApi = {
   // Business Information
   async getInfo(): Promise<RestaurantInfo> {
@@ -166,30 +170,16 @@ export const restaurantApi = {
     return response.data;
   },
 
-  // Branches
+  // Branches - Using factory for CRUD operations
   async getBranches(): Promise<Branch[]> {
-    const response = await apiClient.get(API_ENDPOINTS.RESTAURANT.BRANCHES);
-    return response.data;
+    const result = await baseBranchesApi.getAll();
+    return Array.isArray(result) ? result : [];
   },
 
-  async getBranch(id: string): Promise<Branch> {
-    const response = await apiClient.get(`${API_ENDPOINTS.RESTAURANT.BRANCHES}/${id}`);
-    return response.data;
-  },
-
-  async createBranch(data: CreateBranchDto): Promise<Branch> {
-    const response = await apiClient.post(API_ENDPOINTS.RESTAURANT.BRANCHES, data);
-    return response.data;
-  },
-
-  async updateBranch(id: string, data: UpdateBranchDto): Promise<Branch> {
-    const response = await apiClient.put(`${API_ENDPOINTS.RESTAURANT.BRANCHES}/${id}`, data);
-    return response.data;
-  },
-
-  async deleteBranch(id: string): Promise<void> {
-    await apiClient.delete(`${API_ENDPOINTS.RESTAURANT.BRANCHES}/${id}`);
-  },
+  getBranch: baseBranchesApi.getById,
+  createBranch: baseBranchesApi.create,
+  updateBranch: baseBranchesApi.update,
+  deleteBranch: baseBranchesApi.delete,
 
   // Counters
   async getCounters(branchId?: string): Promise<Counter[]> {

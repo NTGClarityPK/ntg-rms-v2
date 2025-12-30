@@ -6,21 +6,16 @@ import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getBadgeColorForText } from '@/lib/utils/theme';
+import { FOOD_ITEM_LABELS } from '@/shared/constants/menu.constants';
 
 export function LabelsPage() {
   const { language } = useLanguageStore();
   const primaryColor = useThemeColor();
 
-  const labels = [
-    { value: 'spicy', label: t('menu.spicy', language) },
-    { value: 'vegetarian', label: t('menu.vegetarian', language) },
-    { value: 'vegan', label: t('menu.vegan', language) },
-    { value: 'gluten_free', label: t('menu.glutenFree', language) },
-    { value: 'halal', label: t('menu.halal', language) },
-    { value: 'new', label: t('menu.new', language) },
-    { value: 'popular', label: t('menu.popular', language) },
-    { value: 'chefs_special', label: t('menu.chefsSpecial', language) },
-  ];
+  const labels = FOOD_ITEM_LABELS.map(label => ({
+    value: label.value,
+    label: t(`menu.${label.value}` as any, language) || label.label,
+  }));
 
   return (
     <Container size="xl" py="xl">

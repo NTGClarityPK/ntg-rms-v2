@@ -1,6 +1,7 @@
 import apiClient from './client';
 import { API_ENDPOINTS } from '../constants/api';
 import { PaginationParams, PaginatedResponse } from '../types/pagination.types';
+import { createCrudApi, extendCrudApi } from '@/shared/services/api/factory';
 
 export interface Customer {
   id: string;
@@ -75,7 +76,11 @@ export interface UpdateCustomerDto {
   notes?: string;
 }
 
+// Use factory for base CRUD operations on customers
+const baseCustomersApi = createCrudApi<Customer>(API_ENDPOINTS.CUSTOMERS);
+
 export const customersApi = {
+  // Customers - Using factory for CRUD operations
   getCustomers: async (
     filters?: {
       search?: string;
@@ -84,33 +89,13 @@ export const customersApi = {
     },
     pagination?: PaginationParams,
   ): Promise<Customer[] | PaginatedResponse<Customer>> => {
-    const params = new URLSearchParams();
-    if (filters?.search) params.append('search', filters.search);
-    if (filters?.minOrders) params.append('minOrders', filters.minOrders.toString());
-    if (filters?.minSpent) params.append('minSpent', filters.minSpent.toString());
-    if (pagination?.page) params.append('page', pagination.page.toString());
-    if (pagination?.limit) params.append('limit', pagination.limit.toString());
-
-    const response = await apiClient.get<Customer[] | PaginatedResponse<Customer>>(
-      `${API_ENDPOINTS.CUSTOMERS}${params.toString() ? `?${params.toString()}` : ''}`,
-    );
-    return response.data;
+    // Use base API but add custom filter handling
+    return baseCustomersApi.getAll(filters, pagination, filters?.search);
   },
 
-  getCustomerById: async (id: string): Promise<Customer> => {
-    const response = await apiClient.get<Customer>(`${API_ENDPOINTS.CUSTOMERS}/${id}`);
-    return response.data;
-  },
-
-  createCustomer: async (data: CreateCustomerDto): Promise<Customer> => {
-    const response = await apiClient.post<Customer>(API_ENDPOINTS.CUSTOMERS, data);
-    return response.data;
-  },
-
-  updateCustomer: async (id: string, data: UpdateCustomerDto): Promise<Customer> => {
-    const response = await apiClient.put<Customer>(`${API_ENDPOINTS.CUSTOMERS}/${id}`, data);
-    return response.data;
-  },
+  getCustomerById: baseCustomersApi.getById,
+  createCustomer: baseCustomersApi.create,
+  updateCustomer: baseCustomersApi.update,
 
   createCustomerAddress: async (customerId: string, address: {
     label?: string;

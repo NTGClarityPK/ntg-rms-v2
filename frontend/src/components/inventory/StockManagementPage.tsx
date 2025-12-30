@@ -56,6 +56,7 @@ import { restaurantApi } from '@/lib/api/restaurant';
 import { Branch } from '@/lib/indexeddb/database';
 import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
+import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
 
 // Transaction types for adding stock
@@ -80,7 +81,10 @@ export function StockManagementPage() {
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
-  const transactionsPagination = usePagination<StockTransaction>({ initialPage: 1, initialLimit: 10 });
+  const transactionsPagination = usePagination<StockTransaction>({ 
+    initialPage: DEFAULT_PAGINATION.page, 
+    initialLimit: DEFAULT_PAGINATION.limit 
+  });
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
 
   // Helper function to get deduplicated ingredient options for Select dropdowns

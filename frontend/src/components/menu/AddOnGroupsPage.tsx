@@ -45,6 +45,8 @@ import { getBadgeColorForText } from '@/lib/utils/theme';
 import { onMenuDataUpdate, notifyMenuDataUpdate } from '@/lib/utils/menu-events';
 import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
+import { handleApiError } from '@/shared/utils/error-handler';
+import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
 
 export function AddOnGroupsPage() {
   const { language } = useLanguageStore();
@@ -52,7 +54,10 @@ export function AddOnGroupsPage() {
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
-  const pagination = usePagination<AddOnGroup>({ initialPage: 1, initialLimit: 10 });
+  const pagination = usePagination<AddOnGroup>({ 
+    initialPage: DEFAULT_PAGINATION.page, 
+    initialLimit: DEFAULT_PAGINATION.limit 
+  });
   const [addOnGroups, setAddOnGroups] = useState<AddOnGroup[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<AddOnGroup | null>(null);
   const [addOns, setAddOns] = useState<AddOn[]>([]);
@@ -190,7 +195,12 @@ export function AddOnGroupsPage() {
         pagination.setHasPrev(pagination.page > 1);
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to load add-on groups');
+      const errorMsg = handleApiError(err, {
+        defaultMessage: 'Failed to load add-on groups',
+        language,
+        showNotification: false, // Don't show notification for load errors
+      });
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }

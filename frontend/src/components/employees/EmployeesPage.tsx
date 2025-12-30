@@ -53,12 +53,9 @@ import { isPaginatedResponse } from '@/lib/types/pagination.types';
 import { Fragment } from 'react';
 import { getBadgeColorForText } from '@/lib/utils/theme';
 import '@mantine/dates/styles.css';
-
-const EMPLOYMENT_TYPES = [
-  { value: 'full_time', label: 'Full-time' },
-  { value: 'part_time', label: 'Part-time' },
-  { value: 'contract', label: 'Contract' },
-];
+import { EMPLOYMENT_TYPES } from '@/shared/constants/employees.constants';
+import { handleApiError } from '@/shared/utils/error-handler';
+import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
 
 interface EmployeesPageProps {
   addTrigger?: number;
@@ -72,7 +69,10 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
-  const pagination = usePagination<Employee>({ initialPage: 1, initialLimit: 10 });
+  const pagination = usePagination<Employee>({ 
+    initialPage: DEFAULT_PAGINATION.page, 
+    initialLimit: DEFAULT_PAGINATION.limit 
+  });
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [branches, setBranches] = useState<Array<{ id: string; name: string }>>([]);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -128,10 +128,10 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
       setRoles(serverRoles);
     } catch (err: any) {
       console.error('Failed to load roles:', err);
-      notifications.show({
-        title: t('common.error' as any, language) || 'Error',
-        message: 'Failed to load roles. Please refresh the page.',
-        color: notificationColors.error,
+      handleApiError(err, {
+        defaultMessage: 'Failed to load roles. Please refresh the page.',
+        language,
+        errorColor: notificationColors.error,
       });
     }
   }, [language, notificationColors.error]);
@@ -288,17 +288,16 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
         setEmployees(paginatedLocalEmployees as unknown as Employee[]);
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to load employees');
-      notifications.show({
-        title: t('common.error' as any, language) || 'Error',
-        message: err.message || 'Failed to load employees',
-        color: notificationColors.error,
-        icon: <IconAlertCircle size={16} />,
+      const errorMsg = handleApiError(err, {
+        defaultMessage: 'Failed to load employees',
+        language,
+        showNotification: false, // Don't show notification for load errors
       });
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
-  }, [user?.tenantId, roleFilter, statusFilter, pagination, language, notificationColors.error]);
+  }, [user?.tenantId, roleFilter, statusFilter, pagination, language]);
 
   useEffect(() => {
     loadBranches();
@@ -496,14 +495,12 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
       // Reload employees to get fresh data with roles
       await loadEmployees();
     } catch (err: any) {
-      const errorMsg = err.response?.data?.error?.message || err.message || 'Failed to save employee';
-      setError(errorMsg);
-      notifications.show({
-        title: t('common.error' as any, language) || 'Error',
-        message: errorMsg,
-        color: notificationColors.error,
-        icon: <IconAlertCircle size={16} />,
+      const errorMsg = handleApiError(err, {
+        defaultMessage: 'Failed to save employee',
+        language,
+        errorColor: notificationColors.error,
       });
+      setError(errorMsg);
     }
   };
 
@@ -545,11 +542,10 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
             color: notificationColors.success,
           });
         } catch (err: any) {
-          notifications.show({
-            title: t('common.error' as any, language) || 'Error',
-            message: err.message || 'Failed to delete employee',
-            color: notificationColors.error,
-            icon: <IconAlertCircle size={16} />,
+          handleApiError(err, {
+            defaultMessage: 'Failed to delete employee',
+            language,
+            errorColor: notificationColors.error,
           });
         }
       },

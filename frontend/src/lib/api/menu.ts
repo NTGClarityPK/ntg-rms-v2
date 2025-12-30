@@ -1,4 +1,6 @@
 import apiClient from './client';
+import { createCrudApi, extendCrudApi } from '@/shared/services/api/factory';
+import { PaginationParams, PaginatedResponse } from '../types/pagination.types';
 
 export interface Category {
   id: string;
@@ -134,36 +136,17 @@ export interface ComboMeal {
   discountPercentage?: number; // Discount percentage compared to individual items
 }
 
-import { PaginationParams, PaginatedResponse, isPaginatedResponse } from '../types/pagination.types';
+// Use factory for base CRUD operations
+const baseCategoriesApi = createCrudApi<Category>('/menu/categories');
+const baseFoodItemsApi = createCrudApi<FoodItem>('/menu/food-items');
 
 export const menuApi = {
-  // Categories
-  getCategories: async (pagination?: PaginationParams): Promise<Category[] | PaginatedResponse<Category>> => {
-    const params = new URLSearchParams();
-    if (pagination?.page) params.append('page', pagination.page.toString());
-    if (pagination?.limit) params.append('limit', pagination.limit.toString());
-    const { data } = await apiClient.get(`/menu/categories${params.toString() ? `?${params.toString()}` : ''}`);
-    return data;
-  },
-
-  getCategoryById: async (id: string): Promise<Category> => {
-    const { data } = await apiClient.get(`/menu/categories/${id}`);
-    return data;
-  },
-
-  createCategory: async (category: Partial<Category>): Promise<Category> => {
-    const { data } = await apiClient.post('/menu/categories', category);
-    return data;
-  },
-
-  updateCategory: async (id: string, category: Partial<Category>): Promise<Category> => {
-    const { data } = await apiClient.put(`/menu/categories/${id}`, category);
-    return data;
-  },
-
-  deleteCategory: async (id: string): Promise<void> => {
-    await apiClient.delete(`/menu/categories/${id}`);
-  },
+  // Categories - Using factory for CRUD operations
+  getCategories: baseCategoriesApi.getAll,
+  getCategoryById: baseCategoriesApi.getById,
+  createCategory: baseCategoriesApi.create,
+  updateCategory: baseCategoriesApi.update,
+  deleteCategory: baseCategoriesApi.delete,
 
   uploadCategoryImage: async (id: string, file: File): Promise<Category> => {
     const formData = new FormData();
@@ -176,36 +159,19 @@ export const menuApi = {
     return data;
   },
 
-  // Food Items
+  // Food Items - Using factory for CRUD operations
   getFoodItems: async (categoryId?: string, pagination?: PaginationParams, search?: string, onlyActiveMenus?: boolean): Promise<FoodItem[] | PaginatedResponse<FoodItem>> => {
-    const params = new URLSearchParams();
-    if (categoryId) params.append('categoryId', categoryId);
-    if (pagination?.page) params.append('page', pagination.page.toString());
-    if (pagination?.limit) params.append('limit', pagination.limit.toString());
-    if (search && search.trim()) params.append('search', search.trim());
-    if (onlyActiveMenus) params.append('onlyActiveMenus', 'true');
-    const { data } = await apiClient.get(`/menu/food-items${params.toString() ? `?${params.toString()}` : ''}`);
-    return data;
+    // Use base API but add custom filter handling
+    const filters: any = {};
+    if (categoryId) filters.categoryId = categoryId;
+    if (onlyActiveMenus) filters.onlyActiveMenus = true;
+    return baseFoodItemsApi.getAll(filters, pagination, search);
   },
 
-  getFoodItemById: async (id: string): Promise<FoodItem> => {
-    const { data } = await apiClient.get(`/menu/food-items/${id}`);
-    return data;
-  },
-
-  createFoodItem: async (foodItem: Partial<FoodItem>): Promise<FoodItem> => {
-    const { data } = await apiClient.post('/menu/food-items', foodItem);
-    return data;
-  },
-
-  updateFoodItem: async (id: string, foodItem: Partial<FoodItem>): Promise<FoodItem> => {
-    const { data } = await apiClient.put(`/menu/food-items/${id}`, foodItem);
-    return data;
-  },
-
-  deleteFoodItem: async (id: string): Promise<void> => {
-    await apiClient.delete(`/menu/food-items/${id}`);
-  },
+  getFoodItemById: baseFoodItemsApi.getById,
+  createFoodItem: baseFoodItemsApi.create,
+  updateFoodItem: baseFoodItemsApi.update,
+  deleteFoodItem: baseFoodItemsApi.delete,
 
   uploadFoodItemImage: async (id: string, file: File): Promise<FoodItem> => {
     const formData = new FormData();

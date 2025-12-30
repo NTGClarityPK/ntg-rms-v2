@@ -1,5 +1,6 @@
 import apiClient from './client';
 import { PaginationParams, PaginatedResponse } from '../types/pagination.types';
+import { createCrudApi, extendCrudApi } from '@/shared/services/api/factory';
 
 // Types
 export interface Ingredient {
@@ -129,40 +130,23 @@ export interface CreateRecipeDto {
 }
 
 // API Functions
+// Use factory for base CRUD operations on ingredients
+const baseIngredientsApi = createCrudApi<Ingredient>('/inventory/ingredients');
+
 export const inventoryApi = {
-  // Ingredients
+  // Ingredients - Using factory for CRUD operations
   getIngredients: async (
     filters?: { category?: string; isActive?: boolean },
     pagination?: PaginationParams,
   ): Promise<Ingredient[] | PaginatedResponse<Ingredient>> => {
-    const params = new URLSearchParams();
-    if (filters?.category) params.append('category', filters.category);
-    if (filters?.isActive !== undefined) params.append('isActive', String(filters.isActive));
-    if (pagination?.page) params.append('page', pagination.page.toString());
-    if (pagination?.limit) params.append('limit', pagination.limit.toString());
-    
-    const response = await apiClient.get<Ingredient[] | PaginatedResponse<Ingredient>>(`/inventory/ingredients?${params.toString()}`);
-    return response.data;
+    // Use base API but add custom filter handling
+    return baseIngredientsApi.getAll(filters, pagination);
   },
 
-  getIngredientById: async (id: string): Promise<Ingredient> => {
-    const response = await apiClient.get(`/inventory/ingredients/${id}`);
-    return response.data;
-  },
-
-  createIngredient: async (data: CreateIngredientDto): Promise<Ingredient> => {
-    const response = await apiClient.post('/inventory/ingredients', data);
-    return response.data;
-  },
-
-  updateIngredient: async (id: string, data: UpdateIngredientDto): Promise<Ingredient> => {
-    const response = await apiClient.put(`/inventory/ingredients/${id}`, data);
-    return response.data;
-  },
-
-  deleteIngredient: async (id: string): Promise<void> => {
-    await apiClient.delete(`/inventory/ingredients/${id}`);
-  },
+  getIngredientById: baseIngredientsApi.getById,
+  createIngredient: baseIngredientsApi.create,
+  updateIngredient: baseIngredientsApi.update,
+  deleteIngredient: baseIngredientsApi.delete,
 
   // Stock Management
   addStock: async (data: AddStockDto): Promise<StockTransaction> => {

@@ -44,6 +44,7 @@ import { getBadgeColorForText } from '@/lib/utils/theme';
 import { onMenuDataUpdate, notifyMenuDataUpdate } from '@/lib/utils/menu-events';
 import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
+import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
 
 export function VariationGroupsPage() {
   const { language } = useLanguageStore();
@@ -51,7 +52,10 @@ export function VariationGroupsPage() {
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
-  const pagination = usePagination<VariationGroup>({ initialPage: 1, initialLimit: 10 });
+  const pagination = usePagination<VariationGroup>({ 
+    initialPage: DEFAULT_PAGINATION.page, 
+    initialLimit: DEFAULT_PAGINATION.limit 
+  });
   const [variationGroups, setVariationGroups] = useState<VariationGroup[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<VariationGroup | null>(null);
   const [variations, setVariations] = useState<Variation[]>([]);

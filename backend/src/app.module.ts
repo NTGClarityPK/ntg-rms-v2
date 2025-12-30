@@ -29,6 +29,7 @@ import { HealthController } from './health/health.controller';
       expandVariables: true,
       // The load function will have access to process.env after env files are loaded
       load: [
+        require('./config/app.config').default,
         () => {
           // Debug: Log if Google OAuth vars are found
           const hasGoogleClientId = !!process.env.GOOGLE_CLIENT_ID;

@@ -44,6 +44,7 @@ import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { onMenuDataUpdate, notifyMenuDataUpdate } from '@/lib/utils/menu-events';
 import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
+import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
 
 export function BuffetPage() {
@@ -52,7 +53,10 @@ export function BuffetPage() {
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
-  const pagination = usePagination<Buffet>({ initialPage: 1, initialLimit: 10 });
+  const pagination = usePagination<Buffet>({ 
+    initialPage: DEFAULT_PAGINATION.page, 
+    initialLimit: DEFAULT_PAGINATION.limit 
+  });
   const [buffets, setBuffets] = useState<Buffet[]>([]);
   const [menus, setMenus] = useState<any[]>([]);
   const [selectedMenuFoodItems, setSelectedMenuFoodItems] = useState<FoodItem[]>([]);
