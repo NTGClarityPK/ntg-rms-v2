@@ -208,11 +208,11 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       /* Adjust for collapsed navbar (desktop) - use data attribute for reliable targeting */
       @media (min-width: 768px) {
         body[data-navbar-collapsed="true"] .page-title-bar {
-          left: 85px !important;
+          left: 100px !important;
         }
         
         body[data-navbar-collapsed="true"] .page-sub-title-bar {
-          left: 85px !important;
+          left: 100px !important;
         }
       }
       
@@ -249,14 +249,14 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       @media (min-width: 768px) {
         html[dir="rtl"] body[data-navbar-collapsed="true"] .page-title-bar,
         [dir="rtl"] body[data-navbar-collapsed="true"] .page-title-bar {
-          right: 85px !important;
-          width: calc(100% - 85px) !important;
+          right: 100px !important;
+          width: calc(100% - 100px) !important;
         }
         
         html[dir="rtl"] body[data-navbar-collapsed="true"] .page-sub-title-bar,
         [dir="rtl"] body[data-navbar-collapsed="true"] .page-sub-title-bar {
-          right: 85px !important;
-          width: calc(100% - 85px) !important;
+          right: 100px !important;
+          width: calc(100% - 100px) !important;
         }
       }
       
