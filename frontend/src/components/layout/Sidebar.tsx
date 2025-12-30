@@ -55,6 +55,8 @@ const navItems = [
 
 type NavItemKey = typeof navItems[number]['key'];
 
+const NAV_ICON_SIZE = 22;
+
 interface SidebarProps {
   onMobileClose?: () => void;
   collapsed?: boolean;
@@ -203,7 +205,7 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
           variant="subtle"
           size="md"
           fullWidth={!collapsed}
-          leftSection={collapsed ? undefined : <item.icon size={24} />}
+          leftSection={collapsed ? undefined : <item.icon size={NAV_ICON_SIZE} />}
           className="nav-item-button"
           data-active={active}
           data-collapsed={collapsed}
@@ -232,7 +234,7 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
             },
           }}
         >
-          {collapsed ? <item.icon size={24} /> : label}
+          {collapsed ? <item.icon size={NAV_ICON_SIZE} /> : label}
         </Button>
       );
 
@@ -341,10 +343,10 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
           >
             {isRTL ? (
               // RTL: reversed logic
-              collapsed ? <IconChevronLeft size={24} /> : <IconChevronRight size={24} />
+              collapsed ? <IconChevronLeft size={NAV_ICON_SIZE} /> : <IconChevronRight size={NAV_ICON_SIZE} />
             ) : (
               // LTR: normal logic
-              collapsed ? <IconChevronRight size={24} /> : <IconChevronLeft size={24} />
+              collapsed ? <IconChevronRight size={NAV_ICON_SIZE} /> : <IconChevronLeft size={NAV_ICON_SIZE} />
             )}
           </ActionIcon>
         </Tooltip>

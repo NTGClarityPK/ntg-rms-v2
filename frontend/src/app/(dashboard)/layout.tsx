@@ -139,7 +139,7 @@ export default function DashboardLayout({
   }
 
   // Calculate navbar width based on collapsed state
-  const navbarWidth = navbarCollapsed ? 80 : 250;
+  const navbarWidth = navbarCollapsed ? 100 : 250;
 
   return (
     <AppShell
