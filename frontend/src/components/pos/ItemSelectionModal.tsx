@@ -15,6 +15,7 @@ import {
   Badge,
   ScrollArea,
   Chip,
+  Paper,
 } from '@mantine/core';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
@@ -528,7 +529,8 @@ export function ItemSelectionModal({
         />
 
         {/* Price Summary */}
-        <Stack gap="xs" p="md" style={{ backgroundColor: 'var(--mantine-color-gray-0)', borderRadius: 'var(--mantine-radius-md)' }}>
+        <Paper p="md" radius="md" withBorder>
+          <Stack gap="xs">
           {activeDiscount && (() => {
             // Calculate original price without discount
             let originalPrice = foodItem.basePrice;
@@ -581,7 +583,8 @@ export function ItemSelectionModal({
               {formatCurrency(calculatePrice(), currency)} × {quantity} = {formatCurrency(calculatePrice() * quantity, currency)}
             </Text>
           </Group>
-        </Stack>
+          </Stack>
+        </Paper>
 
         {/* Add to Cart Button */}
         <Button
