@@ -24,6 +24,9 @@ import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { useErrorColor, useInfoColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { DEFAULT_THEME_COLOR } from '@/lib/utils/theme';
+import { useTheme } from '@/lib/hooks/use-theme';
+import { useThemeColor } from '@/lib/hooks/use-theme-color';
+import { generateThemeColors } from '@/lib/utils/themeColors';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -32,6 +35,9 @@ export default function SignupPage() {
   const errorColor = useErrorColor();
   const infoColor = useInfoColor();
   const successColor = useSuccessColor();
+  const { isDark } = useTheme();
+  const primaryColor = useThemeColor();
+  const themeColors = generateThemeColors(primaryColor, isDark);
   const [active, setActive] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,10 +108,10 @@ export default function SignupPage() {
     <form onSubmit={form.onSubmit(handleSubmit)}>
       <Stack gap="lg">
         <Box>
-          <Title order={2} size="1.8rem" fw={700} mb="xs" style={{ color: '#1a1a1a' }}>
+          <Title order={2} size="1.8rem" fw={700} mb="xs" style={{ color: themeColors.colorTextDark }}>
           {t('auth.signupTitle', language)}
         </Title>
-          <Text size="sm" style={{ color: '#4a4a4a' }}>
+          <Text size="sm" style={{ color: themeColors.colorTextMedium }}>
             {t('auth.createAccountToStart', language)}
           </Text>
         </Box>
@@ -225,25 +231,25 @@ export default function SignupPage() {
           >
             <Stack gap="md" mt="xl">
               <Box>
-                <Text size="sm" mb="xs" style={{ color: '#4a4a4a' }}>{t('common.email' as any, language)}</Text>
-                <Text fw={500} style={{ color: '#1a1a1a' }}>{form.values.email}</Text>
+                <Text size="sm" mb="xs" style={{ color: themeColors.colorTextMedium }}>{t('common.email' as any, language)}</Text>
+                <Text fw={500} style={{ color: themeColors.colorTextDark }}>{form.values.email}</Text>
               </Box>
 
               <Box>
-                <Text size="sm" mb="xs" style={{ color: '#4a4a4a' }}>Name</Text>
-                <Text fw={500} style={{ color: '#1a1a1a' }}>{form.values.name}</Text>
+                <Text size="sm" mb="xs" style={{ color: themeColors.colorTextMedium }}>Name</Text>
+                <Text fw={500} style={{ color: themeColors.colorTextDark }}>{form.values.name}</Text>
               </Box>
 
               {form.values.phone && (
                 <Box>
-                  <Text size="sm" mb="xs" style={{ color: '#4a4a4a' }}>{t('common.phone' as any, language)}</Text>
-                  <Text fw={500} style={{ color: '#1a1a1a' }}>{form.values.phone}</Text>
+                  <Text size="sm" mb="xs" style={{ color: themeColors.colorTextMedium }}>{t('common.phone' as any, language)}</Text>
+                  <Text fw={500} style={{ color: themeColors.colorTextDark }}>{form.values.phone}</Text>
                 </Box>
               )}
 
               <Box>
-                <Text size="sm" mb="xs" style={{ color: '#4a4a4a' }}>{t('auth.currency', language)}</Text>
-                <Text fw={500} style={{ color: '#1a1a1a' }}>
+                <Text size="sm" mb="xs" style={{ color: themeColors.colorTextMedium }}>{t('auth.currency', language)}</Text>
+                <Text fw={500} style={{ color: themeColors.colorTextDark }}>
                   {form.values.defaultCurrency === 'IQD' && (language === 'ar' ? 'IQD - الدينار العراقي' : 'IQD - Iraqi Dinar')}
                   {form.values.defaultCurrency === 'USD' && (language === 'ar' ? 'USD - الدولار الأمريكي' : 'USD - US Dollar')}
                   {form.values.defaultCurrency === 'EUR' && (language === 'ar' ? 'EUR - اليورو' : 'EUR - Euro')}
@@ -298,9 +304,9 @@ export default function SignupPage() {
               onClick={prevStep} 
               disabled={loading}
               style={{
-                backgroundColor: '#f5f5f5',
-                color: '#1a1a1a',
-                borderColor: '#e0e0e0',
+                backgroundColor: isDark ? themeColors.colorMedium : '#f5f5f5',
+                color: themeColors.colorTextDark,
+                borderColor: themeColors.borderLight,
               }}
             >
               {t('common.previousStep' as any, language)}
@@ -337,7 +343,7 @@ export default function SignupPage() {
           )}
         </Group>
 
-        <Text ta="center" size="sm" style={{ color: '#4a4a4a' }}>
+        <Text ta="center" size="sm" style={{ color: themeColors.colorTextMedium }}>
           {t('auth.hasAccount', language)}{' '}
           <Anchor href="/login" size="sm" style={{ color: DEFAULT_THEME_COLOR, fontWeight: 500 }}>
             {t('common.login' as any, language)}
