@@ -527,7 +527,7 @@
   "orders": {
     "title": "إدارة الطلبات",
     "allOrders": "جميع الطلبات",
-    "pending": "للطبخ",
+    "pending": "معلق",
     "preparing": "قيد التحضير",
     "ready": "جاهز",
     "served": "تم التقديم",
@@ -559,7 +559,7 @@
     "takeaway": "طلب خارجي",
     "delivery": "توصيل",
     "status": {
-      "pending": "للطبخ",
+      "pending": "معلق",
       "preparing": "قيد التحضير",
       "ready": "جاهز",
       "served": "تم التقديم",
@@ -954,7 +954,7 @@
     "topSellingItems": "أفضل العناصر مبيعاً",
     "stockLevels": "مستويات المخزون",
     "orderStatus": {
-      "pending": "للطبخ",
+      "pending": "معلق",
       "preparing": "قيد التحضير",
       "ready": "جاهز",
       "served": "تم التقديم",

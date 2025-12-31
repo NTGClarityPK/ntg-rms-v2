@@ -51,7 +51,7 @@ import 'dayjs/locale/en';
 
 dayjs.extend(relativeTime);
 
-type KitchenStatus = 'pending' | 'preparing';
+type KitchenStatus = 'preparing' | 'ready';
 
 export default function KitchenDisplayPage() {
   const { language } = useLanguageStore();
@@ -180,10 +180,10 @@ export default function KitchenDisplayPage() {
       setLoading(true);
     }
     try {
-      // Fetch pending and preparing orders in a single call with items included
+      // Fetch preparing and ready orders in a single call with items included
       // This reduces API calls from 2 + N (where N = number of orders) to just 1
       const allOrdersResponse = await ordersApi.getOrders({
-        status: ['pending', 'preparing'],
+        status: ['preparing', 'ready'],
         includeItems: true,
       });
       
@@ -195,7 +195,7 @@ export default function KitchenDisplayPage() {
       // Sort by order date (oldest first)
       allOrders.sort((a, b) => new Date(a.orderDate).getTime() - new Date(b.orderDate).getTime());
       
-      // Only update if data actually changed (to prevent unnecessary re-renders)
+      // Merge new data with existing optimistic updates to prevent flickering
       setOrders((prevOrders) => {
         const prevIds = new Set(prevOrders.map(o => o.id));
         const newIds = new Set(allOrders.map(o => o.id));
@@ -203,13 +203,6 @@ export default function KitchenDisplayPage() {
         // Detect new orders (orders that exist in newIds but not in prevIds)
         const newOrderIds = [...newIds].filter(id => !prevIds.has(id));
         const hasNewOrders = newOrderIds.length > 0 && prevOrders.length > 0;
-        
-        const idsChanged = prevIds.size !== newIds.size || 
-          [...prevIds].some(id => !newIds.has(id)) ||
-          prevOrders.some(prev => {
-            const updated = allOrders.find(o => o.id === prev.id);
-            return updated && (updated.status !== prev.status || updated.updatedAt !== prev.updatedAt);
-          });
         
         // Play sound for new orders detected
         if (hasNewOrders && soundEnabled) {
@@ -223,10 +216,85 @@ export default function KitchenDisplayPage() {
         // Update previous order IDs ref
         previousOrderIdsRef.current = newIds;
         
-        if (idsChanged || prevOrders.length === 0) {
-          return allOrders;
-        }
-        return prevOrders;
+        // Merge server data with optimistic updates
+        // This preserves items that are in transition (e.g., just moved from preparing to ready)
+        const mergedOrders = allOrders.map(serverOrder => {
+          const prevOrder = prevOrders.find(p => p.id === serverOrder.id);
+          
+          // If we have a previous order, merge item statuses to preserve optimistic updates
+          if (prevOrder && prevOrder.items && serverOrder.items) {
+            // Create a map of server items by ID
+            const serverItemsMap = new Map(serverOrder.items.map(item => [item.id, item]));
+            
+            // Merge items: use server data but preserve any items that are in transition
+            const mergedItems = prevOrder.items.map(prevItem => {
+              const serverItem = serverItemsMap.get(prevItem.id);
+              
+              // If item exists in server response, use server data
+              if (serverItem) {
+                // However, if the prev item has a more recent status change (optimistic update),
+                // prefer the prev item's status if it's different and recent
+                const orderUpdated = prevOrder.updatedAt;
+                if (orderUpdated && prevItem.status !== serverItem.status) {
+                  const timeSinceUpdate = Date.now() - new Date(orderUpdated).getTime();
+                  // If optimistic update was within last 3 seconds, prefer it
+                  if (timeSinceUpdate < 3000) {
+                    return { ...serverItem, status: prevItem.status };
+                  }
+                }
+                return serverItem;
+              }
+              
+              // If item doesn't exist in server response but exists in prev (transitioning),
+              // keep it temporarily to prevent flickering
+              // Only keep it if it's been updated recently (within last 3 seconds)
+              const orderUpdated = prevOrder.updatedAt;
+              if (orderUpdated) {
+                const timeSinceUpdate = Date.now() - new Date(orderUpdated).getTime();
+                if (timeSinceUpdate < 3000) {
+                  return prevItem;
+                }
+              }
+              
+              return null;
+            }).filter(Boolean) as typeof prevOrder.items;
+            
+            // Also add any new items from server that weren't in prev
+            if (serverOrder.items) {
+              serverOrder.items.forEach(serverItem => {
+                if (!prevOrder.items?.find(p => p.id === serverItem.id)) {
+                  mergedItems.push(serverItem);
+                }
+              });
+            }
+            
+            return {
+              ...serverOrder,
+              items: mergedItems,
+            };
+          }
+          
+          return serverOrder;
+        });
+        
+        // Check if we need to update
+        const hasChanges = prevOrders.length === 0 || 
+          prevOrders.length !== mergedOrders.length ||
+          prevOrders.some(prev => {
+            const merged = mergedOrders.find(o => o.id === prev.id);
+            if (!merged) return true;
+            // Check if order status changed
+            if (merged.status !== prev.status) return true;
+            // Check if any item statuses changed
+            if (prev.items && merged.items) {
+              const prevItemStatuses = prev.items.map(i => i.status).join(',');
+              const mergedItemStatuses = merged.items.map(i => i.status).join(',');
+              if (prevItemStatuses !== mergedItemStatuses) return true;
+            }
+            return false;
+          });
+        
+        return hasChanges ? mergedOrders : prevOrders;
       });
     } catch (error: any) {
       if (!silent) {
@@ -347,22 +415,23 @@ export default function KitchenDisplayPage() {
     };
   }, []); // Empty deps - only set up once, use ref for latest function
 
-  const handleItemClick = async (order: Order, itemId: string) => {
+  const handleItemClick = async (order: Order, itemId: string, currentSection: 'preparing' | 'ready') => {
     const item = order.items?.find(i => i.id === itemId);
     if (!item) return;
 
-    const currentStatus = item.status || 'pending';
-    let newStatus: 'preparing' | 'ready';
+    const currentStatus = item.status || 'preparing';
     
-    // Determine next status
-    if (currentStatus === 'pending') {
-      newStatus = 'preparing';
-    } else if (currentStatus === 'preparing') {
-      newStatus = 'ready';
-    } else {
-      // Item is already ready, do nothing
-      return;
+    // If clicking in preparing section, move to ready
+    if (currentSection === 'preparing' && currentStatus === 'preparing') {
+      await updateItemStatus(order, itemId, 'ready');
+    } 
+    // If clicking in ready section, mark as served
+    else if (currentSection === 'ready' && currentStatus === 'ready') {
+      await updateItemStatus(order, itemId, 'served');
     }
+  };
+
+  const updateItemStatus = async (order: Order, itemId: string, newStatus: 'preparing' | 'ready' | 'served') => {
 
     const previousOrders = orders;
     
@@ -428,10 +497,9 @@ export default function KitchenDisplayPage() {
           // Notify same-browser screens about the status change
           notifyOrderUpdate('order-status-changed', order.id);
           
-          // Reload orders to get updated order status (may have changed if all items are ready)
-          if (loadOrdersRef.current) {
-            loadOrdersRef.current(true);
-          }
+          // Don't reload immediately - the optimistic update is already in place
+          // Only reload if we need to check order status changes (which happens via SSE or polling)
+          // This prevents flickering when items move between sections
         } catch (apiError: any) {
           // If it's a network error, treat as offline and queue the change
           if (isNetworkError(apiError)) {
@@ -483,152 +551,295 @@ export default function KitchenDisplayPage() {
     }
   };
 
-  const handleBulkAction = async (order: Order, status: 'pending' | 'preparing') => {
+  const handleBulkAction = async (order: Order, action: 'ready' | 'served') => {
     if (!order.items || order.items.length === 0) return;
 
-    // Find items in the specified status
-    const itemsToAdvance = order.items.filter(item => {
-      if (item.buffetId || item.buffet) return false;
-      return (item.status || 'pending') === status;
-    });
+    if (action === 'ready') {
+      // Move all preparing items to ready
+      const itemsToAdvance = order.items.filter(item => {
+        if (item.buffetId || item.buffet) return false;
+        return (item.status || 'preparing') === 'preparing';
+      });
 
-    if (itemsToAdvance.length === 0) return;
+      if (itemsToAdvance.length === 0) return;
 
-    const previousOrders = orders;
-    
-    // Optimistic update: update all items immediately
-    setOrders(prevOrders => 
-      prevOrders.map(o => {
-        if (o.id !== order.id) return o;
-        const newStatus = status === 'pending' ? 'preparing' : 'ready';
-        return {
-          ...o,
-          items: o.items?.map(i => {
-            const shouldUpdate = itemsToAdvance.some(item => item.id === i.id);
-            return shouldUpdate ? { ...i, status: newStatus } : i;
-          }),
-          updatedAt: new Date().toISOString(),
-        };
-      })
-    );
+      const previousOrders = orders;
+      
+      // Optimistic update: update all items immediately
+      const updateTimestamp = new Date().toISOString();
+      setOrders(prevOrders => 
+        prevOrders.map(o => {
+          if (o.id !== order.id) return o;
+          return {
+            ...o,
+            items: o.items?.map(i => {
+              const shouldUpdate = itemsToAdvance.some(item => item.id === i.id);
+              return shouldUpdate 
+                ? { ...i, status: 'ready' as const, updatedAt: updateTimestamp }
+                : i;
+            }),
+            updatedAt: updateTimestamp,
+          };
+        })
+      );
 
-    // Mark all items as processing
-    const processingKeys = itemsToAdvance.map(item => `${order.id}-${item.id}`);
-    setProcessingOrderIds(prev => {
-      const next = new Set(prev);
-      processingKeys.forEach(key => next.add(key));
-      return next;
-    });
+      // Mark all items as processing
+      const processingKeys = itemsToAdvance.map(item => `${order.id}-${item.id}`);
+      setProcessingOrderIds(prev => {
+        const next = new Set(prev);
+        processingKeys.forEach(key => next.add(key));
+        return next;
+      });
 
-    // Helper to check if error is a network/offline error
-    const isNetworkError = (error: any): boolean => {
-      if (!error) return false;
-      // Check for network errors
-      if (error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED') return true;
-      if (error.message?.includes('Network Error') || error.message?.includes('Failed to fetch')) return true;
-      // Check if request failed due to no internet
-      if (!error.response && error.request) return true;
-      return false;
-    };
+      // Helper to check if error is a network/offline error
+      const isNetworkError = (error: any): boolean => {
+        if (!error) return false;
+        // Check for network errors
+        if (error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED') return true;
+        if (error.message?.includes('Network Error') || error.message?.includes('Failed to fetch')) return true;
+        // Check if request failed due to no internet
+        if (!error.response && error.request) return true;
+        return false;
+      };
 
-    try {
-      const newStatus = status === 'pending' ? 'preparing' : 'ready';
+      try {
+        if (!navigator.onLine) {
+          // Offline: queue all item status changes for sync
+          try {
+            await Promise.all(
+              itemsToAdvance.map(item =>
+                syncService.queueChange('orderItems', 'UPDATE', item.id, {
+                  orderId: order.id,
+                  status: 'ready',
+                })
+              )
+            );
 
-      if (!navigator.onLine) {
-        // Offline: queue all item status changes for sync
-        try {
-          await Promise.all(
-            itemsToAdvance.map(item =>
-              syncService.queueChange('orderItems', 'UPDATE', item.id, {
-                orderId: order.id,
-                status: newStatus,
-              })
-            )
-          );
+            notifications.show({
+              title: t('orders.offlineStatusQueuedTitle' as any, language) || 'Changes queued while offline',
+              message: t('orders.offlineStatusQueuedMessage' as any, language) || 'Item statuses will sync when you are back online.',
+              color: getWarningColor(),
+            });
+          } catch (queueError: any) {
+            // Only revert if queueing itself fails (very rare - IndexedDB error)
+            console.error('Failed to queue offline changes:', queueError);
+            setOrders(previousOrders);
+            notifications.show({
+              title: t('common.error' as any, language),
+              message: t('orders.queueError' as any, language) || 'Failed to queue changes. Please try again.',
+              color: getErrorColor(),
+            });
+          }
+        } else {
+          // Online: try API calls, but catch network errors and treat as offline
+          try {
+            await Promise.all(
+              itemsToAdvance.map(item => 
+                ordersApi.updateOrderItemStatus(order.id, item.id, { status: 'ready' })
+              )
+            );
 
-          notifications.show({
-            title: t('orders.offlineStatusQueuedTitle' as any, language) || 'Changes queued while offline',
-            message: t('orders.offlineStatusQueuedMessage' as any, language) || 'Item statuses will sync when you are back online.',
-            color: getWarningColor(),
-          });
-        } catch (queueError: any) {
-          // Only revert if queueing itself fails (very rare - IndexedDB error)
-          console.error('Failed to queue offline changes:', queueError);
+            // Notify same-browser screens about the status change
+            notifyOrderUpdate('order-status-changed', order.id);
+
+            // Don't reload immediately - the optimistic update is already in place
+            // This prevents flickering when items move between sections
+          } catch (apiError: any) {
+            // If it's a network error, treat as offline and queue the changes
+            if (isNetworkError(apiError)) {
+              console.log('Network error detected, queueing changes offline:', apiError);
+              try {
+                await Promise.all(
+                  itemsToAdvance.map(item =>
+                    syncService.queueChange('orderItems', 'UPDATE', item.id, {
+                      orderId: order.id,
+                      status: 'ready',
+                    })
+                  )
+                );
+
+                notifications.show({
+                  title: t('orders.offlineStatusQueuedTitle' as any, language) || 'Changes queued while offline',
+                  message: t('orders.offlineStatusQueuedMessage' as any, language) || 'Item statuses will sync when you are back online.',
+                  color: getWarningColor(),
+                });
+              } catch (queueError: any) {
+                // Only revert if queueing itself fails
+                console.error('Failed to queue offline changes:', queueError);
+                setOrders(previousOrders);
+                notifications.show({
+                  title: t('common.error' as any, language),
+                  message: t('orders.queueError' as any, language) || 'Failed to queue changes. Please try again.',
+                  color: getErrorColor(),
+                });
+              }
+            } else {
+              // Real API error (400, 500, etc.) - revert UI
+              throw apiError;
+            }
+          }
+        }
+      } catch (error: any) {
+        // Only revert optimistic update on real API errors (not network errors)
+        if (!isNetworkError(error)) {
           setOrders(previousOrders);
           notifications.show({
             title: t('common.error' as any, language),
-            message: t('orders.queueError' as any, language) || 'Failed to queue changes. Please try again.',
+            message: error?.response?.data?.message || t('orders.updateError', language),
             color: getErrorColor(),
           });
         }
-      } else {
-        // Online: try API calls, but catch network errors and treat as offline
-        try {
-          await Promise.all(
-            itemsToAdvance.map(item => 
-              ordersApi.updateOrderItemStatus(order.id, item.id, { status: newStatus })
-            )
-          );
-
-          // Notify same-browser screens about the status change
-          notifyOrderUpdate('order-status-changed', order.id);
-
-          // Reload orders to get updated order status
-          if (loadOrdersRef.current) {
-            loadOrdersRef.current(true);
-          }
-        } catch (apiError: any) {
-          // If it's a network error, treat as offline and queue the changes
-          if (isNetworkError(apiError)) {
-            console.log('Network error detected, queueing changes offline:', apiError);
-            try {
-              await Promise.all(
-                itemsToAdvance.map(item =>
-                  syncService.queueChange('orderItems', 'UPDATE', item.id, {
-                    orderId: order.id,
-                    status: newStatus,
-                  })
-                )
-              );
-
-              notifications.show({
-                title: t('orders.offlineStatusQueuedTitle' as any, language) || 'Changes queued while offline',
-                message: t('orders.offlineStatusQueuedMessage' as any, language) || 'Item statuses will sync when you are back online.',
-                color: getWarningColor(),
-              });
-            } catch (queueError: any) {
-              // Only revert if queueing itself fails
-              console.error('Failed to queue offline changes:', queueError);
-              setOrders(previousOrders);
-              notifications.show({
-                title: t('common.error' as any, language),
-                message: t('orders.queueError' as any, language) || 'Failed to queue changes. Please try again.',
-                color: getErrorColor(),
-              });
-            }
-          } else {
-            // Real API error (400, 500, etc.) - revert UI
-            throw apiError;
-          }
-        }
-      }
-    } catch (error: any) {
-      // Only revert optimistic update on real API errors (not network errors)
-      if (!isNetworkError(error)) {
-        setOrders(previousOrders);
-        notifications.show({
-          title: t('common.error' as any, language),
-          message: error?.response?.data?.message || t('orders.updateError', language),
-          color: getErrorColor(),
+        // Network errors are already handled above and changes are queued
+      } finally {
+        setProcessingOrderIds(prev => {
+          const next = new Set(prev);
+          processingKeys.forEach(key => next.delete(key));
+          return next;
         });
       }
-      // Network errors are already handled above and changes are queued
-    } finally {
+    } else if (action === 'served') {
+      // Mark all ready items as served
+      const readyItems = order.items.filter(item => {
+        if (item.buffetId || item.buffet) return false;
+        return (item.status || 'preparing') === 'ready';
+      });
+
+      if (readyItems.length === 0) return;
+
+      const previousOrders = orders;
+      
+      // Optimistic update: update all items immediately
+      const updateTimestamp = new Date().toISOString();
+      setOrders(prevOrders => 
+        prevOrders.map(o => {
+          if (o.id !== order.id) return o;
+          return {
+            ...o,
+            items: o.items?.map(i => {
+              const shouldUpdate = readyItems.some(item => item.id === i.id);
+              return shouldUpdate 
+                ? { ...i, status: 'served' as const, updatedAt: updateTimestamp }
+                : i;
+            }),
+            updatedAt: updateTimestamp,
+          };
+        })
+      );
+
+      // Mark all items as processing
+      const processingKeys = readyItems.map(item => `${order.id}-${item.id}`);
       setProcessingOrderIds(prev => {
         const next = new Set(prev);
-        processingKeys.forEach(key => next.delete(key));
+        processingKeys.forEach(key => next.add(key));
         return next;
       });
+
+      // Helper to check if error is a network/offline error
+      const isNetworkError = (error: any): boolean => {
+        if (!error) return false;
+        // Check for network errors
+        if (error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED') return true;
+        if (error.message?.includes('Network Error') || error.message?.includes('Failed to fetch')) return true;
+        // Check if request failed due to no internet
+        if (!error.response && error.request) return true;
+        return false;
+      };
+
+      try {
+        if (!navigator.onLine) {
+          // Offline: queue all item status changes for sync
+          try {
+            await Promise.all(
+              readyItems.map(item =>
+                syncService.queueChange('orderItems', 'UPDATE', item.id, {
+                  orderId: order.id,
+                  status: 'served',
+                })
+              )
+            );
+
+            notifications.show({
+              title: t('orders.offlineStatusQueuedTitle' as any, language) || 'Changes queued while offline',
+              message: t('orders.offlineStatusQueuedMessage' as any, language) || 'Item statuses will sync when you are back online.',
+              color: getWarningColor(),
+            });
+          } catch (queueError: any) {
+            // Only revert if queueing itself fails (very rare - IndexedDB error)
+            console.error('Failed to queue offline changes:', queueError);
+            setOrders(previousOrders);
+            notifications.show({
+              title: t('common.error' as any, language),
+              message: t('orders.queueError' as any, language) || 'Failed to queue changes. Please try again.',
+              color: getErrorColor(),
+            });
+          }
+        } else {
+          // Online: try API calls, but catch network errors and treat as offline
+          try {
+            await Promise.all(
+              readyItems.map(item => 
+                ordersApi.updateOrderItemStatus(order.id, item.id, { status: 'served' })
+              )
+            );
+
+            // Notify same-browser screens about the status change
+            notifyOrderUpdate('order-status-changed', order.id);
+
+            // Don't reload immediately - the optimistic update is already in place
+            // This prevents flickering when items move between sections
+          } catch (apiError: any) {
+            // If it's a network error, treat as offline and queue the changes
+            if (isNetworkError(apiError)) {
+              console.log('Network error detected, queueing changes offline:', apiError);
+              try {
+                await Promise.all(
+                  readyItems.map(item =>
+                    syncService.queueChange('orderItems', 'UPDATE', item.id, {
+                      orderId: order.id,
+                      status: 'served',
+                    })
+                  )
+                );
+
+                notifications.show({
+                  title: t('orders.offlineStatusQueuedTitle' as any, language) || 'Changes queued while offline',
+                  message: t('orders.offlineStatusQueuedMessage' as any, language) || 'Item statuses will sync when you are back online.',
+                  color: getWarningColor(),
+                });
+              } catch (queueError: any) {
+                // Only revert if queueing itself fails
+                console.error('Failed to queue offline changes:', queueError);
+                setOrders(previousOrders);
+                notifications.show({
+                  title: t('common.error' as any, language),
+                  message: t('orders.queueError' as any, language) || 'Failed to queue changes. Please try again.',
+                  color: getErrorColor(),
+                });
+              }
+            } else {
+              // Real API error (400, 500, etc.) - revert UI
+              throw apiError;
+            }
+          }
+        }
+      } catch (error: any) {
+        // Only revert optimistic update on real API errors (not network errors)
+        if (!isNetworkError(error)) {
+          setOrders(previousOrders);
+          notifications.show({
+            title: t('common.error' as any, language),
+            message: error?.response?.data?.message || t('orders.updateError', language),
+            color: getErrorColor(),
+          });
+        }
+        // Network errors are already handled above and changes are queued
+      } finally {
+        setProcessingOrderIds(prev => {
+          const next = new Set(prev);
+          processingKeys.forEach(key => next.delete(key));
+          return next;
+        });
+      }
     }
   };
 
@@ -693,15 +904,23 @@ export default function KitchenDisplayPage() {
   });
 
   // Filter orders by item status, not order status
-  // An order appears in pending if it has pending items, and in preparing if it has preparing items
-  const pendingOrders = ordersWithoutBuffetsOnly.filter((order) => {
-    const items = order.items?.filter((item) => !item.buffetId && !item.buffet) || [];
-    return items.some((item) => (item.status || 'pending') === 'pending');
-  });
-
+  // An order appears in preparing if it has preparing items, and in ready if it has ready items
   const preparingOrders = ordersWithoutBuffetsOnly.filter((order) => {
     const items = order.items?.filter((item) => !item.buffetId && !item.buffet) || [];
-    return items.some((item) => (item.status || 'pending') === 'preparing');
+    return items.some((item) => {
+      const status = item.status || 'preparing';
+      return status === 'preparing';
+    });
+  });
+
+  const readyOrders = ordersWithoutBuffetsOnly.filter((order) => {
+    const items = order.items?.filter((item) => !item.buffetId && !item.buffet) || [];
+    // Show order if it has any ready or served items
+    // Served items will show with line-through, card disappears when all items are served or preparing
+    return items.some((item) => {
+      const status = item.status || 'preparing';
+      return status === 'ready' || status === 'served';
+    });
   });
 
   return (
@@ -828,7 +1047,7 @@ export default function KitchenDisplayPage() {
 
           {loading ? (
             <Grid gutter="md" style={{ width: '100%', margin: 0, marginTop: 50 }}>
-              {/* Pending Section Skeleton */}
+              {/* Preparing Section Skeleton */}
               <Grid.Col span={6}>
                 <Paper p="md" withBorder style={{ backgroundColor: themeColors.colorCard, height: 'calc(100vh - 100px)' }}>
                   <Stack gap="md">
@@ -853,7 +1072,7 @@ export default function KitchenDisplayPage() {
                   </Stack>
                 </Paper>
               </Grid.Col>
-              {/* Preparing Section Skeleton */}
+              {/* Ready Section Skeleton */}
               <Grid.Col span={6}>
                 <Paper p="md" withBorder style={{ backgroundColor: themeColors.colorCard, height: 'calc(100vh - 100px)' }}>
                   <Stack gap="md">
@@ -881,50 +1100,6 @@ export default function KitchenDisplayPage() {
             </Grid>
           ) : (
             <Grid gutter="md" style={{ width: '100%', margin: 0, marginTop: 50 }}>
-              {/* Pending Section with 3 Columns */}
-              <Grid.Col span={6}>
-                <Paper p="md" withBorder style={{ backgroundColor: themeColors.colorCard, height: 'calc(100vh - 100px)', display: 'flex', flexDirection: 'column' }}>
-                  <Stack gap="md" style={{ flex: 1, overflow: 'hidden' }}>
-                    <Text fw={700} size="lg">
-                      {t('orders.pending', language)} ({pendingOrders.length})
-                    </Text>
-                    <ScrollArea style={{ flex: 1, overflowX: 'hidden' }} type="scroll">
-                      <Grid gutter="md" style={{ margin: 0 }}>
-                        {[0, 1, 2].map((colIndex) => {
-                          const columnOrders = pendingOrders.filter((_, index) => index % 3 === colIndex);
-                          return (
-                            <Grid.Col key={`pending-${colIndex}`} span={4} style={{ overflow: 'hidden' }}>
-                              <Stack gap="md">
-                                {columnOrders.length === 0 && colIndex === 0 ? (
-                                  <Center py="xl">
-                                    <Text c="dimmed">{t('orders.noPendingOrders', language)}</Text>
-                                  </Center>
-                                ) : (
-                                  columnOrders.map((order) => (
-                                    <OrderCard
-                                      key={order.id}
-                                      order={order}
-                                      language={language}
-                                      primary={primary}
-                                      onItemClick={handleItemClick}
-                                      onBulkAction={handleBulkAction}
-                                      processingOrderIds={processingOrderIds}
-                                      getPriorityColor={getPriorityColor}
-                                      getOrderAge={getOrderAge}
-                                      showStatus="pending"
-                                    />
-                                  ))
-                                )}
-                              </Stack>
-                            </Grid.Col>
-                          );
-                        })}
-                      </Grid>
-                    </ScrollArea>
-                  </Stack>
-                </Paper>
-              </Grid.Col>
-
               {/* Preparing Section with 3 Columns */}
               <Grid.Col span={6}>
                 <Paper p="md" withBorder style={{ backgroundColor: themeColors.colorCard, height: 'calc(100vh - 100px)', display: 'flex', flexDirection: 'column' }}>
@@ -951,11 +1126,55 @@ export default function KitchenDisplayPage() {
                                        language={language}
                                        primary={primary}
                                        onItemClick={handleItemClick}
-                                       onBulkAction={(order, status) => handleBulkAction(order, status)}
+                                       onBulkAction={handleBulkAction}
                                        processingOrderIds={processingOrderIds}
                                        getPriorityColor={getPriorityColor}
                                        getOrderAge={getOrderAge}
                                        showStatus="preparing"
+                                     />
+                                   ))
+                                 )}
+                              </Stack>
+                            </Grid.Col>
+                          );
+                        })}
+                      </Grid>
+                    </ScrollArea>
+                  </Stack>
+                </Paper>
+              </Grid.Col>
+
+              {/* Ready To Serve Section with 3 Columns */}
+              <Grid.Col span={6}>
+                <Paper p="md" withBorder style={{ backgroundColor: themeColors.colorCard, height: 'calc(100vh - 100px)', display: 'flex', flexDirection: 'column' }}>
+                  <Stack gap="md" style={{ flex: 1, overflow: 'hidden' }}>
+                    <Text fw={700} size="lg">
+                      {(t('orders.readyToServe' as any, language) || 'Ready To Serve')} ({readyOrders.length})
+                    </Text>
+                    <ScrollArea style={{ flex: 1, overflowX: 'hidden' }} type="scroll">
+                      <Grid gutter="md" style={{ margin: 0 }}>
+                        {[0, 1, 2].map((colIndex) => {
+                          const columnOrders = readyOrders.filter((_, index) => index % 3 === colIndex);
+                          return (
+                            <Grid.Col key={`ready-${colIndex}`} span={4} style={{ overflow: 'hidden' }}>
+                              <Stack gap="md">
+                                 {columnOrders.length === 0 && colIndex === 0 ? (
+                                   <Center py="xl">
+                                     <Text c="dimmed">{t('orders.noReadyOrders' as any, language) || 'No ready orders'}</Text>
+                                   </Center>
+                                 ) : (
+                                   columnOrders.map((order) => (
+                                     <OrderCard
+                                       key={order.id}
+                                       order={order}
+                                       language={language}
+                                       primary={primary}
+                                       onItemClick={handleItemClick}
+                                       onBulkAction={handleBulkAction}
+                                       processingOrderIds={processingOrderIds}
+                                       getPriorityColor={getPriorityColor}
+                                       getOrderAge={getOrderAge}
+                                       showStatus="ready"
                                      />
                                    ))
                                  )}
@@ -980,12 +1199,12 @@ interface OrderCardProps {
   order: Order;
   language: 'en' | 'ar';
   primary: string;
-  onItemClick: (order: Order, itemId: string) => void;
-  onBulkAction: (order: Order, status: 'pending' | 'preparing') => void;
+  onItemClick: (order: Order, itemId: string, currentSection: 'preparing' | 'ready') => void;
+  onBulkAction: (order: Order, action: 'ready' | 'served') => void;
   processingOrderIds: Set<string>;
   getPriorityColor: (order: Order) => string;
   getOrderAge: (order: Order) => string;
-  showStatus: 'pending' | 'preparing'; // Which status column this card is in
+  showStatus: 'preparing' | 'ready'; // Which status column this card is in
 }
 
 function OrderCard({
@@ -1063,44 +1282,65 @@ function OrderCard({
          <Box>
            {order.items && order.items.length > 0 ? (
              <Stack gap={4}>
-               {order.items
-                 .filter((item) => {
-                   // Filter out buffets and ready items
-                   if (item.buffetId || item.buffet) return false;
-                   const itemStatus = item.status || 'pending';
-                   // Only show items that match the column status
-                   return itemStatus === showStatus;
-                 })
-                 .map((item) => {
-                   const itemStatus = item.status || 'pending';
-                   const isProcessing = processingOrderIds.has(`${order.id}-${item.id}`);
-                   const canAdvance = itemStatus !== 'ready';
+                {order.items
+                  .filter((item) => {
+                    // Filter out buffets
+                    if (item.buffetId || item.buffet) return false;
+                    const itemStatus = item.status || 'preparing';
+                    // In ready section, show both ready and served items (served will have line-through)
+                    // In preparing section, show only preparing items
+                    if (showStatus === 'ready') {
+                      return itemStatus === 'ready' || itemStatus === 'served';
+                    }
+                    return itemStatus === showStatus;
+                  })
+                  .map((item) => {
+                    const itemStatus = item.status || 'preparing';
+                    const isProcessing = processingOrderIds.has(`${order.id}-${item.id}`);
+                    const isServed = itemStatus === 'served';
+                    // In ready section, can click if item is ready (not served)
+                    // In preparing section, can click if item is preparing
+                    const canClick = showStatus === 'preparing' 
+                      ? itemStatus === 'preparing' 
+                      : (itemStatus === 'ready');
                    
                    // For combo meals, show constituent food items
                    if (item.comboMealId && item.comboMeal) {
                      return (
-                       <Box
-                         key={item.id}
-                         p="xs"
-                         style={{
-                           cursor: canAdvance ? 'pointer' : 'default',
-                           transition: 'opacity 0.2s ease',
-                           opacity: isProcessing ? 0.6 : 1,
-                         }}
-                         onClick={() => canAdvance && !isProcessing && onItemClick(order, item.id)}
-                         onMouseEnter={(e) => {
-                           if (canAdvance && !isProcessing) {
-                             e.currentTarget.style.opacity = '0.8';
-                           }
-                         }}
-                         onMouseLeave={(e) => {
-                           e.currentTarget.style.opacity = isProcessing ? '0.6' : '1';
-                         }}
-                       >
-                         <Stack gap={2}>
-                           <Text fw={500} size="md" c={primary} style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
-                             {item.quantity}x {item.comboMeal.name || t('pos.comboMeal', language)}
-                           </Text>
+                        <Box
+                          key={item.id}
+                          p="xs"
+                          style={{
+                            cursor: canClick ? 'pointer' : 'default',
+                            transition: 'all 0.2s ease',
+                            opacity: isServed ? '0.5' : (isProcessing ? '0.6' : '1'),
+                          }}
+                          onClick={() => canClick && !isProcessing && onItemClick(order, item.id, showStatus)}
+                          onMouseEnter={(e) => {
+                            if (canClick && !isProcessing && !isServed) {
+                              e.currentTarget.style.opacity = '0.8';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.opacity = isServed ? '0.5' : (isProcessing ? '0.6' : '1');
+                          }}
+                        >
+                          <Stack gap={2}>
+                            <Text 
+                              fw={500} 
+                              size="md" 
+                              c={isServed ? 'dimmed' : primary} 
+                              style={{ 
+                                wordBreak: 'break-word', 
+                                overflowWrap: 'break-word', 
+                                textDecoration: isServed ? 'line-through' : 'none',
+                                textDecorationThickness: isServed ? '3px' : 'auto',
+                                textDecorationColor: isServed ? '#999' : 'inherit',
+                                display: 'inline-block',
+                              }}
+                            >
+                              {item.quantity}x {item.comboMeal.name || t('pos.comboMeal', language)}
+                            </Text>
                            {item.comboMeal.foodItems && item.comboMeal.foodItems.length > 0 && (
                                                          <Stack gap={2} style={{ paddingLeft: 12, borderLeft: `2px solid ${isDark ? themeColors.primaryDark : themeColors.primaryLight}` }}>
                                {item.comboMeal.foodItems.map((foodItem, idx) => (
@@ -1126,22 +1366,34 @@ function OrderCard({
                        key={item.id}
                        p="xs"
                        style={{
-                         cursor: canAdvance ? 'pointer' : 'default',
-                         transition: 'opacity 0.2s ease',
-                         opacity: isProcessing ? 0.6 : 1,
+                         cursor: canClick ? 'pointer' : 'default',
+                         transition: 'all 0.2s ease',
+                         opacity: isServed ? '0.5' : (isProcessing ? '0.6' : '1'),
                        }}
-                       onClick={() => canAdvance && !isProcessing && onItemClick(order, item.id)}
+                       onClick={() => canClick && !isProcessing && onItemClick(order, item.id, showStatus)}
                        onMouseEnter={(e) => {
-                         if (canAdvance && !isProcessing) {
+                         if (canClick && !isProcessing && !isServed) {
                            e.currentTarget.style.opacity = '0.8';
                          }
                        }}
                        onMouseLeave={(e) => {
-                         e.currentTarget.style.opacity = isProcessing ? '0.6' : '1';
+                         e.currentTarget.style.opacity = isServed ? '0.5' : (isProcessing ? '0.6' : '1');
                        }}
                      >
                        <Stack gap={2}>
-                         <Text fw={500} size="md" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+                         <Text 
+                           fw={500} 
+                           size="md" 
+                           c={isServed ? 'dimmed' : undefined}
+                           style={{ 
+                             wordBreak: 'break-word', 
+                             overflowWrap: 'break-word', 
+                             textDecoration: isServed ? 'line-through' : 'none',
+                             textDecorationThickness: isServed ? '3px' : 'auto',
+                             textDecorationColor: isServed ? '#999' : 'inherit',
+                             display: 'inline-block',
+                           }}
+                         >
                            {item.quantity}x{' '}
                            {item.foodItem
                              ? (item.foodItem.name || t('pos.item', language))
@@ -1184,11 +1436,16 @@ function OrderCard({
 
         {/* Bulk Action Button - only show if there are items in this column's status */}
         {order.items && order.items.length > 0 && (() => {
-          const items = order.items.filter((item) => {
-            if (item.buffetId || item.buffet) return false;
-            const itemStatus = item.status || 'pending';
-            return itemStatus === showStatus; // Only items in this column
-          });
+           const items = order.items.filter((item) => {
+             if (item.buffetId || item.buffet) return false;
+             const itemStatus = item.status || 'preparing';
+             // In ready section, only show ready items (not served) for the button
+             // In preparing section, show preparing items
+             if (showStatus === 'ready') {
+               return itemStatus === 'ready';
+             }
+             return itemStatus === showStatus;
+           });
           
           if (items.length === 0) return null; // No items in this status
           
@@ -1197,19 +1454,19 @@ function OrderCard({
           return (
             <Button
               fullWidth
-              onClick={() => onBulkAction(order, showStatus)}
+              onClick={() => onBulkAction(order, showStatus === 'preparing' ? 'ready' : 'served')}
               loading={isProcessing}
               leftSection={
-                showStatus === 'pending' ? <IconChefHat size={18} /> : <IconCheck size={18} />
+                showStatus === 'preparing' ? <IconCheck size={18} /> : <IconCheck size={18} />
               }
-              color={showStatus === 'pending' ? primary : getSuccessColor()}
+              color={showStatus === 'preparing' ? getSuccessColor() : primary}
               size="md"
               radius="md"
               style={{ marginTop: '8px' }}
             >
-              {showStatus === 'pending'
-                ? t('orders.startPreparing', language) 
-                : t('orders.markAsReady', language)}
+              {showStatus === 'preparing'
+                ? (t('orders.ready', language) || 'Ready')
+                : (t('orders.served', language) || 'Served')}
             </Button>
           );
         })()}

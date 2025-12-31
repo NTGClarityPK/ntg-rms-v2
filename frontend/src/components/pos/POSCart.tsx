@@ -1149,7 +1149,7 @@ export function POSCart({
         orderNumber,
         tokenNumber,
         orderType,
-        status: 'pending',
+        status: 'preparing',
         paymentStatus: 'pending',
         subtotal,
         discountAmount: discount,
