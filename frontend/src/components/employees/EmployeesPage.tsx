@@ -714,11 +714,14 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
                             
                             // Display multiple roles if available
                             if (employee.roles && Array.isArray(employee.roles) && employee.roles.length > 0) {
-                              return employee.roles.map((role) => (
-                                <Badge key={role.id} color={getBadgeColorForText(getRoleLabel(employee.role))} variant="light">
-                        {getRoleLabel(employee.role)}
-                      </Badge>
-                              ));
+                              return employee.roles.map((role) => {
+                                const roleLabel = getRoleLabel(role.name);
+                                return (
+                                  <Badge key={role.id} color={getBadgeColorForText(roleLabel)} variant="light">
+                                    {roleLabel}
+                                  </Badge>
+                                );
+                              });
                             }
                             // Fallback to single role
                             return (

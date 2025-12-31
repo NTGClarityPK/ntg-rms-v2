@@ -1072,30 +1072,16 @@ export default function SettingsPage() {
                   minRows={3}
                   {...invoiceForm.getInputProps('termsAndConditions')}
                 />
-                <Select
-                  label={t('settings.invoiceNumberFormat' as any, language) || 'Invoice Number Format'}
-                  data={INVOICE_FORMATS.map(f => ({ value: f.value, label: `${f.label} (Example: ${ f.example})` }))}
-                  searchable
-                  {...invoiceForm.getInputProps('invoiceNumberFormat')}
-                />
-                <Select
-                  label={t('settings.receiptTemplate' as any, language) || 'Receipt Template'}
-                  data={[
-                    { value: 'thermal', label: t('settings.thermal' as any, language) || 'Thermal (80mm)' },
-                    { value: 'a4', label: t('settings.a4' as any, language) || 'A4 Format' },
-                  ]}
-                  {...invoiceForm.getInputProps('receiptTemplate')}
-                />
 
                 <Stack gap="xs" mt="md">
                   <Switch
                     label={t('settings.showLogo' as any, language) || 'Show Logo'}
                     {...invoiceForm.getInputProps('showLogo', { type: 'checkbox' })}
                   />
-                  <Switch
+                  {/* <Switch
                     label={t('settings.showVatNumber' as any, language) || 'Show VAT Number'}
                     {...invoiceForm.getInputProps('showVatNumber', { type: 'checkbox' })}
-                  />
+                  /> */}
                   {/* <Switch
                     label={t('settings.showQrCode' as any, language) || 'Show QR Code'}
                     {...invoiceForm.getInputProps('showQrCode', { type: 'checkbox' })}
