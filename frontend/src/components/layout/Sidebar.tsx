@@ -133,7 +133,7 @@ export function Sidebar({ onMobileClose, collapsed = false, onCollapseChange }: 
         // Cashier: Orders (full), Menu (view), Customers (view/create/update), Reports (view)
         // Permissions: orders (view/create/update/delete), menu (view), customers (view/create/update), reports (view)
         cashier: ['/pos', '/orders', '/menu', '/customers', '/reports'],
-        kitchen_staff: ['/orders', '/menu', '/inventory'],
+        kitchen_staff: ['/orders', '/menu', '/inventory', '/recipes'],
         waiter: ['/pos', '/orders', '/menu', '/customers'],
         delivery: ['/orders', '/delivery', '/customers'],
       };
