@@ -72,7 +72,22 @@ export function ItemSelectionModal({
         .where('foodItemId')
         .equals(foodItem.id)
         .toArray();
-      setVariations(itemVariations);
+      
+      // Resolve variation group names if they are UUIDs
+      const allVariationGroups = await db.variationGroups.toArray();
+      const variationsWithResolvedNames = itemVariations.map((variation) => {
+        // Check if variationGroup is a UUID (looks like a UUID pattern)
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(variation.variationGroup || '');
+        if (isUUID && variation.variationGroup) {
+          const group = allVariationGroups.find((g) => g.id === variation.variationGroup);
+          if (group) {
+            return { ...variation, variationGroup: group.name };
+          }
+        }
+        return variation;
+      });
+      
+      setVariations(variationsWithResolvedNames);
 
       // Load add-on groups for this food item
       const foodItemAddOnGroups = await db.foodItemAddOnGroups

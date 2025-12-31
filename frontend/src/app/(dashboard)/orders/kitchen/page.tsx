@@ -43,6 +43,7 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { onOrderUpdate, notifyOrderUpdate } from '@/lib/utils/order-events';
 import { useKitchenSse, OrderUpdateEvent } from '@/lib/hooks/use-kitchen-sse';
 import { syncService } from '@/lib/sync/sync-service';
+import { db } from '@/lib/indexeddb/database';
 import Link from 'next/link';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -70,6 +71,35 @@ export default function KitchenDisplayPage() {
   const audioResumedRef = useRef<boolean>(false);
   const loadOrdersRef = useRef<typeof loadOrders>();
   const soundEnabledRef = useRef<boolean>(soundEnabled);
+  const [variationGroupsMap, setVariationGroupsMap] = useState<Map<string, string>>(new Map());
+
+  // Helper function to resolve variation group name from UUID
+  const resolveVariationGroupName = (variationGroup: string | undefined): string => {
+    if (!variationGroup) return '';
+    // Check if it's a UUID
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(variationGroup);
+    if (isUUID) {
+      return variationGroupsMap.get(variationGroup) || variationGroup;
+    }
+    return variationGroup;
+  };
+
+  // Load variation groups to resolve UUIDs to names
+  useEffect(() => {
+    const loadVariationGroups = async () => {
+      try {
+        const groups = await db.variationGroups.toArray();
+        const map = new Map<string, string>();
+        groups.forEach((group) => {
+          map.set(group.id, group.name);
+        });
+        setVariationGroupsMap(map);
+      } catch (error) {
+        console.error('Failed to load variation groups:', error);
+      }
+    };
+    loadVariationGroups();
+  }, []);
   
   // Keep soundEnabled ref updated
   useEffect(() => {
@@ -1131,6 +1161,7 @@ export default function KitchenDisplayPage() {
                                        getPriorityColor={getPriorityColor}
                                        getOrderAge={getOrderAge}
                                        showStatus="preparing"
+                                       resolveVariationGroupName={resolveVariationGroupName}
                                      />
                                    ))
                                  )}
@@ -1175,6 +1206,7 @@ export default function KitchenDisplayPage() {
                                        getPriorityColor={getPriorityColor}
                                        getOrderAge={getOrderAge}
                                        showStatus="ready"
+                                       resolveVariationGroupName={resolveVariationGroupName}
                                      />
                                    ))
                                  )}
@@ -1205,6 +1237,7 @@ interface OrderCardProps {
   getPriorityColor: (order: Order) => string;
   getOrderAge: (order: Order) => string;
   showStatus: 'preparing' | 'ready'; // Which status column this card is in
+  resolveVariationGroupName: (variationGroup: string | undefined) => string;
 }
 
 function OrderCard({
@@ -1217,6 +1250,7 @@ function OrderCard({
   getPriorityColor,
   getOrderAge,
   showStatus,
+  resolveVariationGroupName,
 }: OrderCardProps) {
   const { isDark } = useTheme();
   const themeColors = generateThemeColors(primary, isDark);
@@ -1401,7 +1435,7 @@ function OrderCard({
                          </Text>
                          {item.variation && item.variation.variationName && (
                            <Text size="xs" c="dimmed">
-                             {item.variation.variationGroup}: {item.variation.variationName}
+                             {resolveVariationGroupName(item.variation.variationGroup)}: {item.variation.variationName}
                            </Text>
                          )}
                          {item.addOns && item.addOns.length > 0 && item.addOns.some(a => a.addOn) && (
