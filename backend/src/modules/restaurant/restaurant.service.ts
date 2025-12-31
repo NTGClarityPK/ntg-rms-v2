@@ -289,6 +289,50 @@ export class RestaurantService {
       throw new BadRequestException('Failed to create branch: ' + error.message);
     }
 
+    // Create default tables for the branch based on tenant's totalTables setting
+    try {
+      // Get tenant's totalTables setting
+      const { data: settings } = await supabase
+        .from('tenant_settings')
+        .select('general')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+
+      // Get totalTables from settings, default to 5 if not set or 0
+      // Supabase automatically parses JSONB columns, so general is an object
+      const generalSettings = settings?.general as { totalTables?: number } | null;
+      const totalTables = generalSettings?.totalTables && generalSettings.totalTables > 0
+        ? generalSettings.totalTables
+        : 5;
+
+      // Create default tables
+      const defaultTables = [];
+      for (let i = 1; i <= totalTables; i++) {
+        defaultTables.push({
+          branch_id: branch.id,
+          table_number: i.toString(),
+          seating_capacity: 4,
+          table_type: 'regular',
+          status: 'available',
+        });
+      }
+
+      const { data: tablesData, error: tablesError } = await supabase
+        .from('tables')
+        .insert(defaultTables)
+        .select();
+
+      if (tablesError) {
+        console.error('Failed to create default tables for branch:', tablesError);
+        // Don't fail branch creation if table creation fails, but log it
+      } else {
+        console.log(`Created ${tablesData?.length || 0} default tables for branch: ${branch.id}`);
+      }
+    } catch (tablesError) {
+      console.error('Error creating default tables for branch:', tablesError);
+      // Don't fail branch creation if table creation fails, but log it
+    }
+
     // Fetch manager if manager_id exists
     let manager = null;
     if (branch.manager_id) {
