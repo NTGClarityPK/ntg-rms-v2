@@ -666,9 +666,6 @@ export default function OrdersPage() {
             </Chip>
             <Chip.Group multiple value={selectedStatuses} onChange={setSelectedStatuses}>
               <Group gap="xs" wrap="wrap">
-                <Chip value="pending" variant="filled">
-                  {t('orders.pending', language)}
-                </Chip>
                 <Chip value="preparing" variant="filled">
                   {t('orders.preparing', language)}
                 </Chip>
