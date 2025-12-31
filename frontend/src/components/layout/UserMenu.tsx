@@ -1,6 +1,6 @@
 'use client';
 
-import { Menu, Avatar, Button, Group, Text, ActionIcon } from '@mantine/core';
+import { Menu, Avatar, Button, Group, Text, ActionIcon, Tooltip } from '@mantine/core';
 import { IconLogout, IconUser, IconChevronDown } from '@tabler/icons-react';
 import { useMantineTheme } from '@mantine/core';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
@@ -78,13 +78,15 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
       </Menu.Target>
 
       <Menu.Dropdown>
-        <Menu.Label>
-          <Text size="sm" fw={500}>
+        <Menu.Label style={{ overflow: 'hidden' }}>
+          <Text size="sm" fw={500} truncate>
             {user?.name || 'User'}
           </Text>
-          <Text size="xs" c="dimmed">
-            {user?.email}
-          </Text>
+          <Tooltip label={user?.email} withArrow position="top" zIndex={2100}>
+            <Text size="xs" c="dimmed" truncate>
+              {user?.email}
+            </Text>
+          </Tooltip>
         </Menu.Label>
         <Menu.Divider />
         <Menu.Item 
