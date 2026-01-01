@@ -6,8 +6,7 @@ import { IconBox, IconArrowsExchange } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { InventoryRefreshProvider } from '@/lib/contexts/inventory-refresh-context';
-import { StockManagementPage } from '@/components/inventory/StockManagementPage';
-import { IngredientsPage } from '@/components/inventory/IngredientsPage';
+import { StockManagementPage, IngredientsPage } from '@/features/inventory';
 
 export default function InventoryPage() {
   const { language } = useLanguageStore();

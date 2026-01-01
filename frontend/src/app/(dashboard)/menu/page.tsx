@@ -5,13 +5,15 @@ import { Tabs, Title } from '@mantine/core';
 import { IconCategory, IconToolsKitchen2, IconPlus, IconMenu2, IconChefHat, IconShoppingBag, IconList } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
-import { CategoriesPage } from '@/components/menu/CategoriesPage';
-import { FoodItemsPage } from '@/components/menu/FoodItemsPage';
-import { AddOnGroupsPage } from '@/components/menu/AddOnGroupsPage';
-import { VariationGroupsPage } from '@/components/menu/VariationGroupsPage';
-import { MenusPage } from '@/components/menu/MenusPage';
-import { BuffetPage } from '@/components/menu/BuffetPage';
-import { ComboMealPage } from '@/components/menu/ComboMealPage';
+import {
+  CategoriesPage,
+  FoodItemsPage,
+  AddOnGroupsPage,
+  VariationGroupsPage,
+  MenusPage,
+  BuffetPage,
+  ComboMealPage,
+} from '@/features/menu';
 
 export default function MenuPage() {
   const { language } = useLanguageStore();

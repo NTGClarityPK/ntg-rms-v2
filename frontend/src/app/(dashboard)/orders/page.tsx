@@ -33,7 +33,7 @@ import { ordersApi, Order, OrderStatus, OrderType, PaymentStatus } from '@/lib/a
 import { restaurantApi } from '@/lib/api/restaurant';
 import { notifications } from '@mantine/notifications';
 import { useDisclosure, useDebouncedValue } from '@mantine/hooks';
-import { OrderDetailsModal } from '@/components/orders/OrderDetailsModal';
+import { OrderDetailsModal } from '@/features/orders';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getStatusColor, getPaymentStatusColor, getSuccessColor, getErrorColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { useAuthStore } from '@/lib/store/auth-store';

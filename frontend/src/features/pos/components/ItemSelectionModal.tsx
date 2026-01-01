@@ -21,16 +21,19 @@ import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { db } from '@/lib/indexeddb/database';
 import { CartItem } from '@/lib/indexeddb/database';
-import { FoodItem } from '@/lib/api/menu';
+import { FoodItem, ComboMeal } from '@/lib/api/menu';
+import { menuApi } from '@/lib/api/menu';
 import { useThemeColor, useThemeColorShade } from '@/lib/hooks/use-theme-color';
 import { getErrorColor, getSuccessColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
+import { menuPricingService } from '@/features/menu/domain';
+import { Skeleton } from '@mantine/core';
 
 interface ItemSelectionModalProps {
   opened: boolean;
   onClose: () => void;
-  foodItem: FoodItem;
+  foodItem: FoodItem | ComboMeal;
   onItemSelected: (item: any) => void;
   existingCartItem?: CartItem; // For editing existing cart items
 }
@@ -55,22 +58,94 @@ export function ItemSelectionModal({
   const [loading, setLoading] = useState(true);
   const [activeDiscount, setActiveDiscount] = useState<any>(null);
   const [allActiveDiscounts, setAllActiveDiscounts] = useState<any[]>([]);
+  const [comboMealItems, setComboMealItems] = useState<FoodItem[]>([]);
+  const [loadingComboItems, setLoadingComboItems] = useState(false);
+
+  // Check if the item is a combo meal
+  const isComboMeal = 'foodItemIds' in foodItem && !('stockType' in foodItem) && !('pricePerPerson' in foodItem);
+  const comboMeal = isComboMeal ? (foodItem as ComboMeal) : null;
+  const actualFoodItem = isComboMeal ? null : (foodItem as FoodItem);
 
   useEffect(() => {
     if (opened && foodItem) {
-      loadItemData();
+      if (isComboMeal) {
+        loadComboMealItems();
+      } else {
+        loadItemData();
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opened, foodItem]);
+  }, [opened, foodItem, isComboMeal]);
+
+  const loadComboMealItems = async () => {
+    if (!comboMeal) return;
+
+    setLoadingComboItems(true);
+    try {
+      // If foodItems are already populated, use them
+      if (comboMeal.foodItems && comboMeal.foodItems.length > 0) {
+        setComboMealItems(comboMeal.foodItems);
+        setLoadingComboItems(false);
+        setLoading(false);
+        return;
+      }
+
+      // Otherwise, load from foodItemIds
+      if (!comboMeal.foodItemIds || comboMeal.foodItemIds.length === 0) {
+        setComboMealItems([]);
+        setLoadingComboItems(false);
+        setLoading(false);
+        return;
+      }
+
+      // Try to load from IndexedDB first
+      const itemsFromDB = await Promise.all(
+        comboMeal.foodItemIds.map(async (id) => {
+          const item = await db.foodItems.get(id);
+          return item;
+        })
+      );
+
+      const validItems = itemsFromDB.filter((item): item is any => item !== undefined);
+      
+      if (validItems.length === comboMeal.foodItemIds.length) {
+        // All items found in IndexedDB
+        setComboMealItems(validItems as FoodItem[]);
+      } else {
+        // Some items missing, try to fetch from API
+        const itemsFromAPI = await Promise.all(
+          comboMeal.foodItemIds.map(async (id) => {
+            try {
+              return await menuApi.getFoodItemById(id);
+            } catch (error) {
+              console.error(`Failed to load food item ${id}:`, error);
+              return null;
+            }
+          })
+        );
+        
+        const validApiItems = itemsFromAPI.filter((item): item is FoodItem => item !== null);
+        setComboMealItems(validApiItems);
+      }
+    } catch (error) {
+      console.error('Failed to load combo meal items:', error);
+      setComboMealItems([]);
+    } finally {
+      setLoadingComboItems(false);
+      setLoading(false);
+    }
+  };
 
   const loadItemData = async () => {
+    if (!actualFoodItem) return;
+
     try {
       setLoading(true);
 
       // Load variations
       const itemVariations = await db.foodItemVariations
         .where('foodItemId')
-        .equals(foodItem.id)
+        .equals(actualFoodItem.id)
         .toArray();
       
       // Resolve variation group names if they are UUIDs
@@ -121,7 +196,7 @@ export function ItemSelectionModal({
       const nowDate = new Date(now);
       const allDiscounts = await db.foodItemDiscounts
         .where('foodItemId')
-        .equals(foodItem.id)
+        .equals(actualFoodItem.id)
         .filter((d) => d.isActive)
         .toArray();
       
@@ -216,82 +291,56 @@ export function ItemSelectionModal({
     });
   };
 
-  // Calculate base price (before discount) based on current selections
-  const basePriceBeforeDiscount = useMemo(() => {
-    let price = foodItem.basePrice;
-
-    // Add variation price adjustment
-    if (selectedVariation) {
-      price += selectedVariation.priceAdjustment || 0;
-    }
-
-    // Add add-on prices
-    Object.values(selectedAddOns).forEach((addOnIds) => {
-      addOnIds.forEach((addOnId) => {
-        addOnGroups.forEach((group) => {
-          const addOn = group.addOns?.find((a: any) => a.id === addOnId);
-          if (addOn) {
-            price += addOn.price;
-          }
-        });
-      });
-    });
-
-    return price;
-  }, [foodItem.basePrice, selectedVariation, selectedAddOns, addOnGroups]);
-
-  // Calculate the best discount based on current base price
-  const bestDiscount = useMemo(() => {
-    if (allActiveDiscounts.length === 0) {
+  // Calculate pricing using MenuPricingService (only for food items, not combo meals)
+  const pricingResult = useMemo(() => {
+    if (isComboMeal || !actualFoodItem) {
       return null;
     }
+    return menuPricingService.calculatePricing(
+      actualFoodItem,
+      selectedVariation,
+      selectedAddOns,
+      addOnGroups,
+      allActiveDiscounts
+    );
+  }, [isComboMeal, actualFoodItem, selectedVariation, selectedAddOns, addOnGroups, allActiveDiscounts]);
 
-    let best = null;
-    let bestFinalPrice = basePriceBeforeDiscount;
-
-    // Calculate final price for each discount and pick the best one
-    for (const discount of allActiveDiscounts) {
-      let discountedPrice = basePriceBeforeDiscount;
-      
-      if (discount.discountType === 'percentage') {
-        discountedPrice = basePriceBeforeDiscount * (1 - discount.discountValue / 100);
-      } else if (discount.discountType === 'fixed') {
-        discountedPrice = Math.max(0, basePriceBeforeDiscount - discount.discountValue);
-      }
-
-      // Pick the discount that gives the lowest final price (best for customer)
-      if (discountedPrice < bestFinalPrice) {
-        bestFinalPrice = discountedPrice;
-        best = discount;
-      }
-    }
-
-    return best;
-  }, [allActiveDiscounts, basePriceBeforeDiscount]);
-
-  // Update activeDiscount when bestDiscount changes
+  // Update activeDiscount when pricing result changes
   useEffect(() => {
-    setActiveDiscount(bestDiscount);
-  }, [bestDiscount]);
+    if (pricingResult) {
+      setActiveDiscount(pricingResult.appliedDiscount);
+    }
+  }, [pricingResult]);
 
   const calculatePrice = () => {
-    // Apply the best discount if available
-    if (bestDiscount) {
-      if (bestDiscount.discountType === 'percentage') {
-        return Math.max(0, basePriceBeforeDiscount * (1 - bestDiscount.discountValue / 100));
-      } else if (bestDiscount.discountType === 'fixed') {
-        return Math.max(0, basePriceBeforeDiscount - bestDiscount.discountValue);
-      }
+    if (isComboMeal && comboMeal) {
+      return comboMeal.basePrice;
     }
-
-    return Math.max(0, basePriceBeforeDiscount); // Ensure price is never negative
+    return pricingResult?.finalPrice || 0;
   };
 
   const handleAddToCart = () => {
     const unitPrice = calculatePrice();
     const subtotal = unitPrice * quantity;
 
-    // Build add-ons array
+    if (isComboMeal && comboMeal) {
+      // Handle combo meal
+      const cartItem = {
+        comboMealId: comboMeal.id,
+        foodItemId: undefined,
+        foodItemName: comboMeal.name,
+        foodItemImageUrl: comboMeal.imageUrl,
+        quantity,
+        unitPrice,
+        subtotal,
+        specialInstructions: specialInstructions.trim() || undefined,
+        createdAt: new Date().toISOString(),
+      };
+      onItemSelected(cartItem);
+      return;
+    }
+
+    // Build add-ons array (only for food items)
     const addOnsArray: any[] = [];
     Object.entries(selectedAddOns).forEach(([groupId, addOnIds]) => {
       addOnIds.forEach((addOnId) => {
@@ -309,10 +358,14 @@ export function ItemSelectionModal({
       });
     });
 
+    // Handle food item
+    if (!actualFoodItem) return;
+
     const cartItem = {
-      foodItemId: foodItem.id,
-      foodItemName: foodItem.name,
-      foodItemImageUrl: foodItem.imageUrl,
+      foodItemId: actualFoodItem.id,
+      comboMealId: undefined,
+      foodItemName: actualFoodItem.name,
+      foodItemImageUrl: actualFoodItem.imageUrl,
       variationId: selectedVariation?.id,
       variationGroup: selectedVariation?.variationGroup,
       variationName: selectedVariation?.variationName,
@@ -406,10 +459,57 @@ export function ItemSelectionModal({
           </Text>
         )}
 
+        {/* Combo Meal Items */}
+        {isComboMeal && comboMeal && (
+          <Stack gap="xs">
+            <Text size="sm" fw={500}>
+              {t('menu.itemsIncluded', language) || 'Items Included'} ({comboMeal.foodItemIds?.length || 0})
+            </Text>
+            {loadingComboItems ? (
+              <Stack gap="xs">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} height={40} radius="md" />
+                ))}
+              </Stack>
+            ) : comboMealItems.length > 0 ? (
+              <Paper p="sm" withBorder radius="md">
+                <Stack gap="xs">
+                  {comboMealItems.map((item) => (
+                    <Group key={item.id} justify="space-between" wrap="nowrap">
+                      <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+                        {item.imageUrl && (
+                          <Image
+                            src={item.imageUrl}
+                            alt={item.name}
+                            width={40}
+                            height={40}
+                            fit="cover"
+                            radius="sm"
+                          />
+                        )}
+                        <Text size="sm" fw={500} style={{ flex: 1, minWidth: 0 }} lineClamp={1}>
+                          {item.name}
+                        </Text>
+                      </Group>
+                      <Text size="sm" c="dimmed">
+                        {formatCurrency(item.basePrice, currency)}
+                      </Text>
+                    </Group>
+                  ))}
+                </Stack>
+              </Paper>
+            ) : (
+              <Text size="sm" c="dimmed">
+                {t('menu.itemsIncluded', language) ? 'No items included' : 'No items included in this combo'}
+              </Text>
+            )}
+          </Stack>
+        )}
+
         <Divider />
 
-        {/* Variations */}
-        {variations.length > 0 && (
+        {/* Variations - Only for food items, not combo meals */}
+        {!isComboMeal && variations.length > 0 && (
           <Stack gap="xs">
             <Text fw={500} size="sm">
               {t('pos.variation', language)}
@@ -440,8 +540,8 @@ export function ItemSelectionModal({
           </Stack>
         )}
 
-        {/* Add-ons */}
-        {addOnGroups.length > 0 && (
+        {/* Add-ons - Only for food items, not combo meals */}
+        {!isComboMeal && addOnGroups.length > 0 && (
           <ScrollArea.Autosize >
             <Stack gap="md">
               {addOnGroups.map((group) => {
@@ -546,24 +646,10 @@ export function ItemSelectionModal({
         {/* Price Summary */}
         <Paper p="md" radius="md" withBorder>
           <Stack gap="xs">
-          {activeDiscount && (() => {
-            // Calculate original price without discount
-            let originalPrice = foodItem.basePrice;
-            if (selectedVariation) {
-              originalPrice += selectedVariation.priceAdjustment || 0;
-            }
-            Object.values(selectedAddOns).forEach((addOnIds) => {
-              addOnIds.forEach((addOnId) => {
-                addOnGroups.forEach((group) => {
-                  const addOn = group.addOns?.find((a: any) => a.id === addOnId);
-                  if (addOn) {
-                    originalPrice += addOn.price;
-                  }
-                });
-              });
-            });
-            const discountedPrice = calculatePrice();
-            const discountAmount = originalPrice - discountedPrice;
+          {pricingResult?.appliedDiscount && (() => {
+            const originalPrice = pricingResult.priceBeforeDiscount;
+            const discountedPrice = pricingResult.finalPrice;
+            const discountAmount = pricingResult.discountAmount;
             
             return (
               <>
@@ -576,11 +662,11 @@ export function ItemSelectionModal({
                   </Text>
                 </Group>
                 <Group justify="space-between">
-                  <Badge variant="light" color={getBadgeColorForText(activeDiscount.discountType === 'percentage'
-                    ? `${activeDiscount.discountValue}% ${t('pos.discount', language) || 'OFF'}`
+                  <Badge variant="light" color={getBadgeColorForText(pricingResult.appliedDiscount?.discountType === 'percentage'
+                    ? `${pricingResult.appliedDiscount.discountValue}% ${t('pos.discount', language) || 'OFF'}`
                     : `${formatCurrency(discountAmount, currency)} ${t('pos.discount', language) || 'OFF'}`)}>
-                    {activeDiscount.discountType === 'percentage'
-                      ? `${activeDiscount.discountValue}% ${t('pos.discount', language) || 'OFF'}`
+                    {pricingResult.appliedDiscount?.discountType === 'percentage'
+                      ? `${pricingResult.appliedDiscount.discountValue}% ${t('pos.discount', language) || 'OFF'}`
                       : `${formatCurrency(discountAmount, currency)} ${t('pos.discount', language) || 'OFF'}`}
                   </Badge>
                   <Text size="sm" c={getSuccessColor()} fw={600}>

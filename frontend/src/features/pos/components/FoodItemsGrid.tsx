@@ -76,6 +76,8 @@ export function FoodItemsGrid({
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState<FoodItem | Buffet | ComboMeal | null>(null);
   const [modalOpened, setModalOpened] = useState(false);
+  const [comboMealItems, setComboMealItems] = useState<FoodItem[]>([]);
+  const [loadingComboItems, setLoadingComboItems] = useState(false);
   
   // Debounced search query - updates after user stops typing for 500ms
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState<string>(searchQuery);
@@ -555,6 +557,74 @@ export function FoodItemsGrid({
     setModalOpened(true);
   };
 
+  // Load combo meal items when a combo meal is selected
+  useEffect(() => {
+    const loadComboMealItems = async () => {
+      if (!selectedItem || !('foodItemIds' in selectedItem) || ('pricePerPerson' in selectedItem)) {
+        setComboMealItems([]);
+        return;
+      }
+
+      const comboMeal = selectedItem as ComboMeal;
+      
+      // If foodItems are already populated, use them
+      if (comboMeal.foodItems && comboMeal.foodItems.length > 0) {
+        setComboMealItems(comboMeal.foodItems);
+        return;
+      }
+
+      // Otherwise, load from foodItemIds
+      if (!comboMeal.foodItemIds || comboMeal.foodItemIds.length === 0) {
+        setComboMealItems([]);
+        return;
+      }
+
+      setLoadingComboItems(true);
+      try {
+        // Try to load from IndexedDB first
+        const itemsFromDB = await Promise.all(
+          comboMeal.foodItemIds.map(async (id) => {
+            const item = await db.foodItems.get(id);
+            return item;
+          })
+        );
+
+        const validItems = itemsFromDB.filter((item): item is IndexedDBFoodItem => item !== undefined);
+        
+        if (validItems.length === comboMeal.foodItemIds.length) {
+          // All items found in IndexedDB
+          setComboMealItems(validItems as FoodItem[]);
+        } else {
+          // Some items missing, try to fetch from API
+          const itemsFromAPI = await Promise.all(
+            comboMeal.foodItemIds.map(async (id) => {
+              try {
+                return await menuApi.getFoodItemById(id);
+              } catch (error) {
+                console.error(`Failed to load food item ${id}:`, error);
+                return null;
+              }
+            })
+          );
+          
+          const validApiItems = itemsFromAPI.filter((item): item is FoodItem => item !== null);
+          setComboMealItems(validApiItems);
+        }
+      } catch (error) {
+        console.error('Failed to load combo meal items:', error);
+        setComboMealItems([]);
+      } finally {
+        setLoadingComboItems(false);
+      }
+    };
+
+    if (modalOpened && selectedItem) {
+      loadComboMealItems();
+    } else {
+      setComboMealItems([]);
+    }
+  }, [modalOpened, selectedItem]);
+
   const handleItemSelected = useCallback(
     (itemData: any) => {
       onAddToCart(itemData);
@@ -825,12 +895,69 @@ export function FoodItemsGrid({
           onClose={() => {
             setModalOpened(false);
             setSelectedItem(null);
+            setComboMealItems([]);
           }}
           title={selectedItem?.name || ''}
           size="md"
         >
           <Stack gap="md">
             {selectedItem?.description && <Text size="sm">{selectedItem.description}</Text>}
+            
+            {/* Combo Meal Items */}
+            {selectedItem && ('foodItemIds' in selectedItem && !('pricePerPerson' in selectedItem)) && (
+              <Stack gap="xs">
+                <Text size="sm" fw={500}>
+                  {t('menu.itemsIncluded', language) || 'Items Included'} ({selectedItem.foodItemIds?.length || 0})
+                </Text>
+                {loadingComboItems ? (
+                  <Stack gap="xs">
+                    {[1, 2, 3].map((i) => (
+                      <Skeleton key={i} height={40} radius="md" />
+                    ))}
+                  </Stack>
+                ) : comboMealItems.length > 0 ? (
+                  <Paper p="sm" withBorder radius="md">
+                    <Stack gap="xs">
+                      {comboMealItems.map((item) => (
+                        <Group key={item.id} justify="space-between" wrap="nowrap">
+                          <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+                            {item.imageUrl && (
+                              <Image
+                                src={item.imageUrl}
+                                alt={item.name}
+                                width={40}
+                                height={40}
+                                fit="cover"
+                                radius="sm"
+                              />
+                            )}
+                            <Text size="sm" fw={500} style={{ flex: 1, minWidth: 0 }} lineClamp={1}>
+                              {item.name}
+                            </Text>
+                          </Group>
+                          <Text size="sm" c="dimmed">
+                            {formatCurrency(item.basePrice, currency)}
+                          </Text>
+                        </Group>
+                      ))}
+                    </Stack>
+                  </Paper>
+                ) : (
+                  <Text size="sm" c="dimmed">
+                    {t('menu.itemsIncluded', language) ? 'No items included' : 'No items included in this combo'}
+                  </Text>
+                )}
+                <Group gap="xs" mt="xs">
+                  <Text size="sm" fw={600}>
+                    {t('menu.price', language) || 'Price'}:
+                  </Text>
+                  <Text size="sm" fw={600} c={primaryColor}>
+                    {formatCurrency((selectedItem as ComboMeal).basePrice, currency)}
+                  </Text>
+                </Group>
+              </Stack>
+            )}
+            
             {selectedItem && ('pricePerPerson' in selectedItem && !('stockType' in selectedItem)) && (
               <Stack gap="xs">
                 <Text size="sm" fw={500}>{t('menu.buffetDetails', language)}</Text>

@@ -5,13 +5,15 @@ import { Tabs, Title, Center, Paper, Stack, Text } from '@mantine/core';
 import { IconWifiOff } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
-import SalesReportPage from '@/components/reports/SalesReportPage';
-import OrdersReportPage from '@/components/reports/OrdersReportPage';
-import CustomersReportPage from '@/components/reports/CustomersReportPage';
-import { InventoryReportsPage } from '@/components/inventory/InventoryReportsPage';
-import FinancialReportPage from '@/components/reports/FinancialReportPage';
-import TaxReportPage from '@/components/reports/TaxReportPage';
-import TopItemsReportPage from '@/components/reports/TopItemsReportPage';
+import {
+  SalesReportPage,
+  OrdersReportPage,
+  CustomersReportPage,
+  FinancialReportPage,
+  TaxReportPage,
+  TopItemsReportPage,
+} from '@/features/reports';
+import { InventoryReportsPage } from '@/features/inventory';
 import { useSyncStatus } from '@/lib/hooks/use-sync-status';
 import { useRouter } from 'next/navigation';
 import { getErrorColor } from '@/lib/utils/theme';

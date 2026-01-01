@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useForm } from '@mantine/form';
 import {
   Title,
@@ -27,7 +27,6 @@ import { IconPlus, IconEdit, IconTrash, IconUpload, IconToolsKitchen2, IconAlert
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { menuApi, Category } from '@/lib/api/menu';
-import { db } from '@/lib/indexeddb/database';
 import { syncService } from '@/lib/sync/sync-service';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
@@ -37,10 +36,17 @@ import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getBadgeColorForText } from '@/lib/utils/theme';
 import { onMenuDataUpdate, notifyMenuDataUpdate } from '@/lib/utils/menu-events';
 import { handleApiError } from '@/shared/utils/error-handler';
+import { CategoriesRepository } from '../repositories/categories.repository';
 
 export function CategoriesPage() {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
+  
+  // Create repository instance
+  const categoriesRepository = useMemo(() => {
+    if (!user?.tenantId) return null;
+    return new CategoriesRepository(user.tenantId);
+  }, [user?.tenantId]);
   const notificationColors = useNotificationColors();
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
@@ -70,18 +76,14 @@ export function CategoriesPage() {
   });
 
   const loadCategories = useCallback(async () => {
-    if (!user?.tenantId) return;
+    if (!categoriesRepository) return;
 
     try {
       setLoading(true);
       setError(null);
 
       // Load from IndexedDB first
-      const localCategories = await db.categories
-        .where('tenantId')
-        .equals(user.tenantId)
-        .filter((cat) => !cat.deletedAt)
-        .toArray();
+      const localCategories = await categoriesRepository.findAll();
 
       setCategories(localCategories.map((cat) => ({
         id: cat.id,
@@ -104,24 +106,23 @@ export function CategoriesPage() {
           const serverCategories = Array.isArray(serverCategoriesResponse) ? serverCategoriesResponse : (serverCategoriesResponse?.data || []);
           setCategories(serverCategories);
 
-          // Update IndexedDB
-          for (const cat of serverCategories) {
-            await db.categories.put({
-              id: cat.id,
-              tenantId: user.tenantId,
-              name: cat.name,
-              description: cat.description,
-              imageUrl: cat.imageUrl,
-              categoryType: cat.categoryType,
-              parentId: cat.parentId,
-              displayOrder: cat.displayOrder,
-              isActive: cat.isActive,
-              createdAt: cat.createdAt,
-              updatedAt: cat.updatedAt,
-              lastSynced: new Date().toISOString(),
-              syncStatus: 'synced',
-            } as any);
-          }
+          // Update IndexedDB using bulkPut
+          const categoriesToSync = serverCategories.map((cat: Category) => ({
+            id: cat.id,
+            tenantId: user!.tenantId,
+            name: cat.name,
+            description: cat.description,
+            imageUrl: cat.imageUrl,
+            categoryType: cat.categoryType,
+            parentId: cat.parentId,
+            displayOrder: cat.displayOrder,
+            isActive: cat.isActive,
+            createdAt: cat.createdAt,
+            updatedAt: cat.updatedAt,
+            lastSynced: new Date().toISOString(),
+            syncStatus: 'synced' as const,
+          }));
+          await categoriesRepository.bulkPut(categoriesToSync as any);
         } catch (err: any) {
           console.warn('Failed to sync categories from server:', err);
         }
@@ -137,7 +138,7 @@ export function CategoriesPage() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.tenantId, language]);
+  }, [categoriesRepository, user?.tenantId, language]);
 
   useEffect(() => {
     loadCategories();
@@ -228,13 +229,12 @@ export function CategoriesPage() {
         }
         
         // Update IndexedDB
-        await db.categories.update(editingCategory.id, {
+        await categoriesRepository!.update(editingCategory.id, {
           ...categoryData,
           imageUrl: savedCategory.imageUrl,
-          updatedAt: new Date().toISOString(),
           lastSynced: new Date().toISOString(),
           syncStatus: 'synced',
-        });
+        } as any);
 
         // Queue sync
         await syncService.queueChange('categories', 'UPDATE', editingCategory.id, savedCategory);
@@ -255,9 +255,8 @@ export function CategoriesPage() {
         }
         
         // Save to IndexedDB
-        await db.categories.add({
+        await categoriesRepository!.create({
           id: savedCategory.id,
-          tenantId: user.tenantId,
           ...categoryData,
           imageUrl: savedCategory.imageUrl,
           displayOrder: savedCategory.displayOrder,
@@ -308,10 +307,7 @@ export function CategoriesPage() {
           await menuApi.deleteCategory(category.id);
           
           // Update IndexedDB (soft delete)
-          await db.categories.update(category.id, {
-            deletedAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
+          await categoriesRepository!.delete(category.id);
 
           // Queue sync
           await syncService.queueChange('categories', 'DELETE', category.id, category);

@@ -49,7 +49,7 @@ import { useNotificationColors } from '@/lib/hooks/use-theme-colors';
 import { useErrorColor } from '@/lib/hooks/use-theme-colors';
 import { DEFAULT_THEME_COLOR, getLegacyThemeColor } from '@/lib/utils/theme';
 import { FileButton, Image, Box, Alert } from '@mantine/core';
-import { BranchesTab } from '@/components/restaurant/BranchesTab';
+import { BranchesTab } from '@/features/restaurant';
 
 // Common timezones list with GMT offsets
 const TIMEZONE_DATA = [

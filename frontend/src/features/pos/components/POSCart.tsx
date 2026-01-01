@@ -59,6 +59,7 @@ import { restaurantApi } from '@/lib/api/restaurant';
 import { taxesApi, Tax } from '@/lib/api/taxes';
 import type { ThemeConfig } from '@/lib/theme/themeConfig';
 import { notifyOrderUpdate } from '@/lib/utils/order-events';
+import { orderCalculatorService } from '@/features/orders/domain';
 
 interface POSCartProps {
   cartItems: CartItem[];
@@ -557,40 +558,34 @@ export function POSCart({
     }
   };
 
+  // Use OrderCalculatorService for calculations
   const calculateSubtotal = useCallback(() => {
-    return cartItems.reduce((sum, item) => {
-      const subtotal = item.subtotal ?? (item.unitPrice ?? 0) * (item.quantity ?? 1);
-      return sum + subtotal;
-    }, 0);
+    return orderCalculatorService.calculateSubtotal(cartItems);
   }, [cartItems]);
 
   const getLoyaltyTierDiscount = useCallback(() => {
-    if (!selectedCustomerData?.loyaltyTier) return 0;
-    
-    const tierDiscounts: Record<string, number> = {
-      regular: 0,
-      silver: 5,
-      gold: 10,
-      platinum: 15,
-    };
-    
-    const discountPercent = tierDiscounts[selectedCustomerData.loyaltyTier] || 0;
-    if (discountPercent === 0) return 0;
-    
-    const subtotal = cartItems.reduce((sum, item) => {
-      const itemSubtotal = item.subtotal ?? (item.unitPrice ?? 0) * (item.quantity ?? 1);
-      return sum + itemSubtotal;
-    }, 0);
-    return (subtotal * discountPercent) / 100;
+    const subtotal = orderCalculatorService.calculateSubtotal(cartItems);
+    return orderCalculatorService.calculateLoyaltyTierDiscount(
+      subtotal,
+      selectedCustomerData?.loyaltyTier
+    );
   }, [selectedCustomerData?.loyaltyTier, cartItems]);
 
   const calculateDiscount = useCallback(() => {
-    const loyaltyDiscount = getLoyaltyTierDiscount();
-    return manualDiscount + appliedCouponDiscount + loyaltyDiscount;
-  }, [manualDiscount, appliedCouponDiscount, getLoyaltyTierDiscount]);
+    const subtotal = orderCalculatorService.calculateSubtotal(cartItems);
+    return orderCalculatorService.calculateDiscount(
+      subtotal,
+      {
+        manualDiscount,
+        couponDiscount: appliedCouponDiscount,
+        loyaltyDiscount: 0, // Will be calculated inside
+      },
+      selectedCustomerData?.loyaltyTier
+    );
+  }, [manualDiscount, appliedCouponDiscount, selectedCustomerData?.loyaltyTier, cartItems]);
 
   const calculateDeliveryCharge = useCallback(() => {
-    return orderType === 'delivery' ? deliveryCharge : 0;
+    return orderCalculatorService.calculateDeliveryCharge(orderType, deliveryCharge);
   }, [orderType, deliveryCharge]);
 
   const [calculatedTax, setCalculatedTax] = useState<number>(0);
@@ -606,11 +601,11 @@ export function POSCart({
         return;
       }
 
-      const subtotal = cartItems.reduce((sum, item) => sum + item.subtotal, 0);
+      const subtotal = orderCalculatorService.calculateSubtotal(cartItems);
       const loyaltyDiscount = getLoyaltyTierDiscount();
       const discount = manualDiscount + appliedCouponDiscount + loyaltyDiscount;
       const taxableAmount = subtotal - discount;
-      const delivery = orderType === 'delivery' ? deliveryCharge : 0;
+      const delivery = orderCalculatorService.calculateDeliveryCharge(orderType, deliveryCharge);
       const serviceCharge = 0; // Not implemented yet
 
       // Prepare order items for tax calculation with categoryId
@@ -628,56 +623,17 @@ export function POSCart({
         })
       );
 
-      let totalTax = 0;
-      const breakdown: Array<{ name: string; rate: number; amount: number }> = [];
+      // Use OrderCalculatorService for tax calculation
+      const taxResult = orderCalculatorService.calculateTax(
+        taxableAmount,
+        activeTaxes,
+        validOrderItemsForTax,
+        delivery,
+        serviceCharge
+      );
 
-      for (const tax of activeTaxes) {
-        let taxBaseAmount = 0;
-
-        // Determine taxable amount based on appliesTo
-        if (tax.appliesTo === 'order') {
-          // Apply to entire order subtotal
-          taxBaseAmount = taxableAmount;
-        } else if (tax.appliesTo === 'category') {
-          // Apply only to items in specified categories
-          const categoryIds = tax.categoryIds || [];
-          taxBaseAmount = validOrderItemsForTax
-            .filter((item) => item.categoryId && categoryIds.includes(item.categoryId))
-            .reduce((sum, item) => {
-              const itemSubtotal = item.subtotal ?? 0;
-              return sum + itemSubtotal;
-            }, 0);
-        } else if (tax.appliesTo === 'item') {
-          // Apply only to specified items
-          const foodItemIds = tax.foodItemIds || [];
-          taxBaseAmount = validOrderItemsForTax
-            .filter((item) => foodItemIds.includes(item.foodItemId))
-            .reduce((sum, item) => sum + item.subtotal, 0);
-        }
-
-        // Add delivery charge if applicable
-        if (tax.appliesToDelivery && delivery > 0) {
-          taxBaseAmount += delivery;
-        }
-
-        // Add service charge if applicable
-        if (tax.appliesToServiceCharge && serviceCharge > 0) {
-          taxBaseAmount += serviceCharge;
-        }
-
-        if (taxBaseAmount > 0) {
-          const taxAmount = (taxBaseAmount * tax.rate) / 100;
-          totalTax += taxAmount;
-          breakdown.push({
-            name: tax.name,
-            rate: tax.rate,
-            amount: Math.round(taxAmount * 100) / 100,
-          });
-        }
-      }
-
-      setTaxBreakdown(breakdown);
-      setCalculatedTax(Math.round(totalTax * 100) / 100);
+      setTaxBreakdown(taxResult.breakdown);
+      setCalculatedTax(taxResult.total);
     };
 
     recalculateTax();
@@ -706,7 +662,7 @@ export function POSCart({
 
     setIsValidatingCoupon(true);
     try {
-      const subtotal = calculateSubtotal();
+      const subtotal = orderCalculatorService.calculateSubtotal(cartItems);
       const response = await apiClient.post(API_ENDPOINTS.COUPONS.VALIDATE, {
         code: couponCode.trim().toUpperCase(),
         subtotal,
@@ -776,10 +732,7 @@ export function POSCart({
       }
       
       // Validate minimum delivery order amount
-      const subtotal = cartItems.reduce((sum, item) => {
-        const itemSubtotal = item.subtotal ?? (item.unitPrice ?? 0) * (item.quantity ?? 1);
-        return sum + itemSubtotal;
-      }, 0);
+      const subtotal = orderCalculatorService.calculateSubtotal(cartItems);
       if (minimumDeliveryOrderAmount > 0 && subtotal < minimumDeliveryOrderAmount) {
         return t('pos.minimumDeliveryAmount' as any, language) || 
                `Minimum delivery order amount is ${formatCurrency(minimumDeliveryOrderAmount, currency)}`;
@@ -802,11 +755,11 @@ export function POSCart({
     setIsPlacingOrder(true);
 
     try {
-      // Prepare order data
-      const subtotal = calculateSubtotal();
+      // Prepare order data using OrderCalculatorService
+      const subtotal = orderCalculatorService.calculateSubtotal(cartItems);
       const discount = calculateDiscount();
       const tax = calculatedTax;
-      const delivery = calculateDeliveryCharge();
+      const delivery = orderCalculatorService.calculateDeliveryCharge(orderType, deliveryCharge);
       const total = calculateGrandTotal();
 
       // Handle address for delivery orders
@@ -1869,7 +1822,7 @@ export function POSCart({
                       value={manualDiscount}
                       onChange={(value) => setManualDiscount(typeof value === 'number' ? value : 0)}
                       min={0}
-                      max={calculateSubtotal()}
+                      max={orderCalculatorService.calculateSubtotal(cartItems)}
                       leftSection={<IconDiscount size={16} />}
                       allowDecimal={true}
                       allowNegative={false}

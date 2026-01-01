@@ -6,8 +6,7 @@ import { IconBook, IconBox } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { InventoryRefreshProvider } from '@/lib/contexts/inventory-refresh-context';
-import { IngredientsPage } from '@/components/inventory/IngredientsPage';
-import { RecipesPage as RecipesPageComponent } from '@/components/inventory/RecipesPage';
+import { IngredientsPage, RecipesPage as RecipesPageComponent } from '@/features/inventory';
 
 export default function RecipesPage() {
   const { language } = useLanguageStore();

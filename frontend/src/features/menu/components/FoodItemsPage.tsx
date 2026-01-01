@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useForm } from '@mantine/form';
 import { useDebouncedValue } from '@mantine/hooks';
 import {
@@ -44,6 +44,7 @@ import { menuApi, FoodItem, FoodItemVariation, FoodItemDiscount, VariationGroup 
 import { Category } from '@/lib/api/menu';
 import { db } from '@/lib/indexeddb/database';
 import { syncService } from '@/lib/sync/sync-service';
+import { FoodItemsRepository } from '../repositories/food-items.repository';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';

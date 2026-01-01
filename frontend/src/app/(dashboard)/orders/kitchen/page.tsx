@@ -945,12 +945,35 @@ export default function KitchenDisplayPage() {
 
   const readyOrders = ordersWithoutBuffetsOnly.filter((order) => {
     const items = order.items?.filter((item) => !item.buffetId && !item.buffet) || [];
-    // Show order only if it has at least one ready item
-    // Orders with all items served are removed from kitchen display
-    return items.some((item) => {
+    if (items.length === 0) return false;
+    
+    // Check if order has preparing items
+    const hasPreparingItems = items.some((item) => {
+      const status = item.status || 'preparing';
+      return status === 'preparing';
+    });
+    
+    // Check if order has ready items
+    const hasReadyItems = items.some((item) => {
       const status = item.status || 'preparing';
       return status === 'ready';
     });
+    
+    // Check if order has served items
+    const hasServedItems = items.some((item) => {
+      const status = item.status || 'preparing';
+      return status === 'served';
+    });
+    
+    // Check if ALL items are served (no preparing, no ready)
+    const allItemsServed = !hasPreparingItems && !hasReadyItems && hasServedItems;
+    
+    // Show order in ready section if:
+    // 1. It has ready items (always show), OR
+    // 2. It has served items AND still has preparing items (requirement: show strikethrough when some items still preparing)
+    // Hide order only if ALL items are served AND no preparing items (requirement: disappear when all ready and click bulk served)
+    // Note: Individual item clicks will keep items visible as long as there are preparing or ready items
+    return hasReadyItems || (hasServedItems && hasPreparingItems);
   });
 
   return (

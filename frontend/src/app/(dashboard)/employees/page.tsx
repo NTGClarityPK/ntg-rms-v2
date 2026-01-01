@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Title, Button, Group, Center, Paper, Stack, Text } from '@mantine/core';
 import { IconPlus, IconWifiOff } from '@tabler/icons-react';
-import { EmployeesPage } from '@/components/employees/EmployeesPage';
+import { EmployeesPage } from '@/features/employees';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { useSyncStatus } from '@/lib/hooks/use-sync-status';
