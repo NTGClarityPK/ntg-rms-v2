@@ -728,16 +728,29 @@ export function FoodItemsGrid({
                       {comboMealItems.map((item) => (
                         <Group key={item.id} justify="space-between" wrap="nowrap">
                           <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
-                            {item.imageUrl && (
-                              <Image
-                                src={item.imageUrl}
-                                alt={item.name}
-                                width={40}
-                                height={40}
-                                fit="cover"
-                                radius="sm"
-                              />
-                            )}
+                            <Box
+                              w={40}
+                              h={40}
+                              style={{
+                                flexShrink: 0,
+                                borderRadius: 'var(--mantine-radius-sm)',
+                                overflow: 'hidden',
+                                backgroundColor: item.imageUrl ? 'transparent' : 'var(--mantine-color-gray-2)',
+                              }}
+                            >
+                              {item.imageUrl ? (
+                                <img
+                                  src={item.imageUrl}
+                                  alt={item.name}
+                                  style={{
+                                    width: '100%',
+                                    height: '100%',
+                                    objectFit: 'cover',
+                                    display: 'block',
+                                  }}
+                                />
+                              ) : null}
+                            </Box>
                             <Text size="sm" fw={500} style={{ flex: 1, minWidth: 0 }} lineClamp={1}>
                               {item.name}
                             </Text>

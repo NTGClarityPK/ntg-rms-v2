@@ -1225,7 +1225,7 @@ export function POSCart({
                             },
                           },
                           option: {
-                            '&[data-selected]': {
+                            '&[data-selected="true"]': {
                               backgroundColor: `${primaryColor}20`,
                               color: primaryColor,
                               fontWeight: 600,
@@ -1267,7 +1267,7 @@ export function POSCart({
                             },
                           },
                           option: {
-                            '&[data-selected]': {
+                            '&[data-selected="true"]': {
                               backgroundColor: `${primaryColor}20`,
                               color: primaryColor,
                               fontWeight: 600,
