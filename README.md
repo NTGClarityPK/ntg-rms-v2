@@ -117,7 +117,6 @@ Frontend will run on `http://localhost:3000`
 - Mantine UI v7
 - TypeScript
 - Zustand (state management)
-- Dexie.js (IndexedDB)
 - Axios
 
 ### Backend
@@ -139,7 +138,6 @@ Frontend will run on `http://localhost:3000`
 
 - ✅ Multi-tenant architecture
 - ✅ English/Arabic language support with RTL
-- ✅ Offline-first with IndexedDB
 - ✅ JWT authentication
 - ✅ Dashboard layout
 - ✅ All route structure in place

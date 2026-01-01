@@ -672,7 +672,7 @@ export class SyncService {
           : Promise.resolve({ data: [], error: null }),
       ]);
 
-      // Transform data to match frontend IndexedDB format
+      // Transform data
       const transformedData = {
         branches: (branches.data || []).map((b: any) => ({
           id: b.id,

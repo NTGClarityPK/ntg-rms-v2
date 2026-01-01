@@ -29,7 +29,6 @@ src/
 ├── components/       # React components
 ├── lib/              # Utilities and services
 │   ├── api/         # API client
-│   ├── indexeddb/   # Dexie.js schemas
 │   ├── sync/        # Offline sync service
 │   └── utils/       # Helper functions
 ├── locales/         # Translation files

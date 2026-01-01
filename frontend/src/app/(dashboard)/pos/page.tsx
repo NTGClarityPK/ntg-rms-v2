@@ -334,7 +334,6 @@ function POSPageContent() {
   const showOfflineIndicator = !isOnline;
 
   // Only show "no branches" message after loading is complete
-  // If offline and no branches in IndexedDB, still allow POS to work (user can select branch later)
   if (!loadingBranches && branches.length === 0) {
     return (
       <Box p="md">

@@ -308,7 +308,7 @@ export function POSCart({
             return aNum - bNum;
           });
           
-          // Convert to RestaurantTable format and save to IndexedDB for offline use
+          // Convert to RestaurantTable format
           const tablesToStore = filteredTables.map((table) => ({
             id: table.id,
             tenantId,
@@ -351,7 +351,6 @@ export function POSCart({
     // Check if item is a buffet or combo meal (these typically can't be edited in the same way)
     if (item.buffetId || item.comboMealId) {
       // For buffets and combo meals, we can still allow editing quantity and special instructions
-      // but we don't need to load from IndexedDB
       setEditingItem({ 
         ...item, 
         cartItemIndex: index,
@@ -780,8 +779,7 @@ export function POSCart({
         // Use the order ID and details from the API response
         const orderId = createdOrder.id;
 
-          // Create order items for IndexedDB (using API response data)
-          // Note: API Order has items, but IndexedDB Order doesn't, so we need to fetch items separately
+          // Create order items
           // For now, we'll create order items from cart items since we have that data
           const orderItems: OrderItem[] = cartItems.map((item, index) => ({
             id: `order-item-${Date.now()}-${index}`,

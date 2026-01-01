@@ -310,7 +310,6 @@ export default function SettingsPage() {
           const settings = await settingsApi.getSettings();
           setTotalTables(settings.general?.totalTables || 5);
         } else {
-          // Try to get from IndexedDB or use default
           setTotalTables(5);
         }
       } catch (err) {
