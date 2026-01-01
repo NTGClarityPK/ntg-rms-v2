@@ -89,6 +89,18 @@ export function FoodItemsPage() {
   const paginationPageRef = useRef<number>(pagination.page);
   const paginationLimitRef = useRef<number>(pagination.limit);
   const [pendingItem, setPendingItem] = useState<Partial<FoodItem> | null>(null);
+  const [variationGroupsMap, setVariationGroupsMap] = useState<Map<string, string>>(new Map());
+
+  // Helper function to resolve variation group name from UUID
+  const resolveVariationGroupName = useCallback((variationGroup: string | undefined): string => {
+    if (!variationGroup) return '';
+    // Check if it's a UUID
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(variationGroup);
+    if (isUUID) {
+      return variationGroupsMap.get(variationGroup) || variationGroup;
+    }
+    return variationGroup;
+  }, [variationGroupsMap]);
 
   const form = useForm({
     initialValues: {
@@ -153,6 +165,13 @@ export function FoodItemsPage() {
           }
         })
       );
+
+      // Create a map of variation group IDs to names for resolving UUIDs
+      const map = new Map<string, string>();
+      groupsWithVariations.forEach((group) => {
+        map.set(group.id, group.name);
+      });
+      setVariationGroupsMap(map);
       setVariationGroups(groupsWithVariations);
 
       // Load food items - use server pagination if online, otherwise load from IndexedDB
@@ -239,19 +258,34 @@ export function FoodItemsPage() {
             if (item.variations && item.variations.length > 0) {
               // Delete existing variations
               await db.foodItemVariations.where('foodItemId').equals(item.id).delete();
-              // Add new variations
-              await db.foodItemVariations.bulkAdd(
-                item.variations.map((v) => ({
+              
+              // Resolve variation group names from UUIDs if needed
+              const allVariationGroups = await db.variationGroups.toArray();
+              const resolvedVariations = item.variations.map((v) => {
+                // Check if variationGroup is a UUID
+                const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v.variationGroup || '');
+                let variationGroup = v.variationGroup;
+                if (isUUID && v.variationGroup) {
+                  const group = allVariationGroups.find((g) => g.id === v.variationGroup);
+                  if (group) {
+                    variationGroup = group.name;
+                  }
+                }
+                
+                return {
                   id: v.id || `${item.id}-var-${Date.now()}-${Math.random()}`,
                   foodItemId: item.id,
                   tenantId: user.tenantId,
-                  variationGroup: v.variationGroup,
+                  variationGroup: variationGroup,
                   variationName: v.variationName,
                   priceAdjustment: v.priceAdjustment,
                   stockQuantity: v.stockQuantity,
                   displayOrder: v.displayOrder || 0,
-                }))
-              );
+                };
+              });
+              
+              // Add new variations
+              await db.foodItemVariations.bulkAdd(resolvedVariations);
             }
 
             // Save labels
@@ -579,13 +613,27 @@ export function FoodItemsPage() {
         db.foodItemAddOnGroups.where('foodItemId').equals(item.id).toArray(),
       ]);
 
+      // Resolve variation group names from UUIDs
+      const allVariationGroups = await db.variationGroups.toArray();
+      const variationsWithResolvedNames = variations.map((v) => {
+        // Check if variationGroup is a UUID (looks like a UUID pattern)
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v.variationGroup || '');
+        if (isUUID && v.variationGroup) {
+          const group = allVariationGroups.find((g) => g.id === v.variationGroup);
+          if (group) {
+            return { ...v, variationGroup: group.name };
+          }
+        }
+        return v;
+      });
+
       // Use menuTypes from item if available, otherwise fallback to legacy menuType
       const menuTypes = item.menuTypes && item.menuTypes.length > 0 
         ? item.menuTypes 
         : (item.menuType ? [item.menuType] : []);
 
-      // Extract unique variation groups from existing variations
-      const uniqueVariationGroups = Array.from(new Set(variations.map((v) => v.variationGroup))).filter(Boolean);
+      // Extract unique variation groups from existing variations (using resolved names)
+      const uniqueVariationGroups = Array.from(new Set(variationsWithResolvedNames.map((v) => v.variationGroup))).filter(Boolean);
       
       // Find variation group IDs by name
       const variationGroupIds = uniqueVariationGroups
@@ -605,7 +653,7 @@ export function FoodItemsPage() {
         menuTypes: menuTypes,
         ageLimit: item.ageLimit,
         imageUrl: item.imageUrl || '',
-        variations: variations.map((v) => ({
+        variations: variationsWithResolvedNames.map((v) => ({
           id: v.id,
           variationGroup: v.variationGroup,
           variationName: v.variationName,
@@ -1601,11 +1649,14 @@ export function FoodItemsPage() {
                         .filter(({ v }) => v.variationGroup === groupName)
                         .map(({ idx }) => idx);
                       
+                      // Resolve group name in case it's still a UUID
+                      const resolvedGroupName = resolveVariationGroupName(groupName);
+                      
                       return (
                         <Paper key={groupName} p="md" withBorder>
                           <Stack gap="md">
                             <Text fw={500} size="sm">
-                              {groupName}
+                              {resolvedGroupName}
                             </Text>
                             <Table>
                               <Table.Thead>

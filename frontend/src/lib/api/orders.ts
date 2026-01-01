@@ -46,7 +46,7 @@ export interface OrderItem {
   taxAmount: number;
   subtotal: number;
   specialInstructions?: string;
-  status?: 'pending' | 'preparing' | 'ready';
+  status?: 'pending' | 'preparing' | 'ready' | 'served';
   addOns?: {
     id: string;
     addOnId: string;
@@ -137,7 +137,7 @@ export interface UpdatePaymentStatusDto {
 }
 
 export interface UpdateOrderItemStatusDto {
-  status: 'pending' | 'preparing' | 'ready';
+  status: 'pending' | 'preparing' | 'ready' | 'served';
 }
 
 export interface CreateOrderItemDto {

@@ -177,6 +177,35 @@ export function POSCart({
   const [newAddressCity, setNewAddressCity] = useState<string>('');
   const [newAddressState, setNewAddressState] = useState<string>('');
   const [newAddressCountry, setNewAddressCountry] = useState<string>('');
+  const [variationGroupsMap, setVariationGroupsMap] = useState<Map<string, string>>(new Map());
+
+  // Helper function to resolve variation group name from UUID
+  const resolveVariationGroupName = (variationGroup: string | undefined): string => {
+    if (!variationGroup) return '';
+    // Check if it's a UUID
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(variationGroup);
+    if (isUUID) {
+      return variationGroupsMap.get(variationGroup) || variationGroup;
+    }
+    return variationGroup;
+  };
+
+  // Load variation groups to resolve UUIDs to names
+  useEffect(() => {
+    const loadVariationGroups = async () => {
+      try {
+        const groups = await db.variationGroups.toArray();
+        const map = new Map<string, string>();
+        groups.forEach((group) => {
+          map.set(group.id, group.name);
+        });
+        setVariationGroupsMap(map);
+      } catch (error) {
+        console.error('Failed to load variation groups:', error);
+      }
+    };
+    loadVariationGroups();
+  }, []);
 
   useEffect(() => {
     if (tenantId) {
@@ -1149,7 +1178,7 @@ export function POSCart({
         orderNumber,
         tokenNumber,
         orderType,
-        status: 'pending',
+        status: 'preparing',
         paymentStatus: 'pending',
         subtotal,
         discountAmount: discount,
@@ -1743,7 +1772,7 @@ export function POSCart({
 
                       {item.variationName && (
                         <Text size="xs" c="dimmed">
-                          {item.variationGroup}: {item.variationName}
+                          {resolveVariationGroupName(item.variationGroup)}: {item.variationName}
                         </Text>
                       )}
 
