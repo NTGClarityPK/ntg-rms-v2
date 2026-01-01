@@ -22,7 +22,6 @@ import {
   Ingredient,
   StockTransaction,
 } from '@/lib/api/inventory';
-import { db } from '@/lib/indexeddb/database';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useBranchStore } from '@/lib/store/branch-store';
@@ -64,105 +63,12 @@ export function InventoryReportsPage() {
     if (!user?.tenantId) return;
 
     try {
-      // Load from IndexedDB first
-      const localIngredients = await db.ingredients
-        .where('tenantId')
-        .equals(user.tenantId)
-        .filter((ing) => !ing.deletedAt)
-        .toArray();
+      const filters: any = {};
+      if (categoryFilter) filters.category = categoryFilter;
+      if (lowStockOnly) filters.lowStockOnly = true;
 
-      // Deduplicate by ID first, then by nameEn
-      const byId = new Map(localIngredients.map(ing => [ing.id, ing]));
-      const byName = new Map<string, typeof localIngredients[0]>();
-      
-      for (const ing of Array.from(byId.values())) {
-        const key = ((ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '').toLowerCase().trim();
-        if (key) {
-          const existing = byName.get(key);
-          if (!existing || new Date(ing.updatedAt || ing.createdAt || '') > new Date(existing.updatedAt || existing.createdAt || '')) {
-            byName.set(key, ing);
-          }
-        }
-      }
-      
-      const uniqueIngredients = byName.size < byId.size 
-        ? Array.from(byName.values())
-        : Array.from(byId.values());
-
-      let filtered = uniqueIngredients.map((ing) => {
-        const stockValue = ing.currentStock * ing.costPerUnit;
-        const isLowStock = ing.currentStock <= ing.minimumThreshold;
-        return {
-          ...ing,
-          stockValue,
-          isLowStock,
-        };
-      });
-
-      // Apply filters
-      if (categoryFilter) {
-        filtered = filtered.filter((ing) => ing.category === categoryFilter);
-      }
-      if (lowStockOnly) {
-        filtered = filtered.filter((ing) => ing.isLowStock);
-      }
-
-      setCurrentStock(filtered);
-
-      // Sync from server if online
-      if (navigator.onLine) {
-        try {
-          const filters: any = {};
-          if (categoryFilter) filters.category = categoryFilter;
-          if (lowStockOnly) filters.lowStockOnly = true;
-
-          const serverData = await inventoryApi.getCurrentStockReport(filters);
-          
-          // Deduplicate server data
-          const serverById = new Map(serverData.map((item: any) => [item.id, item]));
-          const serverByName = new Map<string, any>();
-          
-          for (const item of Array.from(serverById.values())) {
-            const key = item.name?.toLowerCase().trim() || '';
-            if (key) {
-              const existing = serverByName.get(key);
-              if (!existing || new Date(item.updatedAt) > new Date(existing.updatedAt)) {
-                serverByName.set(key, item);
-              }
-            }
-          }
-          
-          const uniqueServerData = serverByName.size < serverById.size 
-            ? Array.from(serverByName.values())
-            : Array.from(serverById.values());
-          
-          setCurrentStock(uniqueServerData);
-
-          // Update IndexedDB using bulkPut
-          const ingredientsToStore = uniqueServerData.map((item: any) => ({
-            id: item.id,
-            tenantId: user.tenantId,
-            name: item.name,
-            category: item.category,
-            unitOfMeasurement: item.unitOfMeasurement,
-            currentStock: item.currentStock,
-            minimumThreshold: item.minimumThreshold,
-            costPerUnit: item.costPerUnit,
-            storageLocation: item.storageLocation,
-            isActive: item.isActive,
-            createdAt: item.createdAt,
-            updatedAt: item.updatedAt,
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced' as const,
-          }));
-          
-          if (ingredientsToStore.length > 0) {
-            await db.ingredients.bulkPut(ingredientsToStore as any);
-          }
-        } catch (err: any) {
-          console.warn('Failed to sync current stock from server:', err);
-        }
-      }
+      const serverData = await inventoryApi.getCurrentStockReport(filters);
+      setCurrentStock(serverData);
     } catch (err: any) {
       console.error('Failed to load current stock:', err);
     }
@@ -172,75 +78,8 @@ export function InventoryReportsPage() {
     if (!user?.tenantId) return;
 
     try {
-      // Load from IndexedDB first
-      const localIngredients = await db.ingredients
-        .where('tenantId')
-        .equals(user.tenantId)
-        .filter((ing) => !ing.deletedAt && ing.isActive)
-        .toArray();
-
-      // Deduplicate by ID first, then by nameEn
-      const byId = new Map(localIngredients.map(ing => [ing.id, ing]));
-      const byName = new Map<string, typeof localIngredients[0]>();
-      
-      for (const ing of Array.from(byId.values())) {
-        const key = ((ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '').toLowerCase().trim();
-        if (key) {
-          const existing = byName.get(key);
-          if (!existing || new Date(ing.updatedAt || ing.createdAt || '') > new Date(existing.updatedAt || existing.createdAt || '')) {
-            byName.set(key, ing);
-          }
-        }
-      }
-      
-      const uniqueIngredients = byName.size < byId.size 
-        ? Array.from(byName.values())
-        : Array.from(byId.values());
-
-      const lowStock = uniqueIngredients
-        .filter((ing) => ing.currentStock <= ing.minimumThreshold)
-        .map((ing) => {
-          const deficit = ing.minimumThreshold - ing.currentStock;
-          return {
-            ...ing,
-            stockDeficit: deficit,
-          };
-        })
-        .sort((a, b) => a.currentStock - b.currentStock);
-
-      setLowStockAlerts(lowStock.map(ing => ({
-        ...ing,
-        name: (ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '',
-      })));
-
-      // Sync from server if online
-      if (navigator.onLine) {
-        try {
-          const serverData = await inventoryApi.getLowStockAlerts();
-          
-          // Deduplicate server data
-          const serverById = new Map(serverData.map((item: any) => [item.id, item]));
-          const serverByName = new Map<string, any>();
-          
-          for (const item of Array.from(serverById.values())) {
-            const key = item.name?.toLowerCase().trim() || '';
-            if (key) {
-              const existing = serverByName.get(key);
-              if (!existing || new Date(item.updatedAt) > new Date(existing.updatedAt)) {
-                serverByName.set(key, item);
-              }
-            }
-          }
-          
-          const uniqueServerData = serverByName.size < serverById.size 
-            ? Array.from(serverByName.values())
-            : Array.from(serverById.values());
-          
-          setLowStockAlerts(uniqueServerData);
-        } catch (err: any) {
-          console.warn('Failed to sync low stock alerts from server:', err);
-        }
-      }
+      const serverData = await inventoryApi.getLowStockAlerts();
+      setLowStockAlerts(serverData);
     } catch (err: any) {
       console.error('Failed to load low stock alerts:', err);
     }
@@ -250,44 +89,13 @@ export function InventoryReportsPage() {
     if (!user?.tenantId) return;
 
     try {
-      // Load from IndexedDB first
-      const localTransactions = await db.stockTransactions
-        .where('tenantId')
-        .equals(user.tenantId)
-        .toArray();
+      const filters: any = {};
+      if (selectedBranchId) filters.branchId = selectedBranchId;
+      if (startDate) filters.startDate = startDate.toISOString().split('T')[0];
+      if (endDate) filters.endDate = endDate.toISOString().split('T')[0];
 
-      let filtered = localTransactions;
-
-      // Apply date filters
-      if (startDate) {
-        filtered = filtered.filter(
-          (tx) => new Date(tx.transactionDate) >= startDate
-        );
-      }
-      if (endDate) {
-        filtered = filtered.filter(
-          (tx) => new Date(tx.transactionDate) <= endDate
-        );
-      }
-
-      setStockMovement(filtered.sort((a, b) => 
-        new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()
-      ));
-
-      // Sync from server if online
-      if (navigator.onLine) {
-        try {
-          const filters: any = {};
-          if (selectedBranchId) filters.branchId = selectedBranchId;
-          if (startDate) filters.startDate = startDate.toISOString().split('T')[0];
-          if (endDate) filters.endDate = endDate.toISOString().split('T')[0];
-
-          const serverData = await inventoryApi.getStockMovementReport(filters);
-          setStockMovement(serverData);
-        } catch (err: any) {
-          console.warn('Failed to sync stock movement from server:', err);
-        }
-      }
+      const serverData = await inventoryApi.getStockMovementReport(filters);
+      setStockMovement(serverData);
     } catch (err: any) {
       console.error('Failed to load stock movement:', err);
     }

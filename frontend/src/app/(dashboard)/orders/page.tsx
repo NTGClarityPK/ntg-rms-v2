@@ -39,9 +39,7 @@ import { getStatusColor, getPaymentStatusColor, getSuccessColor, getErrorColor, 
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
-import { db } from '@/lib/indexeddb/database';
-import { OrdersRepository } from '@/features/orders/repositories/orders.repository';
-import { OrderItemsRepository } from '@/features/orders/repositories/order-items.repository';
+import { customersApi } from '@/lib/api/customers';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { IconEye } from '@tabler/icons-react';
@@ -78,14 +76,6 @@ export default function OrdersPage() {
   const [detailsModalOpened, { open: openDetailsModal, close: closeDetailsModal }] = useDisclosure(false);
   const [markingAsPaidOrderId, setMarkingAsPaidOrderId] = useState<string | null>(null);
 
-  // Initialize repositories
-  const ordersRepository = useMemo(() => {
-    return user?.tenantId ? new OrdersRepository(user.tenantId) : null;
-  }, [user?.tenantId]);
-
-  const orderItemsRepository = useMemo(() => {
-    return new OrderItemsRepository();
-  }, []);
 
   // Ref to store the latest loadOrders function for use in subscriptions
   // This prevents subscription recreation while ensuring we always use the latest function
@@ -167,210 +157,12 @@ export default function OrdersPage() {
         
         backendOrders = pagination.extractData(backendResponse);
         pagination.extractPagination(backendResponse);
+        
+        // Set orders from backend
+        setOrders(backendOrders);
       } catch (error: any) {
         console.error('Failed to load orders from backend:', error);
-        // Continue to load from IndexedDB even if backend fails
-      }
-
-      // Also load orders from IndexedDB (for offline/pending orders)
-      if (user?.tenantId) {
-        // OPTIMIZATION: Only fetch ALL orders when needed (when not on 'all' tab)
-        // When on 'all' tab, we already have all orders, so reuse backendOrders
-        // This reduces API calls by 50% when on the 'all' tab
-        let allBackendOrders: Order[] = backendOrders;
-        
-        // Only need to fetch all orders if we're filtering by status
-        // This is needed to check if IndexedDB orders exist in backend with different statuses
-        if (selectedStatuses.length > 0) {
-          try {
-            const allBackendParams = {
-              branchId: selectedBranch || undefined,
-              orderType: selectedOrderType as OrderType | undefined,
-              paymentStatus: selectedPaymentStatus as PaymentStatus | undefined,
-              search: debouncedSearchQuery.trim() || undefined,
-              waiterEmail: showMyOrdersOnly && user?.email ? user.email : undefined,
-              // No status filter - get all orders
-              // Don't paginate this query - we need all orders for exclusion check
-            };
-            const allBackendResponse = await ordersApi.getOrders(allBackendParams);
-            
-            // Check if this is still the latest request
-            if (currentRequestSequence !== ordersRequestSequenceRef.current) {
-              console.log('⚠️ Ignoring outdated all-orders request response');
-              return;
-            }
-            
-            allBackendOrders = Array.isArray(allBackendResponse) ? allBackendResponse : (allBackendResponse?.data || []);
-          } catch (error: any) {
-            console.error('Failed to load all orders from backend for exclusion check:', error);
-            // If this fails, we'll just use the filtered backendOrders
-            allBackendOrders = backendOrders;
-          }
-        }
-
-        // Load orders from IndexedDB using repository
-        let indexedDBOrders: any[] = [];
-        if (ordersRepository) {
-          const allOrders = await ordersRepository.findAll();
-          // Apply filters manually since repository doesn't support complex filtering
-          indexedDBOrders = allOrders.filter((order) => {
-            if (selectedStatuses.length > 0 && !selectedStatuses.includes(order.status)) return false;
-            if (selectedBranch && order.branchId !== selectedBranch) return false;
-            if (selectedOrderType && order.orderType !== selectedOrderType) return false;
-            if (selectedPaymentStatus && order.paymentStatus !== selectedPaymentStatus) return false;
-            if (showMyOrdersOnly && user?.email && (order as any).waiterEmail !== user.email) return false;
-            // Apply search filter to IndexedDB orders as well
-            if (debouncedSearchQuery.trim()) {
-              const query = debouncedSearchQuery.toLowerCase().trim();
-              const matchesOrderNumber = order.orderNumber?.toLowerCase().includes(query);
-              const matchesTokenNumber = order.tokenNumber?.toLowerCase().includes(query);
-              if (!matchesOrderNumber && !matchesTokenNumber) {
-                // For customer name/phone, we'd need to load customer data, but for simplicity
-                // we'll just check orderNumber and tokenNumber for IndexedDB
-                return false;
-              }
-            }
-            return true; // Repository already filters deletedAt
-          });
-        }
-
-        // Check sync queue to see which orders are already synced
-        const syncQueueItems = await db.syncQueue
-          .where('table')
-          .equals('orders')
-          .and((item) => item.status === 'SYNCED' || item.status === 'SYNCING')
-          .toArray();
-
-        // Get IDs of orders that are synced or syncing
-        const syncedOrderIds = new Set(
-          syncQueueItems
-            .map((item) => {
-              // Extract order ID from sync queue item
-              // The recordId might be the order ID, or it might be in the data
-              if (item.recordId) return item.recordId;
-              if (item.data?.id) return item.data.id;
-              if (item.data?.orderId) return item.data.orderId;
-              return null;
-            })
-            .filter(Boolean) as string[]
-        );
-
-        // Use ALL backend orders (not just filtered ones) to check for existence
-        // This ensures we exclude IndexedDB orders that exist in backend with any status
-        const allBackendOrderNumbers = new Set(allBackendOrders.map(o => o.orderNumber));
-        const allBackendOrderIds = new Set(allBackendOrders.map(o => o.id));
-
-        // Filter IndexedDB orders: only include those that:
-        // 1. Are NOT in backend (by ID or order number) - checked against ALL backend orders
-        // 2. Are NOT marked as synced in sync queue
-        const pendingOrders = indexedDBOrders.filter((order) => {
-          // Exclude if already in backend (check against all backend orders, not just filtered ones)
-          // This prevents stale IndexedDB orders from showing when their status changed in backend
-          if (allBackendOrderIds.has(order.id) || allBackendOrderNumbers.has(order.orderNumber)) {
-            return false;
-          }
-          // Exclude if synced or syncing
-          if (syncedOrderIds.has(order.id)) {
-            return false;
-          }
-          // Only include pending orders that haven't been synced
-          return true;
-        });
-        
-        // Transform IndexedDB orders to match API format
-        const transformedPendingOrders: Order[] = await Promise.all(
-          pendingOrders.map(async (order) => {
-            // Load related data from IndexedDB
-            const branch = order.branchId ? await db.branches.get(order.branchId) : null;
-            const table = order.tableId ? await db.restaurantTables.get(order.tableId) : null;
-            const customer = order.customerId ? await db.customers.get(order.customerId) : null;
-            const items = await orderItemsRepository.findByOrderId(order.id);
-
-            return {
-              ...order,
-              branch: branch ? {
-                id: branch.id,
-                name: (branch as any).name || (branch as any).nameEn || (branch as any).nameAr || '',
-                code: branch.code,
-              } : undefined,
-              table: table ? {
-                id: table.id,
-                table_number: (table as any).tableNumber || (table as any).table_number || '',
-                seating_capacity: table.capacity,
-              } : undefined,
-              customer: customer ? {
-                id: customer.id,
-                name: (customer as any).name || (customer as any).nameEn || (customer as any).nameAr || '',
-                phone: customer.phone,
-                email: customer.email,
-              } : undefined,
-              items: items.map(item => ({
-                ...item,
-                foodItem: undefined, // Will be loaded if needed
-              })),
-            } as Order;
-          })
-        );
-
-        // Combine and deduplicate by order number (most reliable identifier)
-        const orderNumberMap = new Map<string, Order>();
-        
-        // First, add all backend orders (they take priority)
-        backendOrders.forEach(order => {
-          orderNumberMap.set(order.orderNumber, order);
-        });
-        
-        // Then, add pending orders only if they don't exist
-        transformedPendingOrders.forEach(order => {
-          if (!orderNumberMap.has(order.orderNumber)) {
-            orderNumberMap.set(order.orderNumber, order);
-          }
-        });
-        
-        // Convert map to array and sort by date (newest first)
-        const allOrders = Array.from(orderNumberMap.values());
-        allOrders.sort((a, b) => 
-          new Date(b.orderDate || b.createdAt).getTime() - new Date(a.orderDate || a.createdAt).getTime()
-        );
-
-        // Apply local pagination for IndexedDB orders (when offline or when combining with backend)
-        // If we got a paginated response from backend, we should use that pagination info
-        // Otherwise, apply local pagination
-        if (!isPaginatedResponse(backendResponse)) {
-          const totalItems = allOrders.length;
-          const startIndex = (pagination.page - 1) * pagination.limit;
-          const endIndex = startIndex + pagination.limit;
-          const paginatedOrders = allOrders.slice(startIndex, endIndex);
-          
-          setOrders(paginatedOrders);
-          
-          // Update pagination info for local pagination
-          pagination.setTotal(totalItems);
-          pagination.setTotalPages(Math.ceil(totalItems / pagination.limit));
-          pagination.setHasNext(endIndex < totalItems);
-          pagination.setHasPrev(pagination.page > 1);
-        } else {
-          // Backend provided pagination, use the orders as-is
-          setOrders(allOrders);
-        }
-      } else {
-        // No IndexedDB - just use backend orders
-        if (!isPaginatedResponse(backendResponse)) {
-          // Backend didn't return paginated response, apply local pagination
-          const totalItems = backendOrders.length;
-          const startIndex = (pagination.page - 1) * pagination.limit;
-          const endIndex = startIndex + pagination.limit;
-          const paginatedOrders = backendOrders.slice(startIndex, endIndex);
-          
-          setOrders(paginatedOrders);
-          
-          pagination.setTotal(totalItems);
-          pagination.setTotalPages(Math.ceil(totalItems / pagination.limit));
-          pagination.setHasNext(endIndex < totalItems);
-          pagination.setHasPrev(pagination.page > 1);
-        } else {
-          setOrders(backendOrders);
-        }
+        setOrders([]);
       }
     } catch (error: any) {
       if (!silent) {
@@ -386,7 +178,7 @@ export default function OrdersPage() {
       }
       loadingOrdersRef.current = false;
     }
-  }, [selectedBranch, selectedOrderType, selectedPaymentStatus, selectedStatuses, debouncedSearchQuery, showMyOrdersOnly, user?.tenantId, user?.email, language, pagination, ordersRepository, orderItemsRepository]);
+  }, [selectedBranch, selectedOrderType, selectedPaymentStatus, selectedStatuses, debouncedSearchQuery, showMyOrdersOnly, user?.email, language, pagination]);
 
   // Update ref whenever loadOrders changes
   useEffect(() => {

@@ -1,11 +1,6 @@
 /**
  * Inventory Feature Repositories
  * 
- * Export all inventory-related repositories for easy importing
+ * All repositories have been removed - using direct API calls only
  */
-
-export { IngredientsRepository } from './ingredients.repository';
-export { RecipesRepository } from './recipes.repository';
-
-
 

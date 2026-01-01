@@ -36,14 +36,11 @@ import { useChartColors } from '@/lib/hooks/use-chart-colors';
 import { useChartTooltip } from '@/lib/hooks/use-chart-tooltip';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { notifications } from '@mantine/notifications';
-import { db } from '@/lib/indexeddb/database';
-import { useSyncStatus } from '@/lib/hooks/use-sync-status';
 
 export default function OrdersReportPage() {
   const language = useLanguageStore((state) => state.language);
   const currency = useCurrency();
   const themeColor = useThemeColor();
-  const { isOnline } = useSyncStatus();
   const tooltipStyle = useChartTooltip();
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<OrderReport | null>(null);
@@ -70,26 +67,7 @@ export default function OrdersReportPage() {
       setLoading(true);
     }
     try {
-      let data: OrderReport;
-
-      if (isOnline) {
-        data = await reportsApi.getOrdersReport(filtersToUse);
-        await db.reports.put({
-          id: 'orders',
-          type: 'orders',
-          data: JSON.stringify(data),
-          filters: JSON.stringify(filtersToUse),
-          updatedAt: new Date().toISOString(),
-        });
-      } else {
-        const cached = await db.reports.get('orders');
-        if (cached) {
-          data = JSON.parse(cached.data);
-        } else {
-          throw new Error('No cached data available');
-        }
-      }
-
+      const data = await reportsApi.getOrdersReport(filtersToUse);
       setReport(data);
     } catch (error: any) {
       notifications.show({
@@ -103,7 +81,7 @@ export default function OrdersReportPage() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOnline, language]);
+  }, [language]);
 
   useEffect(() => {
     loadBranches();
@@ -114,7 +92,7 @@ export default function OrdersReportPage() {
     const isInitialLoad = !report;
     loadReport(filters, !isInitialLoad);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(filters), isOnline]);
+  }, [JSON.stringify(filters)]);
 
   const handleFilterChange = (newFilters: ReportQueryParams) => {
     setFilters(newFilters);

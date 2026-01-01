@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMantineTheme } from '@mantine/core';
 import { restaurantApi } from '@/lib/api/restaurant';
-import { db } from '@/lib/indexeddb/database';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useThemeStore } from '@/lib/store/theme-store';
 import { useRestaurantStore } from '@/lib/store/restaurant-store';
@@ -25,72 +24,27 @@ export function useDynamicTheme() {
       let themeFromDb = false;
 
       try {
-        // Priority 1: If tenant ID exists, try to get tenant theme from DB
+        // Priority 1: If tenant ID exists, try to get tenant theme from server
         if (user?.tenantId) {
-          // Try to load from IndexedDB first
           try {
-            const localData = await db.tenants.get(user.tenantId);
-            if (localData?.primaryColor) {
-              colorToUse = localData.primaryColor;
-              themeFromDb = true;
+            const serverData = await restaurantApi.getInfo();
+            if (serverData) {
+              // Update theme if available
+              if (serverData?.primaryColor) {
+                colorToUse = serverData.primaryColor;
+                themeFromDb = true;
+              }
+              
+              // Update restaurant store with logo and other info
+              setRestaurant({
+                id: user.tenantId,
+                name: serverData.name || 'RMS',
+                logoUrl: serverData.logoUrl,
+                primaryColor: serverData.primaryColor,
+              });
             }
           } catch (err) {
-            console.warn('Failed to load theme from IndexedDB:', err);
-          }
-
-          // Then sync from server if online (always fetch to get latest logo and other info)
-          if (navigator.onLine) {
-            try {
-              const serverData = await restaurantApi.getInfo();
-              if (serverData) {
-                // Update theme if available
-                if (serverData?.primaryColor) {
-                  colorToUse = serverData.primaryColor;
-                  themeFromDb = true;
-                }
-                
-                // Update restaurant store with logo and other info
-                setRestaurant({
-                  id: user.tenantId,
-                  name: serverData.name || 'RMS',
-                  logoUrl: serverData.logoUrl,
-                  primaryColor: serverData.primaryColor,
-                });
-                
-                // Update IndexedDB with server data
-                try {
-                  const existingTenant = await db.tenants.get(user.tenantId);
-                  if (existingTenant) {
-                    await db.tenants.update(user.tenantId, {
-                      name: serverData.name,
-                      logoUrl: serverData.logoUrl,
-                      primaryColor: serverData.primaryColor || existingTenant.primaryColor,
-                      updatedAt: new Date().toISOString(),
-                    });
-                  } else {
-                    // Create tenant record if it doesn't exist
-                    await db.tenants.add({
-                      id: user.tenantId,
-                      name: serverData.name,
-                      subdomain: serverData.subdomain,
-                      email: serverData.email,
-                      phone: serverData.phone,
-                      logoUrl: serverData.logoUrl,
-                      primaryColor: serverData.primaryColor || DEFAULT_THEME_COLOR,
-                      defaultCurrency: serverData.defaultCurrency,
-                      timezone: serverData.timezone,
-                      isActive: serverData.isActive,
-                      createdAt: serverData.createdAt,
-                      updatedAt: serverData.updatedAt,
-                    });
-                  }
-                } catch (err) {
-                  console.warn('Failed to update IndexedDB with server data:', err);
-                }
-              }
-            } catch (err) {
-              console.warn('Failed to load restaurant info from server:', err);
-            }
+            console.warn('Failed to load restaurant info from server:', err);
           }
         }
 

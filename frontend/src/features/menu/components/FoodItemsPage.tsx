@@ -42,9 +42,6 @@ import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { menuApi, FoodItem, FoodItemVariation, FoodItemDiscount, VariationGroup } from '@/lib/api/menu';
 import { Category } from '@/lib/api/menu';
-import { db } from '@/lib/indexeddb/database';
-import { syncService } from '@/lib/sync/sync-service';
-import { FoodItemsRepository } from '../repositories/food-items.repository';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
@@ -70,10 +67,6 @@ export function FoodItemsPage() {
     initialLimit: DEFAULT_PAGINATION.limit 
   });
   
-  // Initialize repository
-  const foodItemsRepository = useMemo(() => {
-    return user?.tenantId ? new FoodItemsRepository(user.tenantId) : null;
-  }, [user?.tenantId]);
   
   const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -181,330 +174,22 @@ export function FoodItemsPage() {
       setVariationGroupsMap(map);
       setVariationGroups(groupsWithVariations);
 
-      // Load food items - use server pagination if online, otherwise load from IndexedDB
+      // Load food items - use server pagination
       // Use refs to get the latest values to avoid stale closures
       const currentSearch = debouncedSearchRef.current;
       const currentPage = paginationPageRef.current;
       const currentLimit = paginationLimitRef.current;
-      if (navigator.onLine) {
-        try {
-          const serverItemsResponse = await menuApi.getFoodItems(undefined, {
-            page: currentPage,
-            limit: currentLimit,
-          }, currentSearch);
-          const serverItems = pagination.extractData(serverItemsResponse);
-          
-          // Debug: log the response to see what we're getting
-          console.log('Food items response:', {
-            isPaginated: isPaginatedResponse(serverItemsResponse),
-            response: serverItemsResponse,
-            itemsCount: serverItems.length,
-            currentTotal: pagination.total,
-            currentTotalPages: pagination.totalPages,
-          });
-          
-          // Extract pagination info from server response - this should set total/totalPages correctly
-          const paginationInfo = pagination.extractPagination(serverItemsResponse);
-          
-          // Debug: log after extraction
-          console.log('After extractPagination:', {
-            paginationInfo,
-            total: pagination.total,
-            totalPages: pagination.totalPages,
-            hasNext: pagination.hasNext,
-            hasPrev: pagination.hasPrev,
-          });
-          
-          // If response is not paginated but we have items, this means backend isn't returning pagination
-          // In this case, we can't know the true total, so we'll show what we have
-          if (!paginationInfo && Array.isArray(serverItemsResponse)) {
-            console.warn('Server returned plain array instead of paginated response. Cannot determine total count.');
-            // Only set pagination if we got exactly the limit (suggesting there might be more)
-            if (serverItemsResponse.length === currentLimit) {
-              // We got a full page, so there might be more - but we don't know the total
-              // Set a minimum total to show pagination
-              pagination.setTotal(serverItemsResponse.length);
-              pagination.setTotalPages(1);
-              pagination.setHasNext(true); // Assume there might be more
-              pagination.setHasPrev(currentPage > 1);
-            } else {
-              // We got less than a full page, so this is likely all items
-              pagination.setTotal(serverItemsResponse.length);
-              pagination.setTotalPages(1);
-              pagination.setHasNext(false);
-              pagination.setHasPrev(false);
-            }
-          }
-          
-          setFoodItems(serverItems);
-
-          // Update IndexedDB using repository
-          if (foodItemsRepository) {
-            const itemsToSync = serverItems.map((item) => ({
-              id: item.id,
-              tenantId: user.tenantId,
-              name: item.name || (item as any).nameEn || (item as any).nameAr || '',
-              description: item.description || (item as any).descriptionEn || (item as any).descriptionAr || '',
-              imageUrl: item.imageUrl,
-              categoryId: item.categoryId,
-              basePrice: item.basePrice,
-              stockType: item.stockType,
-              stockQuantity: item.stockQuantity,
-              menuType: item.menuType, // Legacy field, no default - show "-" if not set
-              menuTypes: item.menuTypes || (item.menuType ? [item.menuType] : []),
-              ageLimit: item.ageLimit,
-              displayOrder: item.displayOrder,
-              isActive: item.isActive,
-              createdAt: item.createdAt,
-              updatedAt: item.updatedAt,
-              lastSynced: new Date().toISOString(),
-              syncStatus: 'synced' as const,
-            } as any));
-            
-            await foodItemsRepository.bulkPut(itemsToSync);
-          }
-
-          // Save variations, labels, discounts, and add-on groups for each item
-          for (const item of serverItems) {
-            // Save variations
-            if (item.variations && item.variations.length > 0) {
-              // Delete existing variations
-              await db.foodItemVariations.where('foodItemId').equals(item.id).delete();
-              
-              // Resolve variation group names from UUIDs if needed
-              const allVariationGroups = await db.variationGroups.toArray();
-              const resolvedVariations = item.variations.map((v) => {
-                // Check if variationGroup is a UUID
-                const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v.variationGroup || '');
-                let variationGroup = v.variationGroup;
-                if (isUUID && v.variationGroup) {
-                  const group = allVariationGroups.find((g) => g.id === v.variationGroup);
-                  if (group) {
-                    variationGroup = group.name;
-                  }
-                }
-                
-                return {
-                  id: v.id || `${item.id}-var-${Date.now()}-${Math.random()}`,
-                  foodItemId: item.id,
-                  tenantId: user.tenantId,
-                  variationGroup: variationGroup,
-                  variationName: v.variationName,
-                  priceAdjustment: v.priceAdjustment,
-                  stockQuantity: v.stockQuantity,
-                  displayOrder: v.displayOrder || 0,
-                };
-              });
-              
-              // Add new variations
-              await db.foodItemVariations.bulkAdd(resolvedVariations);
-            }
-
-            // Save labels
-            if (item.labels && item.labels.length > 0) {
-              // Delete existing labels
-              await db.foodItemLabels.where('foodItemId').equals(item.id).delete();
-              // Add new labels
-              await db.foodItemLabels.bulkAdd(
-                item.labels.map((label, idx) => ({
-                  id: `${item.id}-label-${idx}`,
-                  foodItemId: item.id,
-                  tenantId: user.tenantId,
-                  label,
-                }))
-              );
-            }
-
-            // Save discounts
-            if (item.discounts && item.discounts.length > 0) {
-              // Delete existing discounts
-              await db.foodItemDiscounts.where('foodItemId').equals(item.id).delete();
-              // Add new discounts
-              await db.foodItemDiscounts.bulkAdd(
-                item.discounts.map((d) => ({
-                  id: d.id || `${item.id}-discount-${Date.now()}-${Math.random()}`,
-                  foodItemId: item.id,
-                  tenantId: user.tenantId,
-                  discountType: d.discountType,
-                  discountValue: d.discountValue,
-                  startDate: d.startDate,
-                  endDate: d.endDate,
-                  reason: d.reason,
-                  isActive: d.isActive ?? true,
-                }))
-              );
-            }
-
-            // Save add-on groups
-            if (item.addOnGroupIds && item.addOnGroupIds.length > 0) {
-              // Delete existing add-on groups
-              await db.foodItemAddOnGroups.where('foodItemId').equals(item.id).delete();
-              // Add new add-on groups
-              await db.foodItemAddOnGroups.bulkAdd(
-                item.addOnGroupIds.map((groupId) => ({
-                  id: `${item.id}-addon-${groupId}`,
-                  foodItemId: item.id,
-                  tenantId: user.tenantId,
-                  addOnGroupId: groupId,
-                }))
-              );
-            }
-          }
-        } catch (err) {
-          console.warn('Failed to sync food items from server:', err);
-          // Fallback to IndexedDB on error using repository
-          const localItems = foodItemsRepository 
-            ? await foodItemsRepository.findAll()
-            : [];
-          
-          const itemsWithRelations = await Promise.all(
-            localItems.map(async (item) => {
-              const [variations, labels, discounts, addOnGroups] = await Promise.all([
-                db.foodItemVariations.where('foodItemId').equals(item.id).toArray(),
-                db.foodItemLabels.where('foodItemId').equals(item.id).toArray(),
-                db.foodItemDiscounts.where('foodItemId').equals(item.id).toArray(),
-                db.foodItemAddOnGroups.where('foodItemId').equals(item.id).toArray(),
-              ]);
-
-              return {
-                id: item.id,
-                name: (item as any).name || (item as any).nameEn || (item as any).nameAr || '',
-                description: (item as any).description || (item as any).descriptionEn || (item as any).descriptionAr || '',
-                imageUrl: item.imageUrl,
-                categoryId: item.categoryId,
-                basePrice: item.basePrice,
-                stockType: item.stockType,
-                stockQuantity: item.stockQuantity,
-                menuType: item.menuType, // No default - show "-" if not set
-                menuTypes: item.menuTypes || (item.menuType ? [item.menuType] : []),
-                ageLimit: item.ageLimit,
-                displayOrder: item.displayOrder,
-                isActive: item.isActive,
-                createdAt: item.createdAt,
-                updatedAt: item.updatedAt,
-                variations: variations.map((v) => ({
-                  id: v.id,
-                  variationGroup: v.variationGroup,
-                  variationName: v.variationName,
-                  priceAdjustment: v.priceAdjustment,
-                  stockQuantity: v.stockQuantity,
-                  displayOrder: v.displayOrder,
-                })),
-                labels: labels.map((l) => l.label),
-                addOnGroupIds: addOnGroups.map((g) => g.addOnGroupId),
-                discounts: discounts.map((d) => ({
-                  id: d.id,
-                  discountType: d.discountType,
-                  discountValue: d.discountValue,
-                  startDate: d.startDate,
-                  endDate: d.endDate,
-                  reason: d.reason,
-                  isActive: d.isActive,
-                })),
-              };
-            })
-          );
-          
-          // Apply search filter if provided
-          let filteredItems = itemsWithRelations;
-          if (currentSearch && currentSearch.trim()) {
-            const searchLower = currentSearch.toLowerCase();
-            filteredItems = itemsWithRelations.filter((item) => {
-              const name = (item.name || '').toLowerCase();
-              const description = (item.description || '').toLowerCase();
-              return name.includes(searchLower) || description.includes(searchLower);
-            });
-          }
-          
-          // Apply local pagination
-          const startIndex = (currentPage - 1) * currentLimit;
-          const endIndex = startIndex + currentLimit;
-          const paginatedItems = filteredItems.slice(startIndex, endIndex);
-          
-          setFoodItems(paginatedItems);
-          // Set pagination info for offline mode
-          pagination.setTotal(filteredItems.length);
-          pagination.setTotalPages(Math.ceil(filteredItems.length / currentLimit));
-          pagination.setHasNext(endIndex < filteredItems.length);
-          pagination.setHasPrev(currentPage > 1);
-        }
-      } else {
-        // Offline mode - load from IndexedDB with local pagination using repository
-        const localItems = foodItemsRepository 
-          ? await foodItemsRepository.findAll()
-          : [];
-        
-        const itemsWithRelations = await Promise.all(
-          localItems.map(async (item) => {
-            const [variations, labels, discounts, addOnGroups] = await Promise.all([
-              db.foodItemVariations.where('foodItemId').equals(item.id).toArray(),
-              db.foodItemLabels.where('foodItemId').equals(item.id).toArray(),
-              db.foodItemDiscounts.where('foodItemId').equals(item.id).toArray(),
-              db.foodItemAddOnGroups.where('foodItemId').equals(item.id).toArray(),
-            ]);
-
-            return {
-              id: item.id,
-              name: (item as any).name || (item as any).nameEn || (item as any).nameAr || '',
-              description: (item as any).description || (item as any).descriptionEn || (item as any).descriptionAr || '',
-              imageUrl: item.imageUrl,
-              categoryId: item.categoryId,
-              basePrice: item.basePrice,
-              stockType: item.stockType,
-              stockQuantity: item.stockQuantity,
-              menuType: item.menuType, // No default - show "-" if not set
-              menuTypes: item.menuTypes || (item.menuType ? [item.menuType] : []),
-              ageLimit: item.ageLimit,
-              displayOrder: item.displayOrder,
-              isActive: item.isActive,
-              createdAt: item.createdAt,
-              updatedAt: item.updatedAt,
-              variations: variations.map((v) => ({
-                id: v.id,
-                variationGroup: v.variationGroup,
-                variationName: v.variationName,
-                priceAdjustment: v.priceAdjustment,
-                stockQuantity: v.stockQuantity,
-                displayOrder: v.displayOrder,
-              })),
-              labels: labels.map((l) => l.label),
-              addOnGroupIds: addOnGroups.map((g) => g.addOnGroupId),
-              discounts: discounts.map((d) => ({
-                id: d.id,
-                discountType: d.discountType,
-                discountValue: d.discountValue,
-                startDate: d.startDate,
-                endDate: d.endDate,
-                reason: d.reason,
-                isActive: d.isActive,
-              })),
-            };
-          })
-        );
-        
-          // Apply search filter if provided
-          let filteredItems = itemsWithRelations;
-          if (currentSearch && currentSearch.trim()) {
-            const searchLower = currentSearch.toLowerCase();
-          filteredItems = itemsWithRelations.filter((item) => {
-            const name = (item.name || '').toLowerCase();
-            const description = (item.description || '').toLowerCase();
-            return name.includes(searchLower) || description.includes(searchLower);
-          });
-        }
-        
-        // Apply local pagination
-        const startIndex = (currentPage - 1) * currentLimit;
-        const endIndex = startIndex + currentLimit;
-        const paginatedItems = filteredItems.slice(startIndex, endIndex);
-        
-        setFoodItems(paginatedItems);
-        // Set pagination info for offline mode
-        pagination.setTotal(filteredItems.length);
-        pagination.setTotalPages(Math.ceil(filteredItems.length / currentLimit));
-        pagination.setHasNext(endIndex < filteredItems.length);
-        pagination.setHasPrev(currentPage > 1);
-      }
+      
+      const serverItemsResponse = await menuApi.getFoodItems(undefined, {
+        page: currentPage,
+        limit: currentLimit,
+      }, currentSearch);
+      const serverItems = pagination.extractData(serverItemsResponse);
+      
+      // Extract pagination info from server response
+      pagination.extractPagination(serverItemsResponse);
+      
+      setFoodItems(serverItems);
     } catch (err: any) {
       setError(err.message || 'Failed to load data');
     } finally {
@@ -613,35 +298,19 @@ export function FoodItemsPage() {
     if (item) {
       setEditingItem(item);
       
-      // Load related data from IndexedDB to ensure we have the latest data
-      const [variations, labels, discounts, addOnGroups] = await Promise.all([
-        db.foodItemVariations.where('foodItemId').equals(item.id).toArray(),
-        db.foodItemLabels.where('foodItemId').equals(item.id).toArray(),
-        db.foodItemDiscounts.where('foodItemId').equals(item.id).toArray(),
-        db.foodItemAddOnGroups.where('foodItemId').equals(item.id).toArray(),
-      ]);
-
-      // Resolve variation group names from UUIDs
-      const allVariationGroups = await db.variationGroups.toArray();
-      const variationsWithResolvedNames = variations.map((v) => {
-        // Check if variationGroup is a UUID (looks like a UUID pattern)
-        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v.variationGroup || '');
-        if (isUUID && v.variationGroup) {
-          const group = allVariationGroups.find((g) => g.id === v.variationGroup);
-          if (group) {
-            return { ...v, variationGroup: group.name };
-          }
-        }
-        return v;
-      });
+      // Use variations, labels, discounts, and addOnGroupIds from the item (API should return these)
+      const variations = item.variations || [];
+      const labels = item.labels || [];
+      const discounts = item.discounts || [];
+      const addOnGroupIds = item.addOnGroupIds || [];
 
       // Use menuTypes from item if available, otherwise fallback to legacy menuType
       const menuTypes = item.menuTypes && item.menuTypes.length > 0 
         ? item.menuTypes 
         : (item.menuType ? [item.menuType] : []);
 
-      // Extract unique variation groups from existing variations (using resolved names)
-      const uniqueVariationGroups = Array.from(new Set(variationsWithResolvedNames.map((v) => v.variationGroup))).filter(Boolean);
+      // Extract unique variation groups from existing variations
+      const uniqueVariationGroups = Array.from(new Set(variations.map((v) => v.variationGroup))).filter(Boolean);
       
       // Find variation group IDs by name
       const variationGroupIds = uniqueVariationGroups
@@ -661,7 +330,7 @@ export function FoodItemsPage() {
         menuTypes: menuTypes,
         ageLimit: item.ageLimit,
         imageUrl: item.imageUrl || '',
-        variations: variationsWithResolvedNames.map((v) => ({
+        variations: variations.map((v) => ({
           id: v.id,
           variationGroup: v.variationGroup,
           variationName: v.variationName,
@@ -669,9 +338,14 @@ export function FoodItemsPage() {
           stockQuantity: v.stockQuantity,
           displayOrder: v.displayOrder,
         })),
-        variationGroupIds: variationGroupIds,
-        labels: labels.map((l) => l.label),
-        addOnGroupIds: addOnGroups.map((g) => g.addOnGroupId),
+        variationGroupIds: uniqueVariationGroups
+          .map((groupName) => {
+            const group = variationGroups.find((g) => g.name === groupName);
+            return group?.id;
+          })
+          .filter((id): id is string => !!id),
+        labels: labels,
+        addOnGroupIds: addOnGroupIds,
         discounts: discounts.map((d) => ({
           id: d.id,
           discountType: d.discountType,
@@ -792,11 +466,6 @@ export function FoodItemsPage() {
       setUploadingImage(true);
       const updated = await menuApi.uploadFoodItemImage(editingItem.id, file);
       
-      if (foodItemsRepository) {
-        await foodItemsRepository.update(editingItem.id, {
-          imageUrl: updated.imageUrl,
-        } as Partial<FoodItem>);
-      }
 
       form.setFieldValue('imageUrl', updated.imageUrl || '');
       setImagePreview(updated.imageUrl || null);
@@ -880,84 +549,7 @@ export function FoodItemsPage() {
         if (wasEditing && currentEditingItem) {
           savedItem = await menuApi.updateFoodItem(currentEditingItem.id, itemData);
         
-          if (foodItemsRepository) {
-            await foodItemsRepository.update(currentEditingItem.id, {
-              ...itemData,
-              lastSynced: new Date().toISOString(),
-              syncStatus: 'synced',
-            } as Partial<FoodItem>);
-          }
 
-          // Save variations
-          if (values.variations && values.variations.length > 0) {
-            await db.foodItemVariations.where('foodItemId').equals(currentEditingItem.id).delete();
-            await db.foodItemVariations.bulkAdd(
-              values.variations.map((v) => ({
-                id: v.id || `${currentEditingItem.id}-var-${Date.now()}-${Math.random()}`,
-                foodItemId: currentEditingItem.id,
-                tenantId: user.tenantId,
-                variationGroup: v.variationGroup,
-                variationName: v.variationName,
-                priceAdjustment: v.priceAdjustment,
-                stockQuantity: v.stockQuantity,
-                displayOrder: v.displayOrder || 0,
-              }))
-            );
-          } else {
-            await db.foodItemVariations.where('foodItemId').equals(currentEditingItem.id).delete();
-          }
-
-          // Save labels
-          if (values.labels && values.labels.length > 0) {
-            await db.foodItemLabels.where('foodItemId').equals(currentEditingItem.id).delete();
-            await db.foodItemLabels.bulkAdd(
-              values.labels.map((label, idx) => ({
-                id: `${currentEditingItem.id}-label-${idx}`,
-                foodItemId: currentEditingItem.id,
-                tenantId: user.tenantId,
-                label,
-              }))
-            );
-          } else {
-            await db.foodItemLabels.where('foodItemId').equals(currentEditingItem.id).delete();
-          }
-
-          // Save discounts
-          if (values.discounts && values.discounts.length > 0) {
-            await db.foodItemDiscounts.where('foodItemId').equals(currentEditingItem.id).delete();
-            await db.foodItemDiscounts.bulkAdd(
-              values.discounts.map((d) => ({
-                id: d.id || `${currentEditingItem.id}-discount-${Date.now()}-${Math.random()}`,
-                foodItemId: currentEditingItem.id,
-                tenantId: user.tenantId,
-                discountType: d.discountType,
-                discountValue: d.discountValue,
-                startDate: d.startDate,
-                endDate: d.endDate,
-                reason: d.reason,
-                isActive: d.isActive ?? true,
-              }))
-            );
-          } else {
-            await db.foodItemDiscounts.where('foodItemId').equals(currentEditingItem.id).delete();
-          }
-
-          // Save add-on groups
-          if (values.addOnGroupIds && values.addOnGroupIds.length > 0) {
-            await db.foodItemAddOnGroups.where('foodItemId').equals(currentEditingItem.id).delete();
-            await db.foodItemAddOnGroups.bulkAdd(
-              values.addOnGroupIds.map((groupId) => ({
-                id: `${currentEditingItem.id}-addon-${groupId}`,
-                foodItemId: currentEditingItem.id,
-                tenantId: user.tenantId,
-                addOnGroupId: groupId,
-              }))
-            );
-          } else {
-            await db.foodItemAddOnGroups.where('foodItemId').equals(currentEditingItem.id).delete();
-          }
-
-          await syncService.queueChange('foodItems', 'UPDATE', currentEditingItem.id, savedItem);
       } else {
         savedItem = await menuApi.createFoodItem(itemData);
           
@@ -973,81 +565,6 @@ export function FoodItemsPage() {
             }
           }
         
-        if (foodItemsRepository) {
-          await foodItemsRepository.create({
-            id: savedItem.id,
-            tenantId: user.tenantId,
-            ...itemData,
-            menuType: savedItem.menuType, // Legacy field, no default
-            menuTypes: savedItem.menuTypes || [], // Array of menu types
-            imageUrl: savedItem.imageUrl,
-            displayOrder: savedItem.displayOrder,
-            isActive: savedItem.isActive,
-            createdAt: savedItem.createdAt,
-            updatedAt: savedItem.updatedAt,
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced',
-          } as any);
-        }
-
-          // Save variations
-          if (values.variations && values.variations.length > 0) {
-            await db.foodItemVariations.bulkAdd(
-              values.variations.map((v) => ({
-                id: v.id || `${savedItem.id}-var-${Date.now()}-${Math.random()}`,
-                foodItemId: savedItem.id,
-                tenantId: user.tenantId,
-                variationGroup: v.variationGroup,
-                variationName: v.variationName,
-                priceAdjustment: v.priceAdjustment,
-                stockQuantity: v.stockQuantity,
-                displayOrder: v.displayOrder || 0,
-              }))
-            );
-          }
-
-          // Save labels
-          if (values.labels && values.labels.length > 0) {
-            await db.foodItemLabels.bulkAdd(
-              values.labels.map((label, idx) => ({
-                id: `${savedItem.id}-label-${idx}`,
-                foodItemId: savedItem.id,
-                tenantId: user.tenantId,
-                label,
-              }))
-            );
-          }
-
-          // Save discounts
-          if (values.discounts && values.discounts.length > 0) {
-            await db.foodItemDiscounts.bulkAdd(
-              values.discounts.map((d) => ({
-                id: d.id || `${savedItem.id}-discount-${Date.now()}-${Math.random()}`,
-                foodItemId: savedItem.id,
-                tenantId: user.tenantId,
-                discountType: d.discountType,
-                discountValue: d.discountValue,
-                startDate: d.startDate,
-                endDate: d.endDate,
-                reason: d.reason,
-                isActive: d.isActive ?? true,
-              }))
-            );
-          }
-
-          // Save add-on groups
-          if (values.addOnGroupIds && values.addOnGroupIds.length > 0) {
-            await db.foodItemAddOnGroups.bulkAdd(
-              values.addOnGroupIds.map((groupId) => ({
-                id: `${savedItem.id}-addon-${groupId}`,
-                foodItemId: savedItem.id,
-                tenantId: user.tenantId,
-                addOnGroupId: groupId,
-              }))
-            );
-          }
-
-        await syncService.queueChange('foodItems', 'CREATE', savedItem.id, savedItem);
       }
 
       notifications.show({
@@ -1085,11 +602,6 @@ export function FoodItemsPage() {
         try {
           await menuApi.deleteFoodItem(item.id);
           
-          if (foodItemsRepository) {
-            await foodItemsRepository.delete(item.id);
-          }
-
-          await syncService.queueChange('foodItems', 'DELETE', item.id, item);
 
           notifications.show({
             title: t('common.success' as any, language) || 'Success',

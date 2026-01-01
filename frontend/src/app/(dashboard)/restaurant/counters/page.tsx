@@ -25,13 +25,10 @@ import { IconPlus, IconEdit, IconTrash, IconCheck, IconAlertCircle } from '@tabl
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { restaurantApi, Counter, CreateCounterDto, UpdateCounterDto } from '@/lib/api/restaurant';
-import { db } from '@/lib/indexeddb/database';
-import { syncService } from '@/lib/sync/sync-service';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors } from '@/lib/hooks/use-theme-colors';
 import { useErrorColor, useSuccessColor, useInfoColor } from '@/lib/hooks/use-theme-colors';
-import { generateUUID } from '@/lib/utils/uuid';
 
 export default function CountersPage() {
   const { language } = useLanguageStore();
@@ -68,34 +65,18 @@ export default function CountersPage() {
       setLoading(true);
       setError(null);
 
-      // Load branches first
-      if (navigator.onLine) {
-        try {
-          const branchesData = await restaurantApi.getBranches();
-          setBranches(
-            branchesData.map((b) => ({
-              value: b.id,
-              label: `${b.name} (${b.code})`,
-            }))
-          );
-        } catch (err) {
-          console.warn('Failed to load branches:', err);
-        }
-      }
+      // Load branches
+      const branchesData = await restaurantApi.getBranches();
+      setBranches(
+        branchesData.map((b) => ({
+          value: b.id,
+          label: `${b.name} (${b.code})`,
+        }))
+      );
 
-      // Load counters from IndexedDB first
-      // Note: We don't have a counters table in IndexedDB yet, so we'll work with API only for now
-      // In a full implementation, you'd add counters to IndexedDB
-
-      // Load from server if online
-      if (navigator.onLine) {
-        try {
-          const serverCounters = await restaurantApi.getCounters();
-          setCounters(serverCounters);
-        } catch (err: any) {
-          console.warn('Failed to load from server:', err);
-        }
-      }
+      // Load counters
+      const counters = await restaurantApi.getCounters();
+      setCounters(counters);
     } catch (err: any) {
       setError(err.message || 'Failed to load counters');
     } finally {
@@ -128,64 +109,24 @@ export default function CountersPage() {
           name: values.name,
           code: values.code,
         };
-
-        // Queue sync
-        await syncService.queueChange('counters', 'UPDATE', editingCounter.id, updateData);
-
-        // Try to sync immediately if online
-        if (navigator.onLine) {
-          try {
-            await restaurantApi.updateCounter(editingCounter.id, updateData);
-            notifications.show({
-              title: 'Success',
-              message: 'Counter updated successfully',
-              color: notificationColors.success,
-              icon: <IconCheck size={16} />,
-            });
-          } catch (err: any) {
-            notifications.show({
-              title: 'Saved Locally',
-              message: 'Changes saved locally and will sync when online',
-              color: notificationColors.info,
-            });
-          }
-        } else {
-          notifications.show({
-            title: 'Saved Locally',
-            message: 'Changes saved locally and will sync when online',
-            color: notificationColors.info,
-          });
-        }
+        await restaurantApi.updateCounter(editingCounter.id, updateData);
+        
+        notifications.show({
+          title: 'Success',
+          message: 'Counter updated successfully',
+          color: notificationColors.success,
+          icon: <IconCheck size={16} />,
+        });
       } else {
         // Create counter
-        // Queue sync
-        const newId = generateUUID();
-        await syncService.queueChange('counters', 'CREATE', newId, values);
-
-        // Try to sync immediately if online
-        if (navigator.onLine) {
-          try {
-            await restaurantApi.createCounter(values);
-            notifications.show({
-              title: 'Success',
-              message: 'Counter created successfully',
-              color: notificationColors.success,
-              icon: <IconCheck size={16} />,
-            });
-          } catch (err: any) {
-            notifications.show({
-              title: 'Saved Locally',
-              message: 'Counter saved locally and will sync when online',
-              color: notificationColors.info,
-            });
-          }
-        } else {
-          notifications.show({
-            title: 'Saved Locally',
-            message: 'Counter saved locally and will sync when online',
-            color: notificationColors.info,
-          });
-        }
+        await restaurantApi.createCounter(values);
+        
+        notifications.show({
+          title: 'Success',
+          message: 'Counter created successfully',
+          color: notificationColors.success,
+          icon: <IconCheck size={16} />,
+        });
       }
 
       setOpened(false);
@@ -214,33 +155,14 @@ export default function CountersPage() {
       confirmProps: { color: errorColor },
       onConfirm: async () => {
         try {
-          // Queue sync
-          await syncService.queueChange('counters', 'DELETE', counter.id, {});
-
-          // Try to sync immediately if online
-          if (navigator.onLine) {
-            try {
-              await restaurantApi.deleteCounter(counter.id);
-              notifications.show({
-                title: 'Success',
-                message: 'Counter deleted successfully',
-                color: notificationColors.success,
-                icon: <IconCheck size={16} />,
-              });
-            } catch (err: any) {
-              notifications.show({
-                title: 'Queued for Deletion',
-                message: 'Counter will be deleted when online',
-                color: notificationColors.info,
-              });
-            }
-          } else {
-            notifications.show({
-              title: 'Queued for Deletion',
-              message: 'Counter will be deleted when online',
-              color: notificationColors.info,
-            });
-          }
+          await restaurantApi.deleteCounter(counter.id);
+          
+          notifications.show({
+            title: 'Success',
+            message: 'Counter deleted successfully',
+            color: notificationColors.success,
+            icon: <IconCheck size={16} />,
+          });
 
           loadData();
         } catch (err: any) {

@@ -29,14 +29,11 @@ import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getSuccessColor, getErrorColor, getBadgeColorForText } from '@/lib/utils/theme';
-import { db } from '@/lib/indexeddb/database';
-import { useSyncStatus } from '@/lib/hooks/use-sync-status';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
 
 export default function TaxesPage() {
   const language = useLanguageStore((state) => state.language);
   const themeColor = useThemeColor();
-  const { isOnline } = useSyncStatus();
   const [loading, setLoading] = useState(true);
   const [taxes, setTaxes] = useState<Tax[]>([]);
   const [categories, setCategories] = useState<Array<{ value: string; label: string }>>([]);
@@ -66,46 +63,7 @@ export default function TaxesPage() {
   const loadTaxes = useCallback(async () => {
     try {
       setLoading(true);
-      let data: Tax[];
-      if (isOnline) {
-        data = await taxesApi.getTaxes();
-        // Cache in IndexedDB
-        for (const tax of data) {
-          await db.taxes.put({
-            id: tax.id,
-            tenantId: tax.tenantId,
-            name: tax.name,
-            taxCode: tax.taxCode,
-            rate: tax.rate,
-            isActive: tax.isActive,
-            appliesTo: tax.appliesTo,
-            appliesToDelivery: tax.appliesToDelivery,
-            appliesToServiceCharge: tax.appliesToServiceCharge,
-            categoryIds: tax.categoryIds || [],
-            foodItemIds: tax.foodItemIds || [],
-            createdAt: tax.createdAt,
-            updatedAt: tax.updatedAt,
-            syncStatus: 'synced',
-          });
-        }
-      } else {
-        const cached = await db.taxes.toArray();
-        data = cached.map((tax) => ({
-          id: tax.id,
-          tenantId: tax.tenantId,
-          name: tax.name,
-          taxCode: tax.taxCode,
-          rate: tax.rate,
-          isActive: tax.isActive,
-          appliesTo: tax.appliesTo,
-          appliesToDelivery: tax.appliesToDelivery,
-          appliesToServiceCharge: tax.appliesToServiceCharge,
-          categoryIds: tax.categoryIds || [],
-          foodItemIds: tax.foodItemIds || [],
-          createdAt: tax.createdAt,
-          updatedAt: tax.updatedAt,
-        }));
-      }
+      const data = await taxesApi.getTaxes();
       setTaxes(data);
     } catch (error: any) {
       notifications.show({
@@ -117,7 +75,7 @@ export default function TaxesPage() {
     } finally {
       setLoading(false);
     }
-  }, [isOnline, language]);
+  }, [language]);
 
   const loadCategories = useCallback(async () => {
     try {

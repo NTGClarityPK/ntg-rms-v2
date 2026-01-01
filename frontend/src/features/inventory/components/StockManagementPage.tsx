@@ -42,8 +42,6 @@ import {
   AdjustStockDto,
   TransferStockDto,
 } from '@/lib/api/inventory';
-import { db } from '@/lib/indexeddb/database';
-import { syncService } from '@/lib/sync/sync-service';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useBranchStore } from '@/lib/store/branch-store';
@@ -52,8 +50,7 @@ import { useInventoryRefresh } from '@/lib/contexts/inventory-refresh-context';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getBadgeColorForText } from '@/lib/utils/theme';
-import { restaurantApi } from '@/lib/api/restaurant';
-import { Branch } from '@/lib/indexeddb/database';
+import { restaurantApi, Branch } from '@/lib/api/restaurant';
 import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
 import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
@@ -182,118 +179,31 @@ export function StockManagementPage() {
     if (!user?.tenantId) return;
 
     try {
-      // Load from IndexedDB first
-      const localIngredients = await db.ingredients
-        .where('tenantId')
-        .equals(user.tenantId)
-        .filter((ing) => !ing.deletedAt && ing.isActive)
-        .toArray();
+      // Fetch all pages of ingredients
+      let allServerIngredients: Ingredient[] = [];
+      let page = 1;
+      const limit = 100; // Fetch 100 items per page
+      let hasMore = true;
 
-      // Deduplicate by ID first, then by nameEn
-      const byId = new Map(localIngredients.map(ing => [ing.id, ing]));
-      const byName = new Map<string, typeof localIngredients[0]>();
-      
-      for (const ing of Array.from(byId.values())) {
-        const key = ((ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '').toLowerCase().trim();
-        if (key) {
-          const existing = byName.get(key);
-          if (!existing || new Date(ing.updatedAt || ing.createdAt || '') > new Date(existing.updatedAt || existing.createdAt || '')) {
-            byName.set(key, ing);
-          }
+      while (hasMore) {
+        const serverIngredientsResponse = await inventoryApi.getIngredients(
+          { isActive: true },
+          { page, limit }
+        );
+
+        if (isPaginatedResponse(serverIngredientsResponse)) {
+          // Handle paginated response
+          allServerIngredients = [...allServerIngredients, ...serverIngredientsResponse.data];
+          hasMore = serverIngredientsResponse.pagination.hasNext;
+          page++;
+        } else {
+          // Handle non-paginated response (array)
+          allServerIngredients = serverIngredientsResponse;
+          hasMore = false;
         }
       }
       
-      const uniqueIngredients = byName.size < byId.size 
-        ? Array.from(byName.values())
-        : Array.from(byId.values());
-
-      setIngredients(uniqueIngredients.map((ing) => ({
-        id: ing.id,
-        tenantId: ing.tenantId,
-        name: (ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '',
-        category: ing.category,
-        unitOfMeasurement: ing.unitOfMeasurement,
-        currentStock: ing.currentStock,
-        minimumThreshold: ing.minimumThreshold,
-        costPerUnit: ing.costPerUnit,
-        storageLocation: ing.storageLocation,
-        isActive: ing.isActive,
-        createdAt: ing.createdAt,
-        updatedAt: ing.updatedAt,
-      })));
-
-      // Sync from server if online
-      if (navigator.onLine) {
-        try {
-          // Fetch all pages of ingredients
-          let allServerIngredients: Ingredient[] = [];
-          let page = 1;
-          const limit = 100; // Fetch 100 items per page
-          let hasMore = true;
-
-          while (hasMore) {
-            const serverIngredientsResponse = await inventoryApi.getIngredients(
-              { isActive: true },
-              { page, limit }
-            );
-
-            if (isPaginatedResponse(serverIngredientsResponse)) {
-              // Handle paginated response
-              allServerIngredients = [...allServerIngredients, ...serverIngredientsResponse.data];
-              hasMore = serverIngredientsResponse.pagination.hasNext;
-              page++;
-            } else {
-              // Handle non-paginated response (array)
-              allServerIngredients = serverIngredientsResponse;
-              hasMore = false;
-            }
-          }
-          
-          // Deduplicate server ingredients
-          const serverById = new Map(allServerIngredients.map((ing: Ingredient) => [ing.id, ing]));
-          const serverByName = new Map<string, Ingredient>();
-          
-          for (const ing of Array.from(serverById.values())) {
-            const key = ((ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '').toLowerCase().trim();
-            if (key) {
-              const existing = serverByName.get(key);
-              if (!existing || new Date(ing.updatedAt) > new Date(existing.updatedAt)) {
-                serverByName.set(key, ing);
-              }
-            }
-          }
-          
-          const uniqueServerIngredients = serverByName.size < serverById.size 
-            ? Array.from(serverByName.values())
-            : Array.from(serverById.values());
-          
-          setIngredients(uniqueServerIngredients);
-
-          // Update IndexedDB using bulkPut
-          const ingredientsToStore = uniqueServerIngredients.map(ing => ({
-            id: ing.id,
-            tenantId: user.tenantId,
-            name: ing.name,
-            category: ing.category,
-            unitOfMeasurement: ing.unitOfMeasurement,
-            currentStock: ing.currentStock,
-            minimumThreshold: ing.minimumThreshold,
-            costPerUnit: ing.costPerUnit,
-            storageLocation: ing.storageLocation,
-            isActive: ing.isActive,
-            createdAt: ing.createdAt,
-            updatedAt: ing.updatedAt,
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced' as const,
-          }));
-          
-          if (ingredientsToStore.length > 0) {
-            await db.ingredients.bulkPut(ingredientsToStore as any);
-          }
-        } catch (err: any) {
-          console.warn('Failed to sync ingredients from server:', err);
-        }
-      }
+      setIngredients(allServerIngredients);
     } catch (err: any) {
       console.error('Failed to load ingredients:', err);
     }
@@ -303,22 +213,8 @@ export function StockManagementPage() {
     if (!user?.tenantId) return;
 
     try {
-      const localBranches = await db.branches
-        .where('tenantId')
-        .equals(user.tenantId)
-        .filter((b) => !b.deletedAt && b.isActive)
-        .toArray();
-
-      setBranches(localBranches);
-
-      if (navigator.onLine) {
-        try {
-          const serverBranches = await restaurantApi.getBranches();
-          setBranches(serverBranches as any);
-        } catch (err: any) {
-          console.warn('Failed to sync branches from server:', err);
-        }
-      }
+      const serverBranches = await restaurantApi.getBranches();
+      setBranches(serverBranches as any);
     } catch (err: any) {
       console.error('Failed to load branches:', err);
     }
@@ -330,125 +226,17 @@ export function StockManagementPage() {
     try {
       setTransactionsLoading(true);
 
-      // Load from IndexedDB first
-      const localTransactions = await db.stockTransactions
-        .where('tenantId')
-        .equals(user.tenantId)
-        .toArray();
+      const filters: any = {};
+      if (ingredientFilter) filters.ingredientId = ingredientFilter;
+      if (selectedBranchId) filters.branchId = selectedBranchId;
+      if (startDate) filters.startDate = startDate.toISOString().split('T')[0];
+      if (endDate) filters.endDate = endDate.toISOString().split('T')[0];
 
-      // Load ingredients to populate transaction ingredient data
-      const allIngredients = await db.ingredients
-        .where('tenantId')
-        .equals(user.tenantId)
-        .toArray();
-
-      const ingredientMap = new Map(allIngredients.map(ing => [ing.id, ing]));
-
-      // Apply filters to local transactions
-      let filteredTransactions = localTransactions;
-      if (ingredientFilter) {
-        filteredTransactions = filteredTransactions.filter(tx => tx.ingredientId === ingredientFilter);
-      }
-      if (selectedBranchId) {
-        filteredTransactions = filteredTransactions.filter(tx => tx.branchId === selectedBranchId);
-      }
-      if (startDate) {
-        filteredTransactions = filteredTransactions.filter(tx => {
-          const txDate = new Date(tx.transactionDate);
-          return txDate >= startDate;
-        });
-      }
-      if (endDate) {
-        filteredTransactions = filteredTransactions.filter(tx => {
-          const txDate = new Date(tx.transactionDate);
-          return txDate <= endDate;
-        });
-      }
-
-      // Apply local pagination
-      const totalItems = filteredTransactions.length;
-      const startIndex = (transactionsPagination.page - 1) * transactionsPagination.limit;
-      const endIndex = startIndex + transactionsPagination.limit;
-      const paginatedTransactions = filteredTransactions.slice(startIndex, endIndex);
-
-      setTransactions(paginatedTransactions.map((tx) => {
-        const ingredient = ingredientMap.get(tx.ingredientId);
-        return {
-          id: tx.id,
-          tenantId: tx.tenantId,
-          branchId: tx.branchId,
-          ingredientId: tx.ingredientId,
-          transactionType: tx.transactionType,
-          quantity: tx.quantity,
-          unitCost: tx.unitCost,
-          totalCost: tx.totalCost,
-          reason: tx.reason,
-          supplierName: tx.supplierName,
-          invoiceNumber: tx.invoiceNumber,
-          referenceId: tx.referenceId,
-          transactionDate: tx.transactionDate,
-          createdAt: tx.createdAt,
-          createdBy: tx.createdBy,
-          ingredient: ingredient as Ingredient | undefined,
-        };
-      }));
+      const serverTransactionsResponse = await inventoryApi.getStockTransactions(filters, transactionsPagination.paginationParams);
+      const serverTransactions = transactionsPagination.extractData(serverTransactionsResponse);
+      transactionsPagination.extractPagination(serverTransactionsResponse);
       
-      // Update pagination info for local pagination (as fallback, will be updated from server if online)
-      transactionsPagination.setTotal(totalItems);
-      transactionsPagination.setTotalPages(Math.ceil(totalItems / transactionsPagination.limit));
-      transactionsPagination.setHasNext(endIndex < totalItems);
-      transactionsPagination.setHasPrev(transactionsPagination.page > 1);
-
-      // Sync from server if online
-      if (navigator.onLine) {
-        try {
-          const filters: any = {};
-          if (ingredientFilter) filters.ingredientId = ingredientFilter;
-          if (selectedBranchId) filters.branchId = selectedBranchId;
-          if (startDate) filters.startDate = startDate.toISOString().split('T')[0];
-          if (endDate) filters.endDate = endDate.toISOString().split('T')[0];
-
-          const serverTransactionsResponse = await inventoryApi.getStockTransactions(filters, transactionsPagination.paginationParams);
-          // Handle both paginated and non-paginated responses
-          const serverTransactions = transactionsPagination.extractData(serverTransactionsResponse);
-          const paginationInfo = transactionsPagination.extractPagination(serverTransactionsResponse);
-          
-          // If response is not paginated, set total from array length
-          if (!paginationInfo) {
-            transactionsPagination.setTotal(serverTransactions.length);
-            transactionsPagination.setTotalPages(Math.ceil(serverTransactions.length / transactionsPagination.limit));
-            transactionsPagination.setHasNext(false);
-            transactionsPagination.setHasPrev(false);
-          }
-          
-          setTransactions(serverTransactions);
-
-          // Update IndexedDB
-          for (const tx of serverTransactions) {
-            await db.stockTransactions.put({
-              id: tx.id,
-              tenantId: user.tenantId,
-              branchId: tx.branchId,
-              ingredientId: tx.ingredientId,
-              transactionType: tx.transactionType,
-              quantity: tx.quantity,
-              unitCost: tx.unitCost,
-              totalCost: tx.totalCost,
-              reason: tx.reason,
-              supplierName: tx.supplierName,
-              invoiceNumber: tx.invoiceNumber,
-              referenceId: tx.referenceId,
-              transactionDate: tx.transactionDate,
-              createdAt: tx.createdAt,
-              createdBy: tx.createdBy,
-              lastSynced: new Date().toISOString(),
-              syncStatus: 'synced',
-            });
-          }
-        } catch (err: any) {
-          console.warn('Failed to sync transactions from server:', err);
-        }
-      }
+      setTransactions(serverTransactions);
     } catch (err: any) {
       console.error('Failed to load transactions:', err);
     } finally {
@@ -500,64 +288,7 @@ export function StockManagementPage() {
     try {
       setError(null);
 
-      // Save to IndexedDB first (offline-first)
-      const tempId = `temp_${Date.now()}`;
-      const transactionData: any = {
-        id: tempId,
-        tenantId: user.tenantId,
-        branchId: values.branchId,
-        ingredientId: values.ingredientId,
-        transactionType: 'purchase',
-        quantity: values.quantity,
-        unitCost: values.unitCost,
-        totalCost: values.quantity * values.unitCost,
-        reason: values.reason || 'Stock purchase',
-        supplierName: values.supplierName,
-        invoiceNumber: values.invoiceNumber,
-        transactionDate: values.transactionDate || new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        syncStatus: 'pending' as const,
-      };
-
-      await db.stockTransactions.add(transactionData);
-
-      // Update ingredient stock locally
-      const ingredient = await db.ingredients.get(values.ingredientId);
-      if (ingredient) {
-        await db.ingredients.update(values.ingredientId, {
-          currentStock: ingredient.currentStock + values.quantity,
-          updatedAt: new Date().toISOString(),
-        });
-      }
-
-      // Try to sync if online
-      if (navigator.onLine) {
-        try {
-          const result = await inventoryApi.addStock(values);
-          
-          // Update transaction with server ID
-          await db.stockTransactions.update(tempId, {
-            id: result.id,
-            syncStatus: 'synced',
-            lastSynced: new Date().toISOString(),
-          });
-
-          // Update ingredient from server
-          const updatedIngredient = await inventoryApi.getIngredientById(values.ingredientId);
-          await db.ingredients.update(values.ingredientId, {
-            currentStock: updatedIngredient.currentStock,
-            updatedAt: updatedIngredient.updatedAt,
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced',
-          });
-
-          // Queue sync
-          // Note: Stock transactions are synced directly via API, no need to queue for sync
-        } catch (err: any) {
-          // Keep as pending, will sync later
-          console.warn('Failed to sync stock addition:', err);
-        }
-      }
+      await inventoryApi.addStock(values);
 
       notifications.show({
         title: t('common.success' as any, language) || 'Success',
@@ -587,7 +318,7 @@ export function StockManagementPage() {
       setError(null);
 
       // Check stock availability
-      const ingredient = await db.ingredients.get(values.ingredientId);
+      const ingredient = await inventoryApi.getIngredientById(values.ingredientId);
       if (!ingredient) {
         throw new Error('Ingredient not found');
       }
@@ -596,72 +327,7 @@ export function StockManagementPage() {
         throw new Error(t('inventory.insufficientStock', language));
       }
 
-      // Save to IndexedDB first (offline-first)
-      const tempId = `temp_${Date.now()}`;
-      const transactionData: any = {
-        id: tempId,
-        tenantId: user.tenantId,
-        branchId: values.branchId,
-        ingredientId: values.ingredientId,
-        transactionType: values.reason || 'usage', // Use reason as transaction type
-        quantity: -values.quantity,
-        reason: values.reason,
-        referenceId: values.referenceId,
-        transactionDate: values.transactionDate || new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        syncStatus: 'pending' as const,
-      };
-
-      await db.stockTransactions.add(transactionData);
-
-      // Update ingredient stock locally
-      await db.ingredients.update(values.ingredientId, {
-        currentStock: Math.max(0, ingredient.currentStock - values.quantity),
-        updatedAt: new Date().toISOString(),
-      });
-
-      // Try to sync if online
-      if (navigator.onLine) {
-        try {
-          const result = await inventoryApi.deductStock(values);
-          
-          // Update transaction with server ID and full data
-          await db.stockTransactions.update(tempId, {
-            id: result.id,
-            tenantId: result.tenantId,
-            branchId: result.branchId,
-            ingredientId: result.ingredientId,
-            transactionType: result.transactionType,
-            quantity: result.quantity,
-            unitCost: result.unitCost,
-            totalCost: result.totalCost,
-            reason: result.reason,
-            supplierName: result.supplierName,
-            invoiceNumber: result.invoiceNumber,
-            referenceId: result.referenceId,
-            transactionDate: result.transactionDate,
-            createdAt: result.createdAt,
-            createdBy: result.createdBy,
-            syncStatus: 'synced',
-            lastSynced: new Date().toISOString(),
-          });
-
-          // Update ingredient from server
-          const updatedIngredient = await inventoryApi.getIngredientById(values.ingredientId);
-          await db.ingredients.update(values.ingredientId, {
-            currentStock: updatedIngredient.currentStock,
-            updatedAt: updatedIngredient.updatedAt,
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced',
-          });
-
-          // Queue sync
-          // Note: Stock transactions are synced directly via API, no need to queue for sync
-        } catch (err: any) {
-          // Keep as pending, will sync later
-          console.warn('Failed to sync stock deduction:', err);
-        }
-      }
+      await inventoryApi.deductStock(values);
 
       notifications.show({
         title: t('common.success' as any, language) || 'Success',
@@ -690,65 +356,7 @@ export function StockManagementPage() {
     try {
       setError(null);
 
-      // Get current stock
-      const ingredient = await db.ingredients.get(values.ingredientId);
-      if (!ingredient) {
-        throw new Error('Ingredient not found');
-      }
-
-      const difference = values.newQuantity - ingredient.currentStock;
-
-      // Save to IndexedDB first (offline-first)
-      const tempId = `temp_${Date.now()}`;
-      const transactionData: any = {
-        id: tempId,
-        tenantId: user.tenantId,
-        branchId: values.branchId,
-        ingredientId: values.ingredientId,
-        transactionType: 'adjustment',
-        quantity: difference,
-        reason: values.reason,
-        transactionDate: values.transactionDate || new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        syncStatus: 'pending' as const,
-      };
-
-      await db.stockTransactions.add(transactionData);
-
-      // Update ingredient stock locally
-      await db.ingredients.update(values.ingredientId, {
-        currentStock: values.newQuantity,
-        updatedAt: new Date().toISOString(),
-      });
-
-      // Try to sync if online
-      if (navigator.onLine) {
-        try {
-          const result = await inventoryApi.adjustStock(values);
-          
-          // Update transaction with server ID
-          await db.stockTransactions.update(tempId, {
-            id: result.id,
-            syncStatus: 'synced',
-            lastSynced: new Date().toISOString(),
-          });
-
-          // Update ingredient from server
-          const updatedIngredient = await inventoryApi.getIngredientById(values.ingredientId);
-          await db.ingredients.update(values.ingredientId, {
-            currentStock: updatedIngredient.currentStock,
-            updatedAt: updatedIngredient.updatedAt,
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced',
-          });
-
-          // Queue sync
-          // Note: Stock transactions are synced directly via API, no need to queue for sync
-        } catch (err: any) {
-          // Keep as pending, will sync later
-          console.warn('Failed to sync stock adjustment:', err);
-        }
-      }
+      await inventoryApi.adjustStock(values);
 
       notifications.show({
         title: t('common.success' as any, language) || 'Success',
@@ -778,7 +386,7 @@ export function StockManagementPage() {
       setError(null);
 
       // Check stock availability
-      const ingredient = await db.ingredients.get(values.ingredientId);
+      const ingredient = await inventoryApi.getIngredientById(values.ingredientId);
       if (!ingredient) {
         throw new Error('Ingredient not found');
       }
@@ -787,63 +395,7 @@ export function StockManagementPage() {
         throw new Error(t('inventory.insufficientStock', language));
       }
 
-      // Save to IndexedDB first (offline-first)
-      const tempIdOut = `temp_out_${Date.now()}`;
-      const tempIdIn = `temp_in_${Date.now()}`;
-
-      const transferOutData: any = {
-        id: tempIdOut,
-        tenantId: user.tenantId,
-        branchId: values.fromBranchId,
-        ingredientId: values.ingredientId,
-        transactionType: 'transfer_out',
-        quantity: -values.quantity,
-        reason: values.reason || `Transfer to branch`,
-        transactionDate: values.transactionDate || new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        syncStatus: 'pending' as const,
-      };
-
-      const transferInData: any = {
-        id: tempIdIn,
-        tenantId: user.tenantId,
-        branchId: values.toBranchId,
-        ingredientId: values.ingredientId,
-        transactionType: 'transfer_in',
-        quantity: values.quantity,
-        reason: values.reason || `Transfer from branch`,
-        transactionDate: values.transactionDate || new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        syncStatus: 'pending' as const,
-      };
-
-      await db.stockTransactions.bulkAdd([transferOutData, transferInData]);
-
-      // Try to sync if online
-      if (navigator.onLine) {
-        try {
-          const result = await inventoryApi.transferStock(values);
-          
-          // Update transactions with server IDs
-          await db.stockTransactions.update(tempIdOut, {
-            id: result.transferOut.id,
-            syncStatus: 'synced',
-            lastSynced: new Date().toISOString(),
-          });
-
-          await db.stockTransactions.update(tempIdIn, {
-            id: result.transferIn.id,
-            syncStatus: 'synced',
-            lastSynced: new Date().toISOString(),
-          });
-
-          // Queue sync
-          // Note: Stock transactions are synced directly via API, no need to queue for sync
-        } catch (err: any) {
-          // Keep as pending, will sync later
-          console.warn('Failed to sync stock transfer:', err);
-        }
-      }
+      await inventoryApi.transferStock(values);
 
       notifications.show({
         title: t('common.success' as any, language) || 'Success',

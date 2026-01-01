@@ -1,10 +1,6 @@
 /**
  * Employees Feature Repositories
  * 
- * Export all employee-related repositories for easy importing
+ * All repositories have been removed - using direct API calls only
  */
-
-export { EmployeesRepository } from './employees.repository';
-
-
 

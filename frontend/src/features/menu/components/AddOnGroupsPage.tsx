@@ -34,8 +34,6 @@ import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { menuApi, AddOnGroup, AddOn } from '@/lib/api/menu';
 import { inventoryApi, Ingredient, CreateRecipeDto } from '@/lib/api/inventory';
-import { db } from '@/lib/indexeddb/database';
-import { syncService } from '@/lib/sync/sync-service';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
@@ -105,94 +103,15 @@ export function AddOnGroupsPage() {
       setLoading(true);
       setError(null);
 
-      // Load from IndexedDB first (for offline mode)
-      const localGroups = await db.addOnGroups
-        .where('tenantId')
-        .equals(user.tenantId)
-        .filter((group) => !group.deletedAt)
-        .toArray();
+      const serverGroupsResponse = await menuApi.getAddOnGroups(pagination.paginationParams);
+      const serverGroups = pagination.extractData(serverGroupsResponse);
+      pagination.extractPagination(serverGroupsResponse);
+      setAddOnGroups(serverGroups);
 
-      // Sync from server if online
-      if (navigator.onLine) {
-        try {
-          const serverGroupsResponse = await menuApi.getAddOnGroups(pagination.paginationParams);
-          const serverGroups = pagination.extractData(serverGroupsResponse);
-          pagination.extractPagination(serverGroupsResponse);
-          setAddOnGroups(serverGroups);
-
-          // If no groups on current page but we have total, reset to page 1
-          if (serverGroups.length === 0 && pagination.total > 0 && pagination.page > 1) {
-            pagination.setPage(1);
-            return; // Will reload with page 1
-          }
-
-          // Update IndexedDB
-          for (const group of serverGroups) {
-            await db.addOnGroups.put({
-              id: group.id,
-              tenantId: user.tenantId,
-              name: group.name,
-              selectionType: group.selectionType,
-              isRequired: group.isRequired,
-              minSelections: group.minSelections,
-              maxSelections: group.maxSelections,
-              displayOrder: group.displayOrder,
-              isActive: group.isActive,
-              category: group.category,
-              createdAt: group.createdAt,
-              updatedAt: group.updatedAt,
-              lastSynced: new Date().toISOString(),
-              syncStatus: 'synced',
-            } as any);
-          }
-        } catch (err) {
-          console.warn('Failed to sync add-on groups from server:', err);
-          // Fallback: use IndexedDB data with local pagination
-          const startIndex = (pagination.page - 1) * pagination.limit;
-          const endIndex = startIndex + pagination.limit;
-          const paginatedGroups = localGroups.slice(startIndex, endIndex).map((group) => ({
-            id: group.id,
-            name: (group as any).name || '',
-            selectionType: group.selectionType,
-            isRequired: group.isRequired,
-            minSelections: group.minSelections,
-            maxSelections: group.maxSelections,
-            displayOrder: group.displayOrder,
-            isActive: group.isActive,
-            category: (group as any).category || null,
-            createdAt: group.createdAt,
-            updatedAt: group.updatedAt,
-            addOns: [],
-          }));
-          setAddOnGroups(paginatedGroups);
-          pagination.setTotal(localGroups.length);
-          pagination.setTotalPages(Math.ceil(localGroups.length / pagination.limit));
-          pagination.setHasNext(endIndex < localGroups.length);
-          pagination.setHasPrev(pagination.page > 1);
-        }
-      } else {
-        // Offline mode - apply local pagination
-        const startIndex = (pagination.page - 1) * pagination.limit;
-        const endIndex = startIndex + pagination.limit;
-        const paginatedGroups = localGroups.slice(startIndex, endIndex).map((group) => ({
-          id: group.id,
-          name: (group as any).name || '',
-          selectionType: group.selectionType,
-          isRequired: group.isRequired,
-          minSelections: group.minSelections,
-          maxSelections: group.maxSelections,
-          displayOrder: group.displayOrder,
-          isActive: group.isActive,
-          category: (group as any).category || null,
-          createdAt: group.createdAt,
-          updatedAt: group.updatedAt,
-          addOns: [],
-        }));
-        setAddOnGroups(paginatedGroups);
-        pagination.setTotal(localGroups.length);
-        pagination.setTotalPages(Math.ceil(localGroups.length / pagination.limit));
-        pagination.setHasNext(endIndex < localGroups.length);
-        pagination.setHasPrev(pagination.page > 1);
+      // If no groups on current page but we have total, reset to page 1
+      if (serverGroups.length === 0 && pagination.total > 0 && pagination.page > 1) {
+        pagination.setPage(1);
+        return; // Will reload with page 1
       }
     } catch (err: any) {
       const errorMsg = handleApiError(err, {
@@ -366,41 +285,8 @@ export function AddOnGroupsPage() {
 
         if (wasEditing && currentEditingGroupId) {
           savedGroup = await menuApi.updateAddOnGroup(currentEditingGroupId, groupData);
-          
-          await db.addOnGroups.update(currentEditingGroupId, {
-            name: groupData.name,
-            selectionType: groupData.selectionType as 'single' | 'multiple',
-            isRequired: groupData.isRequired,
-            minSelections: groupData.minSelections,
-            maxSelections: groupData.maxSelections,
-            category: groupData.category,
-            updatedAt: new Date().toISOString(),
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced',
-          });
-
-          await syncService.queueChange('addOnGroups', 'UPDATE', currentEditingGroupId, savedGroup);
         } else {
           savedGroup = await menuApi.createAddOnGroup(groupData);
-          
-          await db.addOnGroups.add({
-            id: savedGroup.id,
-            tenantId: user.tenantId,
-            name: groupData.name!,
-            selectionType: (groupData.selectionType || 'multiple') as 'single' | 'multiple',
-            isRequired: groupData.isRequired ?? false,
-            minSelections: groupData.minSelections ?? 0,
-            maxSelections: groupData.maxSelections,
-            category: groupData.category,
-            displayOrder: savedGroup.displayOrder,
-            isActive: savedGroup.isActive,
-            createdAt: savedGroup.createdAt,
-            updatedAt: savedGroup.updatedAt,
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced',
-          } as any);
-
-          await syncService.queueChange('addOnGroups', 'CREATE', savedGroup.id, savedGroup);
         }
 
         notifications.show({
@@ -445,30 +331,8 @@ export function AddOnGroupsPage() {
 
         if (wasEditing && currentEditingAddOnId) {
           savedAddOn = await menuApi.updateAddOn(currentSelectedGroup.id, currentEditingAddOnId, addOnData);
-          
-          await db.addOns.update(currentEditingAddOnId, {
-            ...addOnData,
-            updatedAt: new Date().toISOString(),
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced',
-          });
-
-          await syncService.queueChange('addOns', 'UPDATE', currentEditingAddOnId, savedAddOn);
         } else {
           savedAddOn = await menuApi.createAddOn(currentSelectedGroup.id, addOnData);
-          
-          await db.addOns.add({
-            id: savedAddOn.id,
-            addOnGroupId: currentSelectedGroup.id,
-            ...addOnData,
-            displayOrder: savedAddOn.displayOrder,
-            createdAt: savedAddOn.createdAt,
-            updatedAt: savedAddOn.updatedAt,
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced',
-          } as any);
-
-          await syncService.queueChange('addOns', 'CREATE', savedAddOn.id, savedAddOn);
         }
 
         // Save or delete recipe
@@ -524,13 +388,6 @@ export function AddOnGroupsPage() {
       onConfirm: async () => {
         try {
           await menuApi.deleteAddOnGroup(group.id);
-          
-          await db.addOnGroups.update(group.id, {
-            deletedAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
-
-          await syncService.queueChange('addOnGroups', 'DELETE', group.id, group);
 
           notifications.show({
             title: t('common.success' as any, language) || 'Success',
@@ -565,13 +422,6 @@ export function AddOnGroupsPage() {
         if (!selectedGroup) return;
         try {
           await menuApi.deleteAddOn(selectedGroup.id, addOn.id);
-          
-          await db.addOns.update(addOn.id, {
-            deletedAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
-
-          await syncService.queueChange('addOns', 'DELETE', addOn.id, addOn);
 
           notifications.show({
             title: t('common.success' as any, language) || 'Success',

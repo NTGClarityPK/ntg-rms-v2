@@ -7,7 +7,6 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth-store';
-import { syncService } from '@/lib/sync/sync-service';
 import { authApi } from '@/lib/api/auth';
 import { rolesApi } from '@/lib/api/roles';
 import { tokenStorage } from '@/lib/api/client';
@@ -44,8 +43,6 @@ export default function DashboardLayout({
   }, [navbarCollapsed]);
 
   useEffect(() => {
-    // Initialize sync service
-    syncService.initialize().catch(console.error);
 
     // Initialize authentication state on mount
     const initializeAuth = async () => {
@@ -125,7 +122,7 @@ export default function DashboardLayout({
 
     // Cleanup on unmount
     return () => {
-      syncService.stopPeriodicSync();
+      // No cleanup needed for direct communication
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run once on mount - router and setUser are stable, isAuthenticated/user are checked inside the function

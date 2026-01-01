@@ -1,5 +1,5 @@
-import { CartItem } from '@/lib/indexeddb/database';
 import { Tax } from '@/lib/api/taxes';
+import { CartItem } from '@/shared/types/cart.types';
 
 export interface OrderCalculationResult {
   subtotal: number;

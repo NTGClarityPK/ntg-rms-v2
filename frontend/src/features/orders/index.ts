@@ -6,8 +6,6 @@
 
 export { OrderDetailsModal } from './components/OrderDetailsModal';
 
-// Repositories
-export * from './repositories';
 
 // Domain Services
 export * from './domain';

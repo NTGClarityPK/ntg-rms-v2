@@ -6,15 +6,14 @@ import { IconAlertCircle } from '@tabler/icons-react';
 import { useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useLanguageStore } from '@/lib/store/language-store';
-import { db } from '@/lib/indexeddb/database';
 import { FoodItemsGrid, POSCart } from '@/features/pos';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { t } from '@/lib/utils/translations';
 import { ordersApi } from '@/lib/api/orders';
 import { useSettings } from '@/lib/hooks/use-settings';
 import { useSyncStatus } from '@/lib/hooks/use-sync-status';
-import { syncService } from '@/lib/sync/sync-service';
 import { menuApi } from '@/lib/api/menu';
+import { restaurantApi } from '@/lib/api/restaurant';
 
 function POSPageContent() {
   const { user } = useAuthStore();
@@ -58,12 +57,6 @@ function POSPageContent() {
       try {
         setEditingOrderId(editOrderId);
         
-        // Only try to fetch order if online - editing orders offline is not supported
-        if (!navigator.onLine) {
-          console.warn('⚠️ Cannot edit order while offline');
-          return;
-        }
-        
         const order = await ordersApi.getOrderById(editOrderId);
 
         // Set order details
@@ -93,14 +86,9 @@ function POSPageContent() {
         if (order.items && order.items.length > 0) {
           const cartItemsFromOrder = await Promise.all(
             order.items.map(async (item) => {
-              // Use food item from API response, or load from IndexedDB as fallback
+              // Use food item from API response, or load from API
               let foodItem: any = item.foodItem;
               if (!foodItem && item.foodItemId) {
-                foodItem = await db.foodItems.get(item.foodItemId);
-              }
-              
-              // If still not found, try to fetch from API
-              if (!foodItem && item.foodItemId && navigator.onLine) {
                 try {
                   foodItem = await menuApi.getFoodItemById(item.foodItemId);
                 } catch (error) {
@@ -161,66 +149,22 @@ function POSPageContent() {
     loadOrderForEditing();
   }, [editOrderId, user?.tenantId]);
 
-  // Load branches and cart from IndexedDB on mount, and pull from server
+  // Load branches on mount
   useEffect(() => {
     const loadData = async () => {
       setLoadingBranches(true);
       try {
-        // First, try to pull latest data from server (only if online)
-        // This is optional - POS works offline from IndexedDB
-        if (navigator.onLine) {
-          try {
-            await syncService.pullChanges();
-          } catch (syncError) {
-            // If sync fails, continue with offline data - don't crash the page
-            console.warn('⚠️ Failed to sync data, continuing with offline data:', syncError);
-          }
-        }
-
-        // Load branches from IndexedDB (works offline)
-        const allBranches = await db.branches
-          .where('tenantId')
-          .equals(user?.tenantId || '')
-          .toArray();
-        
-        const activeBranches = allBranches.filter((branch) => branch.isActive && !branch.deletedAt);
+        const allBranches = await restaurantApi.getBranches();
+        const activeBranches = allBranches.filter((branch: any) => branch.isActive && !branch.deletedAt);
         setBranches(activeBranches);
 
         // Set first branch as selected if available
         if (activeBranches.length > 0 && !selectedBranchId) {
           setSelectedBranchId(activeBranches[0].id);
         }
-
-        // Load cart only if not editing an order
-        if (!editOrderId) {
-          const items = await db.cart.toArray();
-          setCartItems(items);
-        }
       } catch (error) {
-        // Even if there's an error, try to load from IndexedDB as fallback
-        console.error('Failed to load data, trying offline fallback:', error);
-        setError(null); // Clear any previous errors
-        try {
-          const allBranches = await db.branches
-            .where('tenantId')
-            .equals(user?.tenantId || '')
-            .toArray();
-          
-          const activeBranches = allBranches.filter((branch) => branch.isActive && !branch.deletedAt);
-          setBranches(activeBranches);
-
-          if (activeBranches.length > 0 && !selectedBranchId) {
-            setSelectedBranchId(activeBranches[0].id);
-          }
-
-          if (!editOrderId) {
-            const items = await db.cart.toArray();
-            setCartItems(items);
-          }
-        } catch (fallbackError) {
-          console.error('Failed to load offline fallback data:', fallbackError);
-          // Don't set error state - allow page to render with empty data
-        }
+        console.error('Failed to load branches:', error);
+        setBranches([]);
       } finally {
         setLoadingBranches(false);
       }
@@ -233,20 +177,7 @@ function POSPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.tenantId]);
 
-  // Save cart to IndexedDB whenever it changes
-  useEffect(() => {
-    const saveCart = async () => {
-      try {
-        await db.cart.clear();
-        if (cartItems.length > 0) {
-          await db.cart.bulkAdd(cartItems);
-        }
-      } catch (error) {
-        console.error('Failed to save cart:', error);
-      }
-    };
-    saveCart();
-  }, [cartItems]);
+  // Cart is now managed in memory only - no persistence needed
 
   // Helper function to check if two cart items are identical
   const areItemsIdentical = (item1: any, item2: any): boolean => {

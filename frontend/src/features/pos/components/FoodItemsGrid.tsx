@@ -23,8 +23,6 @@ import {
 import { IconSearch, IconShoppingCart, IconChefHat, IconShoppingBag } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
-import { db } from '@/lib/indexeddb/database';
-import { FoodItem as IndexedDBFoodItem } from '@/lib/indexeddb/database';
 import { useThemeColor, useThemeColorShade } from '@/lib/hooks/use-theme-color';
 import { getErrorColor, getWarningColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { useSuccessColor } from '@/lib/hooks/use-theme-colors';
@@ -123,19 +121,12 @@ export function FoodItemsGrid({
       // Fetch active menus first, then load buffets
       const reloadBuffets = async () => {
         try {
-          let activeMenuTypes: string[] = [];
-          if (navigator.onLine) {
-            try {
-              const menusResponse = await menuApi.getMenus();
-              const menus = Array.isArray(menusResponse) ? menusResponse : (menusResponse?.data || []);
-              activeMenuTypes = menus
-                .filter((menu) => menu.isActive)
-                .map((menu) => menu.menuType)
-                .filter(Boolean);
-            } catch (error) {
-              console.warn('⚠️ Failed to load menus for buffets reload:', error);
-            }
-          }
+          const menusResponse = await menuApi.getMenus();
+          const menus = Array.isArray(menusResponse) ? menusResponse : (menusResponse?.data || []);
+          const activeMenuTypes = menus
+            .filter((menu) => menu.isActive)
+            .map((menu) => menu.menuType)
+            .filter(Boolean);
           await loadBuffets(activeMenuTypes);
         } catch (error) {
           console.error('Failed to reload buffets:', error);
@@ -183,42 +174,18 @@ export function FoodItemsGrid({
     try {
       setLoading(true);
 
-      // Load categories
-      const cats = await db.categories
-        .where('tenantId')
-        .equals(tenantId)
-        .filter((cat) => cat.isActive && !cat.deletedAt)
-        .sortBy('displayOrder');
+      // Load categories from API
+      const catsResponse = await menuApi.getCategories();
+      const cats = Array.isArray(catsResponse) ? catsResponse : (catsResponse?.data || []);
+      setCategories(cats.filter((cat: any) => cat.isActive && !cat.deletedAt));
 
-      setCategories(cats);
-
-      // Load active menus from API (menus are not stored in IndexedDB)
-      // This is only needed for buffets and combo meals which still use client-side filtering
-      let activeMenuTypes: string[] = [];
-      try {
-        if (navigator.onLine) {
-          try {
-            const menusResponse = await menuApi.getMenus();
-            // Handle both paginated and non-paginated responses
-            const menus = Array.isArray(menusResponse) ? menusResponse : (menusResponse?.data || []);
-            activeMenuTypes = menus
-              .filter((menu) => menu.isActive)
-              .map((menu) => menu.menuType)
-              .filter(Boolean);
-          } catch (apiError) {
-            // Network error even though navigator.onLine is true - fall back to offline mode
-            console.warn('⚠️ Failed to load menus from API, using offline fallback:', apiError);
-            throw apiError; // Re-throw to trigger offline fallback
-          }
-        } else {
-          throw new Error('Offline'); // Trigger offline fallback
-        }
-      } catch (error) {
-        // Offline fallback: Cannot determine active menus without API access
-        // Show no items when offline since we need to know which menus are active
-        console.warn('⚠️ Cannot load active menus while offline. No items will be shown.');
-        activeMenuTypes = [];
-      }
+      // Load active menus from API
+      const menusResponse = await menuApi.getMenus();
+      const menus = Array.isArray(menusResponse) ? menusResponse : (menusResponse?.data || []);
+      const activeMenuTypes = menus
+        .filter((menu) => menu.isActive)
+        .map((menu) => menu.menuType)
+        .filter(Boolean);
 
       // Load items based on selected type
       // Buffets are only available for dine-in orders
@@ -232,75 +199,35 @@ export function FoodItemsGrid({
         await loadComboMeals(activeMenuTypes);
       } else {
         // Load food items - use server pagination with backend filtering for active menus
-        if (navigator.onLine) {
-          try {
-            // Use backend filtering for active menus and search
-            const serverItemsResponse = await menuApi.getFoodItems(
-              selectedCategoryId || undefined,
-              foodItemsPagination.paginationParams,
-              requestSearchQuery.trim() || undefined,
-              true // onlyActiveMenus = true - filter by active menus on backend
-            ).catch((error) => {
-              console.warn('⚠️ Failed to load food items from API, using offline fallback:', error);
-              throw error;
-            });
-            
-            // Check if this response is still relevant (search query hasn't changed)
-            if (currentSearchRef.current !== requestSearchQuery) {
-              // Search query changed while request was in flight, ignore this response
-              console.log('⚠️ Ignoring stale search results for:', requestSearchQuery);
-              return;
-            }
-            
-            // Check if this is still the latest request
-            if (requestSequence !== requestSequenceRef.current) {
-              // A newer request was made, ignore this response
-              console.log('⚠️ Ignoring outdated request response');
-              return;
-            }
-            
-            const serverItems = foodItemsPagination.extractData(serverItemsResponse) as FoodItem[];
-            foodItemsPagination.extractPagination(serverItemsResponse);
-            setFoodItems(serverItems);
-            
-            // Update IndexedDB cache (but don't wait for it)
-            serverItems.forEach((item: FoodItem) => {
-              db.foodItems.put({
-                id: item.id,
-                tenantId,
-                name: item.name,
-                description: item.description,
-                imageUrl: item.imageUrl,
-                categoryId: item.categoryId,
-                basePrice: item.basePrice,
-                stockType: item.stockType,
-                stockQuantity: item.stockQuantity,
-                menuType: item.menuType || 'all_day',
-                menuTypes: item.menuTypes || (item.menuType ? [item.menuType] : []),
-                ageLimit: item.ageLimit,
-                displayOrder: item.displayOrder,
-                isActive: item.isActive,
-                createdAt: item.createdAt,
-                updatedAt: item.updatedAt,
-              } as any).catch(console.error);
-            });
-          } catch (error) {
-            // Check if this request is still relevant before falling back to IndexedDB
-            if (currentSearchRef.current !== requestSearchQuery || requestSequence !== requestSequenceRef.current) {
-              console.log('⚠️ Ignoring stale IndexedDB fallback for:', requestSearchQuery);
-              return;
-            }
-            console.error('Failed to load food items from server, falling back to IndexedDB:', error);
-            // Fall through to IndexedDB loading
-            await loadFromIndexedDB(activeMenuTypes, requestSearchQuery, requestSequence);
-          }
-        } else {
-          // Offline: load from IndexedDB with local pagination
-          await loadFromIndexedDB(activeMenuTypes, requestSearchQuery, requestSequence);
+        // Use backend filtering for active menus and search
+        const serverItemsResponse = await menuApi.getFoodItems(
+          selectedCategoryId || undefined,
+          foodItemsPagination.paginationParams,
+          requestSearchQuery.trim() || undefined,
+          true // onlyActiveMenus = true - filter by active menus on backend
+        );
+        
+        // Check if this response is still relevant (search query hasn't changed)
+        if (currentSearchRef.current !== requestSearchQuery) {
+          // Search query changed while request was in flight, ignore this response
+          console.log('⚠️ Ignoring stale search results for:', requestSearchQuery);
+          return;
         }
+        
+        // Check if this is still the latest request
+        if (requestSequence !== requestSequenceRef.current) {
+          // A newer request was made, ignore this response
+          console.log('⚠️ Ignoring outdated request response');
+          return;
+        }
+        
+        const serverItems = foodItemsPagination.extractData(serverItemsResponse) as FoodItem[];
+        foodItemsPagination.extractPagination(serverItemsResponse);
+        setFoodItems(serverItems);
       }
     } catch (error) {
       console.error('Failed to load food items:', error);
+      setFoodItems([]);
     } finally {
       setLoading(false);
       loadingRef.current = false;
@@ -329,149 +256,43 @@ export function FoodItemsGrid({
     loadData();
   }, [loadData]);
 
-  const loadFromIndexedDB = async (activeMenuTypes: string[], requestSearchQuery?: string, requestSequence?: number) => {
-    // Check if this request is still relevant
-    if (requestSearchQuery !== undefined && currentSearchRef.current !== requestSearchQuery) {
-      console.log('⚠️ Ignoring stale IndexedDB results for:', requestSearchQuery);
-      return;
-    }
-    
-    if (requestSequence !== undefined && requestSequence !== requestSequenceRef.current) {
-      console.log('⚠️ Ignoring outdated IndexedDB request');
-      return;
-    }
-    // Load food items from IndexedDB
-    // Only filter by deletedAt - isActive is no longer used for food items
-    // Items show/hide based on menu membership only
-    let itemsQuery = db.foodItems
-      .where('tenantId')
-      .equals(tenantId)
-      .filter((item) => !item.deletedAt);
-
-    if (selectedCategoryId) {
-      itemsQuery = itemsQuery.filter((item) => {
-        return item.categoryId === selectedCategoryId;
-      });
-    }
-
-    const items = await itemsQuery.toArray();
-
-    // Filter food items to only include those in active menus
-    let filteredItems = items;
-    if (activeMenuTypes.length > 0) {
-      filteredItems = items.filter((item) => {
-        // Check if item belongs to at least one active menu
-        const itemMenuTypes = item.menuTypes || (item.menuType ? [item.menuType] : []);
-        return itemMenuTypes.some((menuType: string) => activeMenuTypes.includes(menuType));
-      });
-    } else {
-      // If no active menus, show no items
-      filteredItems = [];
-    }
-
-    // Filter by search query (use debounced search query)
-    const searchQueryToUse = requestSearchQuery || debouncedSearchQuery;
-    if (searchQueryToUse.trim()) {
-      const query = searchQueryToUse.toLowerCase();
-      filteredItems = filteredItems.filter(
-        (item) =>
-          item.name?.toLowerCase().includes(query) ||
-          item.description?.toLowerCase().includes(query),
-      );
-    }
-
-    // Convert IndexedDB items to API FoodItem format
-    const convertedItems: FoodItem[] = filteredItems.map((item) => ({
-      id: item.id,
-      name: item.name || '',
-      description: item.description,
-      imageUrl: item.imageUrl,
-      categoryId: item.categoryId,
-      basePrice: item.basePrice,
-      stockType: item.stockType,
-      stockQuantity: item.stockQuantity,
-      menuType: item.menuType,
-      menuTypes: item.menuTypes || (item.menuType ? [item.menuType] : []),
-      ageLimit: item.ageLimit,
-      displayOrder: item.displayOrder,
-      isActive: item.isActive,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
-    }));
-
-    // Apply local pagination
-    const totalItems = convertedItems.length;
-    const startIndex = (foodItemsPagination.page - 1) * foodItemsPagination.limit;
-    const endIndex = startIndex + foodItemsPagination.limit;
-    const paginatedItems = convertedItems.slice(startIndex, endIndex);
-
-    setFoodItems(paginatedItems);
-    
-    // Set pagination info
-    foodItemsPagination.setTotal(totalItems);
-    foodItemsPagination.setTotalPages(Math.ceil(totalItems / foodItemsPagination.limit));
-    foodItemsPagination.setHasNext(endIndex < totalItems);
-    foodItemsPagination.setHasPrev(foodItemsPagination.page > 1);
-  };
-
   const loadBuffets = async (activeMenuTypes: string[]) => {
     try {
-      if (navigator.onLine) {
-        try {
-          const response = await menuApi.getBuffets(buffetsPagination.paginationParams);
-        const serverBuffets: Buffet[] = buffetsPagination.extractData(response) as Buffet[];
-        buffetsPagination.extractPagination(response);
-        
-        // Filter by active menus and search
-        let filtered: Buffet[] = serverBuffets.filter((buffet) => buffet.isActive);
-        
-        if (activeMenuTypes.length > 0) {
-          filtered = filtered.filter((buffet) => {
-            const buffetMenuTypes = buffet.menuTypes || [];
-            return buffetMenuTypes.some((mt) => activeMenuTypes.includes(mt));
-          });
-        } else {
-          // If no active menus, show no items
-          filtered = [];
-        }
-        
-        if (debouncedSearchQuery.trim()) {
-          const query = debouncedSearchQuery.toLowerCase();
-          filtered = filtered.filter(
-            (buffet) =>
-              buffet.name?.toLowerCase().includes(query) ||
-              buffet.description?.toLowerCase().includes(query),
-          );
-        }
-        
-        // Update pagination totals based on filtered results
-        // Since filtering happens client-side, we update totals to reflect filtered count
-        const filteredTotal = filtered.length;
-        buffetsPagination.setTotal(filteredTotal);
-        buffetsPagination.setTotalPages(Math.ceil(filteredTotal / buffetsPagination.limit));
-        buffetsPagination.setHasNext(false); // Client-side filtering, no next page from server
-        buffetsPagination.setHasPrev(buffetsPagination.page > 1);
-        
-        setBuffets(filtered);
-        } catch (apiError) {
-          // Network error - fall back to empty array (buffets not stored in IndexedDB)
-          console.warn('⚠️ Failed to load buffets from API:', apiError);
-          setBuffets([]);
-          // Reset pagination when error occurs
-          buffetsPagination.setTotal(0);
-          buffetsPagination.setTotalPages(0);
-          buffetsPagination.setHasNext(false);
-          buffetsPagination.setHasPrev(false);
-        }
+      const response = await menuApi.getBuffets(buffetsPagination.paginationParams);
+      const serverBuffets: Buffet[] = buffetsPagination.extractData(response) as Buffet[];
+      buffetsPagination.extractPagination(response);
+      
+      // Filter by active menus and search
+      let filtered: Buffet[] = serverBuffets.filter((buffet) => buffet.isActive);
+      
+      if (activeMenuTypes.length > 0) {
+        filtered = filtered.filter((buffet) => {
+          const buffetMenuTypes = buffet.menuTypes || [];
+          return buffetMenuTypes.some((mt) => activeMenuTypes.includes(mt));
+        });
       } else {
-        // Offline: buffets not available offline (not stored in IndexedDB)
-        setBuffets([]);
-        // Reset pagination when offline
-        buffetsPagination.setTotal(0);
-        buffetsPagination.setTotalPages(0);
-        buffetsPagination.setHasNext(false);
-        buffetsPagination.setHasPrev(false);
+        // If no active menus, show no items
+        filtered = [];
       }
+      
+      if (debouncedSearchQuery.trim()) {
+        const query = debouncedSearchQuery.toLowerCase();
+        filtered = filtered.filter(
+          (buffet) =>
+            buffet.name?.toLowerCase().includes(query) ||
+            buffet.description?.toLowerCase().includes(query),
+        );
+      }
+      
+      // Update pagination totals based on filtered results
+      // Since filtering happens client-side, we update totals to reflect filtered count
+      const filteredTotal = filtered.length;
+      buffetsPagination.setTotal(filteredTotal);
+      buffetsPagination.setTotalPages(Math.ceil(filteredTotal / buffetsPagination.limit));
+      buffetsPagination.setHasNext(false); // Client-side filtering, no next page from server
+      buffetsPagination.setHasPrev(buffetsPagination.page > 1);
+      
+      setBuffets(filtered);
     } catch (error) {
       console.error('Failed to load buffets:', error);
       setBuffets([]);
@@ -485,62 +306,41 @@ export function FoodItemsGrid({
 
   const loadComboMeals = async (activeMenuTypes: string[]) => {
     try {
-      if (navigator.onLine) {
-        try {
-          const response = await menuApi.getComboMeals(comboMealsPagination.paginationParams);
-        const serverComboMeals: ComboMeal[] = comboMealsPagination.extractData(response) as ComboMeal[];
-        comboMealsPagination.extractPagination(response);
-        
-        // Filter by active menus and search
-        let filtered: ComboMeal[] = serverComboMeals.filter((combo) => combo.isActive);
-        
-        if (activeMenuTypes.length > 0) {
-          filtered = filtered.filter((combo) => {
-            const comboMenuTypes = combo.menuTypes || [];
-            return comboMenuTypes.some((mt) => activeMenuTypes.includes(mt));
-          });
-        } else {
-          // If no active menus, show no items
-          filtered = [];
-        }
-        
-        if (debouncedSearchQuery.trim()) {
-          const query = debouncedSearchQuery.toLowerCase();
-          filtered = filtered.filter(
-            (combo) =>
-              combo.name?.toLowerCase().includes(query) ||
-              combo.description?.toLowerCase().includes(query),
-          );
-        }
-        
-        // Update pagination totals based on filtered results
-        // Since filtering happens client-side, we update totals to reflect filtered count
-        const filteredTotal = filtered.length;
-        comboMealsPagination.setTotal(filteredTotal);
-        comboMealsPagination.setTotalPages(Math.ceil(filteredTotal / comboMealsPagination.limit));
-        comboMealsPagination.setHasNext(false); // Client-side filtering, no next page from server
-        comboMealsPagination.setHasPrev(comboMealsPagination.page > 1);
-        
-        setComboMeals(filtered);
-        } catch (apiError) {
-          // Network error - fall back to empty array (combo meals not stored in IndexedDB)
-          console.warn('⚠️ Failed to load combo meals from API:', apiError);
-          setComboMeals([]);
-          // Reset pagination when error occurs
-          comboMealsPagination.setTotal(0);
-          comboMealsPagination.setTotalPages(0);
-          comboMealsPagination.setHasNext(false);
-          comboMealsPagination.setHasPrev(false);
-        }
+      const response = await menuApi.getComboMeals(comboMealsPagination.paginationParams);
+      const serverComboMeals: ComboMeal[] = comboMealsPagination.extractData(response) as ComboMeal[];
+      comboMealsPagination.extractPagination(response);
+      
+      // Filter by active menus and search
+      let filtered: ComboMeal[] = serverComboMeals.filter((combo) => combo.isActive);
+      
+      if (activeMenuTypes.length > 0) {
+        filtered = filtered.filter((combo) => {
+          const comboMenuTypes = combo.menuTypes || [];
+          return comboMenuTypes.some((mt) => activeMenuTypes.includes(mt));
+        });
       } else {
-        // Offline: combo meals not available offline (not stored in IndexedDB)
-        setComboMeals([]);
-        // Reset pagination when offline
-        comboMealsPagination.setTotal(0);
-        comboMealsPagination.setTotalPages(0);
-        comboMealsPagination.setHasNext(false);
-        comboMealsPagination.setHasPrev(false);
+        // If no active menus, show no items
+        filtered = [];
       }
+      
+      if (debouncedSearchQuery.trim()) {
+        const query = debouncedSearchQuery.toLowerCase();
+        filtered = filtered.filter(
+          (combo) =>
+            combo.name?.toLowerCase().includes(query) ||
+            combo.description?.toLowerCase().includes(query),
+        );
+      }
+      
+      // Update pagination totals based on filtered results
+      // Since filtering happens client-side, we update totals to reflect filtered count
+      const filteredTotal = filtered.length;
+      comboMealsPagination.setTotal(filteredTotal);
+      comboMealsPagination.setTotalPages(Math.ceil(filteredTotal / comboMealsPagination.limit));
+      comboMealsPagination.setHasNext(false); // Client-side filtering, no next page from server
+      comboMealsPagination.setHasPrev(comboMealsPagination.page > 1);
+      
+      setComboMeals(filtered);
     } catch (error) {
       console.error('Failed to load combo meals:', error);
       setComboMeals([]);
@@ -581,35 +381,20 @@ export function FoodItemsGrid({
 
       setLoadingComboItems(true);
       try {
-        // Try to load from IndexedDB first
-        const itemsFromDB = await Promise.all(
+        // Load food items from API
+        const itemsFromAPI = await Promise.all(
           comboMeal.foodItemIds.map(async (id) => {
-            const item = await db.foodItems.get(id);
-            return item;
+            try {
+              return await menuApi.getFoodItemById(id);
+            } catch (error) {
+              console.error(`Failed to load food item ${id}:`, error);
+              return null;
+            }
           })
         );
-
-        const validItems = itemsFromDB.filter((item): item is IndexedDBFoodItem => item !== undefined);
         
-        if (validItems.length === comboMeal.foodItemIds.length) {
-          // All items found in IndexedDB
-          setComboMealItems(validItems as FoodItem[]);
-        } else {
-          // Some items missing, try to fetch from API
-          const itemsFromAPI = await Promise.all(
-            comboMeal.foodItemIds.map(async (id) => {
-              try {
-                return await menuApi.getFoodItemById(id);
-              } catch (error) {
-                console.error(`Failed to load food item ${id}:`, error);
-                return null;
-              }
-            })
-          );
-          
-          const validApiItems = itemsFromAPI.filter((item): item is FoodItem => item !== null);
-          setComboMealItems(validApiItems);
-        }
+        const validApiItems = itemsFromAPI.filter((item): item is FoodItem => item !== null);
+        setComboMealItems(validApiItems);
       } catch (error) {
         console.error('Failed to load combo meal items:', error);
         setComboMealItems([]);

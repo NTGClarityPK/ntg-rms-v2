@@ -13,8 +13,6 @@ export { StockManagementPage } from './components/StockManagementPage';
 export { RecipesPage } from './components/RecipesPage';
 export { InventoryReportsPage } from './components/InventoryReportsPage';
 
-// Repositories
-export * from './repositories';
 
 // Domain Services
 export * from './domain';

@@ -1,11 +1,6 @@
 /**
  * Menu Feature Repositories
  * 
- * Export all menu-related repositories for easy importing
+ * All repositories have been removed - using direct API calls only
  */
-
-export { CategoriesRepository } from './categories.repository';
-export { FoodItemsRepository } from './food-items.repository';
-
-
 

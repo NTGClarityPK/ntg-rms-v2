@@ -21,8 +21,6 @@ export { ComboMealPage } from './components/ComboMealPage';
 export { LabelsPage } from './components/LabelsPage';
 export { MenuTypesPage } from './components/MenuTypesPage';
 
-// Repositories
-export * from './repositories';
 
 // Domain Services
 export * from './domain';

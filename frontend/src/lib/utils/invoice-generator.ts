@@ -1,6 +1,5 @@
 import { Order } from '@/lib/api/orders';
-import { Tenant } from '@/lib/indexeddb/database';
-import { Branch } from '@/lib/indexeddb/database';
+import { RestaurantInfo, Branch } from '@/lib/api/restaurant';
 import type { ThemeConfig } from '@/lib/theme/themeConfig';
 
 export interface InvoiceSettings {
@@ -28,7 +27,7 @@ export interface InvoiceData {
     specialInstructions?: string;
     tableId?: string;
   };
-  tenant: Tenant & {
+  tenant: RestaurantInfo & {
     footerText?: string;
     termsAndConditions?: string;
   };

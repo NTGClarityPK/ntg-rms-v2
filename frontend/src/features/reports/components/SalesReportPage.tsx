@@ -39,14 +39,11 @@ import { useCurrency } from '@/lib/hooks/use-currency';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { notifications } from '@mantine/notifications';
 import { getErrorColor } from '@/lib/utils/theme';
-import { db } from '@/lib/indexeddb/database';
-import { useSyncStatus } from '@/lib/hooks/use-sync-status';
 
 export default function SalesReportPage() {
   const language = useLanguageStore((state) => state.language);
   const currency = useCurrency();
   const themeColor = useThemeColor();
-  const { isOnline } = useSyncStatus();
   const tooltipStyle = useChartTooltip();
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<SalesReport | null>(null);
@@ -75,29 +72,8 @@ export default function SalesReportPage() {
       setLoading(true);
     }
     try {
-      let data: SalesReport;
-
-      if (isOnline) {
-        // Load from API
-        data = await reportsApi.getSalesReport(filtersToUse);
-        // Cache in IndexedDB for offline access
-        await db.reports.put({
-          id: 'sales',
-          type: 'sales',
-          data: JSON.stringify(data),
-          filters: JSON.stringify(filtersToUse),
-          updatedAt: new Date().toISOString(),
-        });
-      } else {
-        // Load from IndexedDB
-        const cached = await db.reports.get('sales');
-        if (cached) {
-          data = JSON.parse(cached.data);
-        } else {
-          throw new Error('No cached data available');
-        }
-      }
-
+      // Load from API
+      const data = await reportsApi.getSalesReport(filtersToUse);
       setReport(data);
     } catch (error: any) {
       notifications.show({
@@ -111,7 +87,7 @@ export default function SalesReportPage() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOnline, language]);
+  }, [language]);
 
   useEffect(() => {
     loadBranches();
@@ -122,7 +98,7 @@ export default function SalesReportPage() {
     const isInitialLoad = !report;
     loadReport(filters, !isInitialLoad);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(filters), isOnline]);
+  }, [JSON.stringify(filters)]);
 
   const handleFilterChange = useCallback((newFilters: ReportQueryParams) => {
     setFilters(newFilters);

@@ -25,7 +25,6 @@ import { IconPlus, IconEdit, IconTrash, IconCheck, IconAlertCircle } from '@tabl
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { restaurantApi, Table as TableType, CreateTableDto, UpdateTableDto } from '@/lib/api/restaurant';
-import { syncService } from '@/lib/sync/sync-service';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors } from '@/lib/hooks/use-theme-colors';
@@ -151,63 +150,22 @@ export default function TablesPage() {
           tableType: values.tableType,
         };
 
-        // Queue sync
-        await syncService.queueChange('tables', 'UPDATE', editingTable.id, updateData);
-
-        // Try to sync immediately if online
-        if (navigator.onLine) {
-          try {
-            await restaurantApi.updateTable(editingTable.id, updateData);
-            notifications.show({
-              title: 'Success',
-              message: 'Table updated successfully',
-              color: notificationColors.success,
-              icon: <IconCheck size={16} />,
-            });
-          } catch (err: any) {
-            notifications.show({
-              title: 'Saved Locally',
-              message: 'Changes saved locally and will sync when online',
-              color: notificationColors.info,
-            });
-          }
-        } else {
-          notifications.show({
-            title: 'Saved Locally',
-            message: 'Changes saved locally and will sync when online',
-            color: notificationColors.info,
-          });
-        }
+        await restaurantApi.updateTable(editingTable.id, updateData);
+        notifications.show({
+          title: 'Success',
+          message: 'Table updated successfully',
+          color: notificationColors.success,
+          icon: <IconCheck size={16} />,
+        });
       } else {
         // Create table
-        // Queue sync
-        const newId = generateUUID();
-        await syncService.queueChange('tables', 'CREATE', newId, values);
-
-        // Try to sync immediately if online
-        if (navigator.onLine) {
-          try {
-            await restaurantApi.createTable(values);
-            notifications.show({
-              title: 'Success',
-              message: 'Table created successfully',
-              color: notificationColors.success,
-              icon: <IconCheck size={16} />,
-            });
-          } catch (err: any) {
-            notifications.show({
-              title: 'Saved Locally',
-              message: 'Table saved locally and will sync when online',
-              color: notificationColors.info,
-            });
-          }
-        } else {
-          notifications.show({
-            title: 'Saved Locally',
-            message: 'Table saved locally and will sync when online',
-            color: notificationColors.info,
-          });
-        }
+        await restaurantApi.createTable(values);
+        notifications.show({
+          title: 'Success',
+          message: 'Table created successfully',
+          color: notificationColors.success,
+          icon: <IconCheck size={16} />,
+        });
       }
 
       setOpened(false);
@@ -236,33 +194,13 @@ export default function TablesPage() {
       confirmProps: { color: errorColor },
       onConfirm: async () => {
         try {
-          // Queue sync
-          await syncService.queueChange('tables', 'DELETE', table.id, {});
-
-          // Try to sync immediately if online
-          if (navigator.onLine) {
-            try {
-              await restaurantApi.deleteTable(table.id);
-              notifications.show({
-                title: 'Success',
-                message: 'Table deleted successfully',
-                color: notificationColors.success,
-                icon: <IconCheck size={16} />,
-              });
-            } catch (err: any) {
-              notifications.show({
-                title: 'Queued for Deletion',
-                message: 'Table will be deleted when online',
-                color: notificationColors.info,
-              });
-            }
-          } else {
-            notifications.show({
-              title: 'Queued for Deletion',
-              message: 'Table will be deleted when online',
-              color: notificationColors.info,
-            });
-          }
+          await restaurantApi.deleteTable(table.id);
+          notifications.show({
+            title: 'Success',
+            message: 'Table deleted successfully',
+            color: notificationColors.success,
+            icon: <IconCheck size={16} />,
+          });
 
           loadData();
         } catch (err: any) {
@@ -410,31 +348,13 @@ export default function TablesPage() {
                   if (value && editingTable) {
                     try {
                       const updateData: UpdateTableDto = { status: value as any };
-                      await syncService.queueChange('tables', 'UPDATE', editingTable.id, updateData);
-                      
-                      if (navigator.onLine) {
-                        try {
-                          await restaurantApi.updateTable(editingTable.id, updateData);
-                          notifications.show({
-                            title: 'Success',
-                            message: 'Table status updated',
-                            color: notificationColors.success,
-                            icon: <IconCheck size={16} />,
-                          });
-                        } catch (err) {
-                          notifications.show({
-                            title: 'Saved Locally',
-                            message: 'Status saved locally and will sync when online',
-                            color: notificationColors.info,
-                          });
-                        }
-                      } else {
-                        notifications.show({
-                          title: 'Saved Locally',
-                          message: 'Status saved locally and will sync when online',
-                          color: notificationColors.info,
-                        });
-                      }
+                      await restaurantApi.updateTable(editingTable.id, updateData);
+                      notifications.show({
+                        title: 'Success',
+                        message: 'Table status updated',
+                        color: notificationColors.success,
+                        icon: <IconCheck size={16} />,
+                      });
                       loadData();
                     } catch (err: any) {
                       notifications.show({

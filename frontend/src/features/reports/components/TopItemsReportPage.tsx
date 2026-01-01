@@ -15,15 +15,12 @@ import { useChartTooltip } from '@/lib/hooks/use-chart-tooltip';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { notifications } from '@mantine/notifications';
-import { db } from '@/lib/indexeddb/database';
-import { useSyncStatus } from '@/lib/hooks/use-sync-status';
 import { handleApiError } from '@/shared/utils/error-handler';
 
 export default function TopItemsReportPage() {
   const language = useLanguageStore((state) => state.language);
   const currency = useCurrency();
   const themeColor = useThemeColor();
-  const { isOnline } = useSyncStatus();
   const tooltipStyle = useChartTooltip();
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<TopItemsReport | null>(null);
@@ -45,15 +42,7 @@ export default function TopItemsReportPage() {
       setLoading(true);
     }
     try {
-      let data: TopItemsReport;
-      if (isOnline) {
-        data = await reportsApi.getTopItemsReport(filtersToUse);
-        await db.reports.put({ id: 'top-items', type: 'top-items', data: JSON.stringify(data), filters: JSON.stringify(filtersToUse), updatedAt: new Date().toISOString() });
-      } else {
-        const cached = await db.reports.get('top-items');
-        if (cached) data = JSON.parse(cached.data);
-        else throw new Error('No cached data available');
-      }
+      const data = await reportsApi.getTopItemsReport(filtersToUse);
       setReport(data);
     } catch (error: any) {
       handleApiError(error, {
@@ -66,7 +55,7 @@ export default function TopItemsReportPage() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOnline, language]);
+  }, [language]);
 
   useEffect(() => {
     loadBranches();
@@ -77,7 +66,7 @@ export default function TopItemsReportPage() {
     const isInitialLoad = !report;
     loadReport(filters, !isInitialLoad);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(filters), isOnline]);
+  }, [JSON.stringify(filters)]);
 
   const handleFilterChange = (newFilters: ReportQueryParams) => setFilters(newFilters);
   const handleExport = async (format: 'csv' | 'excel') => {

@@ -1,11 +1,6 @@
 /**
  * Orders Feature Repositories
  * 
- * Export all order-related repositories for easy importing
+ * All repositories have been removed - using direct API calls only
  */
-
-export { OrdersRepository } from './orders.repository';
-export { OrderItemsRepository } from './order-items.repository';
-
-
 

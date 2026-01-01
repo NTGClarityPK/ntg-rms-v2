@@ -36,8 +36,7 @@ import {
 } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
-import { db, Order, OrderItem } from '@/lib/indexeddb/database';
-import { CartItem, RestaurantTable } from '@/lib/indexeddb/database';
+import { CartItem, RestaurantTable } from '@/shared/types/cart.types';
 import { useThemeColor, useThemeColorShade } from '@/lib/hooks/use-theme-color';
 import { getSuccessColor, getErrorColor } from '@/lib/utils/theme';
 import { useTheme } from '@/lib/hooks/use-theme';
@@ -46,17 +45,17 @@ import { useCurrency } from '@/lib/hooks/use-currency';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { ItemSelectionModal } from './ItemSelectionModal';
 import { useAuthStore } from '@/lib/store/auth-store';
-import { syncService } from '@/lib/sync/sync-service';
 import { notifications } from '@mantine/notifications';
 import apiClient from '@/lib/api/client';
 import { API_ENDPOINTS } from '@/lib/constants/api';
-import { ordersApi } from '@/lib/api/orders';
+import { ordersApi, OrderItem } from '@/lib/api/orders';
 import { customersApi } from '@/lib/api/customers';
 import { useSettings } from '@/lib/hooks/use-settings';
 import { useSyncStatus } from '@/lib/hooks/use-sync-status';
 import { InvoiceGenerator } from '@/lib/utils/invoice-generator';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { taxesApi, Tax } from '@/lib/api/taxes';
+import { menuApi } from '@/lib/api/menu';
 import type { ThemeConfig } from '@/lib/theme/themeConfig';
 import { notifyOrderUpdate } from '@/lib/utils/order-events';
 import { orderCalculatorService } from '@/features/orders/domain';
@@ -167,7 +166,7 @@ export function POSCart({
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [invoiceModalOpened, setInvoiceModalOpened] = useState(false);
-  const [placedOrder, setPlacedOrder] = useState<Order | null>(null);
+  const [placedOrder, setPlacedOrder] = useState<any | null>(null);
   const [placedOrderItems, setPlacedOrderItems] = useState<CartItem[]>([]);
   const [placedOrderPaymentMethod, setPlacedOrderPaymentMethod] = useState<string | null>(null);
   const [placedOrderCustomerName, setPlacedOrderCustomerName] = useState<string | undefined>(undefined);
@@ -195,9 +194,10 @@ export function POSCart({
   useEffect(() => {
     const loadVariationGroups = async () => {
       try {
-        const groups = await db.variationGroups.toArray();
+        const groupsResponse = await menuApi.getVariationGroups();
+        const groups = Array.isArray(groupsResponse) ? groupsResponse : (groupsResponse?.data || []);
         const map = new Map<string, string>();
-        groups.forEach((group) => {
+        groups.forEach((group: any) => {
           map.set(group.id, group.name);
         });
         setVariationGroupsMap(map);
@@ -226,14 +226,7 @@ export function POSCart({
       setActiveTaxes(active);
     } catch (error) {
       console.error('Failed to load taxes:', error);
-      // Try to load from IndexedDB if online fails
-      try {
-        const cachedTaxes = await db.taxes.toArray();
-        const active = cachedTaxes.filter((tax) => tax.isActive);
-        setActiveTaxes(active as Tax[]);
-      } catch (dbError) {
-        console.error('Failed to load taxes from IndexedDB:', dbError);
-      }
+      setActiveTaxes([]);
     }
   };
 
@@ -250,63 +243,27 @@ export function POSCart({
       }
 
       try {
-        // Try to get from IndexedDB first
-        const customer = await db.customers.get(selectedCustomerId);
-        if (customer) {
-          setSelectedCustomerData(customer);
-          
-          // If online, fetch latest data to ensure loyalty tier and addresses are up to date
-          if (navigator.onLine) {
-            try {
-              const latestCustomer = await customersApi.getCustomerById(selectedCustomerId);
-              setSelectedCustomerData(latestCustomer);
-              // Update IndexedDB with latest data
-              await db.customers.put({
-                ...latestCustomer,
-                lastSynced: new Date().toISOString(),
-                syncStatus: 'synced',
-              } as any);
-              
-              // If customer has addresses and order type is delivery, prefill address fields
-              if (orderType === 'delivery' && latestCustomer.addresses && latestCustomer.addresses.length > 0) {
-                const defaultAddress = latestCustomer.addresses.find((addr) => addr.isDefault) || latestCustomer.addresses[0];
-                if (defaultAddress) {
-                  // Prefill address input fields with existing address
-                  setNewAddress(defaultAddress.address || '');
-                  setNewAddressCity(defaultAddress.city || '');
-                  setNewAddressState(defaultAddress.state || '');
-                  setNewAddressCountry(defaultAddress.country || '');
-                  // Store the address ID so we can use it if address hasn't changed
-                  setSelectedAddressId(defaultAddress.id);
-                }
-              } else if (orderType === 'delivery') {
-                // No addresses - clear fields
-                setNewAddress('');
-                setNewAddressCity('');
-                setNewAddressState('');
-                setSelectedAddressId(null);
-              }
-            } catch (error) {
-              console.error('Failed to fetch latest customer data:', error);
-              // Use IndexedDB data if API fails
-            }
-          } else if (customer && orderType === 'delivery') {
-            // Offline: check if customer has addresses in IndexedDB
-            // Note: IndexedDB customer might not have addresses, so we'll show input fields
-            // Try to prefill from IndexedDB customer data if available
-            if ((customer as any).addresses && (customer as any).addresses.length > 0) {
-              const defaultAddress = (customer as any).addresses.find((addr: any) => addr.isDefault) || (customer as any).addresses[0];
-              if (defaultAddress) {
-                setNewAddress(defaultAddress.address || '');
-                setNewAddressCity(defaultAddress.city || '');
-                setNewAddressState(defaultAddress.state || '');
-                setNewAddressCountry(defaultAddress.country || '');
-                setSelectedAddressId(defaultAddress.id);
-              }
-            } else {
-              setSelectedAddressId(null);
-            }
+        const latestCustomer = await customersApi.getCustomerById(selectedCustomerId);
+        setSelectedCustomerData(latestCustomer);
+        
+        // If customer has addresses and order type is delivery, prefill address fields
+        if (orderType === 'delivery' && latestCustomer.addresses && latestCustomer.addresses.length > 0) {
+          const defaultAddress = latestCustomer.addresses.find((addr) => addr.isDefault) || latestCustomer.addresses[0];
+          if (defaultAddress) {
+            // Prefill address input fields with existing address
+            setNewAddress(defaultAddress.address || '');
+            setNewAddressCity(defaultAddress.city || '');
+            setNewAddressState(defaultAddress.state || '');
+            setNewAddressCountry(defaultAddress.country || '');
+            // Store the address ID so we can use it if address hasn't changed
+            setSelectedAddressId(defaultAddress.id);
           }
+        } else if (orderType === 'delivery') {
+          // No addresses - clear fields
+          setNewAddress('');
+          setNewAddressCity('');
+          setNewAddressState('');
+          setSelectedAddressId(null);
         }
       } catch (error) {
         console.error('Failed to load customer data:', error);
@@ -334,7 +291,7 @@ export function POSCart({
       const totalTables = settings?.general?.totalTables || 0;
       
       // If totalTables is set, use available tables API and filter by range
-      if (totalTables > 0 && navigator.onLine) {
+      if (totalTables > 0) {
         try {
           const availableTables = await restaurantApi.getAvailableTables(branchId);
           
@@ -366,49 +323,14 @@ export function POSCart({
             lastSynced: new Date().toISOString(),
           }));
           
-          // Update IndexedDB with available tables
-          for (const table of tablesToStore) {
-            try {
-              await db.restaurantTables.put(table as any);
-            } catch (error) {
-              console.error('Failed to update table in IndexedDB:', error);
-            }
-          }
-          
           setTables(tablesToStore as any);
-          return;
         } catch (error) {
           console.error('Failed to load available tables from API:', error);
-          // Fall through to IndexedDB loading
+          setTables([]);
         }
+      } else {
+        setTables([]);
       }
-      
-      // Fallback: Load from IndexedDB
-      const allTables = (await db.restaurantTables
-        .where('branchId')
-        .equals(branchId)
-        .toArray()) as unknown as RestaurantTable[];
-      
-      let branchTables = allTables.filter((table) => !table.deletedAt);
-      
-      // If totalTables is set, filter by range
-      if (totalTables > 0) {
-        branchTables = branchTables.filter((table) => {
-          const tableNum = parseInt((table as any).tableNumber || (table as any).table_number || '0', 10);
-          return !isNaN(tableNum) && tableNum >= 1 && tableNum <= totalTables;
-        });
-      }
-      
-      branchTables.sort((a, b) => {
-        const aTableNum = (a as any).tableNumber || (a as any).table_number || '';
-        const bTableNum = (b as any).tableNumber || (b as any).table_number || '';
-        if (aTableNum && bTableNum) {
-          return aTableNum.localeCompare(bTableNum, undefined, { numeric: true, sensitivity: 'base' });
-        }
-        return 0;
-      });
-
-      setTables(branchTables);
     } catch (error) {
       console.error('Failed to load tables:', error);
     }
@@ -416,15 +338,12 @@ export function POSCart({
 
   const loadCustomers = async () => {
     try {
-      const allCustomers = await db.customers
-        .where('tenantId')
-        .equals(tenantId)
-        .filter((customer) => !customer.deletedAt)
-        .sortBy('name');
-
+      const allCustomersResponse = await customersApi.getCustomers();
+      const allCustomers = Array.isArray(allCustomersResponse) ? allCustomersResponse : (allCustomersResponse?.data || []);
       setCustomers(allCustomers);
     } catch (error) {
       console.error('Failed to load customers:', error);
+      setCustomers([]);
     }
   };
 
@@ -445,10 +364,14 @@ export function POSCart({
     
     // Load food item details only if it's a food item
     if (item.foodItemId) {
-      const foodItem = await db.foodItems.get(item.foodItemId);
-      if (foodItem) {
-        setEditingItem({ ...foodItem, cartItemIndex: index });
-        setEditingItemIndex(index);
+      try {
+        const foodItem = await menuApi.getFoodItemById(item.foodItemId);
+        if (foodItem) {
+          setEditingItem({ ...foodItem, cartItemIndex: index });
+          setEditingItemIndex(index);
+        }
+      } catch (error) {
+        console.error('Failed to load food item:', error);
       }
     }
   };
@@ -463,96 +386,39 @@ export function POSCart({
 
   const handleCreateCustomer = async () => {
     try {
-      // If online, create customer via API first
-      if (navigator.onLine) {
-        try {
-          const createdCustomer = await customersApi.createCustomer({
-            name: newCustomerName,
-            phone: newCustomerPhone,
-            email: newCustomerEmail || undefined,
-          });
+      const createdCustomer = await customersApi.createCustomer({
+        name: newCustomerName,
+        phone: newCustomerPhone,
+        email: newCustomerEmail || undefined,
+      });
 
-          // Save to IndexedDB with API response
-          await db.customers.put({
-            ...createdCustomer,
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced',
-          } as any);
+      // Refresh customers list
+      await loadCustomers();
+      
+      // Select the newly created customer
+      onCustomerChange(createdCustomer.id);
+      
+      // Close modal and clear fields
+      setCustomerModalOpened(false);
+      setNewCustomerName('');
+      setNewCustomerPhone('');
+      setNewCustomerEmail('');
 
-          // Refresh customers list
-          await loadCustomers();
-          
-          // Select the newly created customer
-          onCustomerChange(createdCustomer.id);
-          
-          // Close modal and clear fields
-          setCustomerModalOpened(false);
-          setNewCustomerName('');
-          setNewCustomerPhone('');
-          setNewCustomerEmail('');
-
-          // Show success notification
-          notifications.show({
-            title: t('customers.createSuccess' as any, language) || 'Customer Created',
-            message: t('customers.createSuccess' as any, language) || 'Customer created successfully',
-            color: getSuccessColor(),
-            icon: <IconCheck size={16} />,
-          });
-        } catch (apiError: any) {
-          const errorMessage = apiError?.response?.data?.error?.message || 
-                              apiError?.message || 
-                              'Failed to create customer';
-          
-          notifications.show({
-            title: t('pos.orderPlacedError', language),
-            message: errorMessage,
-            color: getErrorColor(),
-          });
-          return;
-        }
-      } else {
-        // Offline: create customer in IndexedDB and queue for sync
-        const customerId = `customer-${Date.now()}`;
-        const newCustomer = {
-          id: customerId,
-          tenantId,
-          name: newCustomerName,
-          phone: newCustomerPhone,
-          email: newCustomerEmail || undefined,
-          totalOrders: 0,
-          totalSpent: 0,
-          averageOrderValue: 0,
-          loyaltyTier: 'regular' as const,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          syncStatus: 'pending' as const,
-        };
-
-        await db.customers.add(newCustomer as any);
-        
-        // Queue for sync
-        await syncService.queueChange('customers', 'CREATE', customerId, newCustomer);
-        
-        await loadCustomers();
-        onCustomerChange(customerId);
-        setCustomerModalOpened(false);
-        setNewCustomerName('');
-        setNewCustomerPhone('');
-        setNewCustomerEmail('');
-
-        // Show warning notification
-        notifications.show({
-          title: t('customers.createSuccess' as any, language) || 'Customer Created',
-          message: (t('customers.createSuccess' as any, language) || 'Customer created successfully') + ' (Will sync when online)',
-          color: warningColor,
-          icon: <IconCheck size={16} />,
-        });
-      }
-    } catch (error) {
-      console.error('Failed to create customer:', error);
+      // Show success notification
+      notifications.show({
+        title: t('customers.createSuccess' as any, language) || 'Customer Created',
+        message: t('customers.createSuccess' as any, language) || 'Customer created successfully',
+        color: getSuccessColor(),
+        icon: <IconCheck size={16} />,
+      });
+    } catch (apiError: any) {
+      const errorMessage = apiError?.response?.data?.error?.message || 
+                          apiError?.message || 
+                          'Failed to create customer';
+      
       notifications.show({
         title: t('pos.orderPlacedError', language),
-        message: error instanceof Error ? error.message : 'Failed to create customer',
+        message: errorMessage,
         color: getErrorColor(),
       });
     }
@@ -614,10 +480,18 @@ export function POSCart({
       const validOrderItemsForTax = await Promise.all(
         foodItemsOnly.map(async (item) => {
           // Fetch food item to get categoryId
-          const foodItem = item.foodItemId ? await db.foodItems.get(item.foodItemId) : null;
+          let categoryId: string | undefined;
+          if (item.foodItemId) {
+            try {
+              const foodItem = await menuApi.getFoodItemById(item.foodItemId);
+              categoryId = foodItem?.categoryId;
+            } catch (error) {
+              console.error('Failed to fetch food item for tax calculation:', error);
+            }
+          }
           return {
             foodItemId: item.foodItemId!,
-            categoryId: foodItem?.categoryId,
+            categoryId,
             subtotal: item.subtotal ?? (item.unitPrice ?? 0) * (item.quantity ?? 1),
           };
         })
@@ -878,60 +752,33 @@ export function POSCart({
         numberOfPersons: orderType === 'dine_in' ? numberOfPersons : undefined,
       };
 
-      let createdOrder: Order | null = null;
+      let createdOrder: any | null = null;
 
-      // If online, try to create or update order via API first (validates inventory)
-      if (navigator.onLine) {
-        try {
-          if (editingOrderId) {
-            // Update existing order
-            createdOrder = await ordersApi.updateOrder(editingOrderId, {
-              tableId: createOrderDto.tableId,
-              customerId: createOrderDto.customerId,
-              orderType: createOrderDto.orderType,
-              items: createOrderDto.items,
-              extraDiscountAmount: createOrderDto.extraDiscountAmount,
-              couponCode: createOrderDto.couponCode,
-              specialInstructions: createOrderDto.specialInstructions,
-              customerAddressId: createOrderDto.customerAddressId,
-              deliveryAddress: createOrderDto.deliveryAddress,
-              deliveryAddressCity: createOrderDto.deliveryAddressCity,
-              deliveryAddressState: createOrderDto.deliveryAddressState,
-              deliveryAddressCountry: createOrderDto.deliveryAddressCountry,
-              numberOfPersons: createOrderDto.numberOfPersons,
-            });
-          } else {
-            // Create new order
-            createdOrder = await ordersApi.createOrder(createOrderDto);
-          }
-          
-          // Use the order ID and details from the API response
-          const orderId = createdOrder.id;
-          const orderNumber = createdOrder.orderNumber;
-          const tokenNumber = createdOrder.tokenNumber;
-
-          // Create order object for IndexedDB (using API response data)
-          const order: Order = {
-            id: orderId,
-            tenantId: createdOrder.tenantId,
-            branchId: createdOrder.branchId,
-            tableId: createdOrder.tableId,
-            customerId: createdOrder.customerId,
-            orderNumber,
-            tokenNumber,
-            orderType: createdOrder.orderType,
-            status: createdOrder.status,
-            paymentStatus: createdOrder.paymentStatus,
-            subtotal: createdOrder.subtotal,
-            discountAmount: createdOrder.discountAmount,
-            taxAmount: createdOrder.taxAmount,
-            deliveryCharge: createdOrder.deliveryCharge,
-            totalAmount: createdOrder.totalAmount,
-            orderDate: createdOrder.orderDate,
-            createdAt: createdOrder.createdAt,
-            updatedAt: createdOrder.updatedAt,
-            syncStatus: 'synced',
-          };
+      try {
+        if (editingOrderId) {
+          // Update existing order
+          createdOrder = await ordersApi.updateOrder(editingOrderId, {
+            tableId: createOrderDto.tableId,
+            customerId: createOrderDto.customerId,
+            orderType: createOrderDto.orderType,
+            items: createOrderDto.items,
+            extraDiscountAmount: createOrderDto.extraDiscountAmount,
+            couponCode: createOrderDto.couponCode,
+            specialInstructions: createOrderDto.specialInstructions,
+            customerAddressId: createOrderDto.customerAddressId,
+            deliveryAddress: createOrderDto.deliveryAddress,
+            deliveryAddressCity: createOrderDto.deliveryAddressCity,
+            deliveryAddressState: createOrderDto.deliveryAddressState,
+            deliveryAddressCountry: createOrderDto.deliveryAddressCountry,
+            numberOfPersons: createOrderDto.numberOfPersons,
+          });
+        } else {
+          // Create new order
+          createdOrder = await ordersApi.createOrder(createOrderDto);
+        }
+        
+        // Use the order ID and details from the API response
+        const orderId = createdOrder.id;
 
           // Create order items for IndexedDB (using API response data)
           // Note: API Order has items, but IndexedDB Order doesn't, so we need to fetch items separately
@@ -954,27 +801,12 @@ export function POSCart({
             syncStatus: 'synced',
           }));
 
-          // Save to IndexedDB (update if editing, add if new)
-          if (editingOrderId) {
-            // Update existing order
-            await db.orders.update(editingOrderId, order);
-            // Delete old order items and add new ones
-            await db.orderItems.where('orderId').equals(editingOrderId).delete();
-            await db.orderItems.bulkAdd(orderItems);
-          } else {
-            // Add new order
-            await db.orders.add(order);
-            await db.orderItems.bulkAdd(orderItems);
-          }
-
           // Update table status if dine-in
           if (orderType === 'dine_in' && selectedTableId) {
-            const table = await db.restaurantTables.get(selectedTableId);
-            if (table) {
-              await db.restaurantTables.update(selectedTableId, {
-                status: 'occupied',
-                updatedAt: new Date().toISOString(),
-              });
+            try {
+              await restaurantApi.updateTable(selectedTableId, { status: 'occupied' });
+            } catch (error) {
+              console.error('Failed to update table status:', error);
             }
           }
 
@@ -984,7 +816,7 @@ export function POSCart({
           const customerPhone = selectedCustomerData?.phone;
           
           // Set placed order and items for invoice (before clearing cart)
-          setPlacedOrder(order);
+          setPlacedOrder(createdOrder);
           setPlacedOrderItems([...cartItems]);
           setPlacedOrderPaymentMethod(savedPaymentMethod);
           setPlacedOrderCustomerName(customerName);
@@ -1090,7 +922,6 @@ export function POSCart({
 
           // Open invoice modal
           setInvoiceModalOpened(true);
-          return;
         } catch (apiError: any) {
           // If API call fails (e.g., insufficient inventory), show error and stop
           const errorMessage = apiError?.response?.data?.error?.message || 
@@ -1099,7 +930,7 @@ export function POSCart({
           
           // Check if it's an inventory error
           const isInventoryError = errorMessage.toLowerCase().includes('insufficient') || 
-                                  errorMessage.toLowerCase().includes('inventory') ||
+                                  errorMessage.toLowerCase().includes('inventory') || 
                                   errorMessage.toLowerCase().includes('stock');
           
           notifications.show({
@@ -1113,124 +944,6 @@ export function POSCart({
           setIsPlacingOrder(false);
           return;
         }
-      }
-
-      // If offline, queue the order (but warn that inventory can't be validated)
-      const orderId = `order-${Date.now()}`;
-      const orderNumber = generateOrderNumber();
-      const tokenNumber = orderType === 'dine_in' ? generateTokenNumber() : undefined;
-
-      // Create order object for offline queue
-      const order: Order = {
-        id: orderId,
-        tenantId,
-        branchId,
-        tableId: orderType === 'dine_in' && selectedTableIds.length === 0 ? (selectedTableId || undefined) : undefined, // Backward compatibility
-        tableIds: orderType === 'dine_in' && selectedTableIds.length > 0 ? selectedTableIds : undefined,
-        customerId: selectedCustomerId || undefined,
-        orderNumber,
-        tokenNumber,
-        orderType,
-        status: 'preparing',
-        paymentStatus: 'pending',
-        subtotal,
-        discountAmount: discount,
-        taxAmount: tax,
-        deliveryCharge: delivery,
-        totalAmount: total,
-        orderDate: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        syncStatus: 'pending',
-      };
-
-      // Create order items for offline queue
-      const orderItems: OrderItem[] = cartItems.map((item, index) => ({
-        id: `order-item-${Date.now()}-${index}`,
-        orderId,
-        foodItemId: item.foodItemId,
-        buffetId: item.buffetId,
-        comboMealId: item.comboMealId,
-        variationId: item.variationId,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        discountAmount: 0,
-        taxAmount: 0,
-        subtotal: item.subtotal ?? (item.unitPrice ?? 0) * (item.quantity ?? 1),
-        specialInstructions: item.specialInstructions,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        syncStatus: 'pending',
-      }));
-
-      // Save to IndexedDB
-      await db.orders.add(order);
-      await db.orderItems.bulkAdd(orderItems);
-
-      // Update table status if dine-in
-      if (orderType === 'dine_in' && selectedTableId) {
-        const table = await db.restaurantTables.get(selectedTableId);
-        if (table) {
-          await db.restaurantTables.update(selectedTableId, {
-            status: 'occupied',
-            updatedAt: new Date().toISOString(),
-          });
-        }
-      }
-
-      // Add to sync queue
-      await syncService.queueChange('orders', 'CREATE', orderId, order);
-      for (const item of orderItems) {
-        await syncService.queueChange('orderItems', 'CREATE', item.id!, item);
-      }
-
-      // Store payment method and customer info before clearing (needed for invoice generation)
-      const savedPaymentMethod = paymentMethod;
-      const customerName = selectedCustomerData?.name;
-      const customerPhone = selectedCustomerData?.phone;
-      
-      // Set placed order and items for invoice (before clearing cart)
-      setPlacedOrder(order);
-      setPlacedOrderItems([...cartItems]);
-      setPlacedOrderPaymentMethod(savedPaymentMethod);
-      setPlacedOrderCustomerName(customerName);
-      setPlacedOrderCustomerPhone(customerPhone);
-
-      // Clear cart
-      onClearCart();
-      setManualDiscount(0);
-      setCouponCode('');
-      setAppliedCouponDiscount(0);
-      setAppliedCouponId(null);
-      setPaymentMethod(null);
-      
-      // Reset tables and persons
-      if (onTableIdsChange) {
-        onTableIdsChange([]);
-      }
-      if (onTableChange) {
-        onTableChange(null);
-      }
-      if (onNumberOfPersonsChange) {
-        onNumberOfPersonsChange(1);
-      }
-      
-      // Reload tables to update available list
-      await loadTables();
-
-      // Notify other components about the new order
-      notifyOrderUpdate('order-created', orderId);
-
-      // Show warning notification for offline orders
-      notifications.show({
-        title: t('pos.orderQueuedMessage', language),
-        message: t('pos.orderQueuedMessage', language) + ' ' + (t('pos.inventoryNotValidated' as any, language) || 'Inventory will be validated when online.'),
-        color: warningColor,
-        icon: <IconCheck size={16} />,
-      });
-
-      // Open invoice modal
-      setInvoiceModalOpened(true);
     } catch (error) {
       console.error('Failed to place order:', error);
       notifications.show({

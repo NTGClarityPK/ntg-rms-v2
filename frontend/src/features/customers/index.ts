@@ -6,6 +6,3 @@
 
 export { CustomersPage } from './components/CustomersPage';
 
-// Repositories
-export * from './repositories';
-

@@ -36,8 +36,6 @@ import {
   CreateRecipeDto,
 } from '@/lib/api/inventory';
 import { menuApi, FoodItem } from '@/lib/api/menu';
-import { db } from '@/lib/indexeddb/database';
-import { syncService } from '@/lib/sync/sync-service';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
@@ -90,91 +88,10 @@ export function RecipesPage() {
     if (!user?.tenantId) return;
 
     try {
-      // Load from server if online
-      if (navigator.onLine) {
-        try {
-          const serverFoodItemsResponse = await menuApi.getFoodItems(undefined, foodItemsPagination.paginationParams);
-          // Handle both paginated and non-paginated responses
-          const serverFoodItems = foodItemsPagination.extractData(serverFoodItemsResponse);
-          foodItemsPagination.extractPagination(serverFoodItemsResponse);
-          setFoodItems(serverFoodItems);
-        } catch (err: any) {
-          console.warn('Failed to sync food items from server:', err);
-          // Fallback to IndexedDB
-          const localFoodItems = await db.foodItems
-            .where('tenantId')
-            .equals(user.tenantId)
-            .filter((item) => !item.deletedAt)
-            .toArray();
-          
-          // Apply local pagination for IndexedDB
-          const totalItems = localFoodItems.length;
-          const startIndex = (foodItemsPagination.page - 1) * foodItemsPagination.limit;
-          const endIndex = startIndex + foodItemsPagination.limit;
-          const paginatedFoodItems = localFoodItems.slice(startIndex, endIndex);
-          
-          setFoodItems(paginatedFoodItems.map((item) => ({
-            id: item.id,
-            name: (item as any).name || (item as any).nameEn || (item as any).nameAr || '',
-            description: (item as any).description || (item as any).descriptionEn || (item as any).descriptionAr || undefined,
-            imageUrl: item.imageUrl,
-            categoryId: item.categoryId,
-            basePrice: item.basePrice,
-            stockType: item.stockType,
-            stockQuantity: item.stockQuantity,
-            menuType: item.menuType,
-            menuTypes: item.menuTypes,
-            ageLimit: item.ageLimit,
-            displayOrder: item.displayOrder,
-            isActive: item.isActive,
-            createdAt: item.createdAt,
-            updatedAt: item.updatedAt,
-          })));
-          
-          // Update pagination info for local pagination
-          foodItemsPagination.setTotal(totalItems);
-          foodItemsPagination.setTotalPages(Math.ceil(totalItems / foodItemsPagination.limit));
-          foodItemsPagination.setHasNext(endIndex < totalItems);
-          foodItemsPagination.setHasPrev(foodItemsPagination.page > 1);
-        }
-      } else {
-        // Load from IndexedDB when offline
-        const localFoodItems = await db.foodItems
-          .where('tenantId')
-          .equals(user.tenantId)
-          .filter((item) => !item.deletedAt)
-          .toArray();
-        
-        // Apply local pagination for IndexedDB
-        const totalItems = localFoodItems.length;
-        const startIndex = (foodItemsPagination.page - 1) * foodItemsPagination.limit;
-        const endIndex = startIndex + foodItemsPagination.limit;
-        const paginatedFoodItems = localFoodItems.slice(startIndex, endIndex);
-        
-        setFoodItems(paginatedFoodItems.map((item) => ({
-          id: item.id,
-          name: (item as any).name || (item as any).nameEn || (item as any).nameAr || '',
-          description: (item as any).description || (item as any).descriptionEn || (item as any).descriptionAr || undefined,
-          imageUrl: item.imageUrl,
-          categoryId: item.categoryId,
-          basePrice: item.basePrice,
-          stockType: item.stockType,
-          stockQuantity: item.stockQuantity,
-          menuType: item.menuType,
-          menuTypes: item.menuTypes,
-          ageLimit: item.ageLimit,
-          displayOrder: item.displayOrder,
-          isActive: item.isActive,
-          createdAt: item.createdAt,
-          updatedAt: item.updatedAt,
-        })));
-        
-        // Update pagination info for local pagination
-        foodItemsPagination.setTotal(totalItems);
-        foodItemsPagination.setTotalPages(Math.ceil(totalItems / foodItemsPagination.limit));
-        foodItemsPagination.setHasNext(endIndex < totalItems);
-        foodItemsPagination.setHasPrev(foodItemsPagination.page > 1);
-      }
+      const serverFoodItemsResponse = await menuApi.getFoodItems(undefined, foodItemsPagination.paginationParams);
+      const serverFoodItems = foodItemsPagination.extractData(serverFoodItemsResponse);
+      foodItemsPagination.extractPagination(serverFoodItemsResponse);
+      setFoodItems(serverFoodItems);
     } catch (err: any) {
       console.error('Failed to load food items:', err);
     }
@@ -184,83 +101,27 @@ export function RecipesPage() {
     if (!user?.tenantId) return;
 
     try {
-      // Load from server if online
-      if (navigator.onLine) {
-        try {
-          const allFoodItems: FoodItem[] = [];
-          let page = 1;
-          const limit = 100; // Fetch in larger batches
-          let hasMore = true;
+      const allFoodItems: FoodItem[] = [];
+      let page = 1;
+      const limit = 100; // Fetch in larger batches
+      let hasMore = true;
 
-          // Fetch all pages sequentially
-          while (hasMore) {
-            const response = await menuApi.getFoodItems(undefined, { page, limit });
-            
-            if (isPaginatedResponse(response)) {
-              allFoodItems.push(...response.data);
-              hasMore = response.pagination.hasNext;
-              page++;
-            } else {
-              // Non-paginated response - treat as single page
-              allFoodItems.push(...(Array.isArray(response) ? response : []));
-              hasMore = false;
-            }
-          }
-
-          setAllFoodItems(allFoodItems);
-        } catch (err: any) {
-          console.warn('Failed to sync all food items from server:', err);
-          // Fallback to IndexedDB
-          const localFoodItems = await db.foodItems
-            .where('tenantId')
-            .equals(user.tenantId)
-            .filter((item) => !item.deletedAt)
-            .toArray();
-          
-          setAllFoodItems(localFoodItems.map((item) => ({
-            id: item.id,
-            name: (item as any).name || (item as any).nameEn || (item as any).nameAr || '',
-            description: (item as any).description || (item as any).descriptionEn || (item as any).descriptionAr || undefined,
-            imageUrl: item.imageUrl,
-            categoryId: item.categoryId,
-            basePrice: item.basePrice,
-            stockType: item.stockType,
-            stockQuantity: item.stockQuantity,
-            menuType: item.menuType,
-            menuTypes: item.menuTypes,
-            ageLimit: item.ageLimit,
-            displayOrder: item.displayOrder,
-            isActive: item.isActive,
-            createdAt: item.createdAt,
-            updatedAt: item.updatedAt,
-          })));
-        }
-      } else {
-        // Load from IndexedDB when offline
-        const localFoodItems = await db.foodItems
-          .where('tenantId')
-          .equals(user.tenantId)
-          .filter((item) => !item.deletedAt)
-          .toArray();
+      // Fetch all pages sequentially
+      while (hasMore) {
+        const response = await menuApi.getFoodItems(undefined, { page, limit });
         
-        setAllFoodItems(localFoodItems.map((item) => ({
-          id: item.id,
-          name: (item as any).name || (item as any).nameEn || (item as any).nameAr || '',
-          description: (item as any).description || (item as any).descriptionEn || (item as any).descriptionAr || undefined,
-          imageUrl: item.imageUrl,
-          categoryId: item.categoryId,
-          basePrice: item.basePrice,
-          stockType: item.stockType,
-          stockQuantity: item.stockQuantity,
-          menuType: item.menuType,
-          menuTypes: item.menuTypes,
-          ageLimit: item.ageLimit,
-          displayOrder: item.displayOrder,
-          isActive: item.isActive,
-          createdAt: item.createdAt,
-          updatedAt: item.updatedAt,
-        })));
+        if (isPaginatedResponse(response)) {
+          allFoodItems.push(...response.data);
+          hasMore = response.pagination.hasNext;
+          page++;
+        } else {
+          // Non-paginated response - treat as single page
+          allFoodItems.push(...(Array.isArray(response) ? response : []));
+          hasMore = false;
+        }
       }
+
+      setAllFoodItems(allFoodItems);
     } catch (err: any) {
       console.error('Failed to load all food items:', err);
     }
@@ -270,114 +131,45 @@ export function RecipesPage() {
     if (!user?.tenantId) return;
 
     try {
-      // Load from IndexedDB first
-      const localIngredients = await db.ingredients
-        .where('tenantId')
-        .equals(user.tenantId)
-        .filter((ing) => !ing.deletedAt && ing.isActive)
-        .toArray();
+      const allServerIngredients: Ingredient[] = [];
+      let page = 1;
+      const limit = 100; // Fetch in larger batches
+      let hasMore = true;
 
-      // Deduplicate by ID first, then by nameEn
-      const byId = new Map(localIngredients.map(ing => [ing.id, ing]));
-      const byName = new Map<string, typeof localIngredients[0]>();
+      // Fetch all pages sequentially
+      while (hasMore) {
+        const response = await inventoryApi.getIngredients({ isActive: true }, { page, limit });
+        
+        if (isPaginatedResponse(response)) {
+          allServerIngredients.push(...response.data);
+          hasMore = response.pagination.hasNext;
+          page++;
+        } else {
+          // Non-paginated response - treat as single page
+          allServerIngredients.push(...(Array.isArray(response) ? response : []));
+          hasMore = false;
+        }
+      }
       
-      for (const ing of Array.from(byId.values())) {
-        const key = ((ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '').toLowerCase().trim();
+      // Deduplicate server ingredients
+      const serverById = new Map(allServerIngredients.map((ing: Ingredient) => [ing.id, ing]));
+      const serverByName = new Map<string, Ingredient>();
+      
+      for (const ing of Array.from(serverById.values())) {
+        const key = ing.name?.toLowerCase().trim() || '';
         if (key) {
-          const existing = byName.get(key);
-          if (!existing || new Date(ing.updatedAt || ing.createdAt || '') > new Date(existing.updatedAt || existing.createdAt || '')) {
-            byName.set(key, ing);
+          const existing = serverByName.get(key);
+          if (!existing || new Date(ing.updatedAt) > new Date(existing.updatedAt)) {
+            serverByName.set(key, ing);
           }
         }
       }
       
-      const uniqueIngredients = byName.size < byId.size 
-        ? Array.from(byName.values())
-        : Array.from(byId.values());
-
-      setIngredients(uniqueIngredients.map((ing) => ({
-        id: ing.id,
-        tenantId: ing.tenantId,
-        name: (ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '',
-        category: ing.category,
-        unitOfMeasurement: ing.unitOfMeasurement,
-        currentStock: ing.currentStock,
-        minimumThreshold: ing.minimumThreshold,
-        costPerUnit: ing.costPerUnit,
-        storageLocation: ing.storageLocation,
-        isActive: ing.isActive,
-        createdAt: ing.createdAt,
-        updatedAt: ing.updatedAt,
-      })));
-
-      // Sync from server if online
-      if (navigator.onLine) {
-        try {
-          const allServerIngredients: Ingredient[] = [];
-          let page = 1;
-          const limit = 100; // Fetch in larger batches
-          let hasMore = true;
-
-          // Fetch all pages sequentially
-          while (hasMore) {
-            const response = await inventoryApi.getIngredients({ isActive: true }, { page, limit });
-            
-            if (isPaginatedResponse(response)) {
-              allServerIngredients.push(...response.data);
-              hasMore = response.pagination.hasNext;
-              page++;
-            } else {
-              // Non-paginated response - treat as single page
-              allServerIngredients.push(...(Array.isArray(response) ? response : []));
-              hasMore = false;
-            }
-          }
-          
-          // Deduplicate server ingredients
-          const serverById = new Map(allServerIngredients.map((ing: Ingredient) => [ing.id, ing]));
-          const serverByName = new Map<string, Ingredient>();
-          
-          for (const ing of Array.from(serverById.values())) {
-            const key = ing.name?.toLowerCase().trim() || '';
-            if (key) {
-              const existing = serverByName.get(key);
-              if (!existing || new Date(ing.updatedAt) > new Date(existing.updatedAt)) {
-                serverByName.set(key, ing);
-              }
-            }
-          }
-          
-          const uniqueServerIngredients = serverByName.size < serverById.size 
-            ? Array.from(serverByName.values())
-            : Array.from(serverById.values());
-          
-          setIngredients(uniqueServerIngredients);
-
-          // Update IndexedDB using bulkPut
-          const ingredientsToStore = uniqueServerIngredients.map(ing => ({
-            id: ing.id,
-            tenantId: user.tenantId,
-            name: ing.name,
-            category: ing.category,
-            unitOfMeasurement: ing.unitOfMeasurement,
-            currentStock: ing.currentStock,
-            minimumThreshold: ing.minimumThreshold,
-            costPerUnit: ing.costPerUnit,
-            storageLocation: ing.storageLocation,
-            isActive: ing.isActive,
-            createdAt: ing.createdAt,
-            updatedAt: ing.updatedAt,
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced' as const,
-          }));
-          
-          if (ingredientsToStore.length > 0) {
-            await db.ingredients.bulkPut(ingredientsToStore as any);
-          }
-        } catch (err: any) {
-          console.warn('Failed to sync ingredients from server:', err);
-        }
-      }
+      const uniqueServerIngredients = serverByName.size < serverById.size 
+        ? Array.from(serverByName.values())
+        : Array.from(serverById.values());
+      
+      setIngredients(uniqueServerIngredients);
     } catch (err: any) {
       console.error('Failed to load ingredients:', err);
     }
@@ -387,53 +179,15 @@ export function RecipesPage() {
     if (!user?.tenantId) return;
 
     try {
-      // Load from IndexedDB first
-      const localRecipes = await db.recipes
-        .where('foodItemId')
-        .anyOf(foodItems.map((item) => item.id))
-        .toArray();
-
-      setRecipes(localRecipes.map((rec) => ({
-        id: rec.id,
-        foodItemId: rec.foodItemId,
-        ingredientId: rec.ingredientId,
-        quantity: rec.quantity,
-        unit: rec.unit,
-      })));
-
-      // Sync from server if online
-      if (navigator.onLine) {
-        try {
-          const serverRecipesResponse = await inventoryApi.getRecipes();
-          // Handle both paginated and non-paginated responses
-          const serverRecipes = Array.isArray(serverRecipesResponse) 
-            ? serverRecipesResponse 
-            : (serverRecipesResponse?.data || []);
-          setRecipes(serverRecipes);
-
-          // Update IndexedDB
-          for (const rec of serverRecipes) {
-            await db.recipes.put({
-              id: rec.id,
-              ...(rec.foodItemId && { foodItemId: rec.foodItemId }),
-              ...(rec.addOnId && { addOnId: rec.addOnId }),
-              ingredientId: rec.ingredientId,
-              quantity: rec.quantity,
-              unit: rec.unit,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-              lastSynced: new Date().toISOString(),
-              syncStatus: 'synced' as const,
-            });
-          }
-        } catch (err: any) {
-          console.warn('Failed to sync recipes from server:', err);
-        }
-      }
+      const serverRecipesResponse = await inventoryApi.getRecipes();
+      const serverRecipes = Array.isArray(serverRecipesResponse) 
+        ? serverRecipesResponse 
+        : (serverRecipesResponse?.data || []);
+      setRecipes(serverRecipes);
     } catch (err: any) {
       console.error('Failed to load recipes:', err);
     }
-  }, [user?.tenantId, foodItems]);
+  }, [user?.tenantId]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -547,53 +301,7 @@ export function RecipesPage() {
         })),
       };
 
-      // Save to IndexedDB first (offline-first)
-      const existingRecipes = recipes.filter((r) => r.foodItemId === values.foodItemId);
-      
-      // Delete existing recipes locally
-      for (const rec of existingRecipes) {
-        await db.recipes.delete(rec.id);
-      }
-
-      // Add new recipes locally
-      const tempRecipes = recipeData.ingredients.map((ing, index) => ({
-        id: `temp_${Date.now()}_${index}`,
-        foodItemId: recipeData.foodItemId,
-        ingredientId: ing.ingredientId,
-        quantity: ing.quantity,
-        unit: ing.unit,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        syncStatus: 'pending' as const,
-      }));
-
-      await db.recipes.bulkAdd(tempRecipes);
-
-      // Try to sync if online
-      if (navigator.onLine) {
-        try {
-          const result = await inventoryApi.createOrUpdateRecipe(recipeData);
-          
-          // Update recipes with server IDs
-          for (let i = 0; i < tempRecipes.length; i++) {
-            if (result[i]) {
-              await db.recipes.update(tempRecipes[i].id, {
-                id: result[i].id,
-                syncStatus: 'synced',
-                lastSynced: new Date().toISOString(),
-              });
-            }
-          }
-
-          // Queue sync
-          for (const rec of result) {
-            await syncService.queueChange('recipes', 'CREATE', rec.id, rec);
-          }
-        } catch (err: any) {
-          // Keep as pending, will sync later
-          console.warn('Failed to sync recipe:', err);
-        }
-      }
+      await inventoryApi.createOrUpdateRecipe(recipeData);
 
       notifications.show({
         title: t('common.success' as any, language) || 'Success',
@@ -631,21 +339,7 @@ export function RecipesPage() {
       confirmProps: { color: errorColor },
       onConfirm: async () => {
         try {
-          // Delete from IndexedDB first
-          const existingRecipes = recipes.filter((r) => r.foodItemId === foodItem.id);
-          for (const rec of existingRecipes) {
-            await db.recipes.delete(rec.id);
-          }
-
-          // Try to sync if online
-          if (navigator.onLine) {
-            try {
-              await inventoryApi.deleteRecipe(foodItem.id);
-              await syncService.queueChange('recipes', 'DELETE', foodItem.id, { foodItemId: foodItem.id });
-            } catch (err: any) {
-              console.warn('Failed to sync recipe deletion:', err);
-            }
-          }
+          await inventoryApi.deleteRecipe(foodItem.id);
 
           notifications.show({
             title: t('common.success' as any, language) || 'Success',

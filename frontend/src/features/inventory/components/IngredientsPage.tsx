@@ -26,9 +26,6 @@ import { IconPlus, IconEdit, IconTrash, IconAlertCircle, IconSearch, IconCircleC
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { inventoryApi, Ingredient, CreateIngredientDto, UpdateIngredientDto } from '@/lib/api/inventory';
-import { db } from '@/lib/indexeddb/database';
-import { syncService } from '@/lib/sync/sync-service';
-import { IngredientsRepository } from '../repositories/ingredients.repository';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
@@ -66,11 +63,6 @@ export function IngredientsPage() {
   const [statusFilter, setStatusFilter] = useState<boolean | null>(null);
   const prevSearchQueryRef = useRef<string>('');
 
-  // Initialize repository
-  const ingredientsRepository = useMemo(() => {
-    return user?.tenantId ? new IngredientsRepository(user.tenantId) : null;
-  }, [user?.tenantId]);
-
   const form = useForm({
     initialValues: {
       name: '',
@@ -95,191 +87,17 @@ export function IngredientsPage() {
       setLoading(true);
       setError(null);
 
-      // Sync from server if online, otherwise load from IndexedDB
-      if (navigator.onLine) {
-        try {
-          const filters: any = {};
-          if (categoryFilter) filters.category = categoryFilter;
-          if (statusFilter !== null) filters.isActive = statusFilter;
-          if (debouncedSearchQuery.trim()) filters.search = debouncedSearchQuery.trim();
+      const filters: any = {};
+      if (categoryFilter) filters.category = categoryFilter;
+      if (statusFilter !== null) filters.isActive = statusFilter;
+      if (debouncedSearchQuery.trim()) filters.search = debouncedSearchQuery.trim();
 
-          const serverIngredientsResponse = await inventoryApi.getIngredients(filters, pagination.paginationParams);
-          // Handle both paginated and non-paginated responses
-          const serverIngredients = pagination.extractData(serverIngredientsResponse);
-          pagination.extractPagination(serverIngredientsResponse);
-          
-          // Deduplicate by ID first, then by nameEn to catch any duplicates with different IDs
-          const byId = new Map(serverIngredients.map(ing => [ing.id, ing]));
-          const byName = new Map<string, Ingredient>();
-          
-          // Keep the most recent ingredient if there are duplicates by name
-          for (const ing of Array.from(byId.values())) {
-            const key = ing.name?.toLowerCase().trim() || '';
-            if (key) {
-              const existing = byName.get(key);
-              if (!existing || new Date(ing.updatedAt) > new Date(existing.updatedAt)) {
-                byName.set(key, ing);
-              }
-            }
-          }
-          
-          // Use name-based deduplication if it results in fewer items, otherwise use ID-based
-          const uniqueIngredients = byName.size < byId.size 
-            ? Array.from(byName.values())
-            : Array.from(byId.values());
-          
-          setIngredients(uniqueIngredients);
-
-          // Update IndexedDB using bulkPut (handles duplicates automatically)
-          const ingredientsToStore = uniqueIngredients.map(ing => ({
-            id: ing.id,
-            tenantId: user.tenantId,
-            name: ing.name,
-            category: ing.category,
-            unitOfMeasurement: ing.unitOfMeasurement,
-            currentStock: ing.currentStock,
-            minimumThreshold: ing.minimumThreshold,
-            costPerUnit: ing.costPerUnit,
-            storageLocation: ing.storageLocation,
-            isActive: ing.isActive,
-            createdAt: ing.createdAt,
-            updatedAt: ing.updatedAt,
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced' as const,
-          })) as any;
-          
-          if (ingredientsToStore.length > 0 && ingredientsRepository) {
-            await ingredientsRepository.bulkPut(ingredientsToStore);
-          }
-        } catch (err: any) {
-          console.warn('Failed to sync ingredients from server:', err);
-          // Fallback to IndexedDB if server sync fails using repository
-          let localIngredients: Ingredient[] = [];
-          if (ingredientsRepository) {
-            const filters: Partial<Ingredient> = {};
-            if (categoryFilter) filters.category = categoryFilter;
-            if (statusFilter !== null) filters.isActive = statusFilter;
-            localIngredients = await ingredientsRepository.findAll(filters);
-          }
-
-          // Apply search filter for offline mode
-          if (debouncedSearchQuery.trim()) {
-            const searchTerm = debouncedSearchQuery.toLowerCase().trim();
-            localIngredients = localIngredients.filter((ing) => {
-              const name = ((ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '').toLowerCase();
-              return name.includes(searchTerm);
-            });
-          }
-
-          // Deduplicate by ID first, then by nameEn
-          const byId = new Map(localIngredients.map(ing => [ing.id, ing]));
-          const byName = new Map<string, typeof localIngredients[0]>();
-          
-          for (const ing of Array.from(byId.values())) {
-            const key = ((ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '').toLowerCase().trim();
-            if (key) {
-              const existing = byName.get(key);
-              if (!existing || new Date(ing.updatedAt || ing.createdAt || '') > new Date(existing.updatedAt || existing.createdAt || '')) {
-                byName.set(key, ing);
-              }
-            }
-          }
-          
-          const uniqueIngredients = byName.size < byId.size 
-            ? Array.from(byName.values())
-            : Array.from(byId.values());
-          
-          // Apply local pagination
-          const totalItems = uniqueIngredients.length;
-          const startIndex = (pagination.page - 1) * pagination.limit;
-          const endIndex = startIndex + pagination.limit;
-          const paginatedIngredients = uniqueIngredients.slice(startIndex, endIndex);
-          
-          setIngredients(paginatedIngredients.map((ing) => ({
-            id: ing.id,
-            tenantId: ing.tenantId,
-            name: (ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '',
-            category: ing.category,
-            unitOfMeasurement: ing.unitOfMeasurement,
-            currentStock: ing.currentStock,
-            minimumThreshold: ing.minimumThreshold,
-            costPerUnit: ing.costPerUnit,
-            storageLocation: ing.storageLocation,
-            isActive: ing.isActive,
-            createdAt: ing.createdAt,
-            updatedAt: ing.updatedAt,
-          })));
-          
-          // Update pagination info for local pagination
-          pagination.setTotal(totalItems);
-          pagination.setTotalPages(Math.ceil(totalItems / pagination.limit));
-          pagination.setHasNext(endIndex < totalItems);
-          pagination.setHasPrev(pagination.page > 1);
-        }
-      } else {
-        // Load from IndexedDB when offline using repository
-        let localIngredients: Ingredient[] = [];
-        if (ingredientsRepository) {
-          const filters: Partial<Ingredient> = {};
-          if (categoryFilter) filters.category = categoryFilter;
-          if (statusFilter !== null) filters.isActive = statusFilter;
-          localIngredients = await ingredientsRepository.findAll(filters);
-        }
-
-        // Apply search filter for offline mode
-        if (debouncedSearchQuery.trim()) {
-          const searchTerm = debouncedSearchQuery.toLowerCase().trim();
-          localIngredients = localIngredients.filter((ing) => {
-            const name = ((ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '').toLowerCase();
-            return name.includes(searchTerm);
-          });
-        }
-
-        // Deduplicate by ID first, then by nameEn
-        const byId = new Map(localIngredients.map(ing => [ing.id, ing]));
-        const byName = new Map<string, typeof localIngredients[0]>();
-        
-        for (const ing of Array.from(byId.values())) {
-          const key = (ing as any).name?.toLowerCase().trim() || (ing as any).nameEn?.toLowerCase().trim() || '';
-          if (key) {
-            const existing = byName.get(key);
-            if (!existing || new Date(ing.updatedAt || ing.createdAt || '') > new Date(existing.updatedAt || existing.createdAt || '')) {
-              byName.set(key, ing);
-            }
-          }
-        }
-        
-        const uniqueIngredients = byName.size < byId.size 
-          ? Array.from(byName.values())
-          : Array.from(byId.values());
-
-        // Apply local pagination
-        const totalItems = uniqueIngredients.length;
-        const startIndex = (pagination.page - 1) * pagination.limit;
-        const endIndex = startIndex + pagination.limit;
-        const paginatedIngredients = uniqueIngredients.slice(startIndex, endIndex);
-
-        setIngredients(paginatedIngredients.map((ing) => ({
-          id: ing.id,
-          tenantId: ing.tenantId,
-          name: (ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '',
-          category: ing.category,
-          unitOfMeasurement: ing.unitOfMeasurement,
-          currentStock: ing.currentStock,
-          minimumThreshold: ing.minimumThreshold,
-          costPerUnit: ing.costPerUnit,
-          storageLocation: ing.storageLocation,
-          isActive: ing.isActive,
-          createdAt: ing.createdAt,
-          updatedAt: ing.updatedAt,
-        })));
-        
-        // Update pagination info for local pagination
-        pagination.setTotal(totalItems);
-        pagination.setTotalPages(Math.ceil(totalItems / pagination.limit));
-        pagination.setHasNext(endIndex < totalItems);
-        pagination.setHasPrev(pagination.page > 1);
-      }
+      const serverIngredientsResponse = await inventoryApi.getIngredients(filters, pagination.paginationParams);
+      // Handle both paginated and non-paginated responses
+      const serverIngredients = pagination.extractData(serverIngredientsResponse);
+      pagination.extractPagination(serverIngredientsResponse);
+      
+      setIngredients(serverIngredients);
     } catch (err: any) {
       setError(err.message || t('inventory.loadError', language));
     } finally {
@@ -349,20 +167,6 @@ export function IngredientsPage() {
         };
 
         savedIngredient = await inventoryApi.updateIngredient(editingIngredient.id, updateData);
-        
-        // Update IndexedDB using repository
-        if (ingredientsRepository) {
-          await ingredientsRepository.update(editingIngredient.id, {
-            ...updateData,
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced',
-          } as Partial<Ingredient>);
-        }
-
-        // Only queue if offline (already synced via API when online)
-        if (!navigator.onLine) {
-        await syncService.queueChange('ingredients', 'UPDATE', editingIngredient.id, savedIngredient);
-        }
       } else {
         // Create
         const createData: CreateIngredientDto = {
@@ -377,31 +181,6 @@ export function IngredientsPage() {
         };
 
         savedIngredient = await inventoryApi.createIngredient(createData);
-        
-        // Save to IndexedDB using repository
-        if (ingredientsRepository) {
-          await ingredientsRepository.create({
-          id: savedIngredient.id,
-          tenantId: user.tenantId,
-          name: savedIngredient.name,
-          category: savedIngredient.category,
-          unitOfMeasurement: savedIngredient.unitOfMeasurement,
-          currentStock: savedIngredient.currentStock,
-          minimumThreshold: savedIngredient.minimumThreshold,
-          costPerUnit: savedIngredient.costPerUnit,
-          storageLocation: savedIngredient.storageLocation,
-          isActive: savedIngredient.isActive,
-          createdAt: savedIngredient.createdAt,
-          updatedAt: savedIngredient.updatedAt,
-          lastSynced: new Date().toISOString(),
-          syncStatus: 'synced' as const,
-        } as any);
-        }
-
-        // Only queue if offline (already synced via API when online)
-        if (!navigator.onLine) {
-        await syncService.queueChange('ingredients', 'CREATE', savedIngredient.id, savedIngredient);
-        }
       }
 
       notifications.show({
@@ -435,16 +214,6 @@ export function IngredientsPage() {
       onConfirm: async () => {
         try {
           await inventoryApi.deleteIngredient(ingredient.id);
-          
-          // Update IndexedDB (soft delete) using repository
-          if (ingredientsRepository) {
-            await ingredientsRepository.delete(ingredient.id);
-          }
-
-          // Only queue if offline (already synced via API when online)
-          if (!navigator.onLine) {
-          await syncService.queueChange('ingredients', 'DELETE', ingredient.id, ingredient);
-          }
 
           notifications.show({
             title: t('common.success' as any, language) || 'Success',

@@ -35,9 +35,6 @@ import {
 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { customersApi, Customer, CreateCustomerDto, UpdateCustomerDto } from '@/lib/api/customers';
-import { db } from '@/lib/indexeddb/database';
-import { syncService } from '@/lib/sync/sync-service';
-import { CustomersRepository } from '../repositories/customers.repository';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
@@ -77,10 +74,6 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Initialize repository
-  const customersRepository = useMemo(() => {
-    return user?.tenantId ? new CustomersRepository(user.tenantId) : null;
-  }, [user?.tenantId]);
   const [opened, setOpened] = useState(false);
   const [profileOpened, setProfileOpened] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -116,85 +109,15 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
       setLoading(true);
       setError(null);
 
-      // Load from IndexedDB first using repository
-      const localCustomers = customersRepository 
-        ? await customersRepository.findAll()
-        : [];
+      const filters: any = {};
+      if (searchQuery) filters.search = searchQuery;
 
-      // Apply filters to local customers
-      let filteredLocalCustomers = localCustomers;
-      if (searchQuery) {
-        filteredLocalCustomers = filteredLocalCustomers.filter(cust => 
-          cust.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          cust.phone?.includes(searchQuery) ||
-          cust.email?.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-      }
-
-      // Apply local pagination
-      const totalItems = filteredLocalCustomers.length;
-      const startIndex = (pagination.page - 1) * pagination.limit;
-      const endIndex = startIndex + pagination.limit;
-      const paginatedLocalCustomers = filteredLocalCustomers.slice(startIndex, endIndex);
-
-      // Set pagination info for local pagination (as fallback, will be updated from server if online)
-      pagination.setTotal(totalItems);
-      pagination.setTotalPages(Math.ceil(totalItems / pagination.limit));
-      pagination.setHasNext(endIndex < totalItems);
-      pagination.setHasPrev(pagination.page > 1);
-
-      setCustomers(paginatedLocalCustomers as unknown as Customer[]);
-
-      // Sync from server if online
-      if (navigator.onLine) {
-        try {
-          const filters: any = {};
-          if (searchQuery) filters.search = searchQuery;
-
-          const serverCustomersResponse = await customersApi.getCustomers(filters, pagination.paginationParams);
-          // Handle both paginated and non-paginated responses
-          const serverCustomers: Customer[] = pagination.extractData(serverCustomersResponse);
-          const paginationInfo = pagination.extractPagination(serverCustomersResponse);
-          
-          // If response is not paginated, set total from array length
-          if (!paginationInfo) {
-            pagination.setTotal(serverCustomers.length);
-            pagination.setTotalPages(Math.ceil(serverCustomers.length / pagination.limit));
-            pagination.setHasNext(false);
-            pagination.setHasPrev(false);
-          }
-
-          setCustomers(serverCustomers);
-
-          // Update IndexedDB
-          const customersToStore = serverCustomers.map((cust) => ({
-            id: cust.id,
-            tenantId: user.tenantId,
-            name: cust.name || '',
-            phone: cust.phone,
-            email: cust.email,
-            dateOfBirth: cust.dateOfBirth,
-            preferredLanguage: cust.preferredLanguage,
-            notes: cust.notes,
-            totalOrders: cust.totalOrders,
-            totalSpent: cust.totalSpent,
-            averageOrderValue: cust.averageOrderValue,
-            lastOrderDate: cust.lastOrderDate,
-            loyaltyTier: cust.loyaltyTier,
-            createdAt: cust.createdAt,
-            updatedAt: cust.updatedAt,
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced' as const,
-          }));
-
-          if (customersToStore.length > 0 && customersRepository) {
-            await customersRepository.bulkPut(customersToStore as any);
-          }
-        } catch (err: any) {
-          console.error('Failed to load customers from server:', err);
-          // Keep using IndexedDB data that was already set
-        }
-      }
+      const serverCustomersResponse = await customersApi.getCustomers(filters, pagination.paginationParams);
+      // Handle both paginated and non-paginated responses
+      const serverCustomers: Customer[] = pagination.extractData(serverCustomersResponse);
+      pagination.extractPagination(serverCustomersResponse);
+      
+      setCustomers(serverCustomers);
     } catch (err: any) {
       const errorMsg = handleApiError(err, {
         defaultMessage: 'Failed to load customers',
@@ -205,7 +128,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
     } finally {
       setLoading(false);
     }
-  }, [user?.tenantId, searchQuery, pagination, language, customersRepository]);
+  }, [user?.tenantId, searchQuery, pagination, language]);
 
   useEffect(() => {
     loadCustomers();
@@ -223,9 +146,9 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
     if (customer) {
       setEditingCustomer(customer);
       
-      // Fetch full customer data with addresses if online
+      // Fetch full customer data with addresses
       let customerWithAddresses = customer;
-      if (navigator.onLine && customer.addresses === undefined) {
+      if (customer.addresses === undefined) {
         try {
           customerWithAddresses = await customersApi.getCustomerById(customer.id);
         } catch (error) {
@@ -316,38 +239,8 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
           notes: values.notes || undefined,
         };
 
-        if (navigator.onLine) {
-          const updated = await customersApi.updateCustomer(editingCustomer.id, updateDto);
-          setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
-
-          // Update IndexedDB using repository
-          if (customersRepository) {
-            await customersRepository.update(updated.id, {
-              name: updated.name || '',
-              phone: updated.phone,
-              email: updated.email,
-              dateOfBirth: updated.dateOfBirth,
-              preferredLanguage: updated.preferredLanguage,
-              notes: updated.notes,
-              totalOrders: updated.totalOrders,
-              totalSpent: updated.totalSpent,
-              averageOrderValue: updated.averageOrderValue,
-              lastOrderDate: updated.lastOrderDate,
-              loyaltyTier: updated.loyaltyTier,
-              lastSynced: new Date().toISOString(),
-              syncStatus: 'synced',
-            } as Partial<Customer>);
-          }
-        } else {
-          // Queue for sync using repository
-          if (customersRepository) {
-            await customersRepository.update(editingCustomer.id, {
-              ...updateDto,
-              syncStatus: 'pending',
-            } as Partial<Customer>);
-            await syncService.queueChange('customers', 'UPDATE', editingCustomer.id, updateDto);
-          }
-        }
+        const updated = await customersApi.updateCustomer(editingCustomer.id, updateDto);
+        setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
 
         notifications.show({
           title: t('common.success' as any, language) || 'Success',
@@ -374,51 +267,8 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
             : undefined,
         };
 
-        if (navigator.onLine) {
-          const created = await customersApi.createCustomer(createDto);
-          setCustomers((prev) => [created, ...prev]);
-
-          // Store in IndexedDB using repository
-          if (customersRepository) {
-            await customersRepository.create({
-              id: created.id,
-              tenantId: user.tenantId,
-              name: created.name || '',
-              phone: created.phone,
-              email: created.email,
-              dateOfBirth: created.dateOfBirth,
-              preferredLanguage: created.preferredLanguage,
-              notes: created.notes,
-              totalOrders: created.totalOrders,
-              totalSpent: created.totalSpent,
-              averageOrderValue: created.averageOrderValue,
-              lastOrderDate: created.lastOrderDate,
-              loyaltyTier: created.loyaltyTier,
-              createdAt: created.createdAt,
-              updatedAt: created.updatedAt,
-              lastSynced: new Date().toISOString(),
-              syncStatus: 'synced',
-            } as any);
-          }
-        } else {
-          // Queue for sync using repository
-          const tempId = `customer-${Date.now()}`;
-          if (customersRepository) {
-            await customersRepository.create({
-              id: tempId,
-              tenantId: user.tenantId,
-            ...createDto,
-            totalOrders: 0,
-            totalSpent: 0,
-            averageOrderValue: 0,
-            loyaltyTier: 'regular',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            syncStatus: 'pending',
-          } as any);
-            await syncService.queueChange('customers', 'CREATE', tempId, createDto);
-          }
-        }
+        const created = await customersApi.createCustomer(createDto);
+        setCustomers((prev) => [created, ...prev]);
 
         notifications.show({
           title: t('common.success' as any, language) || 'Success',

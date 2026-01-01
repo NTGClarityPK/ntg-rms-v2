@@ -42,8 +42,7 @@ import { generateThemeColors } from '@/lib/utils/themeColors';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { onOrderUpdate, notifyOrderUpdate } from '@/lib/utils/order-events';
 import { useKitchenSse, OrderUpdateEvent } from '@/lib/hooks/use-kitchen-sse';
-import { syncService } from '@/lib/sync/sync-service';
-import { db } from '@/lib/indexeddb/database';
+import { menuApi } from '@/lib/api/menu';
 import Link from 'next/link';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -88,9 +87,10 @@ export default function KitchenDisplayPage() {
   useEffect(() => {
     const loadVariationGroups = async () => {
       try {
-        const groups = await db.variationGroups.toArray();
+        const groupsResponse = await menuApi.getVariationGroups();
+        const groups = Array.isArray(groupsResponse) ? groupsResponse : (groupsResponse?.data || []);
         const map = new Map<string, string>();
-        groups.forEach((group) => {
+        groups.forEach((group: any) => {
           map.set(group.id, group.name);
         });
         setVariationGroupsMap(map);
@@ -417,7 +417,7 @@ export default function KitchenDisplayPage() {
         console.log('⚠️ SSE not connected after delay, using polling fallback');
         pollInterval = setInterval(() => {
           // Only poll if SSE is still not connected (check refs for current state)
-          if (!sseConnectedRef.current && !sseConnectingRef.current && loadOrdersRef.current && navigator.onLine) {
+          if (!sseConnectedRef.current && !sseConnectingRef.current && loadOrdersRef.current) {
             loadOrdersRef.current(true); // silent poll
           }
         }, 5000); // Poll every 5 seconds as fallback
@@ -484,93 +484,23 @@ export default function KitchenDisplayPage() {
     const processingKey = `${order.id}-${itemId}`;
     setProcessingOrderIds(prev => new Set(prev).add(processingKey));
     
-    // Helper to check if error is a network/offline error
-    const isNetworkError = (error: any): boolean => {
-      if (!error) return false;
-      // Check for network errors
-      if (error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED') return true;
-      if (error.message?.includes('Network Error') || error.message?.includes('Failed to fetch')) return true;
-      // Check if request failed due to no internet
-      if (!error.response && error.request) return true;
-      return false;
-    };
-
     try {
-      if (!navigator.onLine) {
-        // Offline: queue change for sync and keep optimistic UI
-        try {
-          await syncService.queueChange('orderItems', 'UPDATE', itemId, {
-            orderId: order.id,
-            status: newStatus,
-          });
-
-          notifications.show({
-            title: t('orders.offlineStatusQueuedTitle' as any, language) || 'Change queued while offline',
-            message: t('orders.offlineStatusQueuedMessage' as any, language) || 'Item status will sync when you are back online.',
-            color: getWarningColor(),
-          });
-        } catch (queueError: any) {
-          // Only revert if queueing itself fails (very rare - IndexedDB error)
-          console.error('Failed to queue offline change:', queueError);
-          setOrders(previousOrders);
-          notifications.show({
-            title: t('common.error' as any, language),
-            message: t('orders.queueError' as any, language) || 'Failed to queue change. Please try again.',
-            color: getErrorColor(),
-          });
-        }
-      } else {
-        // Online: try API call, but catch network errors and treat as offline
-        try {
-          await ordersApi.updateOrderItemStatus(order.id, itemId, { status: newStatus });
-          
-          // Notify same-browser screens about the status change
-          notifyOrderUpdate('order-status-changed', order.id);
-          
-          // Don't reload immediately - the optimistic update is already in place
-          // Only reload if we need to check order status changes (which happens via SSE or polling)
-          // This prevents flickering when items move between sections
-        } catch (apiError: any) {
-          // If it's a network error, treat as offline and queue the change
-          if (isNetworkError(apiError)) {
-            console.log('Network error detected, queueing change offline:', apiError);
-            try {
-              await syncService.queueChange('orderItems', 'UPDATE', itemId, {
-                orderId: order.id,
-                status: newStatus,
-              });
-
-              notifications.show({
-                title: t('orders.offlineStatusQueuedTitle' as any, language) || 'Change queued while offline',
-                message: t('orders.offlineStatusQueuedMessage' as any, language) || 'Item status will sync when you are back online.',
-                color: getWarningColor(),
-              });
-            } catch (queueError: any) {
-              // Only revert if queueing itself fails
-              console.error('Failed to queue offline change:', queueError);
-              setOrders(previousOrders);
-              notifications.show({
-                title: t('common.error' as any, language),
-                message: t('orders.queueError' as any, language) || 'Failed to queue change. Please try again.',
-                color: getErrorColor(),
-              });
-            }
-          } else {
-            // Real API error (400, 500, etc.) - revert UI
-            throw apiError;
-          }
-        }
-      }
+      await ordersApi.updateOrderItemStatus(order.id, itemId, { status: newStatus });
+      
+      // Notify same-browser screens about the status change
+      notifyOrderUpdate('order-status-changed', order.id);
+      
+      // Don't reload immediately - the optimistic update is already in place
+      // Only reload if we need to check order status changes (which happens via SSE or polling)
+      // This prevents flickering when items move between sections
     } catch (error: any) {
-      // Only revert optimistic update on real API errors (not network errors)
-      if (!isNetworkError(error)) {
-        setOrders(previousOrders);
-        notifications.show({
-          title: t('common.error' as any, language),
-          message: error?.response?.data?.message || t('orders.updateError', language),
-          color: getErrorColor(),
-        });
-      }
+      // Revert optimistic update on error
+      setOrders(previousOrders);
+      notifications.show({
+        title: t('common.error' as any, language),
+        message: error?.response?.data?.message || t('orders.updateError', language),
+        color: getErrorColor(),
+      });
       // Network errors are already handled above and change is queued
     } finally {
       setProcessingOrderIds(prev => {
@@ -621,105 +551,26 @@ export default function KitchenDisplayPage() {
         return next;
       });
 
-      // Helper to check if error is a network/offline error
-      const isNetworkError = (error: any): boolean => {
-        if (!error) return false;
-        // Check for network errors
-        if (error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED') return true;
-        if (error.message?.includes('Network Error') || error.message?.includes('Failed to fetch')) return true;
-        // Check if request failed due to no internet
-        if (!error.response && error.request) return true;
-        return false;
-      };
-
       try {
-        if (!navigator.onLine) {
-          // Offline: queue all item status changes for sync
-          try {
-            await Promise.all(
-              itemsToAdvance.map(item =>
-                syncService.queueChange('orderItems', 'UPDATE', item.id, {
-                  orderId: order.id,
-                  status: 'ready',
-                })
-              )
-            );
+        await Promise.all(
+          itemsToAdvance.map(item => 
+            ordersApi.updateOrderItemStatus(order.id, item.id, { status: 'ready' })
+          )
+        );
 
-            notifications.show({
-              title: t('orders.offlineStatusQueuedTitle' as any, language) || 'Changes queued while offline',
-              message: t('orders.offlineStatusQueuedMessage' as any, language) || 'Item statuses will sync when you are back online.',
-              color: getWarningColor(),
-            });
-          } catch (queueError: any) {
-            // Only revert if queueing itself fails (very rare - IndexedDB error)
-            console.error('Failed to queue offline changes:', queueError);
-            setOrders(previousOrders);
-            notifications.show({
-              title: t('common.error' as any, language),
-              message: t('orders.queueError' as any, language) || 'Failed to queue changes. Please try again.',
-              color: getErrorColor(),
-            });
-          }
-        } else {
-          // Online: try API calls, but catch network errors and treat as offline
-          try {
-            await Promise.all(
-              itemsToAdvance.map(item => 
-                ordersApi.updateOrderItemStatus(order.id, item.id, { status: 'ready' })
-              )
-            );
+        // Notify same-browser screens about the status change
+        notifyOrderUpdate('order-status-changed', order.id);
 
-            // Notify same-browser screens about the status change
-            notifyOrderUpdate('order-status-changed', order.id);
-
-            // Don't reload immediately - the optimistic update is already in place
-            // This prevents flickering when items move between sections
-          } catch (apiError: any) {
-            // If it's a network error, treat as offline and queue the changes
-            if (isNetworkError(apiError)) {
-              console.log('Network error detected, queueing changes offline:', apiError);
-              try {
-                await Promise.all(
-                  itemsToAdvance.map(item =>
-                    syncService.queueChange('orderItems', 'UPDATE', item.id, {
-                      orderId: order.id,
-                      status: 'ready',
-                    })
-                  )
-                );
-
-                notifications.show({
-                  title: t('orders.offlineStatusQueuedTitle' as any, language) || 'Changes queued while offline',
-                  message: t('orders.offlineStatusQueuedMessage' as any, language) || 'Item statuses will sync when you are back online.',
-                  color: getWarningColor(),
-                });
-              } catch (queueError: any) {
-                // Only revert if queueing itself fails
-                console.error('Failed to queue offline changes:', queueError);
-                setOrders(previousOrders);
-                notifications.show({
-                  title: t('common.error' as any, language),
-                  message: t('orders.queueError' as any, language) || 'Failed to queue changes. Please try again.',
-                  color: getErrorColor(),
-                });
-              }
-            } else {
-              // Real API error (400, 500, etc.) - revert UI
-              throw apiError;
-            }
-          }
-        }
+        // Don't reload immediately - the optimistic update is already in place
+        // This prevents flickering when items move between sections
       } catch (error: any) {
-        // Only revert optimistic update on real API errors (not network errors)
-        if (!isNetworkError(error)) {
-          setOrders(previousOrders);
-          notifications.show({
-            title: t('common.error' as any, language),
-            message: error?.response?.data?.message || t('orders.updateError', language),
-            color: getErrorColor(),
-          });
-        }
-        // Network errors are already handled above and changes are queued
+        // Revert optimistic update on error
+        setOrders(previousOrders);
+        notifications.show({
+          title: t('common.error' as any, language),
+          message: error?.response?.data?.message || t('orders.updateError', language),
+          color: getErrorColor(),
+        });
       } finally {
         setProcessingOrderIds(prev => {
           const next = new Set(prev);
@@ -764,105 +615,26 @@ export default function KitchenDisplayPage() {
         return next;
       });
 
-      // Helper to check if error is a network/offline error
-      const isNetworkError = (error: any): boolean => {
-        if (!error) return false;
-        // Check for network errors
-        if (error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED') return true;
-        if (error.message?.includes('Network Error') || error.message?.includes('Failed to fetch')) return true;
-        // Check if request failed due to no internet
-        if (!error.response && error.request) return true;
-        return false;
-      };
-
       try {
-        if (!navigator.onLine) {
-          // Offline: queue all item status changes for sync
-          try {
-            await Promise.all(
-              readyItems.map(item =>
-                syncService.queueChange('orderItems', 'UPDATE', item.id, {
-                  orderId: order.id,
-                  status: 'served',
-                })
-              )
-            );
+        await Promise.all(
+          readyItems.map(item => 
+            ordersApi.updateOrderItemStatus(order.id, item.id, { status: 'served' })
+          )
+        );
 
-            notifications.show({
-              title: t('orders.offlineStatusQueuedTitle' as any, language) || 'Changes queued while offline',
-              message: t('orders.offlineStatusQueuedMessage' as any, language) || 'Item statuses will sync when you are back online.',
-              color: getWarningColor(),
-            });
-          } catch (queueError: any) {
-            // Only revert if queueing itself fails (very rare - IndexedDB error)
-            console.error('Failed to queue offline changes:', queueError);
-            setOrders(previousOrders);
-            notifications.show({
-              title: t('common.error' as any, language),
-              message: t('orders.queueError' as any, language) || 'Failed to queue changes. Please try again.',
-              color: getErrorColor(),
-            });
-          }
-        } else {
-          // Online: try API calls, but catch network errors and treat as offline
-          try {
-            await Promise.all(
-              readyItems.map(item => 
-                ordersApi.updateOrderItemStatus(order.id, item.id, { status: 'served' })
-              )
-            );
+        // Notify same-browser screens about the status change
+        notifyOrderUpdate('order-status-changed', order.id);
 
-            // Notify same-browser screens about the status change
-            notifyOrderUpdate('order-status-changed', order.id);
-
-            // Don't reload immediately - the optimistic update is already in place
-            // This prevents flickering when items move between sections
-          } catch (apiError: any) {
-            // If it's a network error, treat as offline and queue the changes
-            if (isNetworkError(apiError)) {
-              console.log('Network error detected, queueing changes offline:', apiError);
-              try {
-                await Promise.all(
-                  readyItems.map(item =>
-                    syncService.queueChange('orderItems', 'UPDATE', item.id, {
-                      orderId: order.id,
-                      status: 'served',
-                    })
-                  )
-                );
-
-                notifications.show({
-                  title: t('orders.offlineStatusQueuedTitle' as any, language) || 'Changes queued while offline',
-                  message: t('orders.offlineStatusQueuedMessage' as any, language) || 'Item statuses will sync when you are back online.',
-                  color: getWarningColor(),
-                });
-              } catch (queueError: any) {
-                // Only revert if queueing itself fails
-                console.error('Failed to queue offline changes:', queueError);
-                setOrders(previousOrders);
-                notifications.show({
-                  title: t('common.error' as any, language),
-                  message: t('orders.queueError' as any, language) || 'Failed to queue changes. Please try again.',
-                  color: getErrorColor(),
-                });
-              }
-            } else {
-              // Real API error (400, 500, etc.) - revert UI
-              throw apiError;
-            }
-          }
-        }
+        // Don't reload immediately - the optimistic update is already in place
+        // This prevents flickering when items move between sections
       } catch (error: any) {
-        // Only revert optimistic update on real API errors (not network errors)
-        if (!isNetworkError(error)) {
-          setOrders(previousOrders);
-          notifications.show({
-            title: t('common.error' as any, language),
-            message: error?.response?.data?.message || t('orders.updateError', language),
-            color: getErrorColor(),
-          });
-        }
-        // Network errors are already handled above and changes are queued
+        // Revert optimistic update on error
+        setOrders(previousOrders);
+        notifications.show({
+          title: t('common.error' as any, language),
+          message: error?.response?.data?.message || t('orders.updateError', language),
+          color: getErrorColor(),
+        });
       } finally {
         setProcessingOrderIds(prev => {
           const next = new Set(prev);

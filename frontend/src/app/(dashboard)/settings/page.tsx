@@ -29,7 +29,6 @@ import { IconCheck, IconSettings, IconReceipt, IconCreditCard, IconPrinter, Icon
 import { notifications } from '@mantine/notifications';
 import { settingsApi, Settings, UpdateSettingsDto } from '@/lib/api/settings';
 import { useLanguageStore } from '@/lib/store/language-store';
-import { useSyncStatus } from '@/lib/hooks/use-sync-status';
 import { t } from '@/lib/utils/translations';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getSuccessColor, getErrorColor, getBadgeColorForText } from '@/lib/utils/theme';
@@ -39,10 +38,8 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { useDynamicTheme } from '@/lib/hooks/use-dynamic-theme';
 import { taxesApi, Tax, CreateTaxDto } from '@/lib/api/taxes';
 import { menuApi } from '@/lib/api/menu';
-import { db } from '@/lib/indexeddb/database';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
 import { restaurantApi, UpdateRestaurantInfoDto } from '@/lib/api/restaurant';
-import { syncService } from '@/lib/sync/sync-service';
 import { useRestaurantStore } from '@/lib/store/restaurant-store';
 import { useThemeStore } from '@/lib/store/theme-store';
 import { useNotificationColors } from '@/lib/hooks/use-theme-colors';
@@ -139,7 +136,6 @@ const formatGMTOffset = (offset: number): string => {
 export default function SettingsPage() {
   const language = useLanguageStore((state) => state.language);
   const themeColor = useThemeColor();
-  const { isOnline } = useSyncStatus();
   const { user } = useAuthStore();
   const { restaurant, setRestaurant } = useRestaurantStore();
   const { primaryColor: themeColorFromStore } = useThemeStore();
@@ -284,15 +280,12 @@ export default function SettingsPage() {
   const loadSettings = useCallback(async () => {
     try {
       setLoading(true);
-      if (isOnline) {
-        const settings = await settingsApi.getSettings();
-        generalForm.setValues(settings.general);
-        invoiceForm.setValues(settings.invoice);
-        paymentForm.setValues(settings.paymentMethods);
-        printerForm.setValues(settings.printers);
-        taxForm.setValues(settings.tax);
-      }
-
+      const settings = await settingsApi.getSettings();
+      generalForm.setValues(settings.general);
+      invoiceForm.setValues(settings.invoice);
+      paymentForm.setValues(settings.paymentMethods);
+      printerForm.setValues(settings.printers);
+      taxForm.setValues(settings.tax);
     } catch (error: any) {
       notifications.show({
         title: t('common.error' as any, language),
@@ -303,7 +296,7 @@ export default function SettingsPage() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOnline, language]);
+  }, [language]);
 
   useEffect(() => {
     loadSettings();
@@ -325,109 +318,31 @@ export default function SettingsPage() {
         setTotalTables(5);
       }
 
-      // Try to load from IndexedDB first
-      const localData = await db.tenants.get(user?.tenantId || '');
+      const serverData = await restaurantApi.getInfo();
       
-      if (localData) {
-        const formValues = {
-          name: (localData as any).name || (localData as any).nameEn || (localData as any).nameAr || '',
-          email: localData.email,
-          phone: localData.phone || '',
-          logoUrl: localData.logoUrl || '',
-          primaryColor: localData.primaryColor || getCurrentThemeColor(),
-          timezone: localData.timezone || 'Asia/Baghdad',
-          fiscalYearStart: (localData as any).fiscalYearStart || '',
-          vatNumber: (localData as any).vatNumber || '',
-          isActive: localData.isActive ?? true,
-        };
-        restaurantForm.setValues(formValues);
-        if (localData.logoUrl) {
-          setLogoPreview(localData.logoUrl);
-        }
-        // Update restaurant store for Header
-        if (localData) {
-          setRestaurant({
-            id: localData.id,
-            name: (localData as any).name || (localData as any).nameEn || (localData as any).nameAr || 'RMS',
-            logoUrl: localData.logoUrl,
-            primaryColor: localData.primaryColor,
-          });
-        }
+      const formValues = {
+        name: serverData.name || '',
+        email: serverData.email,
+        phone: serverData.phone || '',
+        logoUrl: serverData.logoUrl || '',
+        primaryColor: serverData.primaryColor || getCurrentThemeColor(),
+        timezone: serverData.timezone || 'Asia/Baghdad',
+        fiscalYearStart: serverData.fiscalYearStart || '',
+        vatNumber: serverData.vatNumber || '',
+        isActive: serverData.isActive ?? true,
+      };
+      restaurantForm.setValues(formValues);
+      if (serverData.logoUrl) {
+        setLogoPreview(serverData.logoUrl);
       }
-
-      // Then sync from server if online
-      // But only if there are no pending local changes
-      if (navigator.onLine) {
-        try {
-          // Check if there are pending sync changes for tenants
-          const pendingTenantChanges = await db.syncQueue
-            .where('table')
-            .equals('tenants')
-            .and((item) => item.status === 'PENDING' || item.status === 'SYNCING' || item.status === 'FAILED')
-            .toArray();
-
-          // If there are pending changes, don't overwrite local data with server data
-          if (pendingTenantChanges.length > 0) {
-            console.log('⚠️ Pending tenant changes detected, keeping local data');
-            // Still try to sync pending changes
-            await syncService.syncPendingChanges();
-            return;
-          }
-
-          const serverData = await restaurantApi.getInfo();
-          
-          // Only update if server data is newer than local data
-          const shouldUpdate = !localData || 
-            !localData.updatedAt || 
-            new Date(serverData.updatedAt) > new Date(localData.updatedAt);
-
-          if (shouldUpdate) {
-            const formValues = {
-              name: serverData.name || '',
-              email: serverData.email,
-              phone: serverData.phone || '',
-              logoUrl: serverData.logoUrl || '',
-              primaryColor: serverData.primaryColor || getCurrentThemeColor(),
-              timezone: serverData.timezone || 'Asia/Baghdad',
-              fiscalYearStart: serverData.fiscalYearStart || '',
-              vatNumber: serverData.vatNumber || '',
-              isActive: serverData.isActive ?? true,
-            };
-            restaurantForm.setValues(formValues);
-            if (serverData.logoUrl) {
-              setLogoPreview(serverData.logoUrl);
-            }
-            
-            // Update restaurant store for Header
-            setRestaurant({
-              id: serverData.id,
-              name: serverData.name || 'RMS',
-              logoUrl: serverData.logoUrl,
-              primaryColor: serverData.primaryColor,
-            });
-
-            // Update IndexedDB with server data
-            await db.tenants.put({
-              id: serverData.id,
-              name: serverData.name,
-              subdomain: serverData.subdomain,
-              email: serverData.email,
-              phone: serverData.phone,
-              logoUrl: serverData.logoUrl,
-              primaryColor: serverData.primaryColor,
-              defaultCurrency: serverData.defaultCurrency,
-              timezone: serverData.timezone,
-              isActive: serverData.isActive,
-              createdAt: serverData.createdAt,
-              updatedAt: serverData.updatedAt,
-              lastSynced: new Date().toISOString(),
-              syncStatus: 'synced' as const,
-            } as any);
-          }
-        } catch (err: any) {
-          console.warn('Failed to load from server, using local data:', err);
-        }
-      }
+      
+      // Update restaurant store for Header
+      setRestaurant({
+        id: serverData.id,
+        name: serverData.name || 'RMS',
+        logoUrl: serverData.logoUrl,
+        primaryColor: serverData.primaryColor,
+      });
     } catch (err: any) {
       setRestaurantError(err.message || 'Failed to load restaurant information');
     }
@@ -515,89 +430,40 @@ export default function SettingsPage() {
         delete updateData.phone;
       }
 
-      // Save to IndexedDB first (offline-first)
       const tenantId = user?.tenantId || '';
-      const existingTenant = await db.tenants.get(tenantId);
       
-      const tenantData = {
-        id: tenantId,
-        name: updateData.name || (existingTenant as any)?.name || (existingTenant as any)?.nameEn || (existingTenant as any)?.nameAr || '',
-        subdomain: existingTenant?.subdomain || '',
-        email: updateData.email || existingTenant?.email || '',
-        phone: updateData.phone || existingTenant?.phone,
-        logoUrl: updateData.logoUrl || existingTenant?.logoUrl,
-        primaryColor: updateData.primaryColor || existingTenant?.primaryColor,
-        defaultCurrency: existingTenant?.defaultCurrency || 'IQD',
-        timezone: updateData.timezone || existingTenant?.timezone || 'Asia/Baghdad',
-        isActive: updateData.isActive ?? existingTenant?.isActive ?? true,
-        createdAt: existingTenant?.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        lastSynced: existingTenant?.lastSynced,
-        syncStatus: 'pending' as const,
-      };
+      // Update settings with totalTables
+      try {
+        await settingsApi.updateSettings({
+          general: {
+            totalTables: totalTables || 5,
+          },
+        });
+      } catch (err: any) {
+        console.error('Failed to update settings:', err);
+      }
 
-      await db.tenants.put(tenantData as any);
-
-      // Queue sync to backend
-      await syncService.queueChange('tenants', 'UPDATE', tenantId, updateData);
-
-      // Update restaurant store for Header immediately
-      const updatedLogoUrl = updateData.logoUrl || existingTenant?.logoUrl;
+      const updated = await restaurantApi.updateInfo(updateData);
+      
+      // Update restaurant store for Header
       setRestaurant({
         id: tenantId,
-        name: updateData.name || (existingTenant as any)?.name || (existingTenant as any)?.nameEn || (existingTenant as any)?.nameAr || 'RMS',
-        logoUrl: updatedLogoUrl,
-        primaryColor: updateData.primaryColor || existingTenant?.primaryColor,
+        name: updateData.name || 'RMS',
+        logoUrl: updateData.logoUrl,
+        primaryColor: updateData.primaryColor,
       });
       
       // Update theme if primaryColor changed
       if (updateData.primaryColor) {
         updateThemeColor(updateData.primaryColor);
       }
-
-      // Update settings with totalTables
-      if (navigator.onLine) {
-        try {
-          await settingsApi.updateSettings({
-            general: {
-              totalTables: totalTables || 5,
-            },
-          });
-        } catch (err: any) {
-          console.error('Failed to update settings:', err);
-        }
-      }
-
-      // Try to sync immediately if online
-      if (navigator.onLine) {
-        try {
-          const updated = await restaurantApi.updateInfo(updateData);
-          // Update sync status
-          await db.tenants.update(tenantId, {
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced',
-          });
-          notifications.show({
-            title: 'Success',
-            message: 'Restaurant information updated successfully',
-            color: notificationColors.success,
-            icon: <IconCheck size={16} />,
-          });
-        } catch (err: any) {
-          console.error('Failed to sync to server:', err);
-          notifications.show({
-            title: 'Saved Locally',
-            message: 'Changes saved locally and will sync when online',
-            color: notificationColors.info,
-          });
-        }
-      } else {
-        notifications.show({
-          title: 'Saved Locally',
-          message: 'Changes saved locally and will sync when online',
-          color: notificationColors.info,
-        });
-      }
+      
+      notifications.show({
+        title: 'Success',
+        message: 'Restaurant information updated successfully',
+        color: notificationColors.success,
+        icon: <IconCheck size={16} />,
+      });
     } catch (err: any) {
       setRestaurantError(err.message || 'Failed to save restaurant information');
       notifications.show({
@@ -614,46 +480,7 @@ export default function SettingsPage() {
   const loadTaxes = useCallback(async () => {
     try {
       setTaxesLoading(true);
-      let data: Tax[];
-      if (isOnline) {
-        data = await taxesApi.getTaxes();
-        // Cache in IndexedDB
-        for (const tax of data) {
-          await db.taxes.put({
-            id: tax.id,
-            tenantId: tax.tenantId,
-            name: tax.name,
-            taxCode: tax.taxCode,
-            rate: tax.rate,
-            isActive: tax.isActive,
-            appliesTo: tax.appliesTo,
-            appliesToDelivery: tax.appliesToDelivery,
-            appliesToServiceCharge: tax.appliesToServiceCharge,
-            categoryIds: tax.categoryIds || [],
-            foodItemIds: tax.foodItemIds || [],
-            createdAt: tax.createdAt,
-            updatedAt: tax.updatedAt,
-            syncStatus: 'synced',
-          });
-        }
-      } else {
-        const cached = await db.taxes.toArray();
-        data = cached.map((tax) => ({
-          id: tax.id,
-          tenantId: tax.tenantId,
-          name: tax.name,
-          taxCode: tax.taxCode,
-          rate: tax.rate,
-          isActive: tax.isActive,
-          appliesTo: tax.appliesTo,
-          appliesToDelivery: tax.appliesToDelivery,
-          appliesToServiceCharge: tax.appliesToServiceCharge,
-          categoryIds: tax.categoryIds || [],
-          foodItemIds: tax.foodItemIds || [],
-          createdAt: tax.createdAt,
-          updatedAt: tax.updatedAt,
-        }));
-      }
+      const data = await taxesApi.getTaxes();
       setTaxes(data);
     } catch (error: any) {
       notifications.show({
@@ -665,7 +492,7 @@ export default function SettingsPage() {
     } finally {
       setTaxesLoading(false);
     }
-  }, [isOnline, language]);
+  }, [language]);
 
   const loadCategories = useCallback(async () => {
     try {

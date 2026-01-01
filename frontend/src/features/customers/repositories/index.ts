@@ -1,10 +1,6 @@
 /**
  * Customers Feature Repositories
  * 
- * Export all customer-related repositories for easy importing
+ * All repositories have been removed - using direct API calls only
  */
-
-export { CustomersRepository } from './customers.repository';
-
-
 

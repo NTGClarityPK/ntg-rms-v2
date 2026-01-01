@@ -33,8 +33,6 @@ import {
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { menuApi, VariationGroup, Variation, FoodItemVariation } from '@/lib/api/menu';
-import { db } from '@/lib/indexeddb/database';
-import { syncService } from '@/lib/sync/sync-service';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
@@ -98,73 +96,15 @@ export function VariationGroupsPage() {
       setLoading(true);
       setError(null);
 
-      // Load from IndexedDB first (for offline mode)
-      const localGroups = await db.variationGroups
-        .where('tenantId')
-        .equals(user.tenantId)
-        .filter((group) => !group.deletedAt)
-        .toArray();
+      const serverGroupsResponse = await menuApi.getVariationGroups(pagination.paginationParams);
+      const serverGroups = pagination.extractData(serverGroupsResponse);
+      pagination.extractPagination(serverGroupsResponse);
+      setVariationGroups(serverGroups);
 
-      // Sync from server if online
-      if (navigator.onLine) {
-        try {
-          const serverGroupsResponse = await menuApi.getVariationGroups(pagination.paginationParams);
-          const serverGroups = pagination.extractData(serverGroupsResponse);
-          pagination.extractPagination(serverGroupsResponse);
-          setVariationGroups(serverGroups);
-
-          // If no groups on current page but we have total, reset to page 1
-          if (serverGroups.length === 0 && pagination.total > 0 && pagination.page > 1) {
-            pagination.setPage(1);
-            return; // Will reload with page 1
-          }
-
-          // Update IndexedDB
-          for (const group of serverGroups) {
-            await db.variationGroups.put({
-              id: group.id,
-              tenantId: user.tenantId,
-              name: group.name,
-              createdAt: group.createdAt,
-              updatedAt: group.updatedAt,
-              lastSynced: new Date().toISOString(),
-              syncStatus: 'synced',
-            } as any);
-          }
-        } catch (err) {
-          console.warn('Failed to sync variation groups from server:', err);
-          // Fallback: use IndexedDB data with local pagination
-          const startIndex = (pagination.page - 1) * pagination.limit;
-          const endIndex = startIndex + pagination.limit;
-          const paginatedGroups = localGroups.slice(startIndex, endIndex).map((group) => ({
-            id: group.id,
-            name: (group as any).name || '',
-            createdAt: group.createdAt,
-            updatedAt: group.updatedAt,
-            variations: [],
-          }));
-          setVariationGroups(paginatedGroups);
-          pagination.setTotal(localGroups.length);
-          pagination.setTotalPages(Math.ceil(localGroups.length / pagination.limit));
-          pagination.setHasNext(endIndex < localGroups.length);
-          pagination.setHasPrev(pagination.page > 1);
-        }
-      } else {
-        // Offline mode - apply local pagination
-        const startIndex = (pagination.page - 1) * pagination.limit;
-        const endIndex = startIndex + pagination.limit;
-        const paginatedGroups = localGroups.slice(startIndex, endIndex).map((group) => ({
-          id: group.id,
-          name: (group as any).name || '',
-          createdAt: group.createdAt,
-          updatedAt: group.updatedAt,
-          variations: [],
-        }));
-        setVariationGroups(paginatedGroups);
-        pagination.setTotal(localGroups.length);
-        pagination.setTotalPages(Math.ceil(localGroups.length / pagination.limit));
-        pagination.setHasNext(endIndex < localGroups.length);
-        pagination.setHasPrev(pagination.page > 1);
+      // If no groups on current page but we have total, reset to page 1
+      if (serverGroups.length === 0 && pagination.total > 0 && pagination.page > 1) {
+        pagination.setPage(1);
+        return; // Will reload with page 1
       }
     } catch (err: any) {
       setError(err.message || 'Failed to load variation groups');
@@ -312,28 +252,9 @@ export function VariationGroupsPage() {
         if (wasEditing && currentEditingGroupId) {
           savedGroup = await menuApi.updateVariationGroup(currentEditingGroupId, groupData);
           
-          await db.variationGroups.update(currentEditingGroupId, {
-            name: groupData.name,
-            updatedAt: new Date().toISOString(),
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced',
-          });
-
-          await syncService.queueChange('variationGroups', 'UPDATE', currentEditingGroupId, savedGroup);
         } else {
           savedGroup = await menuApi.createVariationGroup(groupData);
           
-          await db.variationGroups.add({
-            id: savedGroup.id,
-            tenantId: user.tenantId,
-            name: groupData.name!,
-            createdAt: savedGroup.createdAt,
-            updatedAt: savedGroup.updatedAt,
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced',
-          } as any);
-
-          await syncService.queueChange('variationGroups', 'CREATE', savedGroup.id, savedGroup);
         }
 
         notifications.show({
@@ -379,29 +300,9 @@ export function VariationGroupsPage() {
         if (wasEditing && currentEditingVariationId) {
           savedVariation = await menuApi.updateVariation(currentSelectedGroup.id, currentEditingVariationId, variationData);
           
-          await db.variations.update(currentEditingVariationId, {
-            ...variationData,
-            updatedAt: new Date().toISOString(),
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced',
-          });
-
-          await syncService.queueChange('variations', 'UPDATE', currentEditingVariationId, savedVariation);
         } else {
           savedVariation = await menuApi.createVariation(currentSelectedGroup.id, variationData);
           
-          await db.variations.add({
-            id: savedVariation.id,
-            variationGroupId: currentSelectedGroup.id,
-            ...variationData,
-            displayOrder: savedVariation.displayOrder,
-            createdAt: savedVariation.createdAt,
-            updatedAt: savedVariation.updatedAt,
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced',
-          } as any);
-
-          await syncService.queueChange('variations', 'CREATE', savedVariation.id, savedVariation);
         }
 
         notifications.show({
@@ -432,12 +333,6 @@ export function VariationGroupsPage() {
         try {
           await menuApi.deleteVariationGroup(group.id);
           
-          await db.variationGroups.update(group.id, {
-            deletedAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
-
-          await syncService.queueChange('variationGroups', 'DELETE', group.id, group);
 
           notifications.show({
             title: t('common.success' as any, language) || 'Success',
@@ -473,12 +368,6 @@ export function VariationGroupsPage() {
         try {
           await menuApi.deleteVariation(selectedGroup.id, variation.id);
           
-          await db.variations.update(variation.id, {
-            deletedAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
-
-          await syncService.queueChange('variations', 'DELETE', variation.id, variation);
 
           notifications.show({
             title: t('common.success' as any, language) || 'Success',

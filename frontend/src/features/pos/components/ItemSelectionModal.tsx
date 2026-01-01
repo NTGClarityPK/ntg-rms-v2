@@ -19,8 +19,7 @@ import {
 } from '@mantine/core';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
-import { db } from '@/lib/indexeddb/database';
-import { CartItem } from '@/lib/indexeddb/database';
+import { CartItem } from '@/shared/types/cart.types';
 import { FoodItem, ComboMeal } from '@/lib/api/menu';
 import { menuApi } from '@/lib/api/menu';
 import { useThemeColor, useThemeColorShade } from '@/lib/hooks/use-theme-color';
@@ -98,35 +97,20 @@ export function ItemSelectionModal({
         return;
       }
 
-      // Try to load from IndexedDB first
-      const itemsFromDB = await Promise.all(
+      // Load from API
+      const itemsFromAPI = await Promise.all(
         comboMeal.foodItemIds.map(async (id) => {
-          const item = await db.foodItems.get(id);
-          return item;
+          try {
+            return await menuApi.getFoodItemById(id);
+          } catch (error) {
+            console.error(`Failed to load food item ${id}:`, error);
+            return null;
+          }
         })
       );
-
-      const validItems = itemsFromDB.filter((item): item is any => item !== undefined);
       
-      if (validItems.length === comboMeal.foodItemIds.length) {
-        // All items found in IndexedDB
-        setComboMealItems(validItems as FoodItem[]);
-      } else {
-        // Some items missing, try to fetch from API
-        const itemsFromAPI = await Promise.all(
-          comboMeal.foodItemIds.map(async (id) => {
-            try {
-              return await menuApi.getFoodItemById(id);
-            } catch (error) {
-              console.error(`Failed to load food item ${id}:`, error);
-              return null;
-            }
-          })
-        );
-        
-        const validApiItems = itemsFromAPI.filter((item): item is FoodItem => item !== null);
-        setComboMealItems(validApiItems);
-      }
+      const validApiItems = itemsFromAPI.filter((item): item is FoodItem => item !== null);
+      setComboMealItems(validApiItems);
     } catch (error) {
       console.error('Failed to load combo meal items:', error);
       setComboMealItems([]);
@@ -142,16 +126,20 @@ export function ItemSelectionModal({
     try {
       setLoading(true);
 
-      // Load variations
-      const itemVariations = await db.foodItemVariations
-        .where('foodItemId')
-        .equals(actualFoodItem.id)
-        .toArray();
+      // Load full food item from API to get variations, add-ons, and discounts
+      const fullFoodItem = await menuApi.getFoodItemById(actualFoodItem.id);
+
+      // Load variations from food item
+      const itemVariations = fullFoodItem.variations || [];
       
-      // Resolve variation group names if they are UUIDs
-      const allVariationGroups = await db.variationGroups.toArray();
+      // Load all variation groups to resolve names
+      const allVariationGroupsResponse = await menuApi.getVariationGroups();
+      const allVariationGroups = Array.isArray(allVariationGroupsResponse) 
+        ? allVariationGroupsResponse 
+        : allVariationGroupsResponse.data || [];
+      
+      // Resolve variation group names
       const variationsWithResolvedNames = itemVariations.map((variation) => {
-        // Check if variationGroup is a UUID (looks like a UUID pattern)
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(variation.variationGroup || '');
         if (isUUID && variation.variationGroup) {
           const group = allVariationGroups.find((g) => g.id === variation.variationGroup);
@@ -165,52 +153,45 @@ export function ItemSelectionModal({
       setVariations(variationsWithResolvedNames);
 
       // Load add-on groups for this food item
-      const foodItemAddOnGroups = await db.foodItemAddOnGroups
-        .where('foodItemId')
-        .equals(foodItem.id)
-        .toArray();
+      const groupIds = fullFoodItem.addOnGroupIds || [];
+      
+      if (groupIds.length > 0) {
+        // Load each add-on group from API
+        const groupsWithAddOns = await Promise.all(
+          groupIds.map(async (groupId) => {
+            try {
+              const group = await menuApi.getAddOnGroupById(groupId);
+              const addOns = await menuApi.getAddOns(groupId);
+              return { ...group, addOns: addOns.filter(a => a.isActive) };
+            } catch (error) {
+              console.error(`Failed to load add-on group ${groupId}:`, error);
+              return null;
+            }
+          })
+        );
+        
+        const validGroups = groupsWithAddOns.filter((g): g is any => g !== null && g.isActive);
+        setAddOnGroups(validGroups);
+      } else {
+        setAddOnGroups([]);
+      }
 
-      const groupIds = foodItemAddOnGroups.map((g) => g.addOnGroupId);
-      const groups = await db.addOnGroups
-        .where('id')
-        .anyOf(groupIds)
-        .filter((g) => g.isActive && !g.deletedAt)
-        .toArray();
-
-      // Load add-ons for each group
-      const groupsWithAddOns = await Promise.all(
-        groups.map(async (group) => {
-          const addOns = await db.addOns
-            .where('addOnGroupId')
-            .equals(group.id)
-            .filter((a) => a.isActive && !a.deletedAt)
-            .sortBy('displayOrder');
-          return { ...group, addOns };
-        }),
-      );
-
-      setAddOnGroups(groupsWithAddOns);
-
-      // Load active discounts for this food item
-      const now = new Date().toISOString();
-      const nowDate = new Date(now);
-      const allDiscounts = await db.foodItemDiscounts
-        .where('foodItemId')
-        .equals(actualFoodItem.id)
-        .filter((d) => d.isActive)
-        .toArray();
+      // Load active discounts from food item
+      const allDiscounts = fullFoodItem.discounts || [];
+      const now = new Date();
       
       // Find all active discounts (within date range)
       const activeDiscounts = allDiscounts.filter((d) => {
+        if (!d.isActive) return false;
         const startDate = d.startDate ? new Date(d.startDate) : null;
         const endDate = d.endDate ? new Date(d.endDate) : null;
         
         if (startDate && endDate) {
-          return nowDate >= startDate && nowDate <= endDate;
+          return now >= startDate && now <= endDate;
         } else if (startDate) {
-          return nowDate >= startDate;
+          return now >= startDate;
         } else if (endDate) {
-          return nowDate <= endDate;
+          return now <= endDate;
         }
         return true; // No date restrictions
       });
@@ -240,7 +221,7 @@ export function ItemSelectionModal({
           const addOnsByGroup: Record<string, string[]> = {};
           existingCartItem.addOns.forEach((addOn) => {
             // Find which group this add-on belongs to
-            groupsWithAddOns.forEach((group) => {
+            addOnGroups.forEach((group) => {
               if (group.addOns?.some((a: any) => a.id === addOn.addOnId)) {
                 if (!addOnsByGroup[group.id]) {
                   addOnsByGroup[group.id] = [];

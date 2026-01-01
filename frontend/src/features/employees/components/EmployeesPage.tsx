@@ -38,9 +38,6 @@ import { notifications } from '@mantine/notifications';
 import { employeesApi, Employee, CreateEmployeeDto, UpdateEmployeeDto } from '@/lib/api/employees';
 import { rolesApi, Role } from '@/lib/api/roles';
 import { restaurantApi } from '@/lib/api/restaurant';
-import { db } from '@/lib/indexeddb/database';
-import { syncService } from '@/lib/sync/sync-service';
-import { EmployeesRepository } from '../repositories/employees.repository';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
@@ -79,10 +76,6 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Initialize repository
-  const employeesRepository = useMemo(() => {
-    return user?.tenantId ? new EmployeesRepository(user.tenantId) : null;
-  }, [user?.tenantId]);
 
   const [opened, setOpened] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
@@ -150,148 +143,17 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
       setLoading(true);
       setError(null);
 
-      // If online, fetch from server first (with pagination)
-      if (navigator.onLine) {
-        try {
-          const filters: any = {};
-          if (roleFilter) filters.role = roleFilter;
-          if (statusFilter) filters.status = statusFilter;
+      const filters: any = {};
+      if (roleFilter) filters.role = roleFilter;
+      if (statusFilter) filters.status = statusFilter;
 
-          // Fetch paginated data from server
-          const serverEmployeesResponse = await employeesApi.getEmployees(filters, pagination.paginationParams);
-          // Handle both paginated and non-paginated responses
-          const serverEmployees: Employee[] = pagination.extractData(serverEmployeesResponse);
-          const paginationInfo = pagination.extractPagination(serverEmployeesResponse);
-          
-          // If response is not paginated, set total from array length
-          if (!paginationInfo) {
-            pagination.setTotal(serverEmployees.length);
-            pagination.setTotalPages(Math.ceil(serverEmployees.length / pagination.limit));
-            pagination.setHasNext(false);
-            pagination.setHasPrev(false);
-          }
-
-          console.log('Server employees with roles:', serverEmployees.map((emp: Employee) => ({
-            name: emp.name,
-            roles: emp.roles,
-            role: emp.role
-          })));
-          setEmployees(serverEmployees);
-
-          // Fetch ALL employees (without pagination and without filters) in the background to update IndexedDB
-          // This ensures IndexedDB has all employees for offline use, regardless of current filters
-          // Do this asynchronously so it doesn't block the UI
-          (async () => {
-            try {
-              // Fetch all employees without any filters to ensure IndexedDB has complete data
-              const allEmployeesResponse = await employeesApi.getEmployees({});
-              const allEmployees: Employee[] = Array.isArray(allEmployeesResponse) 
-                ? allEmployeesResponse 
-                : (allEmployeesResponse?.data || []);
-              
-              // Update IndexedDB with ALL employees (not just the paginated page)
-              const employeesToStore = allEmployees.map((emp: Employee) => ({
-                id: emp.id,
-                tenantId: user.tenantId,
-                supabaseAuthId: emp.supabaseAuthId,
-                email: emp.email,
-                name: emp.name || (emp as any).nameEn || (emp as any).nameAr || '',
-                phone: emp.phone,
-                role: emp.role, // Keep for backward compatibility
-                roles: emp.roles || [], // Store roles array
-                employeeId: emp.employeeId,
-                photoUrl: emp.photoUrl,
-                nationalId: emp.nationalId,
-                dateOfBirth: emp.dateOfBirth,
-                employmentType: emp.employmentType,
-                joiningDate: emp.joiningDate,
-                salary: emp.salary,
-                isActive: emp.isActive,
-                lastLoginAt: emp.lastLoginAt,
-                createdAt: emp.createdAt,
-                updatedAt: emp.updatedAt,
-                lastSynced: new Date().toISOString(),
-                syncStatus: 'synced' as const,
-              }));
-
-              if (employeesToStore.length > 0 && employeesRepository) {
-                await employeesRepository.bulkPut(employeesToStore as any);
-                console.log(`[EmployeesPage] Updated IndexedDB with ${employeesToStore.length} employees (background sync)`);
-              }
-            } catch (allEmployeesError) {
-              console.warn('Failed to fetch all employees for IndexedDB update:', allEmployeesError);
-              // Don't block the UI if background sync fails
-            }
-          })();
-        } catch (err: any) {
-          console.error('Failed to load employees from server:', err);
-          // Fall back to IndexedDB using repository
-          const localEmployees = employeesRepository 
-            ? await employeesRepository.findAll()
-            : [];
-          
-          // Apply filters to local employees
-          let filteredLocalEmployees = localEmployees;
-          if (roleFilter) {
-            filteredLocalEmployees = filteredLocalEmployees.filter(emp => {
-              const empAny = emp as any;
-              return emp.role === roleFilter || empAny.roles?.some((r: any) => r.name === roleFilter);
-            });
-          }
-          if (statusFilter) {
-            filteredLocalEmployees = filteredLocalEmployees.filter(emp => 
-              statusFilter === 'active' ? emp.isActive : !emp.isActive
-            );
-          }
-
-          // Apply local pagination
-          const totalItems = filteredLocalEmployees.length;
-          const startIndex = (pagination.page - 1) * pagination.limit;
-          const endIndex = startIndex + pagination.limit;
-          const paginatedLocalEmployees = filteredLocalEmployees.slice(startIndex, endIndex);
-
-          // Set pagination info for local pagination
-          pagination.setTotal(totalItems);
-          pagination.setTotalPages(Math.ceil(totalItems / pagination.limit));
-          pagination.setHasNext(endIndex < totalItems);
-          pagination.setHasPrev(pagination.page > 1);
-
-          setEmployees(paginatedLocalEmployees as unknown as Employee[]);
-        }
-      } else {
-        // Load from IndexedDB when offline using repository
-        const localEmployees = employeesRepository 
-          ? await employeesRepository.findAll()
-          : [];
-
-        // Apply filters to local employees
-        let filteredLocalEmployees = localEmployees;
-        if (roleFilter) {
-          filteredLocalEmployees = filteredLocalEmployees.filter(emp => {
-            const empAny = emp as any;
-            return emp.role === roleFilter || empAny.roles?.some((r: any) => r.name === roleFilter);
-          });
-        }
-        if (statusFilter) {
-          filteredLocalEmployees = filteredLocalEmployees.filter(emp => 
-            statusFilter === 'active' ? emp.isActive : !emp.isActive
-          );
-        }
-
-        // Apply local pagination
-        const totalItems = filteredLocalEmployees.length;
-        const startIndex = (pagination.page - 1) * pagination.limit;
-        const endIndex = startIndex + pagination.limit;
-        const paginatedLocalEmployees = filteredLocalEmployees.slice(startIndex, endIndex);
-
-        // Set pagination info for local pagination
-        pagination.setTotal(totalItems);
-        pagination.setTotalPages(Math.ceil(totalItems / pagination.limit));
-        pagination.setHasNext(endIndex < totalItems);
-        pagination.setHasPrev(pagination.page > 1);
-
-        setEmployees(paginatedLocalEmployees as unknown as Employee[]);
-      }
+      // Fetch paginated data from server
+      const serverEmployeesResponse = await employeesApi.getEmployees(filters, pagination.paginationParams);
+      // Handle both paginated and non-paginated responses
+      const serverEmployees: Employee[] = pagination.extractData(serverEmployeesResponse);
+      pagination.extractPagination(serverEmployeesResponse);
+      
+      setEmployees(serverEmployees);
     } catch (err: any) {
       const errorMsg = handleApiError(err, {
         defaultMessage: 'Failed to load employees',
@@ -302,7 +164,7 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
     } finally {
       setLoading(false);
     }
-  }, [user?.tenantId, roleFilter, statusFilter, pagination, language, employeesRepository]);
+  }, [user?.tenantId, roleFilter, statusFilter, pagination, language]);
 
   useEffect(() => {
     loadBranches();
@@ -383,42 +245,8 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
           branchIds: values.branchIds,
         };
 
-        if (navigator.onLine) {
-          const updated = await employeesApi.updateEmployee(editingEmployee.id, updateDto);
-          setEmployees((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
-
-          // Update IndexedDB using repository
-          if (employeesRepository) {
-            await employeesRepository.update(updated.id, {
-              supabaseAuthId: updated.supabaseAuthId,
-              email: updated.email,
-              name: updated.name,
-              phone: updated.phone,
-              role: updated.role, // Keep for backward compatibility
-              roles: updated.roles || [], // Store roles array
-              employeeId: updated.employeeId,
-              photoUrl: updated.photoUrl,
-              nationalId: updated.nationalId,
-              dateOfBirth: updated.dateOfBirth,
-              employmentType: updated.employmentType,
-              joiningDate: updated.joiningDate,
-              salary: updated.salary,
-              isActive: updated.isActive,
-              lastLoginAt: updated.lastLoginAt,
-              lastSynced: new Date().toISOString(),
-              syncStatus: 'synced',
-            } as Partial<Employee>);
-          }
-        } else {
-          // Queue for sync using repository
-          if (employeesRepository) {
-            await employeesRepository.update(editingEmployee.id, {
-              ...updateDto,
-              syncStatus: 'pending',
-            } as Partial<Employee>);
-          }
-          await syncService.queueChange('employees', 'UPDATE', editingEmployee.id, updateDto);
-        }
+        const updated = await employeesApi.updateEmployee(editingEmployee.id, updateDto);
+        setEmployees((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
 
         notifications.show({
           title: t('common.success' as any, language) || 'Success',
@@ -444,51 +272,8 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
           password: values.createAuthAccount ? values.password : undefined,
         };
 
-        if (navigator.onLine) {
-          const created = await employeesApi.createEmployee(createDto);
-          setEmployees((prev) => [created, ...prev]);
-
-          // Store in IndexedDB using repository
-          if (employeesRepository) {
-            await employeesRepository.create({
-              id: created.id,
-              tenantId: user.tenantId,
-              supabaseAuthId: created.supabaseAuthId,
-              email: created.email,
-              name: created.name,
-              phone: created.phone,
-              role: created.role, // Keep for backward compatibility
-              roles: created.roles || [], // Store roles array
-              employeeId: created.employeeId,
-              photoUrl: created.photoUrl,
-              nationalId: created.nationalId,
-              dateOfBirth: created.dateOfBirth,
-              employmentType: created.employmentType,
-              joiningDate: created.joiningDate,
-              salary: created.salary,
-              isActive: created.isActive,
-              lastLoginAt: created.lastLoginAt,
-              createdAt: created.createdAt,
-              updatedAt: created.updatedAt,
-              lastSynced: new Date().toISOString(),
-              syncStatus: 'synced',
-            } as any);
-          }
-        } else {
-          // Queue for sync using repository
-          const tempId = `employee-${Date.now()}`;
-          if (employeesRepository) {
-            await employeesRepository.create({
-              id: tempId,
-              tenantId: user.tenantId,
-              ...createDto,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-              syncStatus: 'pending',
-            } as any);
-          }
-          await syncService.queueChange('employees', 'CREATE', tempId, createDto);
-        }
+        const created = await employeesApi.createEmployee(createDto);
+        setEmployees((prev) => [created, ...prev]);
 
         notifications.show({
           title: t('common.success' as any, language) || 'Success',
@@ -522,24 +307,8 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
       confirmProps: { color: errorColor },
       onConfirm: async () => {
         try {
-          if (navigator.onLine) {
-            await employeesApi.deleteEmployee(employee.id);
-            setEmployees((prev) => prev.filter((e) => e.id !== employee.id));
-
-            // Soft delete in IndexedDB using repository
-            if (employeesRepository) {
-              await employeesRepository.delete(employee.id);
-            }
-          } else {
-            // Queue for sync using repository
-            if (employeesRepository) {
-              await employeesRepository.update(employee.id, {
-                isActive: false,
-                syncStatus: 'pending',
-              } as Partial<Employee>);
-              await syncService.queueChange('employees', 'DELETE', employee.id, {});
-            }
-          }
+          await employeesApi.deleteEmployee(employee.id);
+          setEmployees((prev) => prev.filter((e) => e.id !== employee.id));
 
           notifications.show({
             title: t('common.success' as any, language) || 'Success',

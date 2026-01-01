@@ -22,15 +22,12 @@ import { IconPlus, IconEdit, IconTrash, IconCheck, IconAlertCircle } from '@tabl
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { restaurantApi, Branch, CreateBranchDto, UpdateBranchDto } from '@/lib/api/restaurant';
-import { db } from '@/lib/indexeddb/database';
-import { syncService } from '@/lib/sync/sync-service';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors } from '@/lib/hooks/use-theme-colors';
 import { useErrorColor, useSuccessColor, useInfoColor } from '@/lib/hooks/use-theme-colors';
 import { PermissionGuard } from '@/components/common/PermissionGuard';
-import { generateUUID } from '@/lib/utils/uuid';
 
 export function BranchesTab() {
   const { language } = useLanguageStore();
@@ -74,57 +71,8 @@ export function BranchesTab() {
       setLoading(true);
       setError(null);
 
-      // Load from IndexedDB first
-      const localBranches = await db.branches.where('tenantId').equals(user.tenantId).toArray();
-      setBranches(localBranches.map(b => ({
-        id: b.id,
-        tenantId: b.tenantId,
-        name: (b as any).name || (b as any).nameEn || (b as any).nameAr || '',
-        code: b.code,
-        address: (b as any).address || (b as any).addressEn || (b as any).addressAr || '',
-        city: b.city,
-        state: b.state,
-        country: b.country,
-        phone: b.phone,
-        email: b.email,
-        latitude: undefined,
-        longitude: undefined,
-        managerId: undefined,
-        isActive: b.isActive,
-        createdAt: b.createdAt,
-        updatedAt: b.updatedAt,
-      })));
-
-      // Sync from server if online
-      if (navigator.onLine) {
-        try {
-          const serverBranches = await restaurantApi.getBranches();
-          setBranches(serverBranches);
-
-          // Update IndexedDB
-          for (const branch of serverBranches) {
-            await db.branches.put({
-              id: branch.id,
-              tenantId: branch.tenantId,
-              name: branch.name,
-              code: branch.code,
-              address: branch.address || '',
-              city: branch.city,
-              state: branch.state,
-              country: branch.country,
-              phone: branch.phone,
-              email: branch.email,
-              isActive: branch.isActive,
-              createdAt: branch.createdAt,
-              updatedAt: branch.updatedAt,
-              lastSynced: new Date().toISOString(),
-              syncStatus: 'synced',
-            } as any);
-          }
-        } catch (err: any) {
-          console.warn('Failed to load from server:', err);
-        }
-      }
+      const branches = await restaurantApi.getBranches();
+      setBranches(branches);
     } catch (err: any) {
       setError(err.message || t('restaurant.branchManagement', language) || 'Failed to load branches');
     } finally {
@@ -175,83 +123,17 @@ export function BranchesTab() {
       if (editingBranch) {
         // Update branch
         const updateData: UpdateBranchDto = { ...values };
-
-        // Save to IndexedDB first
-        await db.branches.update(editingBranch.id, {
-          name: updateData.name || editingBranch.name,
-          code: updateData.code || editingBranch.code,
-          address: updateData.address || '',
-          city: updateData.city,
-          state: updateData.state,
-          country: updateData.country,
-          phone: updateData.phone,
-          email: updateData.email,
-          isActive: updateData.isActive ?? editingBranch.isActive,
-          updatedAt: new Date().toISOString(),
-          syncStatus: 'pending',
-        } as any);
-
-        // Queue sync
-        await syncService.queueChange('branches', 'UPDATE', editingBranch.id, updateData);
-
-        // Try to sync immediately if online
-        if (navigator.onLine) {
-          try {
-            await restaurantApi.updateBranch(editingBranch.id, updateData);
-            await db.branches.update(editingBranch.id, {
-              lastSynced: new Date().toISOString(),
-              syncStatus: 'synced',
-            });
-            notifications.show({
-              title: t('common.success', language) || 'Success',
-              message: t('restaurant.branchUpdated', language),
-              color: notificationColors.success,
-              icon: <IconCheck size={16} />,
-            });
-          } catch (err: any) {
-            notifications.show({
-              title: t('common.success', language) || 'Saved Locally',
-              message: t('restaurant.branchSavedLocally', language),
-              color: notificationColors.info,
-            });
-          }
-        } else {
-          notifications.show({
-            title: t('common.success', language) || 'Saved Locally',
-            message: t('restaurant.branchSavedLocally', language),
-            color: notificationColors.info,
-          });
-        }
+        await restaurantApi.updateBranch(editingBranch.id, updateData);
+        
+        notifications.show({
+          title: t('common.success', language) || 'Success',
+          message: t('restaurant.branchUpdated', language),
+          color: notificationColors.success,
+          icon: <IconCheck size={16} />,
+        });
       } else {
         // Create branch
-        const newId = generateUUID();
-        const branchData: Branch = {
-          id: newId,
-          tenantId: user.tenantId,
-          name: values.name,
-          code: values.code,
-          address: values.address,
-          city: values.city,
-          state: values.state,
-          country: values.country || 'Iraq',
-          phone: values.phone,
-          email: values.email,
-          latitude: values.latitude,
-          longitude: values.longitude,
-          managerId: values.managerId,
-          isActive: true,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-
-        // Save to IndexedDB first
-        await db.branches.add({
-          ...branchData,
-          lastSynced: undefined,
-          syncStatus: 'pending',
-        } as any);
-
-        // Queue sync - exclude isActive from create payload and clean empty strings
+        // Remove isActive from create payload and clean empty strings
         const { isActive, ...createData } = values;
         const cleanedData: CreateBranchDto = {
           ...createData,
@@ -261,49 +143,15 @@ export function BranchesTab() {
           city: createData.city?.trim() || undefined,
           state: createData.state?.trim() || undefined,
         };
-        await syncService.queueChange('branches', 'CREATE', newId, cleanedData);
-
-        // Try to sync immediately if online
-        if (navigator.onLine) {
-          try {
-            // Remove isActive from create payload as it's not in CreateBranchDto
-            // Also convert empty strings to undefined for optional fields
-            const { isActive, ...createData } = values;
-            const cleanedData: CreateBranchDto = {
-              ...createData,
-              email: createData.email?.trim() || undefined,
-              phone: createData.phone?.trim() || undefined,
-              address: createData.address?.trim() || undefined,
-              city: createData.city?.trim() || undefined,
-              state: createData.state?.trim() || undefined,
-            };
-            const created = await restaurantApi.createBranch(cleanedData);
-            await db.branches.update(newId, {
-              id: created.id,
-              tenantId: created.tenantId,
-              lastSynced: new Date().toISOString(),
-              syncStatus: 'synced',
-            });
-            notifications.show({
-              title: t('common.success', language) || 'Success',
-              message: t('restaurant.branchCreated', language),
-              color: notificationColors.success,
-              icon: <IconCheck size={16} />,
-            });
-          } catch (err: any) {
-            notifications.show({
-              title: t('common.success', language) || 'Saved Locally',
-              message: t('restaurant.branchSavedLocally', language),
-              color: notificationColors.info,
-            });
-          }
-        } else {
-          notifications.show({
-            title: t('common.success', language) || 'Saved Locally',
-            message: t('restaurant.branchSavedLocally', language),
-            color: notificationColors.info,
-          });
-        }
+        
+        await restaurantApi.createBranch(cleanedData);
+        
+        notifications.show({
+          title: t('common.success', language) || 'Success',
+          message: t('restaurant.branchCreated', language),
+          color: notificationColors.success,
+          icon: <IconCheck size={16} />,
+        });
       }
 
       handleCloseModal();
@@ -335,40 +183,14 @@ export function BranchesTab() {
       confirmProps: { color: errorColor },
       onConfirm: async () => {
         try {
-          // Mark as deleted in IndexedDB
-          await db.branches.update(branch.id, {
-            deletedAt: new Date().toISOString(),
-            syncStatus: 'pending',
+          await restaurantApi.deleteBranch(branch.id);
+          
+          notifications.show({
+            title: t('common.success', language) || 'Success',
+            message: t('restaurant.branchDeleted', language),
+            color: notificationColors.success,
+            icon: <IconCheck size={16} />,
           });
-
-          // Queue sync
-          await syncService.queueChange('branches', 'DELETE', branch.id, {});
-
-          // Try to sync immediately if online
-          if (navigator.onLine) {
-            try {
-              await restaurantApi.deleteBranch(branch.id);
-              await db.branches.delete(branch.id);
-              notifications.show({
-                title: t('common.success', language) || 'Success',
-                message: t('restaurant.branchDeleted', language),
-                color: notificationColors.success,
-                icon: <IconCheck size={16} />,
-              });
-            } catch (err: any) {
-              notifications.show({
-                title: t('common.success', language) || 'Queued for Deletion',
-                message: t('restaurant.branchQueuedForDeletion', language),
-                color: notificationColors.info,
-              });
-            }
-          } else {
-            notifications.show({
-              title: t('common.success', language) || 'Queued for Deletion',
-              message: t('restaurant.branchQueuedForDeletion', language),
-              color: notificationColors.info,
-            });
-          }
 
           await loadBranches();
         } catch (err: any) {
