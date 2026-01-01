@@ -71,6 +71,7 @@ export function FoodItemsGrid({
   const [buffets, setBuffets] = useState<Buffet[]>([]);
   const [comboMeals, setComboMeals] = useState<ComboMeal[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+  const [activeMenuTypes, setActiveMenuTypes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState<FoodItem | Buffet | ComboMeal | null>(null);
   const [modalOpened, setModalOpened] = useState(false);
@@ -87,6 +88,9 @@ export function FoodItemsGrid({
   const currentSearchRef = useRef<string>(searchQuery);
   // Ref to track request sequence to handle out-of-order responses
   const requestSequenceRef = useRef<number>(0);
+  // Refs to track if categories and menus have been loaded
+  const categoriesLoadedRef = useRef(false);
+  const menusLoadedRef = useRef(false);
   
   // Debounce search query - wait 500ms after user stops typing
   useEffect(() => {
@@ -118,27 +122,14 @@ export function FoodItemsGrid({
   useEffect(() => {
     if (itemType === 'buffets' && orderType === 'dine_in') {
       // Only reload buffets if we're on the buffets tab and it's dine_in
-      // Fetch active menus first, then load buffets
-      const reloadBuffets = async () => {
-        try {
-          const menusResponse = await menuApi.getMenus();
-          const menus = Array.isArray(menusResponse) ? menusResponse : (menusResponse?.data || []);
-          const activeMenuTypes = menus
-            .filter((menu) => menu.isActive)
-            .map((menu) => menu.menuType)
-            .filter(Boolean);
-          await loadBuffets(activeMenuTypes);
-        } catch (error) {
-          console.error('Failed to reload buffets:', error);
-        }
-      };
-      reloadBuffets();
+      // Use cached activeMenuTypes instead of refetching
+      loadBuffets(activeMenuTypes);
     } else if (itemType === 'buffets' && orderType !== 'dine_in') {
       // Clear buffets if order type is not dine_in
       setBuffets([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderType, itemType]);
+  }, [orderType, itemType, activeMenuTypes]);
 
   // Notify parent when item type changes
   useEffect(() => {
@@ -146,6 +137,40 @@ export function FoodItemsGrid({
       onItemTypeChange(itemType);
     }
   }, [itemType, onItemTypeChange]);
+
+  // Load categories once on mount - they don't change when switching tabs
+  const loadCategories = useCallback(async () => {
+    // Only load if categories haven't been loaded yet
+    if (categoriesLoadedRef.current) return;
+    
+    try {
+      const catsResponse = await menuApi.getCategories();
+      const cats = Array.isArray(catsResponse) ? catsResponse : (catsResponse?.data || []);
+      setCategories(cats.filter((cat: any) => cat.isActive && !cat.deletedAt));
+      categoriesLoadedRef.current = true;
+    } catch (error) {
+      console.error('Failed to load categories:', error);
+    }
+  }, []);
+
+  // Load menus once on mount - cache them in state to avoid refetching
+  const loadMenus = useCallback(async () => {
+    // Only load if menus haven't been loaded yet
+    if (menusLoadedRef.current) return;
+    
+    try {
+      const menusResponse = await menuApi.getMenus();
+      const menus = Array.isArray(menusResponse) ? menusResponse : (menusResponse?.data || []);
+      const menuTypes = menus
+        .filter((menu) => menu.isActive)
+        .map((menu) => menu.menuType)
+        .filter(Boolean);
+      setActiveMenuTypes(menuTypes);
+      menusLoadedRef.current = true;
+    } catch (error) {
+      console.error('Failed to load menus:', error);
+    }
+  }, []);
 
   const loadData = useCallback(async () => {
     // Use debounced search query for API calls to reduce requests
@@ -174,18 +199,8 @@ export function FoodItemsGrid({
     try {
       setLoading(true);
 
-      // Load categories from API
-      const catsResponse = await menuApi.getCategories();
-      const cats = Array.isArray(catsResponse) ? catsResponse : (catsResponse?.data || []);
-      setCategories(cats.filter((cat: any) => cat.isActive && !cat.deletedAt));
-
-      // Load active menus from API
-      const menusResponse = await menuApi.getMenus();
-      const menus = Array.isArray(menusResponse) ? menusResponse : (menusResponse?.data || []);
-      const activeMenuTypes = menus
-        .filter((menu) => menu.isActive)
-        .map((menu) => menu.menuType)
-        .filter(Boolean);
+      // Use cached active menu types - no need to refetch
+      // Menus are loaded once on mount and cached in state
 
       // Load items based on selected type
       // Buffets are only available for dine-in orders
@@ -200,6 +215,7 @@ export function FoodItemsGrid({
       } else {
         // Load food items - use server pagination with backend filtering for active menus
         // Use backend filtering for active menus and search
+        // Note: We don't need to fetch menus here since onlyActiveMenus=true handles it on backend
         const serverItemsResponse = await menuApi.getFoodItems(
           selectedCategoryId || undefined,
           foodItemsPagination.paginationParams,
@@ -233,7 +249,13 @@ export function FoodItemsGrid({
       loadingRef.current = false;
     }
      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, selectedCategoryId, debouncedSearchQuery, itemType, foodItemsPagination.page, foodItemsPagination.limit, buffetsPagination.page, buffetsPagination.limit, comboMealsPagination.page, comboMealsPagination.limit]);
+  }, [tenantId, selectedCategoryId, debouncedSearchQuery, itemType, foodItemsPagination.page, foodItemsPagination.limit, buffetsPagination.page, buffetsPagination.limit, comboMealsPagination.page, comboMealsPagination.limit, activeMenuTypes]);
+
+  // Load categories and menus once on mount only - they don't need to reload when switching tabs
+  useEffect(() => {
+    loadCategories();
+    loadMenus();
+  }, [loadCategories, loadMenus]);
 
   // Update currentSearchRef when debounced search changes
   useEffect(() => {
