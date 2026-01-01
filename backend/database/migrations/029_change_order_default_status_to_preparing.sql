@@ -12,3 +12,4 @@ ALTER COLUMN status SET DEFAULT 'preparing';
 -- Note: The check constraint for order_items was already updated in migration 028
 -- to include 'served' status
 
+

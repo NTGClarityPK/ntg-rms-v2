@@ -10,3 +10,4 @@ ALTER TABLE order_items
 ADD CONSTRAINT order_items_status_check 
 CHECK (status IN ('pending', 'preparing', 'ready', 'served'));
 
+
