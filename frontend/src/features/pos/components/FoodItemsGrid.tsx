@@ -33,6 +33,7 @@ import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
+import NextImage from 'next/image';
 
 interface FoodItemsGridProps {
   tenantId: string;
@@ -739,9 +740,11 @@ export function FoodItemsGrid({
                               }}
                             >
                               {item.imageUrl ? (
-                                <img
+                                <NextImage
                                   src={item.imageUrl}
                                   alt={item.name}
+                                  width={40}
+                                  height={40}
                                   style={{
                                     width: '100%',
                                     height: '100%',

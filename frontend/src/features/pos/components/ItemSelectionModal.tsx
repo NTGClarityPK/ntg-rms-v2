@@ -29,6 +29,7 @@ import { useCurrency } from '@/lib/hooks/use-currency';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { menuPricingService } from '@/features/menu/domain';
 import { Skeleton } from '@mantine/core';
+import NextImage from 'next/image';
 
 interface ItemSelectionModalProps {
   opened: boolean;
@@ -470,9 +471,11 @@ export function ItemSelectionModal({
                           }}
                         >
                           {item.imageUrl ? (
-                            <img
+                            <NextImage
                               src={item.imageUrl}
                               alt={item.name}
+                              width={40}
+                              height={40}
                               style={{
                                 width: '100%',
                                 height: '100%',
