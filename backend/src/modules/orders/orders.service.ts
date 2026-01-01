@@ -2396,6 +2396,61 @@ export class OrdersService {
       throw new InternalServerErrorException(`Failed to update order status: ${error.message}`);
     }
 
+    // When order status is changed to "ready" or "served" from orders tab,
+    // update all item statuses to match (for kitchen display synchronization)
+    if (updateDto.status === 'ready' || updateDto.status === 'served') {
+      // Get all items for this order (excluding buffets)
+      const { data: allItems } = await supabase
+        .from('order_items')
+        .select('id, status, buffet_id')
+        .eq('order_id', orderId);
+
+      if (allItems && allItems.length > 0) {
+        // Filter items to update (exclude buffets)
+        const itemsToUpdate = allItems.filter(
+          (item: any) => !item.buffet_id
+        );
+
+        if (itemsToUpdate.length > 0) {
+          if (updateDto.status === 'ready') {
+            // Update all preparing items to ready
+            const preparingItemIds = itemsToUpdate
+              .filter((item: any) => (item.status || 'preparing') === 'preparing')
+              .map((item: any) => item.id);
+
+            if (preparingItemIds.length > 0) {
+              await supabase
+                .from('order_items')
+                .update({
+                  status: 'ready',
+                  updated_at: new Date().toISOString(),
+                })
+                .in('id', preparingItemIds);
+            }
+          } else if (updateDto.status === 'served') {
+            // Update all preparing and ready items to served
+            const itemIdsToServe = itemsToUpdate
+              .filter(
+                (item: any) =>
+                  (item.status || 'preparing') === 'preparing' ||
+                  item.status === 'ready'
+              )
+              .map((item: any) => item.id);
+
+            if (itemIdsToServe.length > 0) {
+              await supabase
+                .from('order_items')
+                .update({
+                  status: 'served',
+                  updated_at: new Date().toISOString(),
+                })
+                .in('id', itemIdsToServe);
+            }
+          }
+        }
+      }
+    }
+
     // Update customer statistics when order is completed
     if (updateDto.status === 'completed' && order.customer_id) {
       await this.updateCustomerStatistics(tenantId, order.customer_id);

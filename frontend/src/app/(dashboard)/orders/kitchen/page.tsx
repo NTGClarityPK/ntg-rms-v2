@@ -945,11 +945,11 @@ export default function KitchenDisplayPage() {
 
   const readyOrders = ordersWithoutBuffetsOnly.filter((order) => {
     const items = order.items?.filter((item) => !item.buffetId && !item.buffet) || [];
-    // Show order if it has any ready or served items
-    // Served items will show with line-through, card disappears when all items are served or preparing
+    // Show order only if it has at least one ready item
+    // Orders with all items served are removed from kitchen display
     return items.some((item) => {
       const status = item.status || 'preparing';
-      return status === 'ready' || status === 'served';
+      return status === 'ready';
     });
   });
 
