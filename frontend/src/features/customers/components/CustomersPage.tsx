@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useForm } from '@mantine/form';
 import {
   Title,
@@ -37,6 +37,7 @@ import { notifications } from '@mantine/notifications';
 import { customersApi, Customer, CreateCustomerDto, UpdateCustomerDto } from '@/lib/api/customers';
 import { db } from '@/lib/indexeddb/database';
 import { syncService } from '@/lib/sync/sync-service';
+import { CustomersRepository } from '../repositories/customers.repository';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
@@ -75,6 +76,11 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Initialize repository
+  const customersRepository = useMemo(() => {
+    return user?.tenantId ? new CustomersRepository(user.tenantId) : null;
+  }, [user?.tenantId]);
   const [opened, setOpened] = useState(false);
   const [profileOpened, setProfileOpened] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -110,11 +116,10 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
       setLoading(true);
       setError(null);
 
-      // Load from IndexedDB first
-      const localCustomers = await db.customers
-        .where('tenantId')
-        .equals(user.tenantId)
-        .toArray();
+      // Load from IndexedDB first using repository
+      const localCustomers = customersRepository 
+        ? await customersRepository.findAll()
+        : [];
 
       // Apply filters to local customers
       let filteredLocalCustomers = localCustomers;
@@ -182,8 +187,8 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
             syncStatus: 'synced' as const,
           }));
 
-          if (customersToStore.length > 0) {
-            await db.customers.bulkPut(customersToStore as any);
+          if (customersToStore.length > 0 && customersRepository) {
+            await customersRepository.bulkPut(customersToStore as any);
           }
         } catch (err: any) {
           console.error('Failed to load customers from server:', err);
@@ -200,7 +205,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
     } finally {
       setLoading(false);
     }
-  }, [user?.tenantId, searchQuery, pagination, language]);
+  }, [user?.tenantId, searchQuery, pagination, language, customersRepository]);
 
   useEffect(() => {
     loadCustomers();
@@ -315,36 +320,33 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
           const updated = await customersApi.updateCustomer(editingCustomer.id, updateDto);
           setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
 
-          // Update IndexedDB
-          await db.customers.put({
-            id: updated.id,
-            tenantId: user.tenantId,
-            name: updated.name || '',
-            phone: updated.phone,
-            email: updated.email,
-            dateOfBirth: updated.dateOfBirth,
-            preferredLanguage: updated.preferredLanguage,
-            notes: updated.notes,
-            totalOrders: updated.totalOrders,
-            totalSpent: updated.totalSpent,
-            averageOrderValue: updated.averageOrderValue,
-            lastOrderDate: updated.lastOrderDate,
-            loyaltyTier: updated.loyaltyTier,
-            createdAt: updated.createdAt,
-            updatedAt: updated.updatedAt,
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced',
-          } as any);
+          // Update IndexedDB using repository
+          if (customersRepository) {
+            await customersRepository.update(updated.id, {
+              name: updated.name || '',
+              phone: updated.phone,
+              email: updated.email,
+              dateOfBirth: updated.dateOfBirth,
+              preferredLanguage: updated.preferredLanguage,
+              notes: updated.notes,
+              totalOrders: updated.totalOrders,
+              totalSpent: updated.totalSpent,
+              averageOrderValue: updated.averageOrderValue,
+              lastOrderDate: updated.lastOrderDate,
+              loyaltyTier: updated.loyaltyTier,
+              lastSynced: new Date().toISOString(),
+              syncStatus: 'synced',
+            } as Partial<Customer>);
+          }
         } else {
-          // Queue for sync
-          await db.customers.put({
-            id: editingCustomer.id,
-            tenantId: user.tenantId,
-            ...updateDto,
-            updatedAt: new Date().toISOString(),
-            syncStatus: 'pending',
-          } as any);
-          await syncService.queueChange('customers', 'UPDATE', editingCustomer.id, updateDto);
+          // Queue for sync using repository
+          if (customersRepository) {
+            await customersRepository.update(editingCustomer.id, {
+              ...updateDto,
+              syncStatus: 'pending',
+            } as Partial<Customer>);
+            await syncService.queueChange('customers', 'UPDATE', editingCustomer.id, updateDto);
+          }
         }
 
         notifications.show({
@@ -376,32 +378,35 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
           const created = await customersApi.createCustomer(createDto);
           setCustomers((prev) => [created, ...prev]);
 
-          // Store in IndexedDB
-          await db.customers.put({
-            id: created.id,
-            tenantId: user.tenantId,
-            name: created.name || '',
-            phone: created.phone,
-            email: created.email,
-            dateOfBirth: created.dateOfBirth,
-            preferredLanguage: created.preferredLanguage,
-            notes: created.notes,
-            totalOrders: created.totalOrders,
-            totalSpent: created.totalSpent,
-            averageOrderValue: created.averageOrderValue,
-            lastOrderDate: created.lastOrderDate,
-            loyaltyTier: created.loyaltyTier,
-            createdAt: created.createdAt,
-            updatedAt: created.updatedAt,
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced',
-          } as any);
+          // Store in IndexedDB using repository
+          if (customersRepository) {
+            await customersRepository.create({
+              id: created.id,
+              tenantId: user.tenantId,
+              name: created.name || '',
+              phone: created.phone,
+              email: created.email,
+              dateOfBirth: created.dateOfBirth,
+              preferredLanguage: created.preferredLanguage,
+              notes: created.notes,
+              totalOrders: created.totalOrders,
+              totalSpent: created.totalSpent,
+              averageOrderValue: created.averageOrderValue,
+              lastOrderDate: created.lastOrderDate,
+              loyaltyTier: created.loyaltyTier,
+              createdAt: created.createdAt,
+              updatedAt: created.updatedAt,
+              lastSynced: new Date().toISOString(),
+              syncStatus: 'synced',
+            } as any);
+          }
         } else {
-          // Queue for sync
+          // Queue for sync using repository
           const tempId = `customer-${Date.now()}`;
-          await db.customers.put({
-            id: tempId,
-            tenantId: user.tenantId,
+          if (customersRepository) {
+            await customersRepository.create({
+              id: tempId,
+              tenantId: user.tenantId,
             ...createDto,
             totalOrders: 0,
             totalSpent: 0,
@@ -411,7 +416,8 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
             updatedAt: new Date().toISOString(),
             syncStatus: 'pending',
           } as any);
-          await syncService.queueChange('customers', 'CREATE', tempId, createDto);
+            await syncService.queueChange('customers', 'CREATE', tempId, createDto);
+          }
         }
 
         notifications.show({

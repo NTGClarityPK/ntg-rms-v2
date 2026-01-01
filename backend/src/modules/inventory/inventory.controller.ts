@@ -40,12 +40,14 @@ export class InventoryController {
   @ApiOperation({ summary: 'Get all ingredients' })
   @ApiQuery({ name: 'category', required: false, type: String })
   @ApiQuery({ name: 'isActive', required: false, type: String })
+  @ApiQuery({ name: 'search', required: false, type: String, description: 'Search query for ingredient name' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   getIngredients(
     @CurrentUser() user: any,
     @Query('category') category?: string,
     @Query('isActive') isActive?: string,
+    @Query('search') search?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
@@ -54,6 +56,7 @@ export class InventoryController {
     if (isActive !== undefined) {
       filters.isActive = isActive === 'true';
     }
+    if (search) filters.search = search;
     
     const pagination: PaginationParams = {
       page: page ? parseInt(page, 10) : undefined,

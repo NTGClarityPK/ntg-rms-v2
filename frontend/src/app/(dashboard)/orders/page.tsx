@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Chip,
   TextInput,
@@ -40,6 +40,8 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { db } from '@/lib/indexeddb/database';
+import { OrdersRepository } from '@/features/orders/repositories/orders.repository';
+import { OrderItemsRepository } from '@/features/orders/repositories/order-items.repository';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { IconEye } from '@tabler/icons-react';
@@ -75,6 +77,15 @@ export default function OrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [detailsModalOpened, { open: openDetailsModal, close: closeDetailsModal }] = useDisclosure(false);
   const [markingAsPaidOrderId, setMarkingAsPaidOrderId] = useState<string | null>(null);
+
+  // Initialize repositories
+  const ordersRepository = useMemo(() => {
+    return user?.tenantId ? new OrdersRepository(user.tenantId) : null;
+  }, [user?.tenantId]);
+
+  const orderItemsRepository = useMemo(() => {
+    return new OrderItemsRepository();
+  }, []);
 
   // Ref to store the latest loadOrders function for use in subscriptions
   // This prevents subscription recreation while ensuring we always use the latest function
@@ -197,10 +208,12 @@ export default function OrdersPage() {
           }
         }
 
-        const indexedDBOrders = await db.orders
-          .where('tenantId')
-          .equals(user.tenantId)
-          .filter((order) => {
+        // Load orders from IndexedDB using repository
+        let indexedDBOrders: any[] = [];
+        if (ordersRepository) {
+          const allOrders = await ordersRepository.findAll();
+          // Apply filters manually since repository doesn't support complex filtering
+          indexedDBOrders = allOrders.filter((order) => {
             if (selectedStatuses.length > 0 && !selectedStatuses.includes(order.status)) return false;
             if (selectedBranch && order.branchId !== selectedBranch) return false;
             if (selectedOrderType && order.orderType !== selectedOrderType) return false;
@@ -217,9 +230,9 @@ export default function OrdersPage() {
                 return false;
               }
             }
-            return !order.deletedAt;
-          })
-          .toArray();
+            return true; // Repository already filters deletedAt
+          });
+        }
 
         // Check sync queue to see which orders are already synced
         const syncQueueItems = await db.syncQueue
@@ -271,7 +284,7 @@ export default function OrdersPage() {
             const branch = order.branchId ? await db.branches.get(order.branchId) : null;
             const table = order.tableId ? await db.restaurantTables.get(order.tableId) : null;
             const customer = order.customerId ? await db.customers.get(order.customerId) : null;
-            const items = await db.orderItems.where('orderId').equals(order.id).toArray();
+            const items = await orderItemsRepository.findByOrderId(order.id);
 
             return {
               ...order,
@@ -373,7 +386,7 @@ export default function OrdersPage() {
       }
       loadingOrdersRef.current = false;
     }
-  }, [selectedBranch, selectedOrderType, selectedPaymentStatus, selectedStatuses, debouncedSearchQuery, showMyOrdersOnly, user?.tenantId, user?.email, language, pagination]);
+  }, [selectedBranch, selectedOrderType, selectedPaymentStatus, selectedStatuses, debouncedSearchQuery, showMyOrdersOnly, user?.tenantId, user?.email, language, pagination, ordersRepository, orderItemsRepository]);
 
   // Update ref whenever loadOrders changes
   useEffect(() => {

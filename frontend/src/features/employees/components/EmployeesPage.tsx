@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useForm } from '@mantine/form';
 import {
   Title,
@@ -40,6 +40,7 @@ import { rolesApi, Role } from '@/lib/api/roles';
 import { restaurantApi } from '@/lib/api/restaurant';
 import { db } from '@/lib/indexeddb/database';
 import { syncService } from '@/lib/sync/sync-service';
+import { EmployeesRepository } from '../repositories/employees.repository';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
@@ -77,6 +78,12 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
   const [branches, setBranches] = useState<Array<{ id: string; name: string }>>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Initialize repository
+  const employeesRepository = useMemo(() => {
+    return user?.tenantId ? new EmployeesRepository(user.tenantId) : null;
+  }, [user?.tenantId]);
+
   const [opened, setOpened] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -207,8 +214,8 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
                 syncStatus: 'synced' as const,
               }));
 
-              if (employeesToStore.length > 0) {
-                await db.employees.bulkPut(employeesToStore as any);
+              if (employeesToStore.length > 0 && employeesRepository) {
+                await employeesRepository.bulkPut(employeesToStore as any);
                 console.log(`[EmployeesPage] Updated IndexedDB with ${employeesToStore.length} employees (background sync)`);
               }
             } catch (allEmployeesError) {
@@ -218,11 +225,10 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
           })();
         } catch (err: any) {
           console.error('Failed to load employees from server:', err);
-          // Fall back to IndexedDB
-          const localEmployees = await db.employees
-            .where('tenantId')
-            .equals(user.tenantId)
-            .toArray();
+          // Fall back to IndexedDB using repository
+          const localEmployees = employeesRepository 
+            ? await employeesRepository.findAll()
+            : [];
           
           // Apply filters to local employees
           let filteredLocalEmployees = localEmployees;
@@ -253,11 +259,10 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
           setEmployees(paginatedLocalEmployees as unknown as Employee[]);
         }
       } else {
-        // Load from IndexedDB when offline
-        const localEmployees = await db.employees
-          .where('tenantId')
-          .equals(user.tenantId)
-          .toArray();
+        // Load from IndexedDB when offline using repository
+        const localEmployees = employeesRepository 
+          ? await employeesRepository.findAll()
+          : [];
 
         // Apply filters to local employees
         let filteredLocalEmployees = localEmployees;
@@ -297,7 +302,7 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
     } finally {
       setLoading(false);
     }
-  }, [user?.tenantId, roleFilter, statusFilter, pagination, language]);
+  }, [user?.tenantId, roleFilter, statusFilter, pagination, language, employeesRepository]);
 
   useEffect(() => {
     loadBranches();
@@ -382,39 +387,36 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
           const updated = await employeesApi.updateEmployee(editingEmployee.id, updateDto);
           setEmployees((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
 
-          // Update IndexedDB
-          await db.employees.put({
-            id: updated.id,
-            tenantId: user.tenantId,
-            supabaseAuthId: updated.supabaseAuthId,
-            email: updated.email,
-            name: updated.name,
-            phone: updated.phone,
-            role: updated.role, // Keep for backward compatibility
-            roles: updated.roles || [], // Store roles array
-            employeeId: updated.employeeId,
-            photoUrl: updated.photoUrl,
-            nationalId: updated.nationalId,
-            dateOfBirth: updated.dateOfBirth,
-            employmentType: updated.employmentType,
-            joiningDate: updated.joiningDate,
-            salary: updated.salary,
-            isActive: updated.isActive,
-            lastLoginAt: updated.lastLoginAt,
-            createdAt: updated.createdAt,
-            updatedAt: updated.updatedAt,
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced',
-          } as any);
+          // Update IndexedDB using repository
+          if (employeesRepository) {
+            await employeesRepository.update(updated.id, {
+              supabaseAuthId: updated.supabaseAuthId,
+              email: updated.email,
+              name: updated.name,
+              phone: updated.phone,
+              role: updated.role, // Keep for backward compatibility
+              roles: updated.roles || [], // Store roles array
+              employeeId: updated.employeeId,
+              photoUrl: updated.photoUrl,
+              nationalId: updated.nationalId,
+              dateOfBirth: updated.dateOfBirth,
+              employmentType: updated.employmentType,
+              joiningDate: updated.joiningDate,
+              salary: updated.salary,
+              isActive: updated.isActive,
+              lastLoginAt: updated.lastLoginAt,
+              lastSynced: new Date().toISOString(),
+              syncStatus: 'synced',
+            } as Partial<Employee>);
+          }
         } else {
-          // Queue for sync
-          await db.employees.put({
-            id: editingEmployee.id,
-            tenantId: user.tenantId,
-            ...updateDto,
-            updatedAt: new Date().toISOString(),
-            syncStatus: 'pending',
-          } as any);
+          // Queue for sync using repository
+          if (employeesRepository) {
+            await employeesRepository.update(editingEmployee.id, {
+              ...updateDto,
+              syncStatus: 'pending',
+            } as Partial<Employee>);
+          }
           await syncService.queueChange('employees', 'UPDATE', editingEmployee.id, updateDto);
         }
 
@@ -446,41 +448,45 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
           const created = await employeesApi.createEmployee(createDto);
           setEmployees((prev) => [created, ...prev]);
 
-          // Store in IndexedDB
-          await db.employees.put({
-            id: created.id,
-            tenantId: user.tenantId,
-            supabaseAuthId: created.supabaseAuthId,
-            email: created.email,
-            name: created.name,
-            phone: created.phone,
-            role: created.role, // Keep for backward compatibility
-            roles: created.roles || [], // Store roles array
-            employeeId: created.employeeId,
-            photoUrl: created.photoUrl,
-            nationalId: created.nationalId,
-            dateOfBirth: created.dateOfBirth,
-            employmentType: created.employmentType,
-            joiningDate: created.joiningDate,
-            salary: created.salary,
-            isActive: created.isActive,
-            lastLoginAt: created.lastLoginAt,
-            createdAt: created.createdAt,
-            updatedAt: created.updatedAt,
-            lastSynced: new Date().toISOString(),
-            syncStatus: 'synced',
-          } as any);
+          // Store in IndexedDB using repository
+          if (employeesRepository) {
+            await employeesRepository.create({
+              id: created.id,
+              tenantId: user.tenantId,
+              supabaseAuthId: created.supabaseAuthId,
+              email: created.email,
+              name: created.name,
+              phone: created.phone,
+              role: created.role, // Keep for backward compatibility
+              roles: created.roles || [], // Store roles array
+              employeeId: created.employeeId,
+              photoUrl: created.photoUrl,
+              nationalId: created.nationalId,
+              dateOfBirth: created.dateOfBirth,
+              employmentType: created.employmentType,
+              joiningDate: created.joiningDate,
+              salary: created.salary,
+              isActive: created.isActive,
+              lastLoginAt: created.lastLoginAt,
+              createdAt: created.createdAt,
+              updatedAt: created.updatedAt,
+              lastSynced: new Date().toISOString(),
+              syncStatus: 'synced',
+            } as any);
+          }
         } else {
-          // Queue for sync
+          // Queue for sync using repository
           const tempId = `employee-${Date.now()}`;
-          await db.employees.put({
-            id: tempId,
-            tenantId: user.tenantId,
-            ...createDto,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            syncStatus: 'pending',
-          } as any);
+          if (employeesRepository) {
+            await employeesRepository.create({
+              id: tempId,
+              tenantId: user.tenantId,
+              ...createDto,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              syncStatus: 'pending',
+            } as any);
+          }
           await syncService.queueChange('employees', 'CREATE', tempId, createDto);
         }
 
@@ -520,20 +526,19 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
             await employeesApi.deleteEmployee(employee.id);
             setEmployees((prev) => prev.filter((e) => e.id !== employee.id));
 
-            // Soft delete in IndexedDB
-            await db.employees.update(employee.id, {
-              deletedAt: new Date().toISOString(),
-              isActive: false,
-              syncStatus: 'synced',
-            });
+            // Soft delete in IndexedDB using repository
+            if (employeesRepository) {
+              await employeesRepository.delete(employee.id);
+            }
           } else {
-            // Queue for sync
-            await db.employees.update(employee.id, {
-              deletedAt: new Date().toISOString(),
-              isActive: false,
-              syncStatus: 'pending',
-            });
-            await syncService.queueChange('employees', 'DELETE', employee.id, {});
+            // Queue for sync using repository
+            if (employeesRepository) {
+              await employeesRepository.update(employee.id, {
+                isActive: false,
+                syncStatus: 'pending',
+              } as Partial<Employee>);
+              await syncService.queueChange('employees', 'DELETE', employee.id, {});
+            }
           }
 
           notifications.show({

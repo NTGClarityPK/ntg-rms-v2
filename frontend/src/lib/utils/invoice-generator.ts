@@ -59,7 +59,7 @@ export class InvoiceGenerator {
     // Get fonts from theme config with fallbacks
     const monoFont = themeConfig?.typography.fontFamily.mono || 'var(--font-geist-mono), Monaco, Courier New, monospace';
 
-    let html = `
+    const html = `
 <!DOCTYPE html>
 <html dir="${dir}" lang="${language}">
 <head>
@@ -323,7 +323,7 @@ export class InvoiceGenerator {
     // Get fonts from theme config with fallbacks
     const primaryFont = themeConfig?.typography.fontFamily.primary || 'var(--font-geist-sans), Arial, Helvetica, sans-serif';
 
-    let html = `
+    const html = `
 <!DOCTYPE html>
 <html dir="${dir}" lang="${language}">
 <head>

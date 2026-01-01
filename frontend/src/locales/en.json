@@ -38,7 +38,18 @@
     "nameRequired": "Name is required",
     "optional": "Optional",
     "and": "and",
-    "more": "more"
+    "more": "more",
+    "tryAgain": "Try Again"
+  },
+  "error": {
+    "somethingWentWrong": "Something went wrong",
+    "errorBoundaryMessage": "An unexpected error occurred. Please try refreshing the page.",
+    "networkError": "Network error. Please check your internet connection.",
+    "serverError": "Server error. Please try again later.",
+    "unauthorized": "You are not authorized to perform this action.",
+    "notFound": "The requested resource was not found.",
+    "timeout": "Request timed out. Please try again.",
+    "unknownError": "An unknown error occurred."
   },
   "auth": {
     "loginTitle": "Welcome Back",

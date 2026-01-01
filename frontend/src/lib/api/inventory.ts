@@ -136,11 +136,12 @@ const baseIngredientsApi = createCrudApi<Ingredient>('/inventory/ingredients');
 export const inventoryApi = {
   // Ingredients - Using factory for CRUD operations
   getIngredients: async (
-    filters?: { category?: string; isActive?: boolean },
+    filters?: { category?: string; isActive?: boolean; search?: string },
     pagination?: PaginationParams,
   ): Promise<Ingredient[] | PaginatedResponse<Ingredient>> => {
-    // Use base API but add custom filter handling
-    return baseIngredientsApi.getAll(filters, pagination);
+    // Extract search from filters and pass it separately
+    const { search, ...otherFilters } = filters || {};
+    return baseIngredientsApi.getAll(otherFilters, pagination, search);
   },
 
   getIngredientById: baseIngredientsApi.getById,

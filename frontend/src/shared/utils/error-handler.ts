@@ -3,6 +3,7 @@ import { notifications } from '@mantine/notifications';
 import { getErrorColor } from '@/lib/utils/theme';
 import { t } from '@/lib/utils/translations';
 import { useLanguageStore, Language } from '@/lib/store/language-store';
+import { errorLogger, ErrorSeverity } from '@/shared/error-logging';
 
 /**
  * Standardized error response structure
@@ -124,6 +125,9 @@ export function handleApiError(
     defaultMessage?: string;
     language?: string;
     errorColor?: string;
+    endpoint?: string;
+    method?: string;
+    requestData?: any;
   }
 ): string {
   const { 
@@ -131,6 +135,9 @@ export function handleApiError(
     defaultMessage, 
     language,
     errorColor,
+    endpoint,
+    method,
+    requestData,
   } = options || {};
   
   const { language: storeLanguage } = useLanguageStore.getState();
@@ -138,6 +145,36 @@ export function handleApiError(
   const color = errorColor || getErrorColor();
 
   const errorMessage = extractErrorMessage(error) || defaultMessage || t('common.error' as any, currentLanguage) || 'An error occurred';
+
+  // Determine error severity
+  let severity: typeof ErrorSeverity[keyof typeof ErrorSeverity] = ErrorSeverity.MEDIUM;
+  if (error && typeof error === 'object' && 'response' in error) {
+    const axiosError = error as AxiosError;
+    const status = axiosError.response?.status;
+    if (status === 401 || status === 403) {
+      severity = ErrorSeverity.HIGH;
+    } else if (status && status >= 500) {
+      severity = ErrorSeverity.HIGH;
+    } else if (isNetworkError(error)) {
+      severity = ErrorSeverity.MEDIUM;
+    }
+  }
+
+  // Log error using error logger
+  if (endpoint && method) {
+    errorLogger.logApiError(error, endpoint, method, requestData);
+  } else {
+    errorLogger.logError(
+      error instanceof Error ? error : new Error(errorMessage),
+      severity,
+      {
+        type: 'api_error',
+        endpoint,
+        method,
+        requestData,
+      }
+    );
+  }
 
   if (showNotification) {
     notifications.show({
@@ -152,8 +189,17 @@ export function handleApiError(
 
 /**
  * Log error for debugging (in development)
+ * Now also uses the centralized error logger
  */
 export function logError(error: AxiosError | Error | unknown, context?: string): void {
+  // Always log to error logger
+  errorLogger.logError(
+    error instanceof Error ? error : new Error(String(error)),
+    ErrorSeverity.LOW,
+    { context }
+  );
+
+  // Also log to console in development
   if (process.env.NODE_ENV === 'development') {
     const contextMsg = context ? `[${context}] ` : '';
     console.error(`${contextMsg}Error:`, error);

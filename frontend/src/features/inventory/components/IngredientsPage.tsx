@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useForm } from '@mantine/form';
+import { useDebouncedValue } from '@mantine/hooks';
 import {
   Title,
   Button,
@@ -27,6 +28,7 @@ import { notifications } from '@mantine/notifications';
 import { inventoryApi, Ingredient, CreateIngredientDto, UpdateIngredientDto } from '@/lib/api/inventory';
 import { db } from '@/lib/indexeddb/database';
 import { syncService } from '@/lib/sync/sync-service';
+import { IngredientsRepository } from '../repositories/ingredients.repository';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
@@ -59,8 +61,15 @@ export function IngredientsPage() {
   const [editingIngredient, setEditingIngredient] = useState<Ingredient | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery] = useDebouncedValue(searchQuery, 300);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<boolean | null>(null);
+  const prevSearchQueryRef = useRef<string>('');
+
+  // Initialize repository
+  const ingredientsRepository = useMemo(() => {
+    return user?.tenantId ? new IngredientsRepository(user.tenantId) : null;
+  }, [user?.tenantId]);
 
   const form = useForm({
     initialValues: {
@@ -92,6 +101,7 @@ export function IngredientsPage() {
           const filters: any = {};
           if (categoryFilter) filters.category = categoryFilter;
           if (statusFilter !== null) filters.isActive = statusFilter;
+          if (debouncedSearchQuery.trim()) filters.search = debouncedSearchQuery.trim();
 
           const serverIngredientsResponse = await inventoryApi.getIngredients(filters, pagination.paginationParams);
           // Handle both paginated and non-paginated responses
@@ -138,22 +148,28 @@ export function IngredientsPage() {
             syncStatus: 'synced' as const,
           })) as any;
           
-          if (ingredientsToStore.length > 0) {
-            await db.ingredients.bulkPut(ingredientsToStore);
+          if (ingredientsToStore.length > 0 && ingredientsRepository) {
+            await ingredientsRepository.bulkPut(ingredientsToStore);
           }
         } catch (err: any) {
           console.warn('Failed to sync ingredients from server:', err);
-          // Fallback to IndexedDB if server sync fails
-          const localIngredients = await db.ingredients
-            .where('tenantId')
-            .equals(user.tenantId)
-            .filter((ing) => {
-              if (ing.deletedAt) return false;
-              if (categoryFilter && ing.category !== categoryFilter) return false;
-              if (statusFilter !== null && ing.isActive !== statusFilter) return false;
-              return true;
-            })
-            .toArray();
+          // Fallback to IndexedDB if server sync fails using repository
+          let localIngredients: Ingredient[] = [];
+          if (ingredientsRepository) {
+            const filters: Partial<Ingredient> = {};
+            if (categoryFilter) filters.category = categoryFilter;
+            if (statusFilter !== null) filters.isActive = statusFilter;
+            localIngredients = await ingredientsRepository.findAll(filters);
+          }
+
+          // Apply search filter for offline mode
+          if (debouncedSearchQuery.trim()) {
+            const searchTerm = debouncedSearchQuery.toLowerCase().trim();
+            localIngredients = localIngredients.filter((ing) => {
+              const name = ((ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '').toLowerCase();
+              return name.includes(searchTerm);
+            });
+          }
 
           // Deduplicate by ID first, then by nameEn
           const byId = new Map(localIngredients.map(ing => [ing.id, ing]));
@@ -201,17 +217,23 @@ export function IngredientsPage() {
           pagination.setHasPrev(pagination.page > 1);
         }
       } else {
-        // Load from IndexedDB when offline
-        const localIngredients = await db.ingredients
-          .where('tenantId')
-          .equals(user.tenantId)
-          .filter((ing) => {
-            if (ing.deletedAt) return false;
-            if (categoryFilter && ing.category !== categoryFilter) return false;
-            if (statusFilter !== null && ing.isActive !== statusFilter) return false;
-            return true;
-          })
-          .toArray();
+        // Load from IndexedDB when offline using repository
+        let localIngredients: Ingredient[] = [];
+        if (ingredientsRepository) {
+          const filters: Partial<Ingredient> = {};
+          if (categoryFilter) filters.category = categoryFilter;
+          if (statusFilter !== null) filters.isActive = statusFilter;
+          localIngredients = await ingredientsRepository.findAll(filters);
+        }
+
+        // Apply search filter for offline mode
+        if (debouncedSearchQuery.trim()) {
+          const searchTerm = debouncedSearchQuery.toLowerCase().trim();
+          localIngredients = localIngredients.filter((ing) => {
+            const name = ((ing as any).name || (ing as any).nameEn || (ing as any).nameAr || '').toLowerCase();
+            return name.includes(searchTerm);
+          });
+        }
 
         // Deduplicate by ID first, then by nameEn
         const byId = new Map(localIngredients.map(ing => [ing.id, ing]));
@@ -264,7 +286,16 @@ export function IngredientsPage() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.tenantId, language, categoryFilter, statusFilter, pagination.page, pagination.limit]);
+  }, [user?.tenantId, language, categoryFilter, statusFilter, debouncedSearchQuery, pagination.page, pagination.limit]);
+
+  // Reset to page 1 when search query changes
+  useEffect(() => {
+    if (prevSearchQueryRef.current !== debouncedSearchQuery && pagination.page !== 1) {
+      pagination.setPage(1);
+    }
+    prevSearchQueryRef.current = debouncedSearchQuery;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearchQuery]);
 
   useEffect(() => {
     loadIngredients();
@@ -319,13 +350,14 @@ export function IngredientsPage() {
 
         savedIngredient = await inventoryApi.updateIngredient(editingIngredient.id, updateData);
         
-        // Update IndexedDB
-        await db.ingredients.update(editingIngredient.id, {
-          ...updateData,
-          updatedAt: new Date().toISOString(),
-          lastSynced: new Date().toISOString(),
-          syncStatus: 'synced',
-        });
+        // Update IndexedDB using repository
+        if (ingredientsRepository) {
+          await ingredientsRepository.update(editingIngredient.id, {
+            ...updateData,
+            lastSynced: new Date().toISOString(),
+            syncStatus: 'synced',
+          } as Partial<Ingredient>);
+        }
 
         // Only queue if offline (already synced via API when online)
         if (!navigator.onLine) {
@@ -346,8 +378,9 @@ export function IngredientsPage() {
 
         savedIngredient = await inventoryApi.createIngredient(createData);
         
-        // Save to IndexedDB using put (handles both add and update)
-        await db.ingredients.put({
+        // Save to IndexedDB using repository
+        if (ingredientsRepository) {
+          await ingredientsRepository.create({
           id: savedIngredient.id,
           tenantId: user.tenantId,
           name: savedIngredient.name,
@@ -363,6 +396,7 @@ export function IngredientsPage() {
           lastSynced: new Date().toISOString(),
           syncStatus: 'synced' as const,
         } as any);
+        }
 
         // Only queue if offline (already synced via API when online)
         if (!navigator.onLine) {
@@ -402,11 +436,10 @@ export function IngredientsPage() {
         try {
           await inventoryApi.deleteIngredient(ingredient.id);
           
-          // Update IndexedDB (soft delete)
-          await db.ingredients.update(ingredient.id, {
-            deletedAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
+          // Update IndexedDB (soft delete) using repository
+          if (ingredientsRepository) {
+            await ingredientsRepository.delete(ingredient.id);
+          }
 
           // Only queue if offline (already synced via API when online)
           if (!navigator.onLine) {
@@ -432,13 +465,6 @@ export function IngredientsPage() {
     });
   };
 
-  // Filter ingredients
-  const filteredIngredients = ingredients.filter((ing) => {
-    if (!ing.name) return false;
-    const matchesSearch = 
-      ing.name?.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesSearch;
-  });
 
   const isLowStock = (ingredient: Ingredient) => {
     return ingredient.currentStock <= ingredient.minimumThreshold;
@@ -516,7 +542,7 @@ export function IngredientsPage() {
             </Paper>
           ))}
         </Stack>
-      ) : filteredIngredients.length === 0 ? (
+      ) : ingredients.length === 0 ? (
         <Paper p="xl" withBorder>
           <Text ta="center" c="dimmed">
             {t('inventory.noIngredients', language)}
@@ -538,7 +564,7 @@ export function IngredientsPage() {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {filteredIngredients.map((ingredient) => (
+                {ingredients.map((ingredient) => (
                   <Table.Tr key={ingredient.id}>
                     <Table.Td>
                       <Text fw={500}>

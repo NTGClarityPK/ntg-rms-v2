@@ -69,6 +69,12 @@ export function FoodItemsPage() {
     initialPage: DEFAULT_PAGINATION.page, 
     initialLimit: DEFAULT_PAGINATION.limit 
   });
+  
+  // Initialize repository
+  const foodItemsRepository = useMemo(() => {
+    return user?.tenantId ? new FoodItemsRepository(user.tenantId) : null;
+  }, [user?.tenantId]);
+  
   const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [addOnGroups, setAddOnGroups] = useState<any[]>([]);
@@ -232,9 +238,9 @@ export function FoodItemsPage() {
           
           setFoodItems(serverItems);
 
-          // Update IndexedDB
-          for (const item of serverItems) {
-            await db.foodItems.put({
+          // Update IndexedDB using repository
+          if (foodItemsRepository) {
+            const itemsToSync = serverItems.map((item) => ({
               id: item.id,
               tenantId: user.tenantId,
               name: item.name || (item as any).nameEn || (item as any).nameAr || '',
@@ -252,9 +258,14 @@ export function FoodItemsPage() {
               createdAt: item.createdAt,
               updatedAt: item.updatedAt,
               lastSynced: new Date().toISOString(),
-              syncStatus: 'synced',
-            } as any);
+              syncStatus: 'synced' as const,
+            } as any));
+            
+            await foodItemsRepository.bulkPut(itemsToSync);
+          }
 
+          // Save variations, labels, discounts, and add-on groups for each item
+          for (const item of serverItems) {
             // Save variations
             if (item.variations && item.variations.length > 0) {
               // Delete existing variations
@@ -341,12 +352,10 @@ export function FoodItemsPage() {
           }
         } catch (err) {
           console.warn('Failed to sync food items from server:', err);
-          // Fallback to IndexedDB on error
-          const localItems = await db.foodItems
-            .where('tenantId')
-            .equals(user.tenantId)
-            .filter((item) => !item.deletedAt)
-            .toArray();
+          // Fallback to IndexedDB on error using repository
+          const localItems = foodItemsRepository 
+            ? await foodItemsRepository.findAll()
+            : [];
           
           const itemsWithRelations = await Promise.all(
             localItems.map(async (item) => {
@@ -420,12 +429,10 @@ export function FoodItemsPage() {
           pagination.setHasPrev(currentPage > 1);
         }
       } else {
-        // Offline mode - load from IndexedDB with local pagination
-        const localItems = await db.foodItems
-          .where('tenantId')
-          .equals(user.tenantId)
-          .filter((item) => !item.deletedAt)
-          .toArray();
+        // Offline mode - load from IndexedDB with local pagination using repository
+        const localItems = foodItemsRepository 
+          ? await foodItemsRepository.findAll()
+          : [];
         
         const itemsWithRelations = await Promise.all(
           localItems.map(async (item) => {
@@ -734,7 +741,7 @@ export function FoodItemsPage() {
     );
 
     // Remove variations from deselected groups
-    let updatedVariations = currentVariations.filter(
+    const updatedVariations = currentVariations.filter(
       (v) => !removedGroupNames.includes(v.variationGroup)
     );
 
@@ -785,10 +792,11 @@ export function FoodItemsPage() {
       setUploadingImage(true);
       const updated = await menuApi.uploadFoodItemImage(editingItem.id, file);
       
-      await db.foodItems.update(editingItem.id, {
-        imageUrl: updated.imageUrl,
-        updatedAt: new Date().toISOString(),
-      });
+      if (foodItemsRepository) {
+        await foodItemsRepository.update(editingItem.id, {
+          imageUrl: updated.imageUrl,
+        } as Partial<FoodItem>);
+      }
 
       form.setFieldValue('imageUrl', updated.imageUrl || '');
       setImagePreview(updated.imageUrl || null);
@@ -872,12 +880,13 @@ export function FoodItemsPage() {
         if (wasEditing && currentEditingItem) {
           savedItem = await menuApi.updateFoodItem(currentEditingItem.id, itemData);
         
-          await db.foodItems.update(currentEditingItem.id, {
-          ...itemData,
-          updatedAt: new Date().toISOString(),
-          lastSynced: new Date().toISOString(),
-          syncStatus: 'synced',
-        });
+          if (foodItemsRepository) {
+            await foodItemsRepository.update(currentEditingItem.id, {
+              ...itemData,
+              lastSynced: new Date().toISOString(),
+              syncStatus: 'synced',
+            } as Partial<FoodItem>);
+          }
 
           // Save variations
           if (values.variations && values.variations.length > 0) {
@@ -964,20 +973,22 @@ export function FoodItemsPage() {
             }
           }
         
-        await db.foodItems.add({
-          id: savedItem.id,
-          tenantId: user.tenantId,
-          ...itemData,
+        if (foodItemsRepository) {
+          await foodItemsRepository.create({
+            id: savedItem.id,
+            tenantId: user.tenantId,
+            ...itemData,
             menuType: savedItem.menuType, // Legacy field, no default
             menuTypes: savedItem.menuTypes || [], // Array of menu types
             imageUrl: savedItem.imageUrl,
-          displayOrder: savedItem.displayOrder,
-          isActive: savedItem.isActive,
-          createdAt: savedItem.createdAt,
-          updatedAt: savedItem.updatedAt,
-          lastSynced: new Date().toISOString(),
-          syncStatus: 'synced',
-        } as any);
+            displayOrder: savedItem.displayOrder,
+            isActive: savedItem.isActive,
+            createdAt: savedItem.createdAt,
+            updatedAt: savedItem.updatedAt,
+            lastSynced: new Date().toISOString(),
+            syncStatus: 'synced',
+          } as any);
+        }
 
           // Save variations
           if (values.variations && values.variations.length > 0) {
@@ -1074,10 +1085,9 @@ export function FoodItemsPage() {
         try {
           await menuApi.deleteFoodItem(item.id);
           
-          await db.foodItems.update(item.id, {
-            deletedAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
+          if (foodItemsRepository) {
+            await foodItemsRepository.delete(item.id);
+          }
 
           await syncService.queueChange('foodItems', 'DELETE', item.id, item);
 

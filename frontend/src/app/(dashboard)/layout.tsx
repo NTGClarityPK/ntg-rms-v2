@@ -11,6 +11,8 @@ import { syncService } from '@/lib/sync/sync-service';
 import { authApi } from '@/lib/api/auth';
 import { rolesApi } from '@/lib/api/roles';
 import { tokenStorage } from '@/lib/api/client';
+import { ErrorBoundary } from '@/shared/error-boundary';
+import { errorLogger, ErrorSeverity } from '@/shared/error-logging';
 
 export default function DashboardLayout({
   children,
@@ -160,7 +162,18 @@ export default function DashboardLayout({
         />
       </AppShell.Navbar>
 
-      <AppShell.Main>{children}</AppShell.Main>
+      <AppShell.Main>
+        <ErrorBoundary
+          onError={(error, errorInfo) => {
+            errorLogger.logError(error, ErrorSeverity.HIGH, {
+              component: 'DashboardLayout',
+              errorInfo: errorInfo.componentStack,
+            });
+          }}
+        >
+          {children}
+        </ErrorBoundary>
+      </AppShell.Main>
     </AppShell>
   );
 }

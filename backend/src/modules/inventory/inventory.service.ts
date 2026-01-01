@@ -30,7 +30,7 @@ export class InventoryService {
    */
   async getIngredients(
     tenantId: string,
-    filters?: { category?: string; isActive?: boolean },
+    filters?: { category?: string; isActive?: boolean; search?: string },
     pagination?: PaginationParams,
   ): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
@@ -57,6 +57,13 @@ export class InventoryService {
     if (filters?.isActive !== undefined) {
       query = query.eq('is_active', filters.isActive);
       countQuery = countQuery.eq('is_active', filters.isActive);
+    }
+
+    // Apply search filter if provided
+    if (filters?.search && filters.search.trim()) {
+      const searchTerm = filters.search.trim();
+      query = query.ilike('name', `%${searchTerm}%`);
+      countQuery = countQuery.ilike('name', `%${searchTerm}%`);
     }
 
     // Get total count
