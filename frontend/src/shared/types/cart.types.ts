@@ -39,3 +39,4 @@ export interface RestaurantTable {
   deletedAt?: string;
 }
 
+

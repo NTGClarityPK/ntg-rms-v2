@@ -168,3 +168,4 @@ export class InventoryCalculatorService {
 // Export singleton instance
 export const inventoryCalculatorService = new InventoryCalculatorService();
 
+
