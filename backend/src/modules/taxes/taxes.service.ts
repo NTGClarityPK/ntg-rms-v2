@@ -296,25 +296,39 @@ export class TaxesService {
       throw new InternalServerErrorException(`Failed to fetch active taxes: ${error.message}`);
     }
 
-    // Get tax applications
-    const taxesWithApplications = await Promise.all(
-      taxes.map(async (tax) => {
-        const { data: applications } = await supabase
-          .from('tax_applications')
-          .select('category_id, food_item_id')
-          .eq('tax_id', tax.id);
+    if (!taxes || taxes.length === 0) {
+      return [];
+    }
 
-        return {
-          ...tax,
-          categoryIds: applications
-            ?.filter((app) => app.category_id)
-            .map((app) => app.category_id) || [],
-          foodItemIds: applications
-            ?.filter((app) => app.food_item_id)
-            .map((app) => app.food_item_id) || [],
-        };
-      })
-    );
+    // Batch fetch all tax applications in a single query
+    const taxIds = taxes.map(tax => tax.id);
+    const { data: allApplications } = await supabase
+      .from('tax_applications')
+      .select('tax_id, category_id, food_item_id')
+      .in('tax_id', taxIds);
+
+    // Group applications by tax_id
+    const applicationsByTaxId = new Map<string, Array<{ category_id?: string; food_item_id?: string }>>();
+    for (const app of allApplications || []) {
+      if (!applicationsByTaxId.has(app.tax_id)) {
+        applicationsByTaxId.set(app.tax_id, []);
+      }
+      applicationsByTaxId.get(app.tax_id)!.push(app);
+    }
+
+    // Combine taxes with their applications
+    const taxesWithApplications = taxes.map((tax) => {
+      const applications = applicationsByTaxId.get(tax.id) || [];
+      return {
+        ...tax,
+        categoryIds: applications
+          .filter((app) => app.category_id)
+          .map((app) => app.category_id) || [],
+        foodItemIds: applications
+          .filter((app) => app.food_item_id)
+          .map((app) => app.food_item_id) || [],
+      };
+    });
 
     return taxesWithApplications;
   }

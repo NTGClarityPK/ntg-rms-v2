@@ -4,6 +4,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import helmet from 'helmet';
 import * as compression from 'compression';
 
@@ -95,6 +96,9 @@ async function bootstrap() {
 
     // Global exception filter
     app.useGlobalFilters(new HttpExceptionFilter());
+
+    // Global logging interceptor
+    app.useGlobalInterceptors(new LoggingInterceptor());
 
     // Global validation pipe
     app.useGlobalPipes(

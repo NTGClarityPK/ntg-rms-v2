@@ -144,33 +144,33 @@ export class CouponsService {
     orderId: string,
     customerId?: string,
   ): Promise<void> {
-    // Get current used count and increment
-    const { data: coupon } = await this.supabaseService
-      .getServiceRoleClient()
-      .from('coupons')
-      .select('used_count')
-      .eq('id', couponId)
-      .single();
+    const supabase = this.supabaseService.getServiceRoleClient();
 
-    if (coupon) {
-      await this.supabaseService
-        .getServiceRoleClient()
+    // Fetch coupon and prepare coupon_usages insert in parallel
+    const [couponResult, couponUsageInsert] = await Promise.all([
+      supabase
         .from('coupons')
-        .update({ used_count: (coupon.used_count || 0) + 1 })
-        .eq('id', couponId);
-    }
+        .select('used_count')
+        .eq('id', couponId)
+        .single(),
+      customerId
+        ? supabase
+            .from('coupon_usages')
+            .insert({
+              coupon_id: couponId,
+              customer_id: customerId,
+              order_id: orderId,
+              tenant_id: tenantId,
+            })
+        : Promise.resolve({ data: null, error: null }),
+    ]);
 
-    // Record usage
-    if (customerId) {
-      await this.supabaseService
-        .getServiceRoleClient()
-        .from('coupon_usages')
-        .insert({
-          coupon_id: couponId,
-          customer_id: customerId,
-          order_id: orderId,
-          tenant_id: tenantId,
-        });
+    // Update coupon used_count if coupon exists
+    if (couponResult.data) {
+      await supabase
+        .from('coupons')
+        .update({ used_count: (couponResult.data.used_count || 0) + 1 })
+        .eq('id', couponId);
     }
   }
 

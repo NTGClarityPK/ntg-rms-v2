@@ -1132,30 +1132,79 @@ export class InventoryService {
 
     const insufficientItems: Array<{ ingredientName: string; available: number; required: number }> = [];
 
-    for (const item of orderItems) {
-      // Get recipe for this food item
-      const { data: recipes } = await supabase
-        .from('recipes')
-        .select('*')
-        .eq('food_item_id', item.foodItemId);
+    if (orderItems.length === 0) {
+      return { isValid: true, insufficientItems: [] };
+    }
 
+    // Batch fetch all recipes for all food items in parallel
+    const foodItemIds = orderItems.map(item => item.foodItemId);
+    const { data: allRecipes } = await supabase
+      .from('recipes')
+      .select('*')
+      .in('food_item_id', foodItemIds)
+      .is('add_on_id', null);
+
+    if (!allRecipes || allRecipes.length === 0) {
+      return { isValid: true, insufficientItems: [] };
+    }
+
+    // Group recipes by food_item_id for quick lookup
+    const recipesByFoodItem = new Map<string, typeof allRecipes>();
+    for (const recipe of allRecipes) {
+      if (!recipesByFoodItem.has(recipe.food_item_id)) {
+        recipesByFoodItem.set(recipe.food_item_id, []);
+      }
+      recipesByFoodItem.get(recipe.food_item_id)!.push(recipe);
+    }
+
+    // Collect all unique ingredient IDs
+    const ingredientIds = [...new Set(allRecipes.map(r => r.ingredient_id))];
+
+    // Batch fetch all ingredients in parallel
+    const { data: ingredients, error: ingredientsError } = await supabase
+      .from('ingredients')
+      .select('id, name, current_stock')
+      .eq('tenant_id', tenantId)
+      .in('id', ingredientIds)
+      .is('deleted_at', null);
+
+    if (ingredientsError) {
+      throw new InternalServerErrorException(`Failed to fetch ingredients: ${ingredientsError.message}`);
+    }
+
+    // Create ingredient map for quick lookup
+    const ingredientMap = new Map<string, { name: string; currentStock: number }>();
+    for (const ing of ingredients || []) {
+      ingredientMap.set(ing.id, {
+        name: ing.name || 'Unknown',
+        currentStock: Number(ing.current_stock) || 0,
+      });
+    }
+
+    // Check stock for all items
+    for (const item of orderItems) {
+      const recipes = recipesByFoodItem.get(item.foodItemId);
       if (!recipes || recipes.length === 0) {
-        // No recipe defined, skip this item
         continue;
       }
 
-      // Check stock for each ingredient in the recipe
       for (const recipe of recipes) {
         const totalQuantityNeeded = Number(recipe.quantity) * Number(item.quantity);
+        const ingredient = ingredientMap.get(recipe.ingredient_id);
 
-        // Get ingredient to check stock
-        const ingredient = await this.getIngredientById(tenantId, recipe.ingredient_id);
-        const availableStock = Number(ingredient.currentStock) || 0;
-
-        if (availableStock < totalQuantityNeeded) {
+        if (!ingredient) {
           insufficientItems.push({
-            ingredientName: ingredient.name || 'Unknown',
-            available: availableStock,
+            ingredientName: 'Unknown',
+            available: 0,
+            required: totalQuantityNeeded,
+          });
+          continue;
+        }
+
+        if (ingredient.currentStock < totalQuantityNeeded) {
+          insufficientItems.push({
+            ingredientName: ingredient.name,
+            available: ingredient.currentStock,
             required: totalQuantityNeeded,
           });
         }
@@ -1185,188 +1234,317 @@ export class InventoryService {
   ) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Fetch token number from order
-    const { data: order } = await supabase
+    const deductions: any[] = [];
+
+    if (orderItems.length === 0) {
+      return {
+        message: 'Stock deducted successfully for order',
+        deductions,
+      };
+    }
+
+    // Filter items with foodItemId
+    const itemsWithFoodItem = orderItems.filter(item => item.foodItemId);
+    if (itemsWithFoodItem.length === 0) {
+      return {
+        message: 'Stock deducted successfully for order',
+        deductions,
+      };
+    }
+
+    // Fetch token number from order (can be done in parallel with other initial fetches)
+    const tokenNumberPromise = supabase
       .from('orders')
       .select('token_number')
       .eq('id', orderId)
-      .maybeSingle();
-    
-    const tokenNumber = order?.token_number || 'N/A';
+      .maybeSingle()
+      .then(({ data }) => data?.token_number || 'N/A');
 
-    const deductions: any[] = [];
+    // Collect all IDs needed for batch fetching
+    const foodItemIds = itemsWithFoodItem.map(item => item.foodItemId!);
+    const variationIds = itemsWithFoodItem
+      .filter(item => item.variationId)
+      .map(item => item.variationId!);
+    const addOnIds = itemsWithFoodItem
+      .flatMap(item => item.addOns || [])
+      .map(addOn => addOn.addOnId);
 
-    for (const item of orderItems) {
-      // Skip if no food item (buffets/combo meals handled separately)
-      if (!item.foodItemId) {
-        continue;
+    // Batch fetch all recipes (food items and add-ons) in parallel
+    const [tokenNumber, foodItemRecipesResult, addOnRecipesResult, variationsResult, foodItemVariationsResult] = await Promise.all([
+      tokenNumberPromise,
+      foodItemIds.length > 0
+        ? supabase
+            .from('recipes')
+            .select('*')
+            .in('food_item_id', foodItemIds)
+            .is('add_on_id', null)
+        : Promise.resolve({ data: [], error: null }),
+      addOnIds.length > 0
+        ? supabase
+            .from('recipes')
+            .select('*')
+            .in('add_on_id', addOnIds)
+            .is('food_item_id', null)
+        : Promise.resolve({ data: [], error: null }),
+      variationIds.length > 0
+        ? supabase
+            .from('variations')
+            .select('id, recipe_multiplier')
+            .in('id', variationIds)
+            .is('deleted_at', null)
+        : Promise.resolve({ data: [], error: null }),
+      variationIds.length > 0
+        ? supabase
+            .from('food_item_variations')
+            .select('id, variation_id, variation_group, variation_name, recipe_multiplier')
+            .in('id', variationIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    const foodItemRecipes = foodItemRecipesResult.data || [];
+    const addOnRecipes = addOnRecipesResult.data || [];
+    const variations = variationsResult.data || [];
+    const foodItemVariations = foodItemVariationsResult.data || [];
+
+    // Create maps for quick lookup
+    const recipesByFoodItem = new Map<string, typeof foodItemRecipes>();
+    for (const recipe of foodItemRecipes) {
+      if (!recipesByFoodItem.has(recipe.food_item_id)) {
+        recipesByFoodItem.set(recipe.food_item_id, []);
       }
+      recipesByFoodItem.get(recipe.food_item_id)!.push(recipe);
+    }
 
-      // Get variation recipe multiplier if variation is selected
+    const recipesByAddOn = new Map<string, typeof addOnRecipes>();
+    for (const recipe of addOnRecipes) {
+      if (!recipesByAddOn.has(recipe.add_on_id)) {
+        recipesByAddOn.set(recipe.add_on_id, []);
+      }
+      recipesByAddOn.get(recipe.add_on_id)!.push(recipe);
+    }
+
+    const variationMultiplierMap = new Map<string, number>();
+    for (const variation of variations) {
+      variationMultiplierMap.set(variation.id, Number(variation.recipe_multiplier) || 1.0);
+    }
+
+    const foodItemVariationMap = new Map();
+    for (const fiv of foodItemVariations) {
+      foodItemVariationMap.set(fiv.id, fiv);
+      // If it has a variation_id and we don't have it in our map yet, add it
+      if (fiv.variation_id && !variationMultiplierMap.has(fiv.id)) {
+        const linkedVar = variations.find(v => v.id === fiv.variation_id);
+        if (linkedVar) {
+          variationMultiplierMap.set(fiv.id, Number(linkedVar.recipe_multiplier) || 1.0);
+        } else if (fiv.recipe_multiplier) {
+          variationMultiplierMap.set(fiv.id, Number(fiv.recipe_multiplier) || 1.0);
+        }
+      } else if (fiv.recipe_multiplier && !variationMultiplierMap.has(fiv.id)) {
+        variationMultiplierMap.set(fiv.id, Number(fiv.recipe_multiplier) || 1.0);
+      }
+    }
+
+    // Collect all ingredient IDs that will be needed
+    const ingredientIds = new Set<string>();
+    for (const recipe of foodItemRecipes) {
+      ingredientIds.add(recipe.ingredient_id);
+    }
+    for (const recipe of addOnRecipes) {
+      ingredientIds.add(recipe.ingredient_id);
+    }
+
+    // Batch fetch all ingredients
+    const { data: ingredients, error: ingredientsError } = await supabase
+      .from('ingredients')
+      .select('id, name, current_stock')
+      .eq('tenant_id', tenantId)
+      .in('id', Array.from(ingredientIds))
+      .is('deleted_at', null);
+
+    if (ingredientsError) {
+      throw new InternalServerErrorException(`Failed to fetch ingredients: ${ingredientsError.message}`);
+    }
+
+    const ingredientMap = new Map<string, { name: string; currentStock: number }>();
+    for (const ing of ingredients || []) {
+      ingredientMap.set(ing.id, {
+        name: ing.name || 'Unknown',
+        currentStock: Number(ing.current_stock) || 0,
+      });
+    }
+
+    // Collect all deductions needed (batch processing)
+    const deductionList: Array<{
+      ingredientId: string;
+      ingredientName: string;
+      quantity: number;
+      baseQuantity?: number;
+      multiplier?: number;
+      source?: string;
+      addOnId?: string;
+    }> = [];
+    const transactionDate = new Date().toISOString();
+    const reasonText = `Auto deduction - Token: ${tokenNumber}`;
+    const transactionType = 'usage';
+
+    // Process deductions and collect them
+    for (const item of itemsWithFoodItem) {
+      // Get variation multiplier
       let variationMultiplier = 1.0;
       if (item.variationId) {
-        try {
-          // First try to get from variations table (direct ID match)
-          const { data: variation, error: variationError } = await supabase
-            .from('variations')
-            .select('recipe_multiplier')
-            .eq('id', item.variationId)
-            .is('deleted_at', null)
-            .maybeSingle();
-
-          if (variation && !variationError) {
-            variationMultiplier = Number(variation.recipe_multiplier) || 1.0;
-          } else {
-            // Fallback to food_item_variations table
-            const { data: foodItemVariation, error: foodItemVarError } = await supabase
-              .from('food_item_variations')
-              .select('variation_id, variation_group, variation_name, recipe_multiplier')
-              .eq('id', item.variationId)
-              .maybeSingle();
-
-            if (foodItemVariation && !foodItemVarError) {
-              // If food_item_variations has a variation_id, get multiplier from variations table
-              if (foodItemVariation.variation_id) {
-                const { data: linkedVariation, error: linkedError } = await supabase
-                  .from('variations')
-                  .select('recipe_multiplier')
-                  .eq('id', foodItemVariation.variation_id)
-                  .is('deleted_at', null)
-                  .maybeSingle();
-
-                if (linkedVariation && !linkedError) {
-                  variationMultiplier = Number(linkedVariation.recipe_multiplier) || 1.0;
-                } else if (foodItemVariation.recipe_multiplier) {
-                  // Fallback to food_item_variations.recipe_multiplier if variations lookup fails
-                  variationMultiplier = Number(foodItemVariation.recipe_multiplier) || 1.0;
-                }
-              } else if (foodItemVariation.recipe_multiplier) {
-                // Use recipe_multiplier directly from food_item_variations if available
-                variationMultiplier = Number(foodItemVariation.recipe_multiplier) || 1.0;
-              } else if (foodItemVariation.variation_group && foodItemVariation.variation_name) {
-                // Look up variation by group name and variation name from variations table
-                // First, find the variation group
-                const { data: variationGroup, error: groupError } = await supabase
-                  .from('variation_groups')
-                  .select('id')
-                  .eq('name', foodItemVariation.variation_group)
-                  .eq('tenant_id', tenantId)
-                  .is('deleted_at', null)
-                  .maybeSingle();
-
-                if (variationGroup && !groupError) {
-                  // Now find the variation in that group
-                  const { data: matchedVariation, error: matchError } = await supabase
-                    .from('variations')
-                    .select('recipe_multiplier')
-                    .eq('variation_group_id', variationGroup.id)
-                    .eq('name', foodItemVariation.variation_name)
-                    .is('deleted_at', null)
-                    .maybeSingle();
-
-                  if (matchedVariation && !matchError) {
-                    variationMultiplier = Number(matchedVariation.recipe_multiplier) || 1.0;
-                  }
-                }
-              }
-            }
-          }
-        } catch (error) {
-          console.error('Error looking up variation multiplier:', error);
-          // Default to 1.0 if lookup fails
-          variationMultiplier = 1.0;
-        }
+        variationMultiplier = variationMultiplierMap.get(item.variationId) || 1.0;
       }
 
-      // Get recipe for this food item
-      const { data: recipes } = await supabase
-        .from('recipes')
-        .select('*')
-        .eq('food_item_id', item.foodItemId)
-        .is('add_on_id', null); // Only get food item recipes, not add-on recipes
-
+      // Process food item recipes
+      const recipes = recipesByFoodItem.get(item.foodItemId!);
       if (recipes && recipes.length > 0) {
-        // Deduct stock for each ingredient in the recipe (with variation multiplier)
         for (const recipe of recipes) {
           const baseQuantity = Number(recipe.quantity) * Number(item.quantity);
           const totalQuantityNeeded = baseQuantity * variationMultiplier;
 
-          // Get ingredient
-          const ingredient = await this.getIngredientById(tenantId, recipe.ingredient_id);
+          const ingredient = ingredientMap.get(recipe.ingredient_id);
+          if (!ingredient) {
+            throw new BadRequestException(`Ingredient ${recipe.ingredient_id} not found`);
+          }
 
-          // Double-check stock availability before deducting (should have been validated earlier)
-          if (Number(ingredient.currentStock) < totalQuantityNeeded) {
+          if (ingredient.currentStock < totalQuantityNeeded) {
             throw new BadRequestException(
-              `Insufficient stock for ingredient ${ingredient.name || 'Unknown'}. Available: ${ingredient.currentStock}, Required: ${totalQuantityNeeded}`,
+              `Insufficient stock for ingredient ${ingredient.name}. Available: ${ingredient.currentStock}, Required: ${totalQuantityNeeded}`,
             );
           }
 
-          // Deduct stock
-          const deductDto: DeductStockDto = {
+          deductionList.push({
             ingredientId: recipe.ingredient_id,
-            quantity: totalQuantityNeeded,
-            reason: `Auto deduction - Token: ${tokenNumber}`,
-            referenceId: orderId,
-          };
-
-          const result = await this.deductStock(tenantId, userId, deductDto);
-          deductions.push({
-            ingredientId: recipe.ingredient_id,
-            ingredientName: ingredient.name || 'Unknown',
+            ingredientName: ingredient.name,
             quantity: totalQuantityNeeded,
             baseQuantity,
             multiplier: variationMultiplier,
-            result,
           });
         }
       }
 
-      // Deduct stock for add-on recipes
+      // Process add-on recipes
       if (item.addOns && item.addOns.length > 0) {
         for (const addOn of item.addOns) {
-          // Get recipe for this add-on
-          const { data: addOnRecipes } = await supabase
-            .from('recipes')
-            .select('*')
-            .eq('add_on_id', addOn.addOnId)
-            .is('food_item_id', null); // Only get add-on recipes
-
+          const addOnRecipes = recipesByAddOn.get(addOn.addOnId);
           if (addOnRecipes && addOnRecipes.length > 0) {
-            // Deduct stock for each ingredient in the add-on recipe
             for (const recipe of addOnRecipes) {
               const totalQuantityNeeded = Number(recipe.quantity) * Number(addOn.quantity) * Number(item.quantity);
 
-              // Get ingredient
-              const ingredient = await this.getIngredientById(tenantId, recipe.ingredient_id);
+              const ingredient = ingredientMap.get(recipe.ingredient_id);
+              if (!ingredient) {
+                throw new BadRequestException(`Ingredient ${recipe.ingredient_id} not found`);
+              }
 
-              // Double-check stock availability
-              if (Number(ingredient.currentStock) < totalQuantityNeeded) {
+              if (ingredient.currentStock < totalQuantityNeeded) {
                 throw new BadRequestException(
-                  `Insufficient stock for ingredient ${ingredient.name || 'Unknown'} (from add-on). Available: ${ingredient.currentStock}, Required: ${totalQuantityNeeded}`,
+                  `Insufficient stock for ingredient ${ingredient.name} (from add-on). Available: ${ingredient.currentStock}, Required: ${totalQuantityNeeded}`,
                 );
               }
 
-              // Deduct stock
-              const deductDto: DeductStockDto = {
+              deductionList.push({
                 ingredientId: recipe.ingredient_id,
-                quantity: totalQuantityNeeded,
-                reason: `Auto deduction - Token: ${tokenNumber}`,
-                referenceId: orderId,
-              };
-
-              const result = await this.deductStock(tenantId, userId, deductDto);
-              deductions.push({
-                ingredientId: recipe.ingredient_id,
-                ingredientName: ingredient.name || 'Unknown',
+                ingredientName: ingredient.name,
                 quantity: totalQuantityNeeded,
                 source: 'add-on',
                 addOnId: addOn.addOnId,
-                result,
               });
             }
           }
         }
       }
+    }
+
+    if (deductionList.length === 0) {
+      return {
+        message: 'Stock deducted successfully for order',
+        deductions: [],
+      };
+    }
+
+    // Aggregate quantities by ingredient ID (in case same ingredient appears multiple times)
+    const aggregatedDeductions = new Map<string, { quantity: number; details: typeof deductionList }>();
+    for (const ded of deductionList) {
+      if (!aggregatedDeductions.has(ded.ingredientId)) {
+        aggregatedDeductions.set(ded.ingredientId, { quantity: 0, details: [] });
+      }
+      const agg = aggregatedDeductions.get(ded.ingredientId)!;
+      agg.quantity += ded.quantity;
+      agg.details.push(ded);
+    }
+
+    // Prepare batch stock transaction inserts
+    const stockTransactionInserts = deductionList.map((ded) => ({
+      tenant_id: tenantId,
+      branch_id: null, // Can be added if needed
+      ingredient_id: ded.ingredientId,
+      transaction_type: transactionType,
+      quantity: -Math.abs(ded.quantity), // Negative for deduction
+      reason: reasonText,
+      reference_id: orderId,
+      transaction_date: transactionDate,
+      created_by: userId,
+    }));
+
+    // Batch insert all stock transactions
+    const { data: transactions, error: transactionsError } = await supabase
+      .from('stock_transactions')
+      .insert(stockTransactionInserts)
+      .select('id, ingredient_id, quantity');
+
+    if (transactionsError) {
+      throw new InternalServerErrorException(
+        `Failed to create stock transactions: ${transactionsError.message}`,
+      );
+    }
+
+    // Batch update ingredient stocks (aggregated by ingredient)
+    const stockUpdates = Array.from(aggregatedDeductions.entries()).map(([ingredientId, agg]) => {
+      const ingredient = ingredientMap.get(ingredientId)!;
+      const newStock = Math.max(0, ingredient.currentStock - agg.quantity);
+      return {
+        id: ingredientId,
+        newStock,
+      };
+    });
+
+    // Update stocks in parallel (batch update per ingredient)
+    const updatePromises = stockUpdates.map((update) =>
+      supabase
+        .from('ingredients')
+        .update({ current_stock: update.newStock })
+        .eq('id', update.id)
+        .eq('tenant_id', tenantId)
+    );
+
+    const updateResults = await Promise.all(updatePromises);
+    for (const result of updateResults) {
+      if (result.error) {
+        throw new InternalServerErrorException(
+          `Failed to update ingredient stock: ${result.error.message}`,
+        );
+      }
+    }
+
+    // Build deductions response (simplified - transactions are already in order matching deductionList)
+    const transactionList = transactions || [];
+    for (let i = 0; i < deductionList.length; i++) {
+      const ded = deductionList[i];
+      const trans = transactionList[i] || null;
+      deductions.push({
+        ingredientId: ded.ingredientId,
+        ingredientName: ded.ingredientName,
+        quantity: ded.quantity,
+        baseQuantity: ded.baseQuantity,
+        multiplier: ded.multiplier,
+        source: ded.source,
+        addOnId: ded.addOnId,
+        result: trans ? {
+          id: trans.id,
+          ingredientId: trans.ingredient_id,
+          quantity: trans.quantity,
+        } : null,
+      });
     }
 
     return {
