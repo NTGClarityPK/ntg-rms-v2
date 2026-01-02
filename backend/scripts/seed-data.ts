@@ -847,6 +847,379 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
       display_order: 3,
       labels: ['vegetarian', 'healthy'],
     },
+    // Additional items to reach 50 total
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[0],
+      name: 'Tabbouleh',
+      description: 'Fresh parsley salad with tomatoes, onions, and bulgur',
+      image_url: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=800',
+      base_price: 4500,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 6,
+      labels: ['vegetarian', 'healthy'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[0],
+      name: 'Falafel',
+      description: 'Crispy chickpea fritters with tahini sauce',
+      image_url: 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=800',
+      base_price: 5500,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 7,
+      labels: ['vegetarian', 'popular'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[0],
+      name: 'Moutabal',
+      description: 'Smoky roasted eggplant dip with tahini',
+      image_url: 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=800',
+      base_price: 5000,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 8,
+      labels: ['vegetarian'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[0],
+      name: 'Warak Enab',
+      description: 'Stuffed grape leaves with rice and herbs',
+      image_url: 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=800',
+      base_price: 6000,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 9,
+      labels: ['vegetarian', 'popular'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[0],
+      name: 'Shanklish',
+      description: 'Aged cheese with herbs and olive oil',
+      image_url: 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=800',
+      base_price: 6500,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 10,
+      labels: ['vegetarian'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[1],
+      name: 'Shish Tawook',
+      description: 'Marinated chicken skewers with garlic sauce',
+      image_url: 'https://images.unsplash.com/photo-1558030006-450675393462?w=800',
+      base_price: 18000,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 5,
+      labels: ['popular', 'halal'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[1],
+      name: 'Kofta',
+      description: 'Spiced minced meat skewers grilled to perfection',
+      image_url: 'https://images.unsplash.com/photo-1558030006-450675393462?w=800',
+      base_price: 17000,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 6,
+      labels: ['popular', 'halal'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[1],
+      name: 'Grilled Sea Bass',
+      description: 'Fresh sea bass grilled with herbs and lemon',
+      image_url: 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=800',
+      base_price: 28000,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 7,
+      labels: ['healthy', 'chefs_special'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[1],
+      name: 'Beef Steak',
+      description: 'Tender beef steak with grilled vegetables',
+      image_url: 'https://images.unsplash.com/photo-1558030006-450675393462?w=800',
+      base_price: 32000,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 8,
+      labels: ['halal', 'chefs_special'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[1],
+      name: 'Chicken Shawarma',
+      description: 'Marinated chicken with garlic sauce and pickles',
+      image_url: 'https://images.unsplash.com/photo-1558030006-450675393462?w=800',
+      base_price: 16000,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 9,
+      labels: ['popular', 'halal'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[2],
+      name: 'Tashreeb',
+      description: 'Traditional Iraqi lamb stew with bread',
+      image_url: 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=800',
+      base_price: 19000,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 6,
+      labels: ['popular', 'halal'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[2],
+      name: 'Pacha',
+      description: 'Traditional Iraqi dish with sheep head and feet',
+      image_url: 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=800',
+      base_price: 15000,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 7,
+      labels: ['halal', 'chefs_special'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[2],
+      name: 'Kubba Halab',
+      description: 'Rice and meat dumplings in a tangy sauce',
+      image_url: 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=800',
+      base_price: 14000,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 8,
+      labels: ['popular'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[2],
+      name: 'Timman Bagilla',
+      description: 'Rice with fava beans and dill',
+      image_url: 'https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=800',
+      base_price: 11000,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 9,
+      labels: ['vegetarian', 'popular'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[2],
+      name: 'Guss',
+      description: 'Traditional Iraqi beef stew with vegetables',
+      image_url: 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=800',
+      base_price: 17000,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 10,
+      labels: ['halal'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[3],
+      name: 'Turkish Coffee',
+      description: 'Strong traditional Turkish coffee',
+      image_url: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=800',
+      base_price: 3000,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 6,
+      labels: ['popular'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[3],
+      name: 'Mint Lemonade',
+      description: 'Refreshing lemonade with fresh mint',
+      image_url: 'https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=800',
+      base_price: 3500,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 7,
+      labels: ['healthy'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[3],
+      name: 'Fresh Mango Juice',
+      description: 'Freshly squeezed mango juice',
+      image_url: 'https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=800',
+      base_price: 4500,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 8,
+      labels: ['healthy', 'popular'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[3],
+      name: 'Fresh Watermelon Juice',
+      description: 'Cool and refreshing watermelon juice',
+      image_url: 'https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=800',
+      base_price: 4000,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 9,
+      labels: ['healthy'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[3],
+      name: 'Iced Tea',
+      description: 'Cold sweet tea with mint',
+      image_url: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=800',
+      base_price: 2500,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 10,
+      labels: ['popular'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[4],
+      name: 'Maamoul',
+      description: 'Date-filled semolina cookies',
+      image_url: 'https://images.unsplash.com/photo-1551024506-0bccd828d307?w=800',
+      base_price: 4500,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 5,
+      labels: ['popular'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[4],
+      name: 'Zalabia',
+      description: 'Crispy fried dough drenched in syrup',
+      image_url: 'https://images.unsplash.com/photo-1551024506-0bccd828d307?w=800',
+      base_price: 3000,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 6,
+      labels: ['popular'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[4],
+      name: 'Rice Pudding',
+      description: 'Creamy rice pudding with rose water',
+      image_url: 'https://images.unsplash.com/photo-1551024506-0bccd828d307?w=800',
+      base_price: 3000,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 7,
+      labels: ['popular'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[4],
+      name: 'Luqaimat',
+      description: 'Sweet dumplings drizzled with date syrup',
+      image_url: 'https://images.unsplash.com/photo-1551024506-0bccd828d307?w=800',
+      base_price: 3500,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 8,
+      labels: ['popular'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[4],
+      name: 'Cheesecake',
+      description: 'Creamy cheesecake with berry topping',
+      image_url: 'https://images.unsplash.com/photo-1551024506-0bccd828d307?w=800',
+      base_price: 6000,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 9,
+      labels: ['popular', 'chefs_special'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[4],
+      name: 'Muhallabia',
+      description: 'Milky pudding with rose water and pistachios',
+      image_url: 'https://images.unsplash.com/photo-1551024506-0bccd828d307?w=800',
+      base_price: 4000,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 10,
+      labels: ['popular'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[5],
+      name: 'Shakshuka',
+      description: 'Eggs poached in spicy tomato sauce',
+      image_url: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=800',
+      base_price: 7000,
+      stock_type: 'unlimited',
+      menu_type: 'breakfast',
+      display_order: 4,
+      labels: ['popular'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[5],
+      name: 'Manakish',
+      description: 'Flatbread with zaatar or cheese',
+      image_url: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=800',
+      base_price: 5000,
+      stock_type: 'unlimited',
+      menu_type: 'breakfast',
+      display_order: 5,
+      labels: ['popular', 'vegetarian'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[5],
+      name: 'Falafel Sandwich',
+      description: 'Crispy falafel in pita bread with tahini',
+      image_url: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=800',
+      base_price: 6500,
+      stock_type: 'unlimited',
+      menu_type: 'breakfast',
+      display_order: 6,
+      labels: ['vegetarian', 'popular'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[5],
+      name: 'Halloumi',
+      description: 'Grilled halloumi cheese with vegetables',
+      image_url: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=800',
+      base_price: 7500,
+      stock_type: 'unlimited',
+      menu_type: 'breakfast',
+      display_order: 7,
+      labels: ['vegetarian'],
+    },
+    {
+      tenant_id: tenantId,
+      category_id: categoryIds[5],
+      name: 'Fried Eggs',
+      description: 'Fried eggs with tomatoes and peppers',
+      image_url: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=800',
+      base_price: 5500,
+      stock_type: 'unlimited',
+      menu_type: 'breakfast',
+      display_order: 8,
+      labels: ['popular'],
+    },
   ];
 
   const foodItemIds: string[] = [];
@@ -1336,6 +1709,128 @@ async function seedAddOns(tenantId: string): Promise<{ addOnGroupIds: string[]; 
   return { addOnGroupIds, addOnIds };
 }
 
+async function seedVariationGroups(tenantId: string): Promise<Map<string, string>> {
+  console.log('\n📏 Seeding variation groups...');
+
+  const variationGroupsData = [
+    {
+      name: 'Size',
+      variations: [
+        { name: 'Small', pricing_adjustment: 0, recipe_multiplier: 0.75 },
+        { name: 'Medium', pricing_adjustment: 500, recipe_multiplier: 1.0 },
+        { name: 'Large', pricing_adjustment: 1000, recipe_multiplier: 1.25 },
+        { name: 'Extra Large', pricing_adjustment: 2000, recipe_multiplier: 1.5 },
+      ],
+    },
+    {
+      name: 'Portion',
+      variations: [
+        { name: 'Half', pricing_adjustment: -5000, recipe_multiplier: 0.5 },
+        { name: 'Full', pricing_adjustment: 0, recipe_multiplier: 1.0 },
+        { name: 'Family', pricing_adjustment: 10000, recipe_multiplier: 2.0 },
+      ],
+    },
+    {
+      name: 'Temperature',
+      variations: [
+        { name: 'Hot', pricing_adjustment: 0, recipe_multiplier: 1.0 },
+        { name: 'Warm', pricing_adjustment: 0, recipe_multiplier: 1.0 },
+        { name: 'Cold', pricing_adjustment: 0, recipe_multiplier: 1.0 },
+      ],
+    },
+    {
+      name: 'Spice Level',
+      variations: [
+        { name: 'Mild', pricing_adjustment: 0, recipe_multiplier: 1.0 },
+        { name: 'Medium', pricing_adjustment: 0, recipe_multiplier: 1.0 },
+        { name: 'Hot', pricing_adjustment: 0, recipe_multiplier: 1.0 },
+        { name: 'Extra Hot', pricing_adjustment: 500, recipe_multiplier: 1.0 },
+      ],
+    },
+    {
+      name: 'Sweetness',
+      variations: [
+        { name: 'No Sugar', pricing_adjustment: 0, recipe_multiplier: 1.0 },
+        { name: 'Less Sweet', pricing_adjustment: 0, recipe_multiplier: 1.0 },
+        { name: 'Regular', pricing_adjustment: 0, recipe_multiplier: 1.0 },
+        { name: 'Extra Sweet', pricing_adjustment: 0, recipe_multiplier: 1.0 },
+      ],
+    },
+  ];
+
+  const variationGroupMap = new Map<string, string>(); // name -> id
+
+  for (const groupData of variationGroupsData) {
+    // Check if variation group already exists
+    const { data: existingGroup } = await supabase
+      .from('variation_groups')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('name', groupData.name)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    let groupId: string;
+
+    if (existingGroup) {
+      console.log(`   ⏭️  Variation group "${groupData.name}" already exists`);
+      groupId = existingGroup.id;
+    } else {
+      const { data: newGroup, error: groupError } = await supabase
+        .from('variation_groups')
+        .insert({
+          tenant_id: tenantId,
+          name: groupData.name,
+        })
+        .select('id')
+        .single();
+
+      if (groupError) {
+        console.error(`   ❌ Failed to create variation group "${groupData.name}":`, groupError.message);
+        continue;
+      }
+
+      groupId = newGroup.id;
+      console.log(`   ✅ Created variation group: ${groupData.name}`);
+    }
+
+    variationGroupMap.set(groupData.name, groupId);
+
+    // Create variations for this group
+    for (let i = 0; i < groupData.variations.length; i++) {
+      const variation = groupData.variations[i];
+      
+      // Check if variation already exists
+      const { data: existingVariation } = await supabase
+        .from('variations')
+        .select('id')
+        .eq('variation_group_id', groupId)
+        .eq('name', variation.name)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (!existingVariation) {
+        const { error: variationError } = await supabase
+          .from('variations')
+          .insert({
+            variation_group_id: groupId,
+            name: variation.name,
+            pricing_adjustment: variation.pricing_adjustment,
+            recipe_multiplier: variation.recipe_multiplier,
+            display_order: i + 1,
+          });
+
+        if (variationError) {
+          console.error(`   ❌ Failed to create variation "${variation.name}":`, variationError.message);
+        }
+      }
+    }
+    console.log(`   ✅ Created ${groupData.variations.length} variations for "${groupData.name}"`);
+  }
+
+  return variationGroupMap;
+}
+
 async function seedFoodItemVariations(foodItemMap: Map<string, string>): Promise<void> {
   console.log('\n📏 Seeding food item variations...');
 
@@ -1490,8 +1985,8 @@ async function seedOrders(
   const now = new Date();
   const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000); // 2 hours in milliseconds
 
-  // Create 50 sample orders for vibrant dashboard
-  for (let i = 0; i < 50; i++) {
+  // Create 500 sample orders for vibrant dashboard
+  for (let i = 0; i < 500; i++) {
     const status = orderStatuses[Math.floor(Math.random() * orderStatuses.length)];
     const isActiveOrder = activeStatuses.includes(status);
     
@@ -1633,11 +2128,11 @@ async function seedOrders(
       }
     }
 
-    if ((i + 1) % 10 === 0) {
+    if ((i + 1) % 50 === 0) {
       console.log(`   ✅ Created ${i + 1} orders...`);
   }
   }
-  console.log(`   ✅ Created 50 orders total`);
+  console.log(`   ✅ Created 500 orders total`);
 }
 
 async function seedData() {
@@ -1689,6 +2184,9 @@ async function seedData() {
 
     // Link add-ons to food items
     await linkAddOnsToFoodItems(foodItemMap, addOnGroupIds);
+
+    // Seed variation groups
+    await seedVariationGroups(tenantId);
 
     // Seed food item variations
     await seedFoodItemVariations(foodItemMap);
@@ -1744,6 +2242,7 @@ async function seedData() {
     console.log(`   - Taxes: ${taxIds.length}`);
     console.log(`   - Categories: ${categoryIds.length} (with images)`);
     console.log(`   - Food Items: ${foodItemIds.length} (with images, labels, and descriptions)`);
+    console.log(`   - Variation Groups: 5 groups (Size, Portion, Temperature, Spice Level, Sweetness)`);
     console.log(`   - Food Item Variations: Multiple items with size/portion options`);
     console.log(`   - Ingredients: ${ingredientIds.length} (with stock levels)`);
     console.log(`   - Recipes: Linking food items to ingredients`);
@@ -1752,7 +2251,7 @@ async function seedData() {
     console.log(`   - Add-ons Linked: To various food items`);
     console.log(`   - Customers: ${customerIds.length} (with addresses and order history)`);
     console.log(`   - Tables: 15 (various sizes and types)`);
-    console.log(`   - Orders: 50 (for vibrant dashboard)`);
+    console.log(`   - Orders: 500 (for vibrant dashboard)`);
     console.log(`   - Employees: ${employeeCredentials.length + 1} (including owner with auth accounts)`);
     console.log(`\n⚠️  IMPORTANT: Make sure you're logged in with the tenant ID above!`);
     console.log(`   Use the credentials below to log in and see the orders.`);
