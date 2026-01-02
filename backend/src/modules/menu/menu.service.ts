@@ -777,36 +777,45 @@ export class MenuService {
       await supabase.from('food_item_variations').insert(variationsData);
     }
 
+    // Parallelize independent operations: labels, add-on groups validation, and menu items
+    const parallelOps: Promise<any>[] = [];
+
     // Create labels
     if (createDto.labels && createDto.labels.length > 0) {
       const labelsData = createDto.labels.map((label) => ({
         food_item_id: foodItem.id,
         label: label,
       }));
-
-      await supabase.from('food_item_labels').insert(labelsData);
+      parallelOps.push(
+        Promise.resolve(supabase.from('food_item_labels').insert(labelsData))
+      );
     }
 
     // Link add-on groups
     if (createDto.addOnGroupIds && createDto.addOnGroupIds.length > 0) {
-      // Validate add-on groups belong to tenant
-      const { data: addOnGroups } = await supabase
-        .from('add_on_groups')
-        .select('id')
-        .eq('tenant_id', tenantId)
-        .in('id', createDto.addOnGroupIds)
-        .is('deleted_at', null);
-
-      if (addOnGroups.length !== createDto.addOnGroupIds.length) {
-        throw new BadRequestException('One or more add-on groups not found');
-      }
-
-      const addOnGroupsData = createDto.addOnGroupIds.map((groupId) => ({
-        food_item_id: foodItem.id,
-        add_on_group_id: groupId,
-      }));
-
-      await supabase.from('food_item_add_on_groups').insert(addOnGroupsData);
+      // Validate add-on groups belong to tenant (can be done in parallel with other operations)
+      parallelOps.push(
+        Promise.resolve(
+          supabase
+            .from('add_on_groups')
+            .select('id')
+            .eq('tenant_id', tenantId)
+            .in('id', createDto.addOnGroupIds)
+            .is('deleted_at', null)
+        ).then(async ({ data: addOnGroups, error }) => {
+          if (error) throw error;
+          if (addOnGroups.length !== createDto.addOnGroupIds.length) {
+            throw new BadRequestException('One or more add-on groups not found');
+          }
+          const addOnGroupsData = createDto.addOnGroupIds.map((groupId) => ({
+            food_item_id: foodItem.id,
+            add_on_group_id: groupId,
+          }));
+          return Promise.resolve(
+            supabase.from('food_item_add_on_groups').insert(addOnGroupsData)
+          );
+        })
+      );
     }
 
     // Create menu assignments
@@ -817,16 +826,21 @@ export class MenuService {
         food_item_id: foodItem.id,
         display_order: index,
       }));
-
-      await supabase.from('menu_items').insert(menuItemsData);
+      parallelOps.push(
+        Promise.resolve(supabase.from('menu_items').insert(menuItemsData))
+      );
     } else if (createDto.menuType) {
       // Legacy support: if menuType is provided, use it
-      await supabase.from('menu_items').insert({
-        tenant_id: tenantId,
-        menu_type: createDto.menuType,
-        food_item_id: foodItem.id,
-        display_order: 0,
-      });
+      parallelOps.push(
+        Promise.resolve(
+          supabase.from('menu_items').insert({
+            tenant_id: tenantId,
+            menu_type: createDto.menuType,
+            food_item_id: foodItem.id,
+            display_order: 0,
+          })
+        )
+      );
     }
 
     // Create discounts
@@ -840,8 +854,14 @@ export class MenuService {
         reason: d.reason || null,
         is_active: true,
       }));
+      parallelOps.push(
+        Promise.resolve(supabase.from('food_item_discounts').insert(discountsData))
+      );
+    }
 
-      await supabase.from('food_item_discounts').insert(discountsData);
+    // Execute all parallel operations
+    if (parallelOps.length > 0) {
+      await Promise.all(parallelOps);
     }
 
     return this.getFoodItemById(tenantId, foodItem.id);

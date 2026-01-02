@@ -160,50 +160,57 @@ export class CustomersService {
   async getCustomerById(tenantId: string, customerId: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Recalculate customer statistics to ensure they're up to date
-    await this.recalculateCustomerStatistics(tenantId, customerId);
+    // Parallelize: Recalculate statistics, fetch customer, addresses, and orders simultaneously
+    const [customerResult, addressesResult, ordersResult] = await Promise.all([
+      // Get customer
+      supabase
+        .from('customers')
+        .select('*')
+        .eq('id', customerId)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .single(),
+      // Get customer addresses
+      supabase
+        .from('customer_addresses')
+        .select('*')
+        .eq('customer_id', customerId)
+        .order('is_default', { ascending: false })
+        .order('created_at', { ascending: false }),
+      // Get order history
+      supabase
+        .from('orders')
+        .select(
+          `
+          id,
+          order_number,
+          order_type,
+          status,
+          payment_status,
+          total_amount,
+          order_date,
+          created_at
+        `,
+        )
+        .eq('customer_id', customerId)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .order('order_date', { ascending: false })
+        .limit(50), // Limit to last 50 orders
+    ]);
 
-    // Get customer
-    const { data: customer, error: customerError } = await supabase
-      .from('customers')
-      .select('*')
-      .eq('id', customerId)
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .single();
+    // Recalculate statistics after fetching (non-blocking - can be done in background)
+    this.recalculateCustomerStatistics(tenantId, customerId).catch(err => {
+      console.error('Failed to recalculate customer statistics:', err);
+    });
 
-    if (customerError || !customer) {
+    if (customerResult.error || !customerResult.data) {
       throw new NotFoundException('Customer not found');
     }
 
-    // Get customer addresses
-    const { data: addresses } = await supabase
-      .from('customer_addresses')
-      .select('*')
-      .eq('customer_id', customerId)
-      .order('is_default', { ascending: false })
-      .order('created_at', { ascending: false });
-
-    // Get order history
-    const { data: orders } = await supabase
-      .from('orders')
-      .select(
-        `
-        id,
-        order_number,
-        order_type,
-        status,
-        payment_status,
-        total_amount,
-        order_date,
-        created_at
-      `,
-      )
-      .eq('customer_id', customerId)
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .order('order_date', { ascending: false })
-      .limit(50); // Limit to last 50 orders
+    const customer = customerResult.data;
+    const addresses = addressesResult.data || [];
+    const orders = ordersResult.data || [];
 
     // Calculate loyalty tier
     const totalOrders = customer.total_orders || 0;
@@ -226,7 +233,7 @@ export class CustomersService {
       loyaltyTier,
       createdAt: customer.created_at,
       updatedAt: customer.updated_at,
-      addresses: (addresses || []).map((addr: any) => ({
+      addresses: addresses.map((addr: any) => ({
         id: addr.id,
         customerId: addr.customer_id,
         addressLabel: addr.address_label,
