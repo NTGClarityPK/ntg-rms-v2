@@ -836,7 +836,7 @@ export default function KitchenDisplayPage() {
                 <ActionIcon
                   size="lg"
                   variant="light"
-                  color={soundEnabled ? primary : 'gray'}
+                  color={soundEnabled ? primary : getBadgeColorForText('disabled')}
                   onClick={async () => {
                     // Resume audio context on toggle (user interaction)
                     if (audioContextRef.current && audioContextRef.current.state === 'suspended') {

@@ -41,6 +41,7 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
 import { useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
+import { getBadgeColorForText } from '@/lib/utils/theme';
 import { onMenuDataUpdate, notifyMenuDataUpdate } from '@/lib/utils/menu-events';
 import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
@@ -500,7 +501,11 @@ export function BuffetPage() {
                         )}
                       </Table.Td>
                       <Table.Td>
-                        <Badge variant="light" color={buffet.isActive ? successColor : 'gray'} size="sm">
+                        <Badge 
+                          variant="light" 
+                          color={buffet.isActive ? successColor : getBadgeColorForText(t('menu.inactive', language) || 'Inactive')} 
+                          size="sm"
+                        >
                           {buffet.isActive ? t('menu.active', language) : t('menu.inactive', language)}
                         </Badge>
                       </Table.Td>

@@ -512,7 +512,7 @@ export function CategoriesPage() {
                 <Switch
                   label={t('menu.active', language)}
                   {...form.getInputProps('isActive', { type: 'checkbox' })}
-                  color={form.values.isActive ? successColor : 'gray'}
+                  color={form.values.isActive ? successColor : getBadgeColorForText(t('menu.inactive', language) || 'Inactive')}
                 />
               </Grid.Col>
             </Grid>

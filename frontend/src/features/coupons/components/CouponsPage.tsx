@@ -29,9 +29,9 @@ import { couponsApi, Coupon, CreateCouponDto, UpdateCouponDto } from '@/lib/api/
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
-import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
+import { useNotificationColors, useErrorColor, useSuccessColor, useWarningColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
-import { getWarningColor } from '@/lib/utils/theme';
+import { getWarningColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
@@ -46,6 +46,7 @@ export function CouponsPage() {
   const notificationColors = useNotificationColors();
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
+  const warningColor = useWarningColor();
   const primaryColor = useThemeColor();
   const currency = useCurrency();
   const pagination = usePagination<Coupon>({ 
@@ -327,7 +328,7 @@ export function CouponsPage() {
                       <Text fw={500}>{coupon.code}</Text>
                     </Table.Td>
                     <Table.Td>
-                      <Badge color={coupon.discountType === 'fixed' ? 'blue' : 'green'}>
+                      <Badge color={coupon.discountType === 'fixed' ? primaryColor : successColor}>
                         {coupon.discountType === 'fixed' 
                           ? (t('coupons.fixed', language) || 'Fixed')
                           : (t('coupons.percentage', language) || 'Percentage')}
@@ -374,18 +375,21 @@ export function CouponsPage() {
                     </Table.Td>
                     <Table.Td>
                       <Stack gap={4}>
-                        <Badge color={coupon.isActive ? 'green' : 'gray'} size="sm">
+                        <Badge 
+                          color={coupon.isActive ? successColor : getBadgeColorForText(t('coupons.inactive', language) || 'Inactive')} 
+                          size="sm"
+                        >
                           {coupon.isActive 
                             ? (t('coupons.active', language) || 'Active')
                             : (t('coupons.inactive', language) || 'Inactive')}
                         </Badge>
                         {isExpired(coupon) && (
-                          <Badge color="red" size="xs">
+                          <Badge color={errorColor} size="xs">
                             {t('coupons.expired', language) || 'Expired'}
                           </Badge>
                         )}
                         {isNotYetValid(coupon) && (
-                          <Badge color="yellow" size="xs">
+                          <Badge color={warningColor} size="xs">
                             {t('coupons.notYetValid', language) || 'Not Yet Valid'}
                           </Badge>
                         )}

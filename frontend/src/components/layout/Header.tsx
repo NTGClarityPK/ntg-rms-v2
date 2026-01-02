@@ -22,6 +22,7 @@ import { useRestaurantStore } from '@/lib/store/restaurant-store';
 import { authApi } from '@/lib/api/auth';
 import { UserMenu } from '@/components/layout/UserMenu';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
+import { useSuccessColor, useErrorColor } from '@/lib/hooks/use-theme-colors';
 import { Image } from '@mantine/core';
 import { t } from '@/lib/utils/translations';
 import { useSyncStatus } from '@/lib/hooks/use-sync-status';
@@ -36,6 +37,8 @@ export function Header({ mobileOpened, toggleMobile }: HeaderProps = {}) {
   const theme = useMantineTheme();
   const isMobile = useMediaQuery(`(max-width: ${theme.breakpoints.sm})`);
   const primary = useThemeColor();
+  const successColor = useSuccessColor();
+  const errorColor = useErrorColor();
   const { language, toggleLanguage } = useLanguageStore();
   const { user, logout } = useAuthStore();
   const { restaurant } = useRestaurantStore();
@@ -144,7 +147,7 @@ export function Header({ mobileOpened, toggleMobile }: HeaderProps = {}) {
           >
             <Badge
               variant="light"
-              color={isOnline ? 'green' : 'red'}
+              color={isOnline ? successColor : errorColor}
               size="sm"
               leftSection={
                 <IconCircle

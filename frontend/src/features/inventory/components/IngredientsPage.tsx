@@ -367,7 +367,7 @@ export function IngredientsPage() {
                     </Table.Td>
                     <Table.Td>
                       <Badge
-                        color={ingredient.isActive ? successColor : 'gray'}
+                        color={ingredient.isActive ? successColor : getBadgeColorForText(t('menu.inactive', language) || 'Inactive')}
                         variant="light"
                         leftSection={
                           ingredient.isActive ? (
