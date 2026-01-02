@@ -766,6 +766,16 @@ export class OrdersService {
         ? tableIdsToValidate[0] 
         : (createDto.tableId || null);
 
+      // Fetch user name for waiter_name field
+      const { data: user } = await supabase
+        .from('users')
+        .select('name')
+        .eq('id', userId)
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      
+      const waiterName = user?.name || null;
+
       // Create order
       const { data: order, error: orderError } = await supabase
         .from('orders')
@@ -777,6 +787,7 @@ export class OrdersService {
           customer_id: createDto.customerId || null,
           cashier_id: userId,
           waiter_email: userEmail, // Store the email of the user who created the order
+          waiter_name: waiterName, // Store the name of the user who created the order
           order_number: orderNumber,
           token_number: tokenNumber,
           order_type: createDto.orderType,
@@ -1689,6 +1700,7 @@ export class OrdersService {
           cashierId: order.cashier_id || null,
           cashier: order.cashier_id ? cashierMap.get(order.cashier_id) || null : null,
           waiterEmail: order.waiter_email || null,
+          waiterName: order.waiter_name || null,
           orderNumber: order.order_number,
           tokenNumber: order.token_number || null,
           orderType: order.order_type,

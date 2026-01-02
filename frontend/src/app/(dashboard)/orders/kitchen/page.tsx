@@ -1089,9 +1089,9 @@ function OrderCard({
           </Group>
           {/* Waiter and Table Info */}
           <Group gap="md" align="center">
-            {order.waiterEmail && (
-              <Text size="sm" fw={500}>
-                {t('orders.waiterName', language)}: <Text span c="dimmed" fw={400}>{order.waiterEmail}</Text>
+            {order.waiterName && (
+              <Text size="sm" fw={500} c="dimmed">
+                {order.waiterName}
               </Text>
             )}
             {((order as any).tables && (order as any).tables.length > 0) || (order.table && order.table.table_number) ? (

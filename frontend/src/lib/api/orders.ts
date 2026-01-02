@@ -90,6 +90,7 @@ export interface Order {
     email?: string;
   };
   waiterEmail?: string;
+  waiterName?: string;
   orderNumber: string;
   tokenNumber?: string;
   orderType: OrderType;

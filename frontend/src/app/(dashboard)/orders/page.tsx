@@ -551,9 +551,9 @@ export default function OrdersPage() {
                               {order.branch.name}
                             </Text>
                           )}
-                          {order.waiterEmail && (
+                          {order.waiterName && (
                             <Text size="sm" c="dimmed">
-                              {t('orders.waiterName', language)}: {order.waiterEmail}
+                               {t('orders.waiterName', language)}: {order.waiterName}
                             </Text>
                           )}
                           {((order as any).tables && (order as any).tables.length > 0) || (order.table && order.table.table_number) ? (
