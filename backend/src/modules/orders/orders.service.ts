@@ -1003,15 +1003,16 @@ export class OrdersService {
       );
 
       // Prepare table status update (skip SELECT if we validated tables earlier)
-      if (createDto.orderType === 'dine_in' && tableIdsToValidate.length > 0 && tableIdsToValidate[0]) {
-        // We already validated tables exist, so we can directly update
+      if (createDto.orderType === 'dine_in' && tableIdsToValidate.length > 0) {
+        // We already validated tables exist, so we can directly update all tables
+        const uniqueTableIds = [...new Set(tableIdsToValidate)];
         parallelOperations.push(
           Promise.resolve(
             supabase
               .from('tables')
               .update({ status: 'occupied', updated_at: new Date().toISOString() })
-              .eq('id', tableIdsToValidate[0])
-              .eq('tenant_id', tenantId)
+              .in('id', uniqueTableIds)
+              .eq('branch_id', createDto.branchId)
           ).then(({ error }) => {
             if (error) {
               console.error('Failed to update table status:', error);
@@ -1026,7 +1027,7 @@ export class OrdersService {
               .from('tables')
               .select('id')
               .eq('id', createDto.tableId)
-              .eq('tenant_id', tenantId)
+              .eq('branch_id', createDto.branchId)
               .is('deleted_at', null)
               .maybeSingle()
           ).then(async ({ data }) => {
@@ -1035,7 +1036,7 @@ export class OrdersService {
                 .from('tables')
                 .update({ status: 'occupied', updated_at: new Date().toISOString() })
                 .eq('id', createDto.tableId)
-                .eq('tenant_id', tenantId);
+                .eq('branch_id', createDto.branchId);
               if (error) {
                 console.error('Failed to update table status:', error);
               }
@@ -2574,23 +2575,29 @@ export class OrdersService {
     }
 
     // Update table status if order is completed or cancelled and table exists
-    if (order.table_id && (updateDto.status === 'completed' || updateDto.status === 'cancelled')) {
-      const { data: existingTable } = await supabase
-        .from('tables')
-        .select('id')
-        .eq('id', order.table_id)
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .single();
+    if (order.order_type === 'dine_in' && (updateDto.status === 'completed' || updateDto.status === 'cancelled')) {
+      // Get all tables associated with this order (from junction table)
+      const { data: orderTables } = await supabase
+        .from('order_tables')
+        .select('table_id')
+        .eq('order_id', order.id);
       
-      if (existingTable) {
+      const tableIds: string[] = [];
+      if (orderTables && orderTables.length > 0) {
+        tableIds.push(...orderTables.map(ot => ot.table_id));
+      } else if (order.table_id) {
+        // Fallback to legacy table_id field
+        tableIds.push(order.table_id);
+      }
+      
+      if (tableIds.length > 0) {
+        const uniqueTableIds = [...new Set(tableIds)];
         await supabase
           .from('tables')
           .update({ status: 'available', updated_at: new Date().toISOString() })
-          .eq('id', order.table_id)
-          .eq('tenant_id', tenantId);
+          .in('id', uniqueTableIds)
+          .eq('branch_id', order.branch_id);
       }
-      // If table doesn't exist, that's okay - we allow any table number
     }
 
     // Trigger Supabase Realtime event for status update
@@ -2880,23 +2887,29 @@ export class OrdersService {
     }
 
     // Update table status if applicable and table exists
-    if (order.table_id) {
-      const { data: existingTable } = await supabase
-        .from('tables')
-        .select('id')
-        .eq('id', order.table_id)
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .single();
+    if (order.order_type === 'dine_in') {
+      // Get all tables associated with this order (from junction table)
+      const { data: orderTables } = await supabase
+        .from('order_tables')
+        .select('table_id')
+        .eq('order_id', order.id);
       
-      if (existingTable) {
+      const tableIds: string[] = [];
+      if (orderTables && orderTables.length > 0) {
+        tableIds.push(...orderTables.map(ot => ot.table_id));
+      } else if (order.table_id) {
+        // Fallback to legacy table_id field
+        tableIds.push(order.table_id);
+      }
+      
+      if (tableIds.length > 0) {
+        const uniqueTableIds = [...new Set(tableIds)];
         await supabase
           .from('tables')
           .update({ status: 'available', updated_at: new Date().toISOString() })
-          .eq('id', order.table_id)
-          .eq('tenant_id', tenantId);
+          .in('id', uniqueTableIds)
+          .eq('branch_id', order.branch_id);
       }
-      // If table doesn't exist, that's okay - we allow any table number
     }
 
     return { message: 'Order deleted successfully' };
