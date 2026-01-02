@@ -88,6 +88,15 @@ apiClient.interceptors.response.use(
 
     // If error is 401 and we haven't tried to refresh yet
     if (error.response?.status === 401 && !originalRequest._retry) {
+      // Don't attempt token refresh for login/signup endpoints - these errors should be handled by the component
+      const isAuthEndpoint = originalRequest.url?.includes('/auth/login') || 
+                             originalRequest.url?.includes('/auth/signup');
+      
+      if (isAuthEndpoint) {
+        // For login/signup endpoints, just reject the error so the component can handle it
+        return Promise.reject(error);
+      }
+
       const accessToken = tokenStorage.getAccessToken();
       const currentRefreshToken = tokenStorage.getRefreshToken();
       

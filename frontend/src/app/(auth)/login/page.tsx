@@ -104,8 +104,44 @@ function LoginForm() {
       setUser(user);
       router.push('/dashboard');
     } catch (err: any) {
-      const errorMsg = err.response?.data?.error?.message || 
-        (language === 'ar' ? 'فشل تسجيل الدخول. يرجى المحاولة مرة أخرى.' : 'Login failed. Please try again.');
+      // Extract error message from various possible response structures
+      let errorMsg = '';
+      const status = err.response?.status;
+      
+      if (err.response?.data?.error?.message) {
+        errorMsg = err.response.data.error.message;
+      } else if (err.response?.data?.message) {
+        errorMsg = err.response.data.message;
+      } else if (err.message) {
+        errorMsg = err.message;
+      }
+
+      // Map common authentication error messages to translation keys (case-insensitive matching)
+      const errorMsgLower = errorMsg.toLowerCase();
+      let translationKey: string | undefined;
+      
+      // Check for common error patterns and map to translation keys
+      if (
+        errorMsgLower.includes('invalid login credentials') ||
+        errorMsgLower.includes('invalid email or password') ||
+        status === 401
+      ) {
+        translationKey = 'auth.invalidCredentials';
+      } else if (errorMsgLower.includes('email not confirmed')) {
+        translationKey = 'auth.emailNotConfirmed';
+      } else if (errorMsgLower.includes('user account is inactive') || errorMsgLower.includes('account is inactive')) {
+        translationKey = 'auth.accountInactive';
+      } else if (!errorMsg) {
+        translationKey = 'auth.loginFailed';
+      }
+
+      // Use translation if we have a key, otherwise use the original error message or fallback
+      if (translationKey) {
+        errorMsg = t(translationKey as any, language);
+      } else if (!errorMsg) {
+        errorMsg = t('auth.loginFailed' as any, language);
+      }
+
       setError(errorMsg);
     } finally {
       setLoading(false);

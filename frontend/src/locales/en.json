@@ -81,7 +81,11 @@
     "success": "Success!",
     "authenticationFailed": "Authentication Failed",
     "currency": "Currency",
-    "currencyDescription": "Select your default currency. This cannot be changed after registration."
+    "currencyDescription": "Select your default currency. This cannot be changed after registration.",
+    "invalidCredentials": "Invalid email or password. Please check your credentials and try again.",
+    "emailNotConfirmed": "Please confirm your email before logging in.",
+    "accountInactive": "Your account has been deactivated. Please contact support.",
+    "loginFailed": "Login failed. Please try again."
   },
   "dashboard": {
     "title": "Dashboard",
