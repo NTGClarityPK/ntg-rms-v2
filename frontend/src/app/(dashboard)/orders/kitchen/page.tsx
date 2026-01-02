@@ -21,7 +21,6 @@ import {
   Chip,
 } from '@mantine/core';
 import {
-  IconCheck,
   IconClock,
   IconChefHat,
   IconVolume,
@@ -1285,9 +1284,6 @@ function OrderCard({
               fullWidth
               onClick={() => onBulkAction(order, showStatus === 'preparing' ? 'ready' : 'served')}
               loading={isProcessing}
-              leftSection={
-                showStatus === 'preparing' ? <IconCheck size={18} /> : <IconCheck size={18} />
-              }
               color={showStatus === 'preparing' ? getSuccessColor() : primary}
               size="md"
               radius="md"
