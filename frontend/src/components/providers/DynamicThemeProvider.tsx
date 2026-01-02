@@ -977,20 +977,20 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       
       /* Filter Button Groups - Special styling for filter buttons (POS categories, Report date ranges) */
       /* Selected filter buttons with checkmark */
-      .filter-button-group .mantine-Button-root[data-selected="true"],
+      .filter-button-group .mantine-Button-root[dataSelected="true"],
       .filter-button-group .mantine-Button-root.filter-button-selected {
         background-color: ${config.components.tabs.selectedTabBackgroundColor} !important;
         color: ${config.components.tabs.selectedTabFontColor} !important;
       }
       
       /* Unselected filter buttons */
-      .filter-button-group .mantine-Button-root:not([data-selected="true"]):not(.filter-button-selected) {
+      .filter-button-group .mantine-Button-root:not([dataSelected="true"]):not(.filter-button-selected) {
         background-color: ${config.components.tabs.backgroundColor} !important;
         color: ${config.components.tabs.textColor} !important;
       }
       
       /* Filter button hover */
-      .filter-button-group .mantine-Button-root:hover:not([data-selected="true"]):not(.filter-button-selected):not(:disabled) {
+      .filter-button-group .mantine-Button-root:hover:not([dataSelected="true"]):not(.filter-button-selected):not(:disabled) {
         background-color: ${config.components.tabs.hoverTabBackgroundColor} !important;
         color: ${config.components.tabs.hoverTabFontColor} !important;
       }
