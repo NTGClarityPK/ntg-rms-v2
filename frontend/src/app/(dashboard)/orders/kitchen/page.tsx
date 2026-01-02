@@ -1105,6 +1105,21 @@ function OrderCard({
               </Text>
             ) : null}
           </Group>
+          {/* Order Special Instructions */}
+          {order.specialInstructions && (
+            <Tooltip label={order.specialInstructions} multiline position="top" withArrow zIndex={2100}>
+              <Box style={{ display: 'inline-block', width: '100%' }}>
+                <Text 
+                  size="sm" 
+                  c="dimmed" 
+                  fs="italic"
+                  truncate
+                >
+                  {order.specialInstructions}
+                </Text>
+              </Box>
+            </Tooltip>
+          )}
         </Stack>
 
          {/* Order Items */}
@@ -1179,11 +1194,6 @@ function OrderCard({
                                ))}
                              </Stack>
                            )}
-                           {item.specialInstructions && (
-                             <Text size="xs" c="dimmed" fs="italic">
-                               {t('pos.specialInstructions', language)}: {item.specialInstructions}
-                             </Text>
-                           )}
                          </Stack>
                        </Box>
                      );
@@ -1244,11 +1254,6 @@ function OrderCard({
                                )
                                .filter(Boolean)
                                .join(', ') || '-'}
-                           </Text>
-                         )}
-                         {item.specialInstructions && (
-                           <Text size="xs" c="dimmed" fs="italic">
-                             {t('pos.specialInstructions', language)}: {item.specialInstructions}
                            </Text>
                          )}
                        </Stack>

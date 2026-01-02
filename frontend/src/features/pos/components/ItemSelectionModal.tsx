@@ -55,7 +55,6 @@ export function ItemSelectionModal({
   const [selectedAddOns, setSelectedAddOns] = useState<Record<string, string[]>>({});
   const [addOnGroups, setAddOnGroups] = useState<any[]>([]);
   const [variations, setVariations] = useState<any[]>([]);
-  const [specialInstructions, setSpecialInstructions] = useState(existingCartItem?.specialInstructions || '');
   const [loading, setLoading] = useState(true);
   const [activeDiscount, setActiveDiscount] = useState<any>(null);
   const [allActiveDiscounts, setAllActiveDiscounts] = useState<any[]>([]);
@@ -208,7 +207,6 @@ export function ItemSelectionModal({
       // Load existing cart item data if editing
       if (existingCartItem) {
         setQuantity(existingCartItem.quantity);
-        setSpecialInstructions(existingCartItem.specialInstructions || '');
 
         // Load selected variation
         if (existingCartItem.variationId) {
@@ -239,7 +237,6 @@ export function ItemSelectionModal({
         setQuantity(1);
         setSelectedVariation(null);
         setSelectedAddOns({});
-        setSpecialInstructions('');
       }
     } catch (error) {
       console.error('Failed to load item data:', error);
@@ -316,7 +313,6 @@ export function ItemSelectionModal({
         quantity,
         unitPrice,
         subtotal,
-        specialInstructions: specialInstructions.trim() || undefined,
         createdAt: new Date().toISOString(),
       };
       onItemSelected(cartItem);
@@ -357,7 +353,6 @@ export function ItemSelectionModal({
       quantity,
       unitPrice,
       subtotal,
-      specialInstructions: specialInstructions.trim() || undefined,
       createdAt: new Date().toISOString(),
     };
 
@@ -631,15 +626,6 @@ export function ItemSelectionModal({
             style={{ width: 100 }}
           />
         </Group>
-
-        {/* Special Instructions */}
-        <Textarea
-          label={t('pos.specialInstructions', language)}
-          placeholder={t('pos.specialInstructions', language)}
-          value={specialInstructions}
-          onChange={(e) => setSpecialInstructions(e.target.value)}
-          rows={3}
-        />
 
         {/* Price Summary */}
         <Paper p="md" radius="md" withBorder>

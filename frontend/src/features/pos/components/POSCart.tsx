@@ -18,6 +18,7 @@ import {
   Paper,
   Modal,
   TextInput,
+  Textarea,
   useMantineTheme,
   Tooltip,
   Flex,
@@ -178,6 +179,7 @@ export function POSCart({
   const [newAddressState, setNewAddressState] = useState<string>('');
   const [newAddressCountry, setNewAddressCountry] = useState<string>('');
   const [variationGroupsMap, setVariationGroupsMap] = useState<Map<string, string>>(new Map());
+  const [orderSpecialInstructions, setOrderSpecialInstructions] = useState<string>('');
 
   // Helper function to resolve variation group name from UUID
   const resolveVariationGroupName = (variationGroup: string | undefined): string => {
@@ -720,7 +722,6 @@ export function POSCart({
             addOnId: addOn.addOnId,
             quantity: addOn.quantity || 1,
           })),
-          specialInstructions: item.specialInstructions,
         };
       });
 
@@ -736,7 +737,7 @@ export function POSCart({
         tokenNumber: orderType === 'dine_in' ? generateTokenNumber() : undefined,
         extraDiscountAmount: discount,
         couponCode: appliedCouponId ? couponCode : undefined,
-        specialInstructions: undefined, // Can be added later if needed
+        specialInstructions: orderSpecialInstructions.trim() || undefined,
         paymentTiming: 'pay_first' as const,
         // Map payment methods: zainCash, asiaHawala, bankTransfer -> card (electronic payments)
         paymentMethod: paymentMethod === 'zainCash' || paymentMethod === 'asiaHawala' || paymentMethod === 'bankTransfer' 
@@ -793,7 +794,6 @@ export function POSCart({
             discountAmount: 0,
             taxAmount: 0,
             subtotal: item.subtotal ?? (item.unitPrice ?? 0) * (item.quantity ?? 1),
-            specialInstructions: item.specialInstructions,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
             syncStatus: 'synced',
@@ -1447,12 +1447,6 @@ export function POSCart({
                         </Text>
                       )}
 
-                      {item.specialInstructions && (
-                        <Text size="xs" c="dimmed" style={{ fontStyle: 'italic' }}>
-                          {item.specialInstructions}
-                        </Text>
-                      )}
-
                       <Group justify="space-between">
                         <Group gap="xs">
                           <ActionIcon
@@ -1665,6 +1659,17 @@ export function POSCart({
                   {formatCurrency(calculateGrandTotal(), currency)}
                 </Text>
               </Group>
+
+              {/* Order Special Instructions */}
+              <Box>
+                <Textarea
+                  label={t('pos.specialInstructions', language)}
+                  placeholder={t('pos.specialInstructions', language)}
+                  value={orderSpecialInstructions}
+                  onChange={(e) => setOrderSpecialInstructions(e.target.value)}
+                  rows={3}
+                />
+              </Box>
 
               {/* Payment Method */}
               <Box>

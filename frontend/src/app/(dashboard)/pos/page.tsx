@@ -131,7 +131,6 @@ function POSPageContent() {
                 quantity: item.quantity,
                 unitPrice: item.unitPrice,
                 subtotal: item.subtotal,
-                specialInstructions: item.specialInstructions,
                 addOns: addOns.length > 0 ? addOns : undefined,
                 foodItem: foodItem, // Keep for compatibility
                 buffet: item.buffet,
@@ -190,13 +189,6 @@ function POSPageContent() {
     const variation1 = item1.variationId || null;
     const variation2 = item2.variationId || null;
     if (variation1 !== variation2) {
-      return false;
-    }
-
-    // Check specialInstructions (both empty/undefined or same value)
-    const instructions1 = (item1.specialInstructions || '').trim();
-    const instructions2 = (item2.specialInstructions || '').trim();
-    if (instructions1 !== instructions2) {
       return false;
     }
 
