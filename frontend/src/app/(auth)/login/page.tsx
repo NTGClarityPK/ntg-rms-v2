@@ -209,15 +209,13 @@ function LoginForm() {
             label={t('auth.rememberMe', language)}
             disabled={loading}
           />
-          <Text
+          <Anchor
+            href="/forgot-password"
             size="sm"
-            style={{ color: DEFAULT_THEME_COLOR, cursor: 'pointer', fontWeight: 500 }}
-            onClick={() => {
-              // TODO: Implement password reset
-            }}
+            style={{ color: DEFAULT_THEME_COLOR, fontWeight: 500 }}
           >
             {t('auth.forgotPassword', language)}
-          </Text>
+          </Anchor>
         </Group>
 
         <Button
