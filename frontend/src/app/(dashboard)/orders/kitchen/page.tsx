@@ -18,7 +18,7 @@ import {
   ActionIcon,
   Tooltip,
   TextInput,
-  Chip,
+  Switch,
 } from '@mantine/core';
 import {
   IconClock,
@@ -767,6 +767,14 @@ export default function KitchenDisplayPage() {
           {/* Controls - positioned absolutely */}
           <Box style={{ position: 'absolute', top: 10, right: 10, zIndex: 1001 }}>
             <Group gap="xs">
+              {/* My Orders Switch */}
+              <Switch
+                checked={showMyOrdersOnly}
+                onChange={(event) => setShowMyOrdersOnly(event.currentTarget.checked)}
+                label={t('orders.myOrders', language)}
+                size="md"
+              />
+              
               {/* Back to Orders button */}
               <Tooltip 
                 label={t('orders.backToOrders' as any, language) || 'Back to Orders'}
@@ -849,7 +857,7 @@ export default function KitchenDisplayPage() {
             </Group>
           </Box>
 
-          {/* Search input and My Orders filter */}
+          {/* Search input */}
           <Box style={{ padding: '0 16px', marginTop: 10 }}>
             <Group gap="md" align="center">
               <TextInput
@@ -859,13 +867,6 @@ export default function KitchenDisplayPage() {
                 onChange={(e) => setSearchQuery(e.currentTarget.value)}
                 style={{ maxWidth: 400 }}
               />
-              <Chip
-                checked={showMyOrdersOnly}
-                onChange={(checked) => setShowMyOrdersOnly(checked)}
-                variant="filled"
-              >
-                {t('orders.myOrders', language)}
-              </Chip>
             </Group>
           </Box>
 

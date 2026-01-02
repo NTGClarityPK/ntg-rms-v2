@@ -19,6 +19,7 @@ import {
   Grid,
   Center,
   Skeleton,
+  Switch,
 } from '@mantine/core';
 import {
   IconSearch,
@@ -385,6 +386,12 @@ export default function OrdersPage() {
             {t('orders.title', language)}
           </Title>
           <Group gap="xs">
+            <Switch
+              checked={showMyOrdersOnly}
+              onChange={(event) => setShowMyOrdersOnly(event.currentTarget.checked)}
+              label={t('orders.myOrders', language)}
+              size="md"
+            />
             <Button
               leftSection={<IconChefHat size={16} />}
               variant="light"
@@ -488,13 +495,6 @@ export default function OrdersPage() {
                 </Chip>
               </Group>
             </Chip.Group>
-            <Chip
-              checked={showMyOrdersOnly}
-              onChange={(checked) => setShowMyOrdersOnly(checked)}
-              variant="filled"
-            >
-              {t('orders.myOrders', language)}
-            </Chip>
           </Group>
         </Paper>
 
