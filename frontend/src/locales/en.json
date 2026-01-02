@@ -169,6 +169,7 @@
     "restaurant": "Restaurant",
     "menu": "Menu",
     "pos": "POS",
+    "newOrder": "New Order",
     "orders": "Orders",
     "inventory": "Inventory",
     "recipes": "Recipes",

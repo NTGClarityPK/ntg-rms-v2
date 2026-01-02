@@ -41,7 +41,7 @@ import type { ThemeConfig } from '@/lib/theme/themeConfig';
 const navItems = [
   { href: '/dashboard', icon: IconDashboard, key: 'dashboard', permission: null }, // Dashboard always visible
   { href: '/menu', icon: IconMenu2, key: 'menu', permission: { resource: 'menu', action: 'view' } },
-  { href: '/pos', icon: IconShoppingCart, key: 'pos', permission: { resource: 'orders', action: 'create' } },
+  { href: '/pos', icon: IconShoppingCart, key: 'newOrder', permission: { resource: 'orders', action: 'create' } },
   { href: '/orders', icon: IconClipboardList, key: 'orders', permission: { resource: 'orders', action: 'view' } },
   { href: '/inventory', icon: IconPackage, key: 'inventory', permission: { resource: 'inventory', action: 'view' } },
   { href: '/recipes', icon: IconBook, key: 'recipes', permission: { resource: 'inventory', action: 'view' } },
