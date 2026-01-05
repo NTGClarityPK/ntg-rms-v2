@@ -392,15 +392,18 @@ export default function OrdersPage() {
               label={t('orders.myOrders', language)}
               size="md"
             />
-            <Button
-              leftSection={<IconChefHat size={16} />}
-              variant="light"
-              component="a"
-              href="/orders/kitchen"
-              size="sm"
-            >
-              {t('orders.kitchenDisplay', language)}
-            </Button>
+            {/* Only show kitchen display button for kitchen staff, manager, waiter and tenant owner */}
+            {user?.role && !['cashier', 'delivery'].includes(user.role) && (
+              <Button
+                leftSection={<IconChefHat size={16} />}
+                variant="light"
+                component="a"
+                href="/orders/kitchen"
+                size="sm"
+              >
+                {t('orders.kitchenDisplay', language)}
+              </Button>
+            )}
             <ActionIcon
               variant="light"
               size="lg"

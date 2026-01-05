@@ -43,6 +43,7 @@ import { onOrderUpdate, notifyOrderUpdate } from '@/lib/utils/order-events';
 import { useKitchenSse, OrderUpdateEvent } from '@/lib/hooks/use-kitchen-sse';
 import { menuApi } from '@/lib/api/menu';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/ar';
@@ -56,6 +57,7 @@ export default function KitchenDisplayPage() {
   const { language } = useLanguageStore();
   const primary = useThemeColor();
   const { user } = useAuthStore();
+  const router = useRouter();
   const { isDark } = useTheme();
   const themeColors = generateThemeColors(primary, isDark);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -70,6 +72,18 @@ export default function KitchenDisplayPage() {
   const loadOrdersRef = useRef<typeof loadOrders>();
   const soundEnabledRef = useRef<boolean>(soundEnabled);
   const [variationGroupsMap, setVariationGroupsMap] = useState<Map<string, string>>(new Map());
+  
+  // Route protection: Redirect waiter and cashier away from kitchen display
+  useEffect(() => {
+    if (user?.role && ['delivery', 'cashier'].includes(user.role)) {
+      notifications.show({
+        title: t('common.error' as any, language),
+        message: t('orders.unauthorizedKitchenAccess' as any, language) || 'You do not have permission to access the kitchen display.',
+        color: getErrorColor(),
+      });
+      router.push('/orders');
+    }
+  }, [user?.role, router, language]);
 
   // Helper function to resolve variation group name from UUID
   const resolveVariationGroupName = (variationGroup: string | undefined): string => {
@@ -450,6 +464,26 @@ export default function KitchenDisplayPage() {
 
     const currentStatus = item.status || 'preparing';
     
+    // Waiter cannot mark items as ready
+    if (user?.role === 'waiter' && currentSection === 'preparing' && currentStatus === 'preparing') {
+      notifications.show({
+        title: t('common.error' as any, language),
+        message: t('orders.cannotMarkReady' as any, language) || 'You do not have permission to mark items as ready.',
+        color: getErrorColor(),
+      });
+      return;
+    }
+    
+    // Kitchen staff cannot mark items as served
+    if (user?.role === 'kitchen_staff' && currentSection === 'ready' && currentStatus === 'ready') {
+      notifications.show({
+        title: t('common.error' as any, language),
+        message: t('orders.cannotMarkServed' as any, language) || 'You do not have permission to mark items as served.',
+        color: getErrorColor(),
+      });
+      return;
+    }
+    
     // If clicking in preparing section, move to ready
     if (currentSection === 'preparing' && currentStatus === 'preparing') {
       await updateItemStatus(order, itemId, 'ready');
@@ -512,6 +546,26 @@ export default function KitchenDisplayPage() {
 
   const handleBulkAction = async (order: Order, action: 'ready' | 'served') => {
     if (!order.items || order.items.length === 0) return;
+
+    // Waiter cannot mark items as ready
+    if (action === 'ready' && user?.role === 'waiter') {
+      notifications.show({
+        title: t('common.error' as any, language),
+        message: t('orders.cannotMarkReady', language) || 'You do not have permission to mark items as ready.',
+        color: getErrorColor(),
+      });
+      return;
+    }
+    
+    // Kitchen staff cannot mark items as served
+    if (action === 'served' && user?.role === 'kitchen_staff') {
+      notifications.show({
+        title: t('common.error' as any, language),
+        message: t('orders.cannotMarkServed' as any, language) || 'You do not have permission to mark items as served.',
+        color: getErrorColor(),
+      });
+      return;
+    }
 
     if (action === 'ready') {
       // Move all preparing items to ready
@@ -747,6 +801,11 @@ export default function KitchenDisplayPage() {
     return hasReadyItems || (hasServedItems && hasPreparingItems);
   });
 
+  // Don't render the page if user is waiter or cashier
+  if (user?.role && ['delivery', 'cashier'].includes(user.role)) {
+    return null;
+  }
+
   return (
     <Box
       style={{
@@ -957,6 +1016,7 @@ export default function KitchenDisplayPage() {
                                        getOrderAge={getOrderAge}
                                        showStatus="preparing"
                                        resolveVariationGroupName={resolveVariationGroupName}
+                                       user={user}
                                      />
                                    ))
                                  )}
@@ -1002,6 +1062,7 @@ export default function KitchenDisplayPage() {
                                        getOrderAge={getOrderAge}
                                        showStatus="ready"
                                        resolveVariationGroupName={resolveVariationGroupName}
+                                       user={user}
                                      />
                                    ))
                                  )}
@@ -1033,6 +1094,7 @@ interface OrderCardProps {
   getOrderAge: (order: Order) => string;
   showStatus: 'preparing' | 'ready'; // Which status column this card is in
   resolveVariationGroupName: (variationGroup: string | undefined) => string;
+  user: { role?: string } | null;
 }
 
 function OrderCard({
@@ -1046,6 +1108,7 @@ function OrderCard({
   getOrderAge,
   showStatus,
   resolveVariationGroupName,
+  user,
 }: OrderCardProps) {
   const { isDark } = useTheme();
   const themeColors = generateThemeColors(primary, isDark);
@@ -1144,9 +1207,10 @@ function OrderCard({
                     const isServed = itemStatus === 'served';
                     // In ready section, can click if item is ready (not served)
                     // In preparing section, can click if item is preparing
+                    // But waiter cannot mark as ready, and kitchen staff cannot mark as served
                     const canClick = showStatus === 'preparing' 
-                      ? itemStatus === 'preparing' 
-                      : (itemStatus === 'ready');
+                      ? (itemStatus === 'preparing' && user?.role !== 'waiter')
+                      : (itemStatus === 'ready' && user?.role !== 'kitchen_staff');
                    
                    // For combo meals, show constituent food items
                    if (item.comboMealId && item.comboMeal) {
@@ -1280,16 +1344,22 @@ function OrderCard({
              }
              return itemStatus === showStatus;
            });
-          
+           
           if (items.length === 0) return null; // No items in this status
           
           const isProcessing = items.some(item => processingOrderIds.has(`${order.id}-${item.id}`));
           
+          // Check if action should be disabled based on role
+          const action = showStatus === 'preparing' ? 'ready' : 'served';
+          const isDisabled = (action === 'ready' && user?.role === 'waiter') || 
+                            (action === 'served' && user?.role === 'kitchen_staff');
+          
           return (
             <Button
               fullWidth
-              onClick={() => onBulkAction(order, showStatus === 'preparing' ? 'ready' : 'served')}
+              onClick={() => onBulkAction(order, action)}
               loading={isProcessing}
+              disabled={isDisabled}
               color={showStatus === 'preparing' ? getSuccessColor() : primary}
               size="md"
               radius="md"
