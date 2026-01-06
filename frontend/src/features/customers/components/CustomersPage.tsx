@@ -37,6 +37,7 @@ import { notifications } from '@mantine/notifications';
 import { customersApi, Customer, CreateCustomerDto, UpdateCustomerDto } from '@/lib/api/customers';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { useBranchStore } from '@/lib/store/branch-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
@@ -60,6 +61,7 @@ interface CustomersPageProps {
 export function CustomersPage({ addTrigger }: CustomersPageProps) {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
+  const { selectedBranchId } = useBranchStore();
   const notificationColors = useNotificationColors();
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
@@ -111,6 +113,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
 
       const filters: any = {};
       if (searchQuery) filters.search = searchQuery;
+      if (selectedBranchId) filters.branchId = selectedBranchId;
 
       const serverCustomersResponse = await customersApi.getCustomers(filters, pagination.paginationParams);
       // Handle both paginated and non-paginated responses
@@ -128,7 +131,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
     } finally {
       setLoading(false);
     }
-  }, [user?.tenantId, searchQuery, pagination, language]);
+  }, [user?.tenantId, searchQuery, pagination, language, selectedBranchId]);
 
   useEffect(() => {
     loadCustomers();
@@ -267,7 +270,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
             : undefined,
         };
 
-        const created = await customersApi.createCustomer(createDto);
+        const created = await customersApi.createCustomer(createDto, selectedBranchId || undefined);
         setCustomers((prev) => [created, ...prev]);
 
         notifications.show({

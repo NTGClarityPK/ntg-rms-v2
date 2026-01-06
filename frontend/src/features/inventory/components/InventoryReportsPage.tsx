@@ -26,6 +26,7 @@ import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useBranchStore } from '@/lib/store/branch-store';
 import { t } from '@/lib/utils/translations';
+import { authApi } from '@/lib/api/auth';
 import { useInventoryRefresh } from '@/lib/contexts/inventory-refresh-context';
 import { useErrorColor, useSuccessColor, useWarningColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
@@ -58,6 +59,29 @@ export function InventoryReportsPage() {
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [activeTab, setActiveTab] = useState<string>('current-stock');
+  const [branches, setBranches] = useState<Array<{ value: string; label: string }>>([]);
+  const [selectedBranchFilter, setSelectedBranchFilter] = useState<string>('');
+
+  const loadBranches = useCallback(async () => {
+    try {
+      const data = await authApi.getAssignedBranches();
+      const branchOptions = data.map((b) => ({
+        value: b.id,
+        label: `${b.name} (${b.code})`,
+      }));
+      
+      if (user?.role === 'tenant_owner') {
+        branchOptions.unshift({
+          value: 'all',
+          label: language === 'ar' ? 'جميع الفروع' : 'All Branches',
+        });
+      }
+      
+      setBranches(branchOptions);
+    } catch (error) {
+      console.error('Failed to load branches:', error);
+    }
+  }, [user?.role, language]);
 
   const loadCurrentStock = useCallback(async () => {
     if (!user?.tenantId) return;
@@ -66,31 +90,44 @@ export function InventoryReportsPage() {
       const filters: any = {};
       if (categoryFilter) filters.category = categoryFilter;
       if (lowStockOnly) filters.lowStockOnly = true;
+      // Use selectedBranchFilter if set, otherwise use selectedBranchId from store
+      const branchIdToUse = selectedBranchFilter && selectedBranchFilter !== 'all' 
+        ? selectedBranchFilter 
+        : (selectedBranchId || undefined);
+      if (branchIdToUse) filters.branchId = branchIdToUse;
 
       const serverData = await inventoryApi.getCurrentStockReport(filters);
       setCurrentStock(serverData);
     } catch (err: any) {
       console.error('Failed to load current stock:', err);
     }
-  }, [user?.tenantId, categoryFilter, lowStockOnly]);
+  }, [user?.tenantId, categoryFilter, lowStockOnly, selectedBranchId, selectedBranchFilter]);
 
   const loadLowStockAlerts = useCallback(async () => {
     if (!user?.tenantId) return;
 
     try {
-      const serverData = await inventoryApi.getLowStockAlerts();
+      // Use selectedBranchFilter if set, otherwise use selectedBranchId from store
+      const branchIdToUse = selectedBranchFilter && selectedBranchFilter !== 'all' 
+        ? selectedBranchFilter 
+        : (selectedBranchId || undefined);
+      const serverData = await inventoryApi.getLowStockAlerts(branchIdToUse);
       setLowStockAlerts(serverData);
     } catch (err: any) {
       console.error('Failed to load low stock alerts:', err);
     }
-  }, [user?.tenantId]);
+  }, [user?.tenantId, selectedBranchId, selectedBranchFilter]);
 
   const loadStockMovement = useCallback(async () => {
     if (!user?.tenantId) return;
 
     try {
       const filters: any = {};
-      if (selectedBranchId) filters.branchId = selectedBranchId;
+      // Use selectedBranchFilter if set, otherwise use selectedBranchId from store
+      const branchIdToUse = selectedBranchFilter && selectedBranchFilter !== 'all' 
+        ? selectedBranchFilter 
+        : (selectedBranchId || undefined);
+      if (branchIdToUse) filters.branchId = branchIdToUse;
       if (startDate) filters.startDate = startDate.toISOString().split('T')[0];
       if (endDate) filters.endDate = endDate.toISOString().split('T')[0];
 
@@ -99,7 +136,11 @@ export function InventoryReportsPage() {
     } catch (err: any) {
       console.error('Failed to load stock movement:', err);
     }
-  }, [user?.tenantId, selectedBranchId, startDate, endDate]);
+  }, [user?.tenantId, selectedBranchId, selectedBranchFilter, startDate, endDate]);
+
+  useEffect(() => {
+    loadBranches();
+  }, [loadBranches]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -194,7 +235,20 @@ export function InventoryReportsPage() {
       {/* Filters */}
       <Paper p="md" withBorder mb="md">
         <Grid>
-          <Grid.Col span={{ base: 12, md: 4 }}>
+          <Grid.Col span={{ base: 12, md: 3 }}>
+            <Select
+              label={t('reports.filterByBranch' as any, language) || t('inventory.branch' as any, language) || 'Branch'}
+              data={branches.map((b) => ({
+                value: b.value || '',
+                label: String(b.label || ''),
+              }))}
+              value={selectedBranchFilter}
+              onChange={(value) => setSelectedBranchFilter(value || '')}
+              clearable
+              placeholder={t('reports.allBranches' as any, language) || 'All Branches'}
+            />
+          </Grid.Col>
+          <Grid.Col span={{ base: 12, md: 3 }}>
             <Select
               label={t('inventory.category', language)}
               data={CATEGORIES.map(cat => ({
@@ -222,7 +276,7 @@ export function InventoryReportsPage() {
               clearable
             />
           </Grid.Col>
-          <Grid.Col span={{ base: 12, md: 4 }}>
+          <Grid.Col span={{ base: 12, md: 2 }}>
             <Select
               label={(t('common.filter' as any, language) || 'Filter')}
               data={[

@@ -31,13 +31,13 @@ import {
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { ordersApi, Order, OrderStatus, OrderType, PaymentStatus } from '@/lib/api/orders';
-import { restaurantApi } from '@/lib/api/restaurant';
 import { notifications } from '@mantine/notifications';
 import { useDisclosure, useDebouncedValue } from '@mantine/hooks';
 import { OrderDetailsModal } from '@/features/orders';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getStatusColor, getPaymentStatusColor, getSuccessColor, getErrorColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { useBranchStore } from '@/lib/store/branch-store';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { customersApi } from '@/lib/api/customers';
@@ -68,11 +68,10 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery] = useDebouncedValue(searchQuery, 300);
-  const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
+  const { selectedBranchId } = useBranchStore();
   const [selectedOrderType, setSelectedOrderType] = useState<string | null>(null);
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState<string | null>(null);
   const [showMyOrdersOnly, setShowMyOrdersOnly] = useState(false);
-  const [branches, setBranches] = useState<{ value: string; label: string }[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [detailsModalOpened, { open: openDetailsModal, close: closeDetailsModal }] = useDisclosure(false);
   const [markingAsPaidOrderId, setMarkingAsPaidOrderId] = useState<string | null>(null);
@@ -87,25 +86,11 @@ export default function OrdersPage() {
   const lastOrdersRequestRef = useRef<string>('');
   const ordersRequestSequenceRef = useRef<number>(0);
 
-  const loadBranches = useCallback(async () => {
-    try {
-      const data = await restaurantApi.getBranches();
-      setBranches(
-        data.map((b) => ({
-          value: b.id,
-          label: b.name || '',
-        }))
-      );
-    } catch (error) {
-      console.error('Failed to load branches:', error);
-    }
-  }, []);
-
   const loadOrders = useCallback(async (silent = false) => {
     // Create a unique key for this request to prevent duplicates
     const requestKey = JSON.stringify({
       status: selectedStatuses,
-      branchId: selectedBranch,
+      branchId: selectedBranchId,
       orderType: selectedOrderType,
       paymentStatus: selectedPaymentStatus,
       search: debouncedSearchQuery.trim(),
@@ -137,7 +122,7 @@ export default function OrdersPage() {
       // Load orders from backend with all filters including search
       const params = {
         status: selectedStatuses.length > 0 ? (selectedStatuses as OrderStatus[]) : undefined,
-        branchId: selectedBranch || undefined,
+        branchId: selectedBranchId || undefined,
         orderType: selectedOrderType as OrderType | undefined,
         paymentStatus: selectedPaymentStatus as PaymentStatus | undefined,
         search: debouncedSearchQuery.trim() || undefined,
@@ -179,16 +164,12 @@ export default function OrdersPage() {
       }
       loadingOrdersRef.current = false;
     }
-  }, [selectedBranch, selectedOrderType, selectedPaymentStatus, selectedStatuses, debouncedSearchQuery, showMyOrdersOnly, user?.email, language, pagination]);
+  }, [selectedBranchId, selectedOrderType, selectedPaymentStatus, selectedStatuses, debouncedSearchQuery, showMyOrdersOnly, user?.email, language, pagination]);
 
   // Update ref whenever loadOrders changes
   useEffect(() => {
     loadOrdersRef.current = loadOrders;
   }, [loadOrders]);
-
-  useEffect(() => {
-    loadBranches();
-  }, [loadBranches]);
 
   // FIXED: Combined redundant useEffects into one with proper dependencies
   // This prevents loadOrders from being called multiple times when dependencies change
@@ -203,7 +184,7 @@ export default function OrdersPage() {
       clearTimeout(timeoutId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedBranch, selectedOrderType, selectedPaymentStatus, selectedStatuses, debouncedSearchQuery, showMyOrdersOnly, pagination.page, pagination.limit]);
+  }, [selectedBranchId, selectedOrderType, selectedPaymentStatus, selectedStatuses, debouncedSearchQuery, showMyOrdersOnly, pagination.page, pagination.limit]);
 
   // Set up Supabase Realtime subscription for cross-browser updates
   useEffect(() => {
@@ -432,16 +413,7 @@ export default function OrdersPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </Grid.Col>
-            <Grid.Col span={{ base: 12, sm: 3 }}>
-              <Select
-                placeholder={t('orders.filterByBranch', language)}
-                data={branches}
-                value={selectedBranch}
-                onChange={setSelectedBranch}
-                clearable
-              />
-            </Grid.Col>
-            <Grid.Col span={{ base: 12, sm: 2 }}>
+            <Grid.Col span={{ base: 12, sm: 5 }}>
               <Select
                 placeholder={t('orders.filterByType', language)}
                 data={[

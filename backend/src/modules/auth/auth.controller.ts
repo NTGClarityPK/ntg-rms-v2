@@ -118,5 +118,15 @@ export class AuthController {
   async updateProfile(@CurrentUser() user: any, @Body() updateProfileDto: UpdateProfileDto) {
     return this.authService.updateProfile(user.tenantId, user.id, updateProfileDto);
   }
+
+  @Get('assigned-branches')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Get user assigned branches' })
+  @ApiResponse({ status: 200, description: 'Assigned branches retrieved successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getAssignedBranches(@CurrentUser() user: any) {
+    return this.authService.getUserAssignedBranches(user.tenantId, user.id);
+  }
 }
 

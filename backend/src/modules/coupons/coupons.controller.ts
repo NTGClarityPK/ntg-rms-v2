@@ -23,9 +23,10 @@ export class CouponsController {
   async validateCoupon(
     @Request() req: any,
     @Body() validateCouponDto: ValidateCouponDto,
+    @Query('branchId') branchId?: string,
   ) {
     const tenantId = req.user.tenantId;
-    return this.couponsService.validateCoupon(tenantId, validateCouponDto);
+    return this.couponsService.validateCoupon(tenantId, validateCouponDto, branchId);
   }
 
   @Post('create-default')
@@ -43,8 +44,9 @@ export class CouponsController {
   async getCoupons(
     @CurrentUser() user: any,
     @Query() paginationDto?: PaginationDto,
+    @Query('branchId') branchId?: string,
   ) {
-    return this.couponsService.getCoupons(user.tenantId, paginationDto);
+    return this.couponsService.getCoupons(user.tenantId, paginationDto, branchId);
   }
 
   @Get(':id')
@@ -60,8 +62,8 @@ export class CouponsController {
   @ApiResponse({ status: 201, description: 'Coupon created successfully' })
   @ApiResponse({ status: 400, description: 'Invalid input' })
   @ApiResponse({ status: 409, description: 'Coupon code already exists' })
-  async createCoupon(@CurrentUser() user: any, @Body() createDto: CreateCouponDto) {
-    return this.couponsService.createCoupon(user.tenantId, createDto);
+  async createCoupon(@CurrentUser() user: any, @Body() createDto: CreateCouponDto, @Query('branchId') branchId?: string) {
+    return this.couponsService.createCoupon(user.tenantId, createDto, branchId);
   }
 
   @Put(':id')

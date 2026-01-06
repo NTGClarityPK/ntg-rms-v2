@@ -26,12 +26,13 @@ export class InventoryService {
   // ============================================
 
   /**
-   * Get all ingredients for a tenant
+   * Get all ingredients for a tenant (optionally filtered by branch)
    */
   async getIngredients(
     tenantId: string,
     filters?: { category?: string; isActive?: boolean; search?: string },
     pagination?: PaginationParams,
+    branchId?: string,
   ): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
 
@@ -46,8 +47,14 @@ export class InventoryService {
       .from('ingredients')
       .select('*')
       .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .order('name', { ascending: true });
+      .is('deleted_at', null);
+
+    if (branchId) {
+      query = query.eq('branch_id', branchId);
+      countQuery = countQuery.eq('branch_id', branchId);
+    }
+
+    query = query.order('name', { ascending: true });
 
     if (filters?.category) {
       query = query.eq('category', filters.category);
@@ -148,12 +155,10 @@ export class InventoryService {
   /**
    * Create a new ingredient
    */
-  async createIngredient(tenantId: string, createDto: CreateIngredientDto) {
+  async createIngredient(tenantId: string, createDto: CreateIngredientDto, branchId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    const { data, error } = await supabase
-      .from('ingredients')
-      .insert({
+    const ingredientData: any = {
         tenant_id: tenantId,
         name: createDto.name,
         category: createDto.category || null,
@@ -163,7 +168,15 @@ export class InventoryService {
         cost_per_unit: createDto.costPerUnit || 0,
         storage_location: createDto.storageLocation || null,
         is_active: createDto.isActive !== undefined ? createDto.isActive : true,
-      })
+    };
+
+    if (branchId) {
+      ingredientData.branch_id = branchId;
+    }
+
+    const { data, error } = await supabase
+      .from('ingredients')
+      .insert(ingredientData)
       .select()
       .single();
 
@@ -753,13 +766,14 @@ export class InventoryService {
   // ============================================
 
   /**
-   * Get all recipes for a tenant
+   * Get all recipes for a tenant (optionally filtered by branch)
    */
   async getRecipes(
     tenantId: string,
     foodItemId?: string,
     addOnId?: string,
     pagination?: PaginationParams,
+    branchId?: string,
   ): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
 
@@ -777,8 +791,14 @@ export class InventoryService {
         add_on:add_ons(id, name),
         ingredient:ingredients(id, name, unit_of_measurement, current_stock)
       `,
-      )
-      .order('created_at', { ascending: false });
+      );
+
+    if (branchId) {
+      query = query.eq('branch_id', branchId);
+      countQuery = countQuery.eq('branch_id', branchId);
+    }
+
+    query = query.order('created_at', { ascending: false });
 
     if (foodItemId) {
       query = query.eq('food_item_id', foodItemId).is('add_on_id', null);
@@ -900,7 +920,7 @@ export class InventoryService {
   /**
    * Get recipe by food item ID
    */
-  async getRecipeByFoodItemId(tenantId: string, foodItemId: string) {
+  async getRecipeByFoodItemId(tenantId: string, foodItemId: string, branchId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Verify food item belongs to tenant
@@ -916,7 +936,7 @@ export class InventoryService {
       throw new NotFoundException('Food item not found');
     }
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('recipes')
       .select(
         `
@@ -925,6 +945,12 @@ export class InventoryService {
       `,
       )
       .eq('food_item_id', foodItemId);
+
+    if (branchId) {
+      query = query.eq('branch_id', branchId);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       throw new InternalServerErrorException(`Failed to fetch recipe: ${error.message}`);
@@ -952,7 +978,7 @@ export class InventoryService {
   /**
    * Create or update recipe for a food item
    */
-  async createOrUpdateRecipe(tenantId: string, createDto: CreateRecipeDto) {
+  async createOrUpdateRecipe(tenantId: string, createDto: CreateRecipeDto, branchId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Verify either food item or add-on belongs to tenant
@@ -997,13 +1023,19 @@ export class InventoryService {
       throw new BadRequestException('One or more ingredients not found or do not belong to tenant');
     }
 
-    // Delete existing recipes
+    // Delete existing recipes (filter by branch if provided)
     if (createDto.foodItemId) {
-      const { error: deleteError } = await supabase
+      let deleteQuery = supabase
         .from('recipes')
         .delete()
         .eq('food_item_id', createDto.foodItemId)
         .is('add_on_id', null);
+      
+      if (branchId) {
+        deleteQuery = deleteQuery.eq('branch_id', branchId);
+      }
+      
+      const { error: deleteError } = await deleteQuery;
 
       if (deleteError) {
         throw new InternalServerErrorException(
@@ -1011,11 +1043,17 @@ export class InventoryService {
         );
       }
     } else if (createDto.addOnId) {
-      const { error: deleteError } = await supabase
+      let deleteQuery = supabase
         .from('recipes')
         .delete()
         .eq('add_on_id', createDto.addOnId)
         .is('food_item_id', null);
+      
+      if (branchId) {
+        deleteQuery = deleteQuery.eq('branch_id', branchId);
+      }
+      
+      const { error: deleteError } = await deleteQuery;
 
       if (deleteError) {
         throw new InternalServerErrorException(
@@ -1031,6 +1069,7 @@ export class InventoryService {
       ingredient_id: ing.ingredientId,
       quantity: ing.quantity,
       unit: ing.unit,
+      branch_id: branchId || null,
     }));
 
     const { data, error } = await supabase
@@ -1252,13 +1291,16 @@ export class InventoryService {
       };
     }
 
-    // Fetch token number from order (can be done in parallel with other initial fetches)
-    const tokenNumberPromise = supabase
+    // Fetch token number and branch_id from order (can be done in parallel with other initial fetches)
+    const orderInfoPromise = supabase
       .from('orders')
-      .select('token_number')
+      .select('token_number, branch_id')
       .eq('id', orderId)
       .maybeSingle()
-      .then(({ data }) => data?.token_number || 'N/A');
+      .then(({ data }) => ({
+        tokenNumber: data?.token_number || 'N/A',
+        branchId: data?.branch_id || null,
+      }));
 
     // Collect all IDs needed for batch fetching
     const foodItemIds = itemsWithFoodItem.map(item => item.foodItemId!);
@@ -1270,8 +1312,8 @@ export class InventoryService {
       .map(addOn => addOn.addOnId);
 
     // Batch fetch all recipes (food items and add-ons) in parallel
-    const [tokenNumber, foodItemRecipesResult, addOnRecipesResult, variationsResult, foodItemVariationsResult] = await Promise.all([
-      tokenNumberPromise,
+    const [orderInfo, foodItemRecipesResult, addOnRecipesResult, variationsResult, foodItemVariationsResult] = await Promise.all([
+      orderInfoPromise,
       foodItemIds.length > 0
         ? supabase
             .from('recipes')
@@ -1301,6 +1343,8 @@ export class InventoryService {
         : Promise.resolve({ data: [], error: null }),
     ]);
 
+    const tokenNumber = orderInfo.tokenNumber;
+    const orderBranchId = orderInfo.branchId;
     const foodItemRecipes = foodItemRecipesResult.data || [];
     const addOnRecipes = addOnRecipesResult.data || [];
     const variations = variationsResult.data || [];
@@ -1476,7 +1520,7 @@ export class InventoryService {
     // Prepare batch stock transaction inserts
     const stockTransactionInserts = deductionList.map((ded) => ({
       tenant_id: tenantId,
-      branch_id: null, // Can be added if needed
+      branch_id: orderBranchId, // Use the order's branch_id
       ingredient_id: ded.ingredientId,
       transaction_type: transactionType,
       quantity: -Math.abs(ded.quantity), // Negative for deduction
@@ -1574,6 +1618,10 @@ export class InventoryService {
       query = query.eq('category', filters.category);
     }
 
+    if (filters?.branchId) {
+      query = query.eq('branch_id', filters.branchId);
+    }
+
     const { data, error } = await query;
 
     if (error) {
@@ -1620,16 +1668,22 @@ export class InventoryService {
   /**
    * Get low stock alerts
    */
-  async getLowStockAlerts(tenantId: string) {
+  async getLowStockAlerts(tenantId: string, branchId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Fetch all active ingredients (Supabase doesn't support column-to-column comparison)
-    const { data, error } = await supabase
+    let query = supabase
       .from('ingredients')
       .select('*')
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
       .is('deleted_at', null);
+    
+    if (branchId) {
+      query = query.eq('branch_id', branchId);
+    }
+    
+    const { data, error } = await query;
 
     if (error) {
       throw new InternalServerErrorException(`Failed to fetch low stock alerts: ${error.message}`);

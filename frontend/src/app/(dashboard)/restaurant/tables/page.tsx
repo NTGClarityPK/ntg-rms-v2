@@ -77,7 +77,7 @@ export default function TablesPage() {
     },
     validate: {
       tableNumber: (value) => (!value ? 'Table number is required' : null),
-      branchId: (value) => (!value ? 'Branch is required' : null),
+      branchId: (value) => (!value ? t('common.required', language) || 'Branch is required' : null),
       seatingCapacity: (value) => (value && value < 1 ? 'Seating capacity must be at least 1' : null),
     },
   });
@@ -319,7 +319,8 @@ export default function TablesPage() {
         <form onSubmit={form.onSubmit(handleSubmit)}>
           <Stack gap="md">
             <Select
-              label="Branch"
+              label={t('common.selectBranch', language) || t('restaurant.branch', language) || 'Branch'}
+              placeholder={t('common.selectBranch', language) || 'Select Branch'}
               required
               data={branches}
               {...form.getInputProps('branchId')}

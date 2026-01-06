@@ -33,10 +33,11 @@ export interface UpdateTaxDto extends Partial<CreateTaxDto> {}
 
 export const taxesApi = {
   /**
-   * Get all taxes
+   * Get all taxes (optionally filtered by branch)
    */
-  getTaxes: async (): Promise<Tax[]> => {
-    const response = await apiClient.get(API_ENDPOINTS.TAXES.BASE);
+  getTaxes: async (branchId?: string): Promise<Tax[]> => {
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const response = await apiClient.get(`${API_ENDPOINTS.TAXES.BASE}${params}`);
     return response.data;
   },
 
@@ -51,8 +52,9 @@ export const taxesApi = {
   /**
    * Create a new tax
    */
-  createTax: async (data: CreateTaxDto): Promise<Tax> => {
-    const response = await apiClient.post(API_ENDPOINTS.TAXES.BASE, data);
+  createTax: async (data: CreateTaxDto, branchId?: string): Promise<Tax> => {
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const response = await apiClient.post(`${API_ENDPOINTS.TAXES.BASE}${params}`, data);
     return response.data;
   },
 

@@ -44,6 +44,7 @@ import { menuApi, FoodItem, FoodItemVariation, FoodItemDiscount, VariationGroup 
 import { Category } from '@/lib/api/menu';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { useBranchStore } from '@/lib/store/branch-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
@@ -59,6 +60,7 @@ import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
 export function FoodItemsPage() {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
+  const { selectedBranchId } = useBranchStore();
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
@@ -134,22 +136,22 @@ export function FoodItemsPage() {
       setLoading(true);
 
       // Load categories (only active ones for selection)
-      const catsResponse = await menuApi.getCategories();
+      const catsResponse = await menuApi.getCategories(undefined, selectedBranchId || undefined);
       const cats = Array.isArray(catsResponse) ? catsResponse : (catsResponse?.data || []);
       setCategories((cats as Category[]).filter((cat: Category) => cat.isActive));
 
       // Load add-on groups (only active ones for selection)
-      const groupsResponse = await menuApi.getAddOnGroups();
+      const groupsResponse = await menuApi.getAddOnGroups(undefined, selectedBranchId || undefined);
       const groups = Array.isArray(groupsResponse) ? groupsResponse : (groupsResponse?.data || []);
       setAddOnGroups((groups as any[]).filter((group: any) => group.isActive));
 
       // Load menus for menu type selection
-      const menuListResponse = await menuApi.getMenus();
+      const menuListResponse = await menuApi.getMenus(undefined, selectedBranchId || undefined);
       const menuList = Array.isArray(menuListResponse) ? menuListResponse : (menuListResponse?.data || []);
       setMenus(menuList);
 
-      // Load variation groups with their variations
-      const variationGroupsResponse = await menuApi.getVariationGroups();
+      // Load variation groups with their variations (filtered by branch)
+      const variationGroupsResponse = await menuApi.getVariationGroups(undefined, selectedBranchId || undefined);
       const variationGroupsList = Array.isArray(variationGroupsResponse) 
         ? variationGroupsResponse 
         : (variationGroupsResponse?.data || []);
@@ -183,7 +185,7 @@ export function FoodItemsPage() {
       const serverItemsResponse = await menuApi.getFoodItems(undefined, {
         page: currentPage,
         limit: currentLimit,
-      }, currentSearch);
+      }, currentSearch, false, selectedBranchId || undefined);
       const serverItems = pagination.extractData(serverItemsResponse);
       
       // Extract pagination info from server response
@@ -196,7 +198,7 @@ export function FoodItemsPage() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.tenantId]);
+  }, [user?.tenantId, selectedBranchId]);
 
   // Handle search changes: update ref and reset page if needed
   useEffect(() => {
@@ -256,27 +258,19 @@ export function FoodItemsPage() {
   // Helper function to get menu name from menu type
   const getMenuName = (menuType: string): string => {
     const menu = menus.find((m) => m.menuType === menuType);
-    if (menu) {
-      return menu.name || menu.menuType;
+    // Always use the menu name from backend if available
+    if (menu && menu.name) {
+      return menu.name;
     }
-    
-    // Fallback to translations for default menu types
-    const menuTypeLabels: Record<string, string> = {
-      all_day: t('menu.allDay', language),
-      breakfast: t('menu.breakfast', language),
-      lunch: t('menu.lunch', language),
-      dinner: t('menu.dinner', language),
-      kids_special: t('menu.kidsSpecial', language),
-    };
-    
-    return menuTypeLabels[menuType] || menuType;
+    // Only fallback to menuType if no name is available
+    return menuType;
   };
 
   const handleOpenModal = async (item?: FoodItem) => {
     // Ensure add-on groups are loaded
     if (addOnGroups.length === 0) {
       try {
-        const groupsResponse = await menuApi.getAddOnGroups();
+        const groupsResponse = await menuApi.getAddOnGroups(undefined, selectedBranchId || undefined);
         const groups = Array.isArray(groupsResponse) ? groupsResponse : (groupsResponse?.data || []);
         setAddOnGroups(groups.filter((group) => group.isActive));
       } catch (err) {
@@ -287,7 +281,7 @@ export function FoodItemsPage() {
     // Ensure menus are loaded
     if (menus.length === 0) {
       try {
-        const menuListResponse = await menuApi.getMenus();
+        const menuListResponse = await menuApi.getMenus(undefined, selectedBranchId || undefined);
         const menuList = Array.isArray(menuListResponse) ? menuListResponse : (menuListResponse?.data || []);
         setMenus(menuList);
       } catch (err) {
@@ -551,7 +545,7 @@ export function FoodItemsPage() {
         
 
       } else {
-        savedItem = await menuApi.createFoodItem(itemData);
+        savedItem = await menuApi.createFoodItem(itemData, selectedBranchId || undefined);
           
           // If image was selected during creation, upload it now
           if (currentImageFile) {

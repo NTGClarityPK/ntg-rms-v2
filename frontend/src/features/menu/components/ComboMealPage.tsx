@@ -39,6 +39,7 @@ import { notifications } from '@mantine/notifications';
 import { menuApi, ComboMeal, FoodItem } from '@/lib/api/menu';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { useBranchStore } from '@/lib/store/branch-store';
 import { t } from '@/lib/utils/translations';
 import { useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
@@ -52,6 +53,7 @@ import { isPaginatedResponse } from '@/lib/types/pagination.types';
 export function ComboMealPage() {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
+  const { selectedBranchId } = useBranchStore();
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
@@ -92,12 +94,12 @@ export function ComboMealPage() {
     try {
       setLoading(true);
 
-      // Load menus for menu type selection
-      const menuListResponse = await menuApi.getMenus();
+      // Load menus for menu type selection (with branch filter)
+      const menuListResponse = await menuApi.getMenus(undefined, selectedBranchId || undefined);
       const menuList = Array.isArray(menuListResponse) ? menuListResponse : (menuListResponse?.data || []);
       setMenus(menuList);
 
-      // Load food items for selection - fetch all items with a high limit
+      // Load food items for selection - fetch all items with a high limit (with branch filter)
       let allFoodItems: FoodItem[] = [];
       let currentPage = 1;
       const pageLimit = 100; // Fetch 100 items per page
@@ -107,7 +109,7 @@ export function ComboMealPage() {
         const itemsResponse = await menuApi.getFoodItems(undefined, {
           page: currentPage,
           limit: pageLimit,
-        }, undefined, false); // Explicitly pass onlyActiveMenus: false to show all items
+        }, undefined, false, selectedBranchId || undefined); // Pass branchId to filter by branch
         
         const items = Array.isArray(itemsResponse) 
           ? itemsResponse 
@@ -131,7 +133,7 @@ export function ComboMealPage() {
       // Load combo meals
       if (navigator.onLine) {
         try {
-          const serverResponse = await menuApi.getComboMeals(pagination.paginationParams);
+          const serverResponse = await menuApi.getComboMeals(pagination.paginationParams, selectedBranchId || undefined);
           const serverComboMeals = pagination.extractData(serverResponse);
           pagination.extractPagination(serverResponse);
           setComboMeals(serverComboMeals);
@@ -147,6 +149,7 @@ export function ComboMealPage() {
     } finally {
       setLoading(false);
     }
+    //eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.tenantId, pagination]);
 
   useEffect(() => {
@@ -169,19 +172,12 @@ export function ComboMealPage() {
 
   const getMenuName = (menuType: string): string => {
     const menu = menus.find((m) => m.menuType === menuType);
-    if (menu) {
-      return menu.name || menu.menuType;
+    // Always use the menu name from backend if available
+    if (menu && menu.name) {
+      return menu.name;
     }
-
-    const menuTypeLabels: Record<string, string> = {
-      all_day: t('menu.allDay', language),
-      breakfast: t('menu.breakfast', language),
-      lunch: t('menu.lunch', language),
-      dinner: t('menu.dinner', language),
-      kids_special: t('menu.kidsSpecial', language),
-    };
-
-    return menuTypeLabels[menuType] || menuType;
+    // Only fallback to menuType if no name is available
+    return menuType;
   };
 
   const calculateIndividualPrice = (foodItemIds: string[]): number => {
@@ -287,7 +283,7 @@ export function ComboMealPage() {
         if (wasEditing && currentEditingComboMeal) {
           savedComboMeal = await menuApi.updateComboMeal(currentEditingComboMeal.id, comboMealData);
         } else {
-          savedComboMeal = await menuApi.createComboMeal(comboMealData);
+          savedComboMeal = await menuApi.createComboMeal(comboMealData, selectedBranchId || undefined);
 
           if (currentImageFile) {
             try {

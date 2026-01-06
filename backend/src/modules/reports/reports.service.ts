@@ -311,13 +311,17 @@ export class ReportsService {
         throw new InternalServerErrorException(`Failed to fetch customers: ${customersError.message}`);
       }
 
-      // Get orders for date range if provided
+      // Get orders for date range if provided (filter by branch if provided)
       let ordersQuery = supabase
         .from('orders')
         .select('*')
         .eq('tenant_id', tenantId)
         .eq('status', 'completed')
         .is('deleted_at', null);
+
+      if (query.branchId) {
+        ordersQuery = ordersQuery.eq('branch_id', query.branchId);
+      }
 
       if (start && end) {
         ordersQuery = ordersQuery
@@ -331,42 +335,56 @@ export class ReportsService {
         throw new InternalServerErrorException(`Failed to fetch orders: ${ordersError.message}`);
       }
 
-      // Calculate customer statistics
-      const customerStats = customers.map((customer) => {
-        const customerOrders = orders.filter((o) => o.customer_id === customer.id);
-        const totalSpent = customerOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
-        const avgOrderValue = customerOrders.length > 0 ? totalSpent / customerOrders.length : 0;
+      // Calculate customer statistics - only include customers who have orders
+      // If branch filter is applied, only include customers with orders in that branch
+      // If no branch filter, include customers with orders in any branch
+      const customerStats = customers
+        .map((customer) => {
+          const customerOrders = orders.filter((o) => o.customer_id === customer.id);
+          
+          // Always exclude customers with no orders (regardless of branch filter)
+          if (customerOrders.length === 0) {
+            return null;
+          }
+          
+          // If branch filter is applied, only include customers with orders in that branch
+          // (This is already handled by filtering orders by branch above, so customerOrders
+          // will only contain orders from the selected branch if branchId is provided)
+          
+          const totalSpent = customerOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+          const avgOrderValue = customerOrders.length > 0 ? totalSpent / customerOrders.length : 0;
 
-        // Determine loyalty tier
-        let loyaltyTier = 'regular';
-        if (customerOrders.length >= 50) {
-          loyaltyTier = 'platinum';
-        } else if (customerOrders.length >= 11) {
-          loyaltyTier = 'gold';
-        } else if (customerOrders.length >= 3) {
-          loyaltyTier = 'silver';
-        }
+          // Determine loyalty tier
+          let loyaltyTier = 'regular';
+          if (customerOrders.length >= 50) {
+            loyaltyTier = 'platinum';
+          } else if (customerOrders.length >= 11) {
+            loyaltyTier = 'gold';
+          } else if (customerOrders.length >= 3) {
+            loyaltyTier = 'silver';
+          }
 
-        return {
-          id: customer.id,
-          name: customer.name,
-          phone: customer.phone,
-          email: customer.email,
-          totalOrders: customerOrders.length,
-          totalSpent,
-          avgOrderValue,
-          loyaltyTier,
-          lastOrderDate: customerOrders.length > 0
-            ? customerOrders.sort((a, b) => 
-                new Date(b.order_date).getTime() - new Date(a.order_date).getTime()
-              )[0].order_date
-            : null,
-        };
-      });
+          return {
+            id: customer.id,
+            name: customer.name,
+            phone: customer.phone,
+            email: customer.email,
+            totalOrders: customerOrders.length,
+            totalSpent,
+            avgOrderValue,
+            loyaltyTier,
+            lastOrderDate: customerOrders.length > 0
+              ? customerOrders.sort((a, b) => 
+                  new Date(b.order_date).getTime() - new Date(a.order_date).getTime()
+                )[0].order_date
+              : null,
+          };
+        })
+        .filter((c): c is NonNullable<typeof c> => c !== null);
 
-      // Summary statistics
+      // Summary statistics - only count customers with orders in the selected branch
       const summary = {
-        totalCustomers: customers.length,
+        totalCustomers: customerStats.length,
         activeCustomers: customerStats.filter((c) => c.totalOrders > 0).length,
         totalRevenue: customerStats.reduce((sum, c) => sum + c.totalSpent, 0),
         avgCustomerValue: customerStats.length > 0
@@ -407,12 +425,18 @@ export class ReportsService {
       const supabase = this.supabaseService.getServiceRoleClient();
       const { start, end } = this.parseDateRange(query.startDate, query.endDate);
 
-      // Get all ingredients
-      const { data: ingredients, error: ingredientsError } = await supabase
+      // Get all ingredients (filter by branch if provided)
+      let ingredientsQuery = supabase
         .from('ingredients')
         .select('*')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null);
+      
+      if (query.branchId) {
+        ingredientsQuery = ingredientsQuery.eq('branch_id', query.branchId);
+      }
+      
+      const { data: ingredients, error: ingredientsError } = await ingredientsQuery;
 
       if (ingredientsError) {
         throw new InternalServerErrorException(`Failed to fetch ingredients: ${ingredientsError.message}`);
@@ -654,13 +678,19 @@ export class ReportsService {
         throw new InternalServerErrorException(`Failed to fetch orders: ${ordersError.message}`);
       }
 
-      // Get tax configuration
-      const { data: taxes, error: taxesError } = await supabase
+      // Get tax configuration (filter by branch if provided)
+      let taxesQuery = supabase
         .from('taxes')
         .select('*')
         .eq('tenant_id', tenantId)
         .eq('is_active', true)
         .is('deleted_at', null);
+      
+      if (query.branchId) {
+        taxesQuery = taxesQuery.or(`branch_id.eq.${query.branchId},branch_id.is.null`);
+      }
+      
+      const { data: taxes, error: taxesError } = await taxesQuery;
 
       if (taxesError) {
         throw new InternalServerErrorException(`Failed to fetch taxes: ${taxesError.message}`);

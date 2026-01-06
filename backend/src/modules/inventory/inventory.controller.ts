@@ -43,6 +43,7 @@ export class InventoryController {
   @ApiQuery({ name: 'search', required: false, type: String, description: 'Search query for ingredient name' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'branchId', required: false, type: String })
   getIngredients(
     @CurrentUser() user: any,
     @Query('category') category?: string,
@@ -50,6 +51,7 @@ export class InventoryController {
     @Query('search') search?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('branchId') branchId?: string,
   ) {
     const filters: any = {};
     if (category) filters.category = category;
@@ -63,7 +65,7 @@ export class InventoryController {
       limit: limit ? parseInt(limit, 10) : undefined,
     };
     
-    return this.inventoryService.getIngredients(user.tenantId, filters, pagination);
+    return this.inventoryService.getIngredients(user.tenantId, filters, pagination, branchId);
   }
 
   @Get('ingredients/:id')
@@ -74,8 +76,8 @@ export class InventoryController {
 
   @Post('ingredients')
   @ApiOperation({ summary: 'Create a new ingredient' })
-  createIngredient(@CurrentUser() user: any, @Body() createDto: CreateIngredientDto) {
-    return this.inventoryService.createIngredient(user.tenantId, createDto);
+  createIngredient(@CurrentUser() user: any, @Body() createDto: CreateIngredientDto, @Query('branchId') branchId?: string) {
+    return this.inventoryService.createIngredient(user.tenantId, createDto, branchId);
   }
 
   @Put('ingredients/:id')
@@ -166,30 +168,32 @@ export class InventoryController {
   @ApiQuery({ name: 'addOnId', required: false, type: String })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'branchId', required: false, type: String })
   getRecipes(
     @CurrentUser() user: any,
     @Query('foodItemId') foodItemId?: string,
     @Query('addOnId') addOnId?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('branchId') branchId?: string,
   ) {
     const pagination: PaginationParams = {
       page: page ? parseInt(page, 10) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
     };
-    return this.inventoryService.getRecipes(user.tenantId, foodItemId, addOnId, pagination);
+    return this.inventoryService.getRecipes(user.tenantId, foodItemId, addOnId, pagination, branchId);
   }
 
   @Get('recipes/food-item/:foodItemId')
   @ApiOperation({ summary: 'Get recipe by food item ID' })
-  getRecipeByFoodItemId(@CurrentUser() user: any, @Param('foodItemId') foodItemId: string) {
-    return this.inventoryService.getRecipeByFoodItemId(user.tenantId, foodItemId);
+  getRecipeByFoodItemId(@CurrentUser() user: any, @Param('foodItemId') foodItemId: string, @Query('branchId') branchId?: string) {
+    return this.inventoryService.getRecipeByFoodItemId(user.tenantId, foodItemId, branchId);
   }
 
   @Post('recipes')
   @ApiOperation({ summary: 'Create or update recipe for a food item' })
-  createRecipe(@CurrentUser() user: any, @Body() createDto: CreateRecipeDto) {
-    return this.inventoryService.createOrUpdateRecipe(user.tenantId, createDto);
+  createRecipe(@CurrentUser() user: any, @Body() createDto: CreateRecipeDto, @Query('branchId') branchId?: string) {
+    return this.inventoryService.createOrUpdateRecipe(user.tenantId, createDto, branchId);
   }
 
   @Delete('recipes/food-item/:foodItemId')
@@ -221,8 +225,9 @@ export class InventoryController {
 
   @Get('reports/low-stock-alerts')
   @ApiOperation({ summary: 'Get low stock alerts' })
-  getLowStockAlerts(@CurrentUser() user: any) {
-    return this.inventoryService.getLowStockAlerts(user.tenantId);
+  @ApiQuery({ name: 'branchId', required: false, type: String })
+  getLowStockAlerts(@CurrentUser() user: any, @Query('branchId') branchId?: string) {
+    return this.inventoryService.getLowStockAlerts(user.tenantId, branchId);
   }
 
   @Get('reports/stock-movement')

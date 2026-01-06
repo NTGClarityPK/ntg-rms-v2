@@ -84,5 +84,10 @@ export class UpdateOrderDto {
   @IsNumber()
   @IsOptional()
   numberOfPersons?: number;
+
+  @ApiProperty({ required: false })
+  @IsUUID()
+  @IsOptional()
+  branchId?: string;
 }
 

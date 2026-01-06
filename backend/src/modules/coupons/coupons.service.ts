@@ -20,19 +20,25 @@ export class CouponsService {
   async validateCoupon(
     tenantId: string,
     validateCouponDto: ValidateCouponDto,
+    branchId?: string,
   ): Promise<{ discount: number; couponId: string }> {
     const { code, subtotal, customerId } = validateCouponDto;
 
     // Find active coupon by code (case-insensitive search)
-    const { data: coupon, error: couponError } = await this.supabaseService
+    let query = this.supabaseService
       .getServiceRoleClient()
       .from('coupons')
       .select('*')
       .eq('tenant_id', tenantId)
       .ilike('code', code.trim()) // Use ilike for case-insensitive matching
       .eq('is_active', true)
-      .is('deleted_at', null)
-      .single();
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      query = query.eq('branch_id', branchId);
+    }
+    
+    const { data: coupon, error: couponError } = await query.single();
 
     if (couponError || !coupon) {
       throw new NotFoundException('Invalid or expired coupon code');
@@ -175,24 +181,35 @@ export class CouponsService {
   }
 
   /**
-   * Get all coupons
+   * Get all coupons (optionally filtered by branch)
    */
-  async getCoupons(tenantId: string, pagination?: PaginationParams): Promise<PaginatedResponse<any> | any[]> {
+  async getCoupons(tenantId: string, pagination?: PaginationParams, branchId?: string): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
     
     // Get total count for pagination
-    const { count: totalCount } = await supabase
+    let countQuery = supabase
       .from('coupons')
       .select('*', { count: 'exact', head: true })
       .eq('tenant_id', tenantId)
       .is('deleted_at', null);
+    
+    if (branchId) {
+      countQuery = countQuery.eq('branch_id', branchId);
+    }
+    
+    const { count: totalCount } = await countQuery;
 
     let query = supabase
       .from('coupons')
       .select('*')
       .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false });
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      query = query.eq('branch_id', branchId);
+    }
+    
+    query = query.order('created_at', { ascending: false });
 
     // Apply pagination if provided
     if (pagination) {
@@ -268,36 +285,47 @@ export class CouponsService {
   /**
    * Create coupon
    */
-  async createCoupon(tenantId: string, createDto: CreateCouponDto) {
+  async createCoupon(tenantId: string, createDto: CreateCouponDto, branchId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Check if coupon code already exists
-    const { data: existing } = await supabase
+    // Check if coupon code already exists for this branch
+    let existingQuery = supabase
       .from('coupons')
       .select('id')
       .eq('tenant_id', tenantId)
       .ilike('code', createDto.code.trim())
-      .is('deleted_at', null)
-      .maybeSingle();
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      existingQuery = existingQuery.eq('branch_id', branchId);
+    }
+    
+    const { data: existing } = await existingQuery.maybeSingle();
 
     if (existing) {
-      throw new ConflictException('Coupon code already exists');
+      throw new ConflictException('Coupon code already exists for this branch');
+    }
+
+    const couponData: any = {
+      tenant_id: tenantId,
+      code: createDto.code.trim().toUpperCase(),
+      discount_type: createDto.discountType,
+      discount_value: createDto.discountValue,
+      min_order_amount: createDto.minOrderAmount || 0,
+      max_discount_amount: createDto.maxDiscountAmount || null,
+      usage_limit: createDto.usageLimit || null,
+      is_active: createDto.isActive !== undefined ? createDto.isActive : true,
+      valid_from: createDto.validFrom || new Date().toISOString(),
+      valid_until: createDto.validUntil || null,
+    };
+    
+    if (branchId) {
+      couponData.branch_id = branchId;
     }
 
     const { data: coupon, error } = await supabase
       .from('coupons')
-      .insert({
-        tenant_id: tenantId,
-        code: createDto.code.trim().toUpperCase(),
-        discount_type: createDto.discountType,
-        discount_value: createDto.discountValue,
-        min_order_amount: createDto.minOrderAmount || 0,
-        max_discount_amount: createDto.maxDiscountAmount || null,
-        usage_limit: createDto.usageLimit || null,
-        is_active: createDto.isActive !== undefined ? createDto.isActive : true,
-        valid_from: createDto.validFrom || new Date().toISOString(),
-        valid_until: createDto.validUntil || null,
-      })
+      .insert(couponData)
       .select()
       .single();
 

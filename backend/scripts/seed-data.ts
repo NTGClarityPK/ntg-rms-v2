@@ -57,16 +57,19 @@ const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
 interface SeedData {
   tenantId: string;
+  branches: Array<{ id: string; name: string; code: string }>;
+  branchData: Map<string, {
   branchId: string;
   counterId: string;
   cashierId: string;
-  taxIds: string[];
   categoryIds: string[];
   foodItemIds: string[];
   foodItemMap: Map<string, string>;
   customerIds: string[];
   ingredientIds: string[];
   ingredientMap: Map<string, string>;
+  }>;
+  taxIds: string[];
 }
 
 interface Credentials {
@@ -143,43 +146,70 @@ async function createNewTenant(): Promise<{ tenantId: string; ownerCredentials: 
   };
 }
 
-async function getOrCreateBranch(tenantId: string): Promise<string> {
-  const { data: branches, error } = await supabase
+async function createBranches(tenantId: string): Promise<Array<{ id: string; name: string; code: string }>> {
+  console.log('\n🏢 Creating branches...');
+  
+  const branchesToCreate = [
+    {
+      name: 'Main Branch',
+      code: 'MAIN-001',
+      address: '123 Main Street, Baghdad',
+      city: 'Baghdad',
+      country: 'Iraq',
+    },
+    {
+      name: 'Downtown Branch',
+      code: 'DT-002',
+      address: '456 Downtown Avenue, Baghdad',
+      city: 'Baghdad',
+      country: 'Iraq',
+    },
+    {
+      name: 'Mall Branch',
+      code: 'MALL-003',
+      address: '789 Shopping Mall, Baghdad',
+      city: 'Baghdad',
+      country: 'Iraq',
+    },
+  ];
+
+  const createdBranches: Array<{ id: string; name: string; code: string }> = [];
+
+  for (const branchData of branchesToCreate) {
+    // Check if branch already exists
+    const { data: existing } = await supabase
     .from('branches')
-    .select('id')
+      .select('id, name, code')
     .eq('tenant_id', tenantId)
+      .eq('code', branchData.code)
     .is('deleted_at', null)
-    .limit(1)
     .maybeSingle();
 
-  if (error) {
-    throw new Error(`Failed to fetch branch: ${error.message}`);
-  }
-
-  if (branches) {
-    console.log(`✅ Using existing branch: ${branches.id}`);
-    return branches.id;
+    if (existing) {
+      console.log(`   ⏭️  Branch "${branchData.name}" already exists`);
+      createdBranches.push({ id: existing.id, name: existing.name, code: existing.code });
+      continue;
   }
 
   const { data: newBranch, error: createError } = await supabase
     .from('branches')
     .insert({
       tenant_id: tenantId,
-      name: 'Main Branch',
-      code: 'MAIN-001',
-      address: '123 Main Street, Baghdad',
-      city: 'Baghdad',
-      country: 'Iraq',
+        ...branchData,
     })
-    .select('id')
+      .select('id, name, code')
     .single();
 
   if (createError) {
-    throw new Error(`Failed to create branch: ${createError.message}`);
+      console.error(`   ❌ Failed to create branch "${branchData.name}":`, createError.message);
+      continue;
   }
 
-  console.log(`✅ Created new branch: ${newBranch.id}`);
-  return newBranch.id;
+    console.log(`   ✅ Created branch: ${newBranch.name} (${newBranch.code})`);
+    createdBranches.push({ id: newBranch.id, name: newBranch.name, code: newBranch.code });
+  }
+
+  return createdBranches;
 }
 
 async function getOrCreateCounter(branchId: string): Promise<string> {
@@ -220,7 +250,7 @@ async function getOrCreateCounter(branchId: string): Promise<string> {
 
 async function createEmployeeWithAuth(
   tenantId: string,
-  branchId: string,
+  branchIds: string[], // Now accepts array of branch IDs
   role: string,
   name: string,
   email: string,
@@ -258,13 +288,16 @@ async function createEmployeeWithAuth(
     throw new Error(`Failed to create employee: ${createError.message}`);
   }
 
-  // Assign employee to branch
-  await supabase.from('user_branches').insert({
+  // Assign employee to branches
+  const branchAssignments = branchIds.map(branchId => ({
     user_id: employee.id,
     branch_id: branchId,
-  });
+  }));
 
-  console.log(`   ✅ Created ${role}: ${name} (${email})`);
+  await supabase.from('user_branches').insert(branchAssignments);
+
+  const branchNames = branchIds.length > 1 ? `${branchIds.length} branches` : '1 branch';
+  console.log(`   ✅ Created ${role}: ${name} (${email}) - assigned to ${branchNames}`);
 
   return {
     userId: employee.id,
@@ -277,27 +310,80 @@ async function createEmployeeWithAuth(
   };
 }
 
-async function createEmployees(tenantId: string, branchId: string): Promise<{ cashierId: string; allCredentials: Credentials[] }> {
+async function createEmployees(tenantId: string, branches: Array<{ id: string; name: string; code: string }>): Promise<{ cashierIds: Map<string, string>; allCredentials: Credentials[] }> {
   console.log('\n👤 Creating employees with auth accounts...');
 
   const credentials: Credentials[] = [];
+  const cashierIds = new Map<string, string>();
 
-  // Create Cashier
-  const cashier = await createEmployeeWithAuth(
+  // Branch 1 employees (Main Branch only)
+  const branch1Id = branches[0].id;
+  const cashier1 = await createEmployeeWithAuth(
     tenantId,
-    branchId,
+    [branch1Id],
     'cashier',
     'John Cashier',
     'cashier@restaurant.com',
     'cashier123',
     'EMP-001'
   );
-  credentials.push(cashier.credentials);
+  credentials.push(cashier1.credentials);
+  cashierIds.set(branch1Id, cashier1.userId);
 
-  // Create Manager
+  const waiter1 = await createEmployeeWithAuth(
+    tenantId,
+    [branch1Id],
+    'waiter',
+    'Ahmed Waiter',
+    'waiter@restaurant.com',
+    'waiter123',
+    'EMP-003'
+  );
+  credentials.push(waiter1.credentials);
+
+  // Branch 2 employees (Downtown Branch only)
+  const branch2Id = branches[1].id;
+  const cashier2 = await createEmployeeWithAuth(
+    tenantId,
+    [branch2Id],
+    'cashier',
+    'Mary Cashier',
+    'cashier2@restaurant.com',
+    'cashier123',
+    'EMP-006'
+  );
+  credentials.push(cashier2.credentials);
+  cashierIds.set(branch2Id, cashier2.userId);
+
+  const kitchenStaff2 = await createEmployeeWithAuth(
+    tenantId,
+    [branch2Id],
+    'kitchen_staff',
+    'Fatima Chef',
+    'chef2@restaurant.com',
+    'chef123',
+    'EMP-007'
+  );
+  credentials.push(kitchenStaff2.credentials);
+
+  // Branch 3 employees (Mall Branch only)
+  const branch3Id = branches[2].id;
+  const cashier3 = await createEmployeeWithAuth(
+    tenantId,
+    [branch3Id],
+    'cashier',
+    'David Cashier',
+    'cashier3@restaurant.com',
+    'cashier123',
+    'EMP-008'
+  );
+  credentials.push(cashier3.credentials);
+  cashierIds.set(branch3Id, cashier3.userId);
+
+  // Multi-branch employees (assigned to multiple branches)
   const manager = await createEmployeeWithAuth(
     tenantId,
-    branchId,
+    [branch1Id, branch2Id], // Manager for branches 1 and 2
     'manager',
     'Sarah Manager',
     'manager@restaurant.com',
@@ -306,34 +392,9 @@ async function createEmployees(tenantId: string, branchId: string): Promise<{ ca
   );
   credentials.push(manager.credentials);
 
-  // Create Waiter
-  const waiter = await createEmployeeWithAuth(
-    tenantId,
-    branchId,
-    'waiter',
-    'Ahmed Waiter',
-    'waiter@restaurant.com',
-    'waiter123',
-    'EMP-003'
-  );
-  credentials.push(waiter.credentials);
-
-  // Create Kitchen Staff
-  const kitchenStaff = await createEmployeeWithAuth(
-    tenantId,
-    branchId,
-    'kitchen_staff',
-    'Mohammed Chef',
-    'chef@restaurant.com',
-    'chef123',
-    'EMP-004'
-  );
-  credentials.push(kitchenStaff.credentials);
-
-  // Create Delivery Staff
   const deliveryStaff = await createEmployeeWithAuth(
     tenantId,
-    branchId,
+    [branch1Id, branch3Id], // Delivery for branches 1 and 3
     'delivery',
     'Ali Delivery',
     'delivery@restaurant.com',
@@ -342,8 +403,20 @@ async function createEmployees(tenantId: string, branchId: string): Promise<{ ca
   );
   credentials.push(deliveryStaff.credentials);
 
+  // Kitchen staff for branch 1
+  const kitchenStaff1 = await createEmployeeWithAuth(
+    tenantId,
+    [branch1Id],
+    'kitchen_staff',
+    'Mohammed Chef',
+    'chef@restaurant.com',
+    'chef123',
+    'EMP-004'
+  );
+  credentials.push(kitchenStaff1.credentials);
+
   return {
-    cashierId: cashier.userId,
+    cashierIds,
     allCredentials: credentials,
   };
 }
@@ -368,12 +441,12 @@ async function seedTables(branchId: string): Promise<void> {
   console.log(`   ✅ Created 15 tables`);
 }
 
-async function seedTaxes(tenantId: string): Promise<string[]> {
-  console.log('\n📊 Seeding taxes...');
+async function seedTaxes(tenantId: string, branchId: string, branchName?: string): Promise<string[]> {
+  const branchPrefix = branchName ? `${branchName} - ` : '';
+  console.log(`\n📊 Seeding taxes${branchName ? ` for ${branchName}` : ''}...`);
 
-  const taxes = [
+  const baseTaxes = [
     {
-      tenant_id: tenantId,
       name: 'VAT',
       tax_code: 'VAT-001',
       rate: 5.0,
@@ -382,7 +455,6 @@ async function seedTaxes(tenantId: string): Promise<string[]> {
       applies_to_service_charge: false,
     },
     {
-      tenant_id: tenantId,
       name: 'Service Charge',
       tax_code: 'SRV-001',
       rate: 10.0,
@@ -391,7 +463,6 @@ async function seedTaxes(tenantId: string): Promise<string[]> {
       applies_to_service_charge: true,
     },
     {
-      tenant_id: tenantId,
       name: 'City Tax',
       tax_code: 'CITY-001',
       rate: 2.0,
@@ -401,6 +472,17 @@ async function seedTaxes(tenantId: string): Promise<string[]> {
     },
   ];
 
+  const taxes = baseTaxes.map(tax => ({
+    tenant_id: tenantId,
+    branch_id: branchId,
+    name: branchPrefix + tax.name,
+    tax_code: `${tax.tax_code}-${branchId.substring(0, 8)}`,
+    rate: tax.rate,
+    applies_to: tax.applies_to,
+    applies_to_delivery: tax.applies_to_delivery,
+    applies_to_service_charge: tax.applies_to_service_charge,
+  }));
+
   const taxIds: string[] = [];
 
   for (const tax of taxes) {
@@ -408,6 +490,7 @@ async function seedTaxes(tenantId: string): Promise<string[]> {
       .from('taxes')
       .select('id')
       .eq('tenant_id', tenantId)
+      .eq('branch_id', branchId)
       .eq('tax_code', tax.tax_code)
       .is('deleted_at', null)
       .maybeSingle();
@@ -436,12 +519,11 @@ async function seedTaxes(tenantId: string): Promise<string[]> {
   return taxIds;
 }
 
-async function seedCategories(tenantId: string): Promise<string[]> {
+async function seedCategories(tenantId: string, branchId: string, branchName?: string): Promise<string[]> {
   console.log('\n📁 Seeding categories...');
 
-  const categories = [
+  const baseCategories = [
     {
-      tenant_id: tenantId,
       name: 'Appetizers & Starters',
       description: 'Delicious starters to begin your meal',
       image_url: 'https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=800',
@@ -449,7 +531,6 @@ async function seedCategories(tenantId: string): Promise<string[]> {
       display_order: 1,
     },
     {
-      tenant_id: tenantId,
       name: 'Main Courses',
       description: 'Hearty main dishes and grilled specialties',
       image_url: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800',
@@ -457,7 +538,6 @@ async function seedCategories(tenantId: string): Promise<string[]> {
       display_order: 2,
     },
     {
-      tenant_id: tenantId,
       name: 'Traditional Iraqi Dishes',
       description: 'Authentic Iraqi cuisine and specialties',
       image_url: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=800',
@@ -465,7 +545,6 @@ async function seedCategories(tenantId: string): Promise<string[]> {
       display_order: 3,
     },
     {
-      tenant_id: tenantId,
       name: 'Beverages',
       description: 'Fresh juices, teas, and soft drinks',
       image_url: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=800',
@@ -473,7 +552,6 @@ async function seedCategories(tenantId: string): Promise<string[]> {
       display_order: 4,
     },
     {
-      tenant_id: tenantId,
       name: 'Desserts & Sweets',
       description: 'Traditional sweets and modern desserts',
       image_url: 'https://images.unsplash.com/photo-1551024506-0bccd828d307?w=800',
@@ -481,7 +559,6 @@ async function seedCategories(tenantId: string): Promise<string[]> {
       display_order: 5,
     },
     {
-      tenant_id: tenantId,
       name: 'Breakfast Specials',
       description: 'Traditional breakfast items',
       image_url: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=800',
@@ -489,6 +566,16 @@ async function seedCategories(tenantId: string): Promise<string[]> {
       display_order: 6,
     },
   ];
+
+  const categories = baseCategories.map(cat => ({
+    tenant_id: tenantId,
+    branch_id: branchId,
+    name: branchName ? `${branchName} - ${cat.name}` : cat.name,
+    description: cat.description,
+    image_url: cat.image_url,
+    category_type: cat.category_type,
+    display_order: cat.display_order,
+  }));
 
   const categoryIds: string[] = [];
 
@@ -525,13 +612,69 @@ async function seedCategories(tenantId: string): Promise<string[]> {
   return categoryIds;
 }
 
-async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{ foodItemIds: string[]; foodItemMap: Map<string, string> }> {
-  console.log('\n🍽️  Seeding food items...');
+function getBranchSpecificItems(tenantId: string, branchId: string, categoryIds: string[], branchIndex: number, branchPrefix: string): any[] {
+  // Create unique items for each branch
+  const branchSpecificItems: any[] = [];
+  
+  if (branchIndex === 0) {
+    // Main Branch - Add premium items
+    branchSpecificItems.push({
+      tenant_id: tenantId,
+      branch_id: branchId,
+      category_id: categoryIds[1], // Main Courses
+      name: branchPrefix + 'Premium Steak',
+      description: 'Premium grilled steak with special seasoning',
+      image_url: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800',
+      base_price: 45000,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 10,
+      labels: ['chefs_special'],
+    });
+  } else if (branchIndex === 1) {
+    // Downtown Branch - Add fast food items
+    branchSpecificItems.push({
+      tenant_id: tenantId,
+      branch_id: branchId,
+      category_id: categoryIds[0], // Appetizers
+      name: branchPrefix + 'Chicken Wings',
+      description: 'Crispy chicken wings with special sauce',
+      image_url: 'https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=800',
+      base_price: 12000,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 10,
+      labels: ['popular'],
+    });
+  } else if (branchIndex === 2) {
+    // Mall Branch - Add quick service items
+    branchSpecificItems.push({
+      tenant_id: tenantId,
+      branch_id: branchId,
+      category_id: categoryIds[1], // Main Courses
+      name: branchPrefix + 'Quick Burger',
+      description: 'Fast service burger with fries',
+      image_url: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800',
+      base_price: 15000,
+      stock_type: 'unlimited',
+      menu_type: 'all_day',
+      display_order: 10,
+      labels: ['popular'],
+    });
+  }
+  
+  return branchSpecificItems;
+}
+
+async function seedFoodItems(tenantId: string, branchId: string, categoryIds: string[], branchName?: string, branchIndex?: number): Promise<{ foodItemIds: string[]; foodItemMap: Map<string, string> }> {
+  const branchPrefix = branchName ? `${branchName} - ` : '';
+  console.log(`\n🍽️  Seeding food items${branchName ? ` for ${branchName}` : ''}...`);
 
   const foodItems = [
     // Appetizers (categoryIds[0])
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[0],
       name: 'Hummus',
       description: 'Creamy chickpea dip with tahini, olive oil, and fresh herbs',
@@ -544,6 +687,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[0],
       name: 'Fattoush Salad',
       description: 'Fresh mixed salad with crispy bread, vegetables, and tangy dressing',
@@ -556,6 +700,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[0],
       name: 'Mutabal',
       description: 'Smoky eggplant dip with tahini and garlic',
@@ -568,6 +713,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[0],
       name: 'Kibbeh',
       description: 'Crispy bulgur shells filled with spiced meat',
@@ -580,6 +726,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[0],
       name: 'Sambousek',
       description: 'Crispy pastries filled with cheese or meat',
@@ -593,6 +740,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     // Main Courses (categoryIds[1])
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[1],
       name: 'Grilled Chicken',
       description: 'Tender marinated grilled chicken with rice and salad',
@@ -605,6 +753,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[1],
       name: 'Grilled Lamb Chops',
       description: 'Succulent lamb chops marinated in Middle Eastern spices',
@@ -617,6 +766,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[1],
       name: 'Grilled Fish',
       description: 'Fresh grilled fish with lemon and herbs',
@@ -629,6 +779,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[1],
       name: 'Mixed Grill Platter',
       description: 'Assorted grilled meats: chicken, kebab, and kofta',
@@ -642,6 +793,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     // Traditional Iraqi Dishes (categoryIds[2])
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[2],
       name: 'Masgouf',
       description: 'Traditional Iraqi grilled fish, slow-cooked over open fire',
@@ -654,6 +806,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[2],
       name: 'Kebab',
       description: 'Traditional Iraqi kebab with spiced minced meat',
@@ -666,6 +819,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[2],
       name: 'Dolma',
       description: 'Stuffed vegetables with rice and meat in tomato sauce',
@@ -678,6 +832,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[2],
       name: 'Biryani',
       description: 'Fragrant spiced rice with tender meat',
@@ -690,6 +845,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[2],
       name: 'Quzi',
       description: 'Slow-cooked lamb with spiced rice and nuts',
@@ -703,6 +859,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     // Beverages (categoryIds[3])
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[3],
       name: 'Fresh Orange Juice',
       description: 'Freshly squeezed orange juice',
@@ -715,6 +872,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[3],
       name: 'Fresh Lemonade',
       description: 'Refreshing homemade lemonade',
@@ -727,6 +885,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[3],
       name: 'Iraqi Tea',
       description: 'Traditional strong Iraqi tea',
@@ -739,6 +898,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[3],
       name: 'Ayran',
       description: 'Refreshing yogurt drink',
@@ -751,6 +911,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[3],
       name: 'Fresh Pomegranate Juice',
       description: 'Freshly squeezed pomegranate juice',
@@ -764,6 +925,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     // Desserts (categoryIds[4])
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[4],
       name: 'Baklava',
       description: 'Sweet pastry with nuts and honey syrup',
@@ -776,6 +938,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[4],
       name: 'Kunafa',
       description: 'Sweet cheese pastry with syrup',
@@ -788,6 +951,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[4],
       name: 'Ice Cream',
       description: 'Creamy vanilla ice cream',
@@ -800,6 +964,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[4],
       name: 'Umm Ali',
       description: 'Traditional Egyptian bread pudding',
@@ -813,6 +978,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     // Breakfast (categoryIds[5])
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[5],
       name: 'Ful Medames',
       description: 'Traditional fava beans with olive oil and lemon',
@@ -825,6 +991,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[5],
       name: 'Eggs with Pastrami',
       description: 'Scrambled eggs with spiced pastrami',
@@ -837,6 +1004,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[5],
       name: 'Labneh with Olive Oil',
       description: 'Creamy strained yogurt with olive oil',
@@ -850,6 +1018,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     // Additional items to reach 50 total
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[0],
       name: 'Tabbouleh',
       description: 'Fresh parsley salad with tomatoes, onions, and bulgur',
@@ -862,6 +1031,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[0],
       name: 'Falafel',
       description: 'Crispy chickpea fritters with tahini sauce',
@@ -874,6 +1044,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[0],
       name: 'Moutabal',
       description: 'Smoky roasted eggplant dip with tahini',
@@ -886,6 +1057,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[0],
       name: 'Warak Enab',
       description: 'Stuffed grape leaves with rice and herbs',
@@ -898,6 +1070,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[0],
       name: 'Shanklish',
       description: 'Aged cheese with herbs and olive oil',
@@ -910,6 +1083,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[1],
       name: 'Shish Tawook',
       description: 'Marinated chicken skewers with garlic sauce',
@@ -922,6 +1096,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[1],
       name: 'Kofta',
       description: 'Spiced minced meat skewers grilled to perfection',
@@ -934,6 +1109,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[1],
       name: 'Grilled Sea Bass',
       description: 'Fresh sea bass grilled with herbs and lemon',
@@ -946,6 +1122,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[1],
       name: 'Beef Steak',
       description: 'Tender beef steak with grilled vegetables',
@@ -958,6 +1135,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[1],
       name: 'Chicken Shawarma',
       description: 'Marinated chicken with garlic sauce and pickles',
@@ -970,6 +1148,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[2],
       name: 'Tashreeb',
       description: 'Traditional Iraqi lamb stew with bread',
@@ -982,6 +1161,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[2],
       name: 'Pacha',
       description: 'Traditional Iraqi dish with sheep head and feet',
@@ -994,6 +1174,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[2],
       name: 'Kubba Halab',
       description: 'Rice and meat dumplings in a tangy sauce',
@@ -1006,6 +1187,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[2],
       name: 'Timman Bagilla',
       description: 'Rice with fava beans and dill',
@@ -1018,6 +1200,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[2],
       name: 'Guss',
       description: 'Traditional Iraqi beef stew with vegetables',
@@ -1030,6 +1213,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[3],
       name: 'Turkish Coffee',
       description: 'Strong traditional Turkish coffee',
@@ -1042,6 +1226,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[3],
       name: 'Mint Lemonade',
       description: 'Refreshing lemonade with fresh mint',
@@ -1054,6 +1239,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[3],
       name: 'Fresh Mango Juice',
       description: 'Freshly squeezed mango juice',
@@ -1066,6 +1252,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[3],
       name: 'Fresh Watermelon Juice',
       description: 'Cool and refreshing watermelon juice',
@@ -1078,6 +1265,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[3],
       name: 'Iced Tea',
       description: 'Cold sweet tea with mint',
@@ -1090,6 +1278,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[4],
       name: 'Maamoul',
       description: 'Date-filled semolina cookies',
@@ -1102,6 +1291,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[4],
       name: 'Zalabia',
       description: 'Crispy fried dough drenched in syrup',
@@ -1114,6 +1304,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[4],
       name: 'Rice Pudding',
       description: 'Creamy rice pudding with rose water',
@@ -1126,6 +1317,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[4],
       name: 'Luqaimat',
       description: 'Sweet dumplings drizzled with date syrup',
@@ -1138,6 +1330,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[4],
       name: 'Cheesecake',
       description: 'Creamy cheesecake with berry topping',
@@ -1150,6 +1343,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[4],
       name: 'Muhallabia',
       description: 'Milky pudding with rose water and pistachios',
@@ -1162,6 +1356,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[5],
       name: 'Shakshuka',
       description: 'Eggs poached in spicy tomato sauce',
@@ -1174,6 +1369,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[5],
       name: 'Manakish',
       description: 'Flatbread with zaatar or cheese',
@@ -1186,6 +1382,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[5],
       name: 'Falafel Sandwich',
       description: 'Crispy falafel in pita bread with tahini',
@@ -1198,6 +1395,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[5],
       name: 'Halloumi',
       description: 'Grilled halloumi cheese with vegetables',
@@ -1210,6 +1408,7 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
     },
     {
       tenant_id: tenantId,
+      branch_id: branchId,
       category_id: categoryIds[5],
       name: 'Fried Eggs',
       description: 'Fried eggs with tomatoes and peppers',
@@ -1225,7 +1424,19 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
   const foodItemIds: string[] = [];
   const foodItemMap = new Map<string, string>(); // name -> id
 
-  for (const item of foodItems) {
+  // Add branch prefix to all items
+  const branchItems = foodItems.map(item => ({
+    ...item,
+    name: branchPrefix + item.name,
+  }));
+
+  // Add branch-specific unique items based on branch index
+  if (branchIndex !== undefined) {
+    const branchSpecificItems = getBranchSpecificItems(tenantId, branchId, categoryIds, branchIndex, branchPrefix);
+    branchItems.push(...branchSpecificItems);
+  }
+
+  for (const item of branchItems) {
     const { data: existing } = await supabase
       .from('food_items')
       .select('id')
@@ -1303,43 +1514,47 @@ async function seedFoodItems(tenantId: string, categoryIds: string[]): Promise<{
   return { foodItemIds, foodItemMap };
 }
 
-async function seedMenus(tenantId: string): Promise<void> {
-  console.log('\n📋 Seeding menus...');
+async function seedMenus(tenantId: string, branchId: string, branchName?: string): Promise<void> {
+  const branchPrefix = branchName ? `${branchName} - ` : '';
+  console.log(`\n📋 Seeding menus${branchName ? ` for ${branchName}` : ''}...`);
 
-  const menus = [
+  const baseMenus = [
     {
-      tenant_id: tenantId,
       menu_type: 'all_day',
       name: 'All Day',
     },
     {
-      tenant_id: tenantId,
       menu_type: 'breakfast',
       name: 'Breakfast',
     },
     {
-      tenant_id: tenantId,
       menu_type: 'lunch',
       name: 'Lunch',
     },
     {
-      tenant_id: tenantId,
       menu_type: 'dinner',
       name: 'Dinner',
     },
     {
-      tenant_id: tenantId,
       menu_type: 'kids_special',
       name: 'Kids Special',
     },
   ];
 
+  const menus = baseMenus.map(menu => ({
+    tenant_id: tenantId,
+    branch_id: branchId,
+    menu_type: menu.menu_type,
+    name: branchPrefix + menu.name,
+  }));
+
   for (const menu of menus) {
-    // Check if menu already exists
+    // Check if menu already exists with this branch_id
     const { data: existing } = await supabase
       .from('menus')
-      .select('id')
+      .select('id, branch_id')
       .eq('tenant_id', tenantId)
+      .eq('branch_id', branchId)
       .eq('menu_type', menu.menu_type)
       .maybeSingle();
 
@@ -1351,52 +1566,109 @@ async function seedMenus(tenantId: string): Promise<void> {
         .update({ is_active: true })
         .eq('id', existing.id);
     } else {
-      const { error } = await supabase.from('menus').insert(menu);
-      if (error) {
-        console.error(`   ❌ Failed to create menu "${menu.name}":`, error.message);
+      // Check if menu exists with NULL branch_id (from before branch_id migration)
+      const { data: existingNullBranch } = await supabase
+        .from('menus')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .is('branch_id', null)
+        .eq('menu_type', menu.menu_type)
+        .maybeSingle();
+
+      if (existingNullBranch) {
+        // Update existing menu to assign branch_id
+        const { error } = await supabase
+          .from('menus')
+          .update({ 
+            branch_id: branchId,
+            name: menu.name,
+            is_active: true 
+          })
+          .eq('id', existingNullBranch.id);
+        
+        if (error) {
+          console.error(`   ❌ Failed to update menu "${menu.name}":`, error.message);
+        } else {
+          console.log(`   ✅ Updated menu "${menu.name}" with branch_id`);
+        }
       } else {
-        console.log(`   ✅ Created menu: ${menu.name}`);
+        // Create new menu
+        const { error } = await supabase.from('menus').insert(menu);
+        if (error) {
+          // If it's a duplicate key error, try to find and update the existing menu
+          if (error.message.includes('duplicate key') || error.message.includes('unique constraint')) {
+            const { data: existingAny } = await supabase
+              .from('menus')
+              .select('id')
+              .eq('tenant_id', tenantId)
+              .eq('menu_type', menu.menu_type)
+              .maybeSingle();
+            
+            if (existingAny) {
+              const { error: updateError } = await supabase
+                .from('menus')
+                .update({ 
+                  branch_id: branchId,
+                  name: menu.name,
+                  is_active: true 
+                })
+                .eq('id', existingAny.id);
+              
+              if (updateError) {
+                console.error(`   ❌ Failed to update menu "${menu.name}":`, updateError.message);
+              } else {
+                console.log(`   ✅ Updated existing menu "${menu.name}" with branch_id`);
+              }
+            } else {
+              console.error(`   ❌ Failed to create menu "${menu.name}":`, error.message);
+            }
+          } else {
+            console.error(`   ❌ Failed to create menu "${menu.name}":`, error.message);
+          }
+        } else {
+          console.log(`   ✅ Created menu: ${menu.name}`);
+        }
       }
     }
   }
 }
 
-async function seedCustomers(tenantId: string): Promise<string[]> {
-  console.log('\n👥 Seeding customers...');
+async function seedCustomers(tenantId: string, branchId: string, branchName?: string, branchIndex?: number): Promise<string[]> {
+  const branchPrefix = branchName ? `${branchName} - ` : '';
+  console.log(`\n👥 Seeding customers${branchName ? ` for ${branchName}` : ''}...`);
 
-  const customers = [
+  // Make phone numbers unique per branch to ensure different customers per branch
+  const phoneOffset = branchIndex !== undefined ? branchIndex * 100 : 0;
+  
+  const baseCustomers = [
     {
-      tenant_id: tenantId,
       name: 'Ahmed Ali',
-      phone: '+9647501234567',
-      email: 'ahmed.ali@example.com',
+      phone: `+964750123${String(4567 + phoneOffset).padStart(4, '0')}`,
+      email: branchIndex !== undefined ? `ahmed.ali.b${branchIndex}@example.com` : 'ahmed.ali@example.com',
       preferred_language: 'ar',
       total_orders: 15,
       total_spent: 250000,
     },
     {
-      tenant_id: tenantId,
       name: 'Sarah Johnson',
-      phone: '+9647501234568',
-      email: 'sarah.johnson@example.com',
+      phone: `+964750123${String(4568 + phoneOffset).padStart(4, '0')}`,
+      email: branchIndex !== undefined ? `sarah.johnson.b${branchIndex}@example.com` : 'sarah.johnson@example.com',
       preferred_language: 'en',
       total_orders: 8,
       total_spent: 120000,
     },
     {
-      tenant_id: tenantId,
       name: 'Mohammed Hassan',
-      phone: '+9647501234569',
-      email: 'mohammed.hassan@example.com',
+      phone: `+964750123${String(4569 + phoneOffset).padStart(4, '0')}`,
+      email: branchIndex !== undefined ? `mohammed.hassan.b${branchIndex}@example.com` : 'mohammed.hassan@example.com',
       preferred_language: 'ar',
       total_orders: 22,
       total_spent: 380000,
     },
     {
-      tenant_id: tenantId,
       name: 'Emily Brown',
-      phone: '+9647501234570',
-      email: 'emily.brown@example.com',
+      phone: `+964750123${String(4570 + phoneOffset).padStart(4, '0')}`,
+      email: branchIndex !== undefined ? `emily.brown.b${branchIndex}@example.com` : 'emily.brown@example.com',
       preferred_language: 'en',
       total_orders: 5,
       total_spent: 75000,
@@ -1404,8 +1676,8 @@ async function seedCustomers(tenantId: string): Promise<string[]> {
     {
       tenant_id: tenantId,
       name: 'Fatima Al-Zahra',
-      phone: '+9647501234571',
-      email: 'fatima.zahra@example.com',
+      phone: `+964750123${String(4571 + phoneOffset).padStart(4, '0')}`,
+      email: branchIndex !== undefined ? `fatima.zahra.b${branchIndex}@example.com` : 'fatima.zahra@example.com',
       preferred_language: 'ar',
       total_orders: 12,
       total_spent: 180000,
@@ -1413,8 +1685,8 @@ async function seedCustomers(tenantId: string): Promise<string[]> {
     {
       tenant_id: tenantId,
       name: 'Omar Khaled',
-      phone: '+9647501234572',
-      email: 'omar.khaled@example.com',
+      phone: `+964750123${String(4572 + phoneOffset).padStart(4, '0')}`,
+      email: branchIndex !== undefined ? `omar.khaled.b${branchIndex}@example.com` : 'omar.khaled@example.com',
       preferred_language: 'ar',
       total_orders: 18,
       total_spent: 320000,
@@ -1422,8 +1694,8 @@ async function seedCustomers(tenantId: string): Promise<string[]> {
     {
       tenant_id: tenantId,
       name: 'Layla Mahmoud',
-      phone: '+9647501234573',
-      email: 'layla.mahmoud@example.com',
+      phone: `+964750123${String(4573 + phoneOffset).padStart(4, '0')}`,
+      email: branchIndex !== undefined ? `layla.mahmoud.b${branchIndex}@example.com` : 'layla.mahmoud@example.com',
       preferred_language: 'ar',
       total_orders: 10,
       total_spent: 150000,
@@ -1431,8 +1703,8 @@ async function seedCustomers(tenantId: string): Promise<string[]> {
     {
       tenant_id: tenantId,
       name: 'David Wilson',
-      phone: '+9647501234574',
-      email: 'david.wilson@example.com',
+      phone: `+964750123${String(4574 + phoneOffset).padStart(4, '0')}`,
+      email: branchIndex !== undefined ? `david.wilson.b${branchIndex}@example.com` : 'david.wilson@example.com',
       preferred_language: 'en',
       total_orders: 7,
       total_spent: 110000,
@@ -1440,8 +1712,8 @@ async function seedCustomers(tenantId: string): Promise<string[]> {
     {
       tenant_id: tenantId,
       name: 'Noor Ibrahim',
-      phone: '+9647501234575',
-      email: 'noor.ibrahim@example.com',
+      phone: `+964750123${String(4575 + phoneOffset).padStart(4, '0')}`,
+      email: branchIndex !== undefined ? `noor.ibrahim.b${branchIndex}@example.com` : 'noor.ibrahim@example.com',
       preferred_language: 'ar',
       total_orders: 14,
       total_spent: 220000,
@@ -1449,13 +1721,19 @@ async function seedCustomers(tenantId: string): Promise<string[]> {
     {
       tenant_id: tenantId,
       name: 'James Anderson',
-      phone: '+9647501234576',
-      email: 'james.anderson@example.com',
+      phone: `+964750123${String(4576 + phoneOffset).padStart(4, '0')}`,
+      email: branchIndex !== undefined ? `james.anderson.b${branchIndex}@example.com` : 'james.anderson@example.com',
       preferred_language: 'en',
       total_orders: 9,
       total_spent: 140000,
     },
   ];
+
+  // Map baseCustomers to include tenant_id
+  const customers = baseCustomers.map(c => ({
+    tenant_id: tenantId,
+    ...c,
+  }));
 
   const customerIds: string[] = [];
 
@@ -1464,6 +1742,7 @@ async function seedCustomers(tenantId: string): Promise<string[]> {
       .from('customers')
       .select('id')
       .eq('tenant_id', tenantId)
+      .eq('branch_id', branchId)
       .eq('phone', customer.phone)
       .is('deleted_at', null)
       .maybeSingle();
@@ -1474,9 +1753,14 @@ async function seedCustomers(tenantId: string): Promise<string[]> {
       continue;
     }
 
+    const customerData = {
+      ...customer,
+      branch_id: branchId,
+    };
+
     const { data: newCustomer, error } = await supabase
       .from('customers')
-      .insert(customer)
+      .insert(customerData)
       .select('id')
       .single();
 
@@ -1492,8 +1776,9 @@ async function seedCustomers(tenantId: string): Promise<string[]> {
   return customerIds;
 }
 
-async function seedIngredients(tenantId: string): Promise<{ ingredientIds: string[]; ingredientMap: Map<string, string> }> {
-  console.log('\n🥬 Seeding ingredients...');
+async function seedIngredients(tenantId: string, branchId: string, branchName?: string): Promise<{ ingredientIds: string[]; ingredientMap: Map<string, string> }> {
+  const branchPrefix = branchName ? `${branchName} - ` : '';
+  console.log(`\n🥬 Seeding ingredients${branchName ? ` for ${branchName}` : ''}...`);
 
   const ingredients = [
     { name: 'Chicken', category: 'meats', unit_of_measurement: 'kg', current_stock: 50, minimum_threshold: 10, cost_per_unit: 8000 },
@@ -1540,6 +1825,7 @@ async function seedIngredients(tenantId: string): Promise<{ ingredientIds: strin
         .from('ingredients')
         .insert({
           tenant_id: tenantId,
+          branch_id: branchId,
           ...ing,
           storage_location: 'Main Storage',
         })
@@ -1562,7 +1848,7 @@ async function seedIngredients(tenantId: string): Promise<{ ingredientIds: strin
   return { ingredientIds, ingredientMap };
 }
 
-async function seedRecipes(tenantId: string, foodItemMap: Map<string, string>, ingredientMap: Map<string, string>): Promise<void> {
+async function seedRecipes(tenantId: string, branchId: string, foodItemMap: Map<string, string>, ingredientMap: Map<string, string>): Promise<void> {
   console.log('\n📝 Seeding recipes...');
 
   const recipes = [
@@ -1582,12 +1868,35 @@ async function seedRecipes(tenantId: string, foodItemMap: Map<string, string>, i
       const ingredientId = ingredientMap.get(ing.name);
       if (!ingredientId) continue;
 
-      await supabase.from('recipes').upsert({
-        food_item_id: foodItemId,
-        ingredient_id: ingredientId,
-        quantity: ing.quantity,
-        unit: ing.unit,
-      }, { onConflict: 'food_item_id,ingredient_id' });
+      // Check if recipe already exists
+      const { data: existing } = await supabase
+        .from('recipes')
+        .select('id')
+        .eq('food_item_id', foodItemId)
+        .eq('ingredient_id', ingredientId)
+        .eq('branch_id', branchId)
+        .maybeSingle();
+      
+      if (existing) {
+        // Update existing recipe
+        await supabase
+          .from('recipes')
+          .update({
+            quantity: ing.quantity,
+            unit: ing.unit,
+          })
+          .eq('id', existing.id);
+      } else {
+        // Insert new recipe
+        await supabase.from('recipes').insert({
+          tenant_id: tenantId,
+          branch_id: branchId,
+          food_item_id: foodItemId,
+          ingredient_id: ingredientId,
+          quantity: ing.quantity,
+          unit: ing.unit,
+        });
+      }
     }
     console.log(`   ✅ Created recipe for: ${recipe.foodItem}`);
   }
@@ -1630,25 +1939,50 @@ async function seedStockTransactions(tenantId: string, branchId: string, ingredi
   console.log(`   ✅ Created ${transactions.length} stock transactions`);
 }
 
-async function seedAddOns(tenantId: string): Promise<{ addOnGroupIds: string[]; addOnIds: string[] }> {
-  console.log('\n➕ Seeding add-ons...');
+async function seedAddOns(tenantId: string, branchId: string, branchName?: string): Promise<{ addOnGroupIds: string[]; addOnIds: string[] }> {
+  const branchPrefix = branchName ? `${branchName} - ` : '';
+  console.log(`\n➕ Seeding add-ons${branchName ? ` for ${branchName}` : ''}...`);
 
   // Create Add-on Groups
-  const addOnGroups = [
+  const baseAddOnGroups = [
     { name: 'Extra Toppings', selection_type: 'multiple', is_required: false, category: 'Add' },
     { name: 'Spice Level', selection_type: 'single', is_required: true, category: 'Change' },
     { name: 'Side Dishes', selection_type: 'multiple', is_required: false, category: 'Add' },
   ];
 
+  const addOnGroups = baseAddOnGroups.map(g => ({
+    ...g,
+    name: branchPrefix + g.name,
+  }));
+
   const addOnGroupIds: string[] = [];
   const addOnIds: string[] = [];
 
   for (const group of addOnGroups) {
+    // Check if group already exists
+    const { data: existingGroup } = await supabase
+      .from('add_on_groups')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('branch_id', branchId)
+      .eq('name', group.name)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    let groupId: string;
+
+    if (existingGroup) {
+      console.log(`   ⏭️  Add-on group "${group.name}" already exists`);
+      groupId = existingGroup.id;
+    } else {
     const { data: newGroup, error: groupError } = await supabase
       .from('add_on_groups')
       .insert({
         tenant_id: tenantId,
-        ...group,
+          branch_id: branchId,
+          name: group.name,
+          selection_type: group.selection_type,
+          is_required: group.is_required,
         display_order: addOnGroupIds.length + 1,
       })
       .select('id')
@@ -1659,26 +1993,32 @@ async function seedAddOns(tenantId: string): Promise<{ addOnGroupIds: string[]; 
       continue;
     }
 
-    addOnGroupIds.push(newGroup.id);
+      groupId = newGroup.id;
     console.log(`   ✅ Created add-on group: ${group.name}`);
+    }
+
+    addOnGroupIds.push(groupId);
 
     // Create Add-ons for each group
     let addOns: Array<{ name: string; price: number }> = [];
     
-    if (group.name === 'Extra Toppings') {
+    // Determine add-ons based on original group name (without branch prefix)
+    const originalGroupName = group.name.replace(branchPrefix, '');
+    
+    if (originalGroupName === 'Extra Toppings') {
       addOns = [
         { name: 'Extra Cheese', price: 1000 },
         { name: 'Extra Olives', price: 500 },
         { name: 'Extra Nuts', price: 1500 },
       ];
-    } else if (group.name === 'Spice Level') {
+    } else if (originalGroupName === 'Spice Level') {
       addOns = [
         { name: 'Mild', price: 0 },
         { name: 'Medium', price: 0 },
         { name: 'Hot', price: 0 },
         { name: 'Extra Hot', price: 0 },
       ];
-    } else if (group.name === 'Side Dishes') {
+    } else if (originalGroupName === 'Side Dishes') {
       addOns = [
         { name: 'French Fries', price: 2000 },
         { name: 'Rice', price: 1500 },
@@ -1687,11 +2027,26 @@ async function seedAddOns(tenantId: string): Promise<{ addOnGroupIds: string[]; 
     }
 
     for (const addOn of addOns) {
+      // Check if add-on already exists
+      const { data: existingAddOn } = await supabase
+        .from('add_ons')
+        .select('id')
+        .eq('add_on_group_id', groupId)
+        .eq('name', addOn.name)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (existingAddOn) {
+        addOnIds.push(existingAddOn.id);
+        continue;
+      }
+
       const { data: newAddOn, error: addOnError } = await supabase
         .from('add_ons')
         .insert({
-          add_on_group_id: newGroup.id,
-          ...addOn,
+          add_on_group_id: groupId,
+          name: addOn.name,
+          price: addOn.price,
           display_order: addOnIds.length + 1,
         })
         .select('id')
@@ -1709,8 +2064,9 @@ async function seedAddOns(tenantId: string): Promise<{ addOnGroupIds: string[]; 
   return { addOnGroupIds, addOnIds };
 }
 
-async function seedVariationGroups(tenantId: string): Promise<Map<string, string>> {
-  console.log('\n📏 Seeding variation groups...');
+async function seedVariationGroups(tenantId: string, branchId: string, branchName?: string): Promise<Map<string, string>> {
+  const branchPrefix = branchName ? `${branchName} - ` : '';
+  console.log(`\n📏 Seeding variation groups${branchName ? ` for ${branchName}` : ''}...`);
 
   const variationGroupsData = [
     {
@@ -1761,37 +2117,40 @@ async function seedVariationGroups(tenantId: string): Promise<Map<string, string
   const variationGroupMap = new Map<string, string>(); // name -> id
 
   for (const groupData of variationGroupsData) {
+    const groupName = branchPrefix + groupData.name;
     // Check if variation group already exists
     const { data: existingGroup } = await supabase
       .from('variation_groups')
       .select('id')
       .eq('tenant_id', tenantId)
-      .eq('name', groupData.name)
+      .eq('branch_id', branchId)
+      .eq('name', groupName)
       .is('deleted_at', null)
       .maybeSingle();
 
     let groupId: string;
 
     if (existingGroup) {
-      console.log(`   ⏭️  Variation group "${groupData.name}" already exists`);
+      console.log(`   ⏭️  Variation group "${groupName}" already exists`);
       groupId = existingGroup.id;
     } else {
       const { data: newGroup, error: groupError } = await supabase
         .from('variation_groups')
         .insert({
           tenant_id: tenantId,
-          name: groupData.name,
+          branch_id: branchId,
+          name: groupName,
         })
         .select('id')
         .single();
 
       if (groupError) {
-        console.error(`   ❌ Failed to create variation group "${groupData.name}":`, groupError.message);
+        console.error(`   ❌ Failed to create variation group "${groupName}":`, groupError.message);
         continue;
       }
 
       groupId = newGroup.id;
-      console.log(`   ✅ Created variation group: ${groupData.name}`);
+      console.log(`   ✅ Created variation group: ${groupName}`);
     }
 
     variationGroupMap.set(groupData.name, groupId);
@@ -1970,10 +2329,16 @@ async function generateOrderNumber(tenantId: string, branchId: string, orderDate
 }
 
 async function seedOrders(
-  seedData: SeedData,
-  foodItemIds: string[]
+  tenantId: string,
+  branchId: string,
+  counterId: string,
+  cashierId: string,
+  foodItemIds: string[],
+  customerIds: string[],
+  branchName?: string
 ): Promise<void> {
-  console.log('\n📦 Seeding orders...');
+  const branchPrefix = branchName ? ` for ${branchName}` : '';
+  console.log(`\n📦 Seeding orders${branchPrefix}...`);
 
   const orderStatuses = ['pending', 'preparing', 'ready', 'served', 'completed'];
   const activeStatuses = ['pending', 'preparing', 'ready']; // Active order statuses
@@ -1985,8 +2350,9 @@ async function seedOrders(
   const now = new Date();
   const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000); // 2 hours in milliseconds
 
-  // Create 500 sample orders for vibrant dashboard
-  for (let i = 0; i < 500; i++) {
+  // Create orders per branch (reduced from 500 to 200 per branch for 3 branches = 600 total)
+  const ordersPerBranch = 200;
+  for (let i = 0; i < ordersPerBranch; i++) {
     const status = orderStatuses[Math.floor(Math.random() * orderStatuses.length)];
     const isActiveOrder = activeStatuses.includes(status);
     
@@ -2005,7 +2371,7 @@ async function seedOrders(
     }
     const paymentStatus = paymentStatuses[Math.floor(Math.random() * paymentStatuses.length)];
     const orderType = orderTypes[Math.floor(Math.random() * orderTypes.length)];
-    const customerId = seedData.customerIds[Math.floor(Math.random() * seedData.customerIds.length)];
+    const customerId = customerIds[Math.floor(Math.random() * customerIds.length)];
 
     // Select 1-4 random food items
     const numItems = Math.floor(Math.random() * 4) + 1;
@@ -2054,17 +2420,17 @@ async function seedOrders(
     const deliveryCharge = orderType === 'delivery' ? 2000 : 0;
     const totalAmount = subtotal + taxAmount + deliveryCharge - discountAmount;
 
-    const orderNumber = await generateOrderNumber(seedData.tenantId, seedData.branchId, orderDate);
+    const orderNumber = await generateOrderNumber(tenantId, branchId, orderDate);
 
     // Create order
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .insert({
-        tenant_id: seedData.tenantId,
-        branch_id: seedData.branchId,
-        counter_id: seedData.counterId,
+        tenant_id: tenantId,
+        branch_id: branchId,
+        counter_id: counterId,
         customer_id: customerId,
-        cashier_id: seedData.cashierId,
+        cashier_id: cashierId,
         order_number: orderNumber,
         token_number: `${String(i + 1).padStart(4, '0')}`,
         order_type: orderType,
@@ -2128,11 +2494,185 @@ async function seedOrders(
       }
     }
 
+    // Create delivery record if order type is delivery
+    if (orderType === 'delivery') {
+      // Get customer address if available
+      const { data: customerAddresses } = await supabase
+        .from('customer_addresses')
+        .select('id')
+        .eq('customer_id', customerId)
+        .eq('is_default', true)
+        .limit(1)
+        .maybeSingle();
+
+      const customerAddressId = customerAddresses?.id || null;
+      
+      // Create delivery record
+      const { error: deliveryError } = await supabase.from('deliveries').insert({
+        order_id: order.id,
+        customer_address_id: customerAddressId,
+        status: 'pending',
+        delivery_charge: deliveryCharge,
+        notes: null,
+      });
+
+      if (deliveryError) {
+        console.error(`   ❌ Failed to create delivery record:`, deliveryError.message);
+      }
+    }
+
     if ((i + 1) % 50 === 0) {
       console.log(`   ✅ Created ${i + 1} orders...`);
   }
   }
-  console.log(`   ✅ Created 500 orders total`);
+  console.log(`   ✅ Created ${ordersPerBranch} orders total${branchPrefix}`);
+}
+
+async function seedBuffets(tenantId: string, branchId: string, branchName?: string): Promise<void> {
+  const branchPrefix = branchName ? `${branchName} - ` : '';
+  console.log(`\n🍽️  Seeding buffets${branchName ? ` for ${branchName}` : ''}...`);
+
+  const buffets = [
+    {
+      tenant_id: tenantId,
+      branch_id: branchId,
+      name: branchPrefix + 'Weekend Family Buffet',
+      description: 'All-you-can-eat buffet with a variety of dishes',
+      image_url: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800',
+      price_per_person: 25000,
+      min_persons: 2,
+      duration: 120,
+      menu_types: ['all_day', 'lunch', 'dinner'],
+      display_order: 1,
+    },
+    {
+      tenant_id: tenantId,
+      branch_id: branchId,
+      name: branchPrefix + 'Breakfast Buffet',
+      description: 'Traditional breakfast items buffet',
+      image_url: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=800',
+      price_per_person: 15000,
+      min_persons: 1,
+      duration: 90,
+      menu_types: ['breakfast'],
+      display_order: 2,
+    },
+    {
+      tenant_id: tenantId,
+      branch_id: branchId,
+      name: branchPrefix + 'Lunch Special Buffet',
+      description: 'Lunch buffet with main courses and salads',
+      image_url: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800',
+      price_per_person: 20000,
+      min_persons: 2,
+      duration: 90,
+      menu_types: ['lunch'],
+      display_order: 3,
+    },
+  ];
+
+  for (const buffet of buffets) {
+    const { data: existing } = await supabase
+      .from('buffets')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('branch_id', branchId)
+      .eq('name', buffet.name)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (existing) {
+      console.log(`   ⏭️  Buffet "${buffet.name}" already exists`);
+      continue;
+    }
+
+    const { error } = await supabase
+      .from('buffets')
+      .insert(buffet);
+
+    if (error) {
+      console.error(`   ❌ Failed to create buffet "${buffet.name}":`, error.message);
+      continue;
+    }
+
+    console.log(`   ✅ Created buffet: ${buffet.name}`);
+  }
+}
+
+async function seedComboMeals(tenantId: string, branchId: string, foodItemIds: string[], branchName?: string): Promise<void> {
+  const branchPrefix = branchName ? `${branchName} - ` : '';
+  console.log(`\n🍱 Seeding combo meals${branchName ? ` for ${branchName}` : ''}...`);
+
+  if (foodItemIds.length < 3) {
+    console.log(`   ⚠️  Not enough food items to create combo meals`);
+    return;
+  }
+
+  const comboMeals = [
+    {
+      tenant_id: tenantId,
+      branch_id: branchId,
+      name: branchPrefix + 'Family Combo',
+      description: 'Perfect for families - includes main course, appetizer, and dessert',
+      image_url: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800',
+      base_price: 35000,
+      food_item_ids: foodItemIds.slice(0, 3),
+      menu_types: ['all_day', 'lunch', 'dinner'],
+      discount_percentage: 15,
+      display_order: 1,
+    },
+    {
+      tenant_id: tenantId,
+      branch_id: branchId,
+      name: branchPrefix + 'Lunch Combo',
+      description: 'Quick lunch combo with main and drink',
+      image_url: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800',
+      base_price: 18000,
+      food_item_ids: foodItemIds.slice(1, 3),
+      menu_types: ['lunch'],
+      discount_percentage: 10,
+      display_order: 2,
+    },
+    {
+      tenant_id: tenantId,
+      branch_id: branchId,
+      name: branchPrefix + 'Breakfast Combo',
+      description: 'Traditional breakfast combo',
+      image_url: 'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=800',
+      base_price: 12000,
+      food_item_ids: foodItemIds.slice(0, 2),
+      menu_types: ['breakfast'],
+      discount_percentage: 12,
+      display_order: 3,
+    },
+  ];
+
+  for (const comboMeal of comboMeals) {
+    const { data: existing } = await supabase
+      .from('combo_meals')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('branch_id', branchId)
+      .eq('name', comboMeal.name)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (existing) {
+      console.log(`   ⏭️  Combo meal "${comboMeal.name}" already exists`);
+      continue;
+    }
+
+    const { error } = await supabase
+      .from('combo_meals')
+      .insert(comboMeal);
+
+    if (error) {
+      console.error(`   ❌ Failed to create combo meal "${comboMeal.name}":`, error.message);
+      continue;
+    }
+
+    console.log(`   ✅ Created combo meal: ${comboMeal.name}`);
+  }
 }
 
 async function seedData() {
@@ -2145,74 +2685,109 @@ async function seedData() {
     const { tenantId, ownerCredentials } = await createNewTenant();
     allCredentials.push(ownerCredentials);
 
-    // Get or create branch
-    const branchId = await getOrCreateBranch(tenantId);
+    // Create multiple branches
+    const branches = await createBranches(tenantId);
 
-    // Get or create counter
-    const counterId = await getOrCreateCounter(branchId);
+    if (branches.length === 0) {
+      throw new Error('Failed to create any branches');
+    }
 
-    // Create employees with auth accounts
-    const { cashierId, allCredentials: employeeCredentials } = await createEmployees(tenantId, branchId);
+    // Create employees with auth accounts (assigns to specific branches)
+    const { cashierIds, allCredentials: employeeCredentials } = await createEmployees(tenantId, branches);
     allCredentials.push(...employeeCredentials);
 
-    // Seed tables
-    await seedTables(branchId);
+    // Create branch-specific data for each branch
+    const branchData = new Map<string, {
+      branchId: string;
+      counterId: string;
+      cashierId: string;
+      categoryIds: string[];
+      foodItemIds: string[];
+      foodItemMap: Map<string, string>;
+      customerIds: string[];
+      ingredientIds: string[];
+      ingredientMap: Map<string, string>;
+    }>();
 
-    // Seed taxes
-    const taxIds = await seedTaxes(tenantId);
+    for (let i = 0; i < branches.length; i++) {
+      const branch = branches[i];
+      console.log(`\n${'='.repeat(80)}`);
+      console.log(`🏢 Processing Branch ${i + 1}: ${branch.name} (${branch.code})`);
+      console.log('='.repeat(80));
 
-    // Seed categories
-    const categoryIds = await seedCategories(tenantId);
+      // Get or create counter for this branch
+      const counterId = await getOrCreateCounter(branch.id);
 
-    // Seed food items
-    const { foodItemIds, foodItemMap } = await seedFoodItems(tenantId, categoryIds);
+      // Seed tables for this branch
+      await seedTables(branch.id);
 
-    // Seed menus (must be after food items to ensure menu_items can reference them)
-    await seedMenus(tenantId);
+      // Seed taxes for this branch
+      const taxIds = await seedTaxes(tenantId, branch.id, branch.name);
 
-    // Seed ingredients
-    const { ingredientIds, ingredientMap } = await seedIngredients(tenantId);
+      // Seed menus for this branch
+      await seedMenus(tenantId, branch.id, branch.name);
 
-    // Seed recipes
-    await seedRecipes(tenantId, foodItemMap, ingredientMap);
+      // Seed variation groups for this branch
+      await seedVariationGroups(tenantId, branch.id, branch.name);
 
-    // Seed stock transactions
-    await seedStockTransactions(tenantId, branchId, ingredientMap, cashierId);
+      // Seed add-ons for this branch
+      const { addOnGroupIds } = await seedAddOns(tenantId, branch.id, branch.name);
 
-    // Seed add-ons
-    const { addOnGroupIds } = await seedAddOns(tenantId);
+      // Seed categories for this branch
+      const categoryIds = await seedCategories(tenantId, branch.id, branch.name);
 
-    // Link add-ons to food items
+      // Seed food items for this branch
+      const { foodItemIds, foodItemMap } = await seedFoodItems(tenantId, branch.id, categoryIds, branch.name, i);
+
+      // Link add-ons to food items for this branch
     await linkAddOnsToFoodItems(foodItemMap, addOnGroupIds);
 
-    // Seed variation groups
-    await seedVariationGroups(tenantId);
-
-    // Seed food item variations
+      // Seed food item variations for this branch
     await seedFoodItemVariations(foodItemMap);
 
-    // Seed customers
-    const customerIds = await seedCustomers(tenantId);
+      // Seed ingredients for this branch
+      const { ingredientIds, ingredientMap } = await seedIngredients(tenantId, branch.id, branch.name);
+
+      // Seed recipes for this branch
+      await seedRecipes(tenantId, branch.id, foodItemMap, ingredientMap);
+
+      // Get cashier for this branch
+      const cashierId = cashierIds.get(branch.id);
+      if (!cashierId) {
+        throw new Error(`No cashier found for branch ${branch.name}`);
+      }
+
+      // Seed stock transactions for this branch
+      await seedStockTransactions(tenantId, branch.id, ingredientMap, cashierId);
+
+      // Seed customers for this branch
+      const customerIds = await seedCustomers(tenantId, branch.id, branch.name, i);
 
     // Seed customer addresses
     await seedCustomerAddresses(customerIds);
 
-    // Seed orders
-    const seedData: SeedData = {
-      tenantId,
-      branchId,
+      // Store branch data
+      branchData.set(branch.id, {
+        branchId: branch.id,
       counterId,
       cashierId,
-      taxIds,
       categoryIds,
       foodItemIds,
       foodItemMap,
       customerIds,
       ingredientIds,
       ingredientMap,
-    };
+      });
 
-    await seedOrders(seedData, foodItemIds);
+      // Seed orders for this branch (fewer orders per branch)
+      await seedOrders(tenantId, branch.id, counterId, cashierId, foodItemIds, customerIds, branch.name);
+
+      // Seed buffets for this branch
+      await seedBuffets(tenantId, branch.id, branch.name);
+
+      // Seed combo meals for this branch
+      await seedComboMeals(tenantId, branch.id, foodItemIds, branch.name);
+    }
 
     // Verify orders were created
     console.log('\n🔍 Verifying orders...');
@@ -2239,20 +2814,32 @@ async function seedData() {
     console.log('\n✨ Seed data process completed successfully!');
     console.log(`\n📊 Summary:`);
     console.log(`   - Tenant ID: ${tenantId}`);
-    console.log(`   - Taxes: ${taxIds.length}`);
-    console.log(`   - Categories: ${categoryIds.length} (with images)`);
-    console.log(`   - Food Items: ${foodItemIds.length} (with images, labels, and descriptions)`);
+    console.log(`   - Branches: ${branches.length} (${branches.map(b => b.name).join(', ')})`);
+    console.log(`   - Taxes: Created per branch (typically 2-3 per branch)`);
     console.log(`   - Variation Groups: 5 groups (Size, Portion, Temperature, Spice Level, Sweetness)`);
-    console.log(`   - Food Item Variations: Multiple items with size/portion options`);
-    console.log(`   - Ingredients: ${ingredientIds.length} (with stock levels)`);
-    console.log(`   - Recipes: Linking food items to ingredients`);
-    console.log(`   - Stock Transactions: Historical purchase records`);
     console.log(`   - Add-on Groups: 3 groups with multiple options`);
-    console.log(`   - Add-ons Linked: To various food items`);
-    console.log(`   - Customers: ${customerIds.length} (with addresses and order history)`);
-    console.log(`   - Tables: 15 (various sizes and types)`);
-    console.log(`   - Orders: 500 (for vibrant dashboard)`);
-    console.log(`   - Employees: ${employeeCredentials.length + 1} (including owner with auth accounts)`);
+    console.log(`\n   Per Branch Data:`);
+    let totalItems = 0;
+    let totalCustomers = 0;
+    let totalIngredients = 0;
+    branchData.forEach((data, branchId) => {
+      const branch = branches.find(b => b.id === branchId);
+      console.log(`   - ${branch?.name || 'Unknown'}:`);
+      console.log(`     * Categories: ${data.categoryIds.length}`);
+      console.log(`     * Food Items: ${data.foodItemIds.length}`);
+      console.log(`     * Customers: ${data.customerIds.length}`);
+      console.log(`     * Ingredients: ${data.ingredientIds.length}`);
+      totalItems += data.foodItemIds.length;
+      totalCustomers += data.customerIds.length;
+      totalIngredients += data.ingredientIds.length;
+    });
+    console.log(`\n   Totals:`);
+    console.log(`   - Food Items: ${totalItems} (across all branches)`);
+    console.log(`   - Customers: ${totalCustomers} (across all branches)`);
+    console.log(`   - Ingredients: ${totalIngredients} (across all branches)`);
+    console.log(`   - Tables: ${branches.length * 15} (15 per branch)`);
+    console.log(`   - Orders: ${branches.length * 200} (200 per branch)`);
+    console.log(`   - Employees: ${employeeCredentials.length + 1} (including owner, assigned to specific branches)`);
     console.log(`\n⚠️  IMPORTANT: Make sure you're logged in with the tenant ID above!`);
     console.log(`   Use the credentials below to log in and see the orders.`);
 

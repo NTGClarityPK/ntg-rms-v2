@@ -50,6 +50,7 @@ import { notifications } from '@mantine/notifications';
 import apiClient from '@/lib/api/client';
 import { API_ENDPOINTS } from '@/lib/constants/api';
 import { ordersApi, OrderItem } from '@/lib/api/orders';
+import { couponsApi } from '@/lib/api/coupons';
 import { customersApi } from '@/lib/api/customers';
 import { useSettings } from '@/lib/hooks/use-settings';
 import { useSyncStatus } from '@/lib/hooks/use-sync-status';
@@ -538,18 +539,18 @@ export function POSCart({
     setIsValidatingCoupon(true);
     try {
       const subtotal = orderCalculatorService.calculateSubtotal(cartItems);
-      const response = await apiClient.post(API_ENDPOINTS.COUPONS.VALIDATE, {
+      const response = await couponsApi.validateCoupon({
         code: couponCode.trim().toUpperCase(),
         subtotal,
         customerId: selectedCustomerId || undefined,
-      });
+      }, branchId || undefined);
 
-      if (response.data) {
-        setAppliedCouponDiscount(response.data.discount);
-        setAppliedCouponId(response.data.couponId);
+      if (response) {
+        setAppliedCouponDiscount(response.discount);
+        setAppliedCouponId(response.couponId);
         notifications.show({
           title: t('pos.couponApplied', language) || 'Coupon Applied',
-          message: `${t('pos.discount', language)}: ${formatCurrency(response.data.discount, currency)}`,
+          message: `${t('pos.discount', language)}: ${formatCurrency(response.discount, currency)}`,
           color: getSuccessColor(),
         });
       }

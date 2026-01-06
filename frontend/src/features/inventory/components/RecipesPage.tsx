@@ -38,6 +38,7 @@ import {
 import { menuApi, FoodItem } from '@/lib/api/menu';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { useBranchStore } from '@/lib/store/branch-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
@@ -57,6 +58,7 @@ interface RecipeIngredient {
 export function RecipesPage() {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
+  const { selectedBranchId } = useBranchStore();
   const { refreshKey, triggerRefresh } = useInventoryRefresh();
   const notificationColors = useNotificationColors();
   const errorColor = useErrorColor();
@@ -88,14 +90,14 @@ export function RecipesPage() {
     if (!user?.tenantId) return;
 
     try {
-      const serverFoodItemsResponse = await menuApi.getFoodItems(undefined, foodItemsPagination.paginationParams);
+      const serverFoodItemsResponse = await menuApi.getFoodItems(undefined, foodItemsPagination.paginationParams, undefined, false, selectedBranchId || undefined);
       const serverFoodItems = foodItemsPagination.extractData(serverFoodItemsResponse);
       foodItemsPagination.extractPagination(serverFoodItemsResponse);
       setFoodItems(serverFoodItems);
     } catch (err: any) {
       console.error('Failed to load food items:', err);
     }
-  }, [user?.tenantId, foodItemsPagination]);
+  }, [user?.tenantId, foodItemsPagination, selectedBranchId]);
 
   const loadAllFoodItems = useCallback(async () => {
     if (!user?.tenantId) return;
@@ -108,7 +110,7 @@ export function RecipesPage() {
 
       // Fetch all pages sequentially
       while (hasMore) {
-        const response = await menuApi.getFoodItems(undefined, { page, limit });
+        const response = await menuApi.getFoodItems(undefined, { page, limit }, undefined, false, selectedBranchId || undefined);
         
         if (isPaginatedResponse(response)) {
           allFoodItems.push(...response.data);
@@ -125,7 +127,7 @@ export function RecipesPage() {
     } catch (err: any) {
       console.error('Failed to load all food items:', err);
     }
-  }, [user?.tenantId]);
+  }, [user?.tenantId, selectedBranchId]);
 
   const loadIngredients = useCallback(async () => {
     if (!user?.tenantId) return;
@@ -138,7 +140,7 @@ export function RecipesPage() {
 
       // Fetch all pages sequentially
       while (hasMore) {
-        const response = await inventoryApi.getIngredients({ isActive: true }, { page, limit });
+        const response = await inventoryApi.getIngredients({ isActive: true }, { page, limit }, selectedBranchId || undefined);
         
         if (isPaginatedResponse(response)) {
           allServerIngredients.push(...response.data);
@@ -173,13 +175,13 @@ export function RecipesPage() {
     } catch (err: any) {
       console.error('Failed to load ingredients:', err);
     }
-  }, [user?.tenantId]);
+  }, [user?.tenantId, selectedBranchId]);
 
   const loadRecipes = useCallback(async () => {
     if (!user?.tenantId) return;
 
     try {
-      const serverRecipesResponse = await inventoryApi.getRecipes();
+      const serverRecipesResponse = await inventoryApi.getRecipes(undefined, undefined, undefined, selectedBranchId || undefined);
       const serverRecipes = Array.isArray(serverRecipesResponse) 
         ? serverRecipesResponse 
         : (serverRecipesResponse?.data || []);
@@ -187,7 +189,7 @@ export function RecipesPage() {
     } catch (err: any) {
       console.error('Failed to load recipes:', err);
     }
-  }, [user?.tenantId]);
+  }, [user?.tenantId, selectedBranchId]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -197,13 +199,13 @@ export function RecipesPage() {
     };
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [foodItemsPagination.page, foodItemsPagination.limit, refreshKey]);
+  }, [foodItemsPagination.page, foodItemsPagination.limit, refreshKey, selectedBranchId]);
 
   useEffect(() => {
     if (foodItems.length > 0) {
       loadRecipes();
     }
-  }, [loadRecipes, foodItems.length, refreshKey]);
+  }, [loadRecipes, foodItems.length, refreshKey, selectedBranchId]);
 
   // Helper function to get deduplicated ingredient options for Select dropdowns
   const getIngredientOptions = useCallback(() => {
@@ -301,7 +303,7 @@ export function RecipesPage() {
         })),
       };
 
-      await inventoryApi.createOrUpdateRecipe(recipeData);
+      await inventoryApi.createOrUpdateRecipe(recipeData, selectedBranchId || undefined);
 
       notifications.show({
         title: t('common.success' as any, language) || 'Success',

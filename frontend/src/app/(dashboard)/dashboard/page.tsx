@@ -15,6 +15,7 @@ import {
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { useBranchStore } from '@/lib/store/branch-store';
 import { t } from '@/lib/utils/translations';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { useChartTooltip } from '@/lib/hooks/use-chart-tooltip';
@@ -29,6 +30,7 @@ import { useRouter } from 'next/navigation';
 export default function DashboardPage() {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
+  const { selectedBranchId } = useBranchStore();
   const primary = useThemeColor();
   const currency = useCurrency();
   const { isOnline } = useSyncStatus();
@@ -40,8 +42,8 @@ export default function DashboardPage() {
   const loadDashboard = useCallback(async () => {
     try {
       setLoading(true);
-      if (isOnline) {
-        const data = await dashboardApi.getDashboard();
+      if (isOnline && selectedBranchId) {
+        const data = await dashboardApi.getDashboard(selectedBranchId);
         setDashboardData(data);
       }
     } catch (error: any) {
@@ -54,7 +56,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [isOnline, language]);
+  }, [isOnline, selectedBranchId, language]);
 
   // Redirect if offline
   useEffect(() => {

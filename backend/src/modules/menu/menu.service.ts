@@ -39,22 +39,35 @@ export class MenuService {
   // CATEGORY MANAGEMENT
   // ============================================
 
-  async getCategories(tenantId: string, pagination?: PaginationParams): Promise<PaginatedResponse<any> | any[]> {
+  async getCategories(tenantId: string, pagination?: PaginationParams, branchId?: string): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
     
-    // Get total count for pagination
-    const { count: totalCount } = await supabase
+    // Build count query
+    let countQuery = supabase
       .from('categories')
       .select('*', { count: 'exact', head: true })
       .eq('tenant_id', tenantId)
       .is('deleted_at', null);
+    
+    if (branchId) {
+      // Include items with matching branch_id OR NULL branch_id (for backward compatibility)
+      countQuery = countQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+    
+    const { count: totalCount } = await countQuery;
 
     let query = supabase
       .from('categories')
       .select('*')
       .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .order('display_order', { ascending: true });
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      // Include items with matching branch_id OR NULL branch_id (for backward compatibility)
+      query = query.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+    
+    query = query.order('display_order', { ascending: true });
 
     // Apply pagination if provided
     if (pagination) {
@@ -156,7 +169,7 @@ export class MenuService {
     };
   }
 
-  async createCategory(tenantId: string, createDto: CreateCategoryDto) {
+  async createCategory(tenantId: string, createDto: CreateCategoryDto, branchId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Validate parent category if provided
@@ -174,18 +187,24 @@ export class MenuService {
       }
     }
 
+    const categoryData: any = {
+      tenant_id: tenantId,
+      name: createDto.name,
+      description: createDto.description || null,
+      image_url: createDto.imageUrl || null,
+      category_type: createDto.categoryType || 'food',
+      parent_id: createDto.parentId || null,
+      display_order: 0,
+      is_active: createDto.isActive !== undefined ? createDto.isActive : true,
+    };
+
+    if (branchId) {
+      categoryData.branch_id = branchId;
+    }
+
     const { data: category, error } = await supabase
       .from('categories')
-      .insert({
-        tenant_id: tenantId,
-        name: createDto.name,
-        description: createDto.description || null,
-        image_url: createDto.imageUrl || null,
-        category_type: createDto.categoryType || 'food',
-        parent_id: createDto.parentId || null,
-        display_order: 0,
-        is_active: createDto.isActive !== undefined ? createDto.isActive : true,
-      })
+      .insert(categoryData)
       .select()
       .single();
 
@@ -337,7 +356,7 @@ export class MenuService {
   // FOOD ITEM MANAGEMENT
   // ============================================
 
-  async getFoodItems(tenantId: string, categoryId?: string, pagination?: PaginationParams, onlyActiveMenus: boolean = false, search?: string): Promise<PaginatedResponse<any> | any[]> {
+  async getFoodItems(tenantId: string, categoryId?: string, pagination?: PaginationParams, onlyActiveMenus: boolean = false, search?: string, branchId?: string): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
     
     // Get food items (without pagination first to get accurate count)
@@ -350,6 +369,13 @@ export class MenuService {
     if (categoryId) {
       query = query.eq('category_id', categoryId);
     }
+
+    if (branchId) {
+      // When a branch is selected, only show items from that branch (exclude NULL for strict filtering)
+      query = query.eq('branch_id', branchId);
+    }
+    // Note: If branchId is not provided, we show all items (for backward compatibility)
+    // But in practice, branchId should always be provided for branch-specific views
 
     // Apply search filter if provided
     if (search && search.trim()) {
@@ -375,6 +401,11 @@ export class MenuService {
         .eq('tenant_id', tenantId)
         .eq('is_active', true);
       
+      if (branchId) {
+        // Include items with matching branch_id OR NULL branch_id (for backward compatibility)
+        activeMenusQuery = activeMenusQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+      }
+      
       // Check for soft-deleted menus if the table has deleted_at column
       try {
         activeMenusQuery = activeMenusQuery.is('deleted_at', null);
@@ -389,11 +420,18 @@ export class MenuService {
       if (activeMenusError) {
         // If error is about column not existing, retry without deleted_at check
         if (activeMenusError.message?.includes('deleted_at') || activeMenusError.message?.includes('column')) {
-          const { data: retryActiveMenus, error: retryError } = await supabase
+          let retryQuery = supabase
             .from('menus')
             .select('menu_type')
             .eq('tenant_id', tenantId)
             .eq('is_active', true);
+          
+          if (branchId) {
+            // Include items with matching branch_id OR NULL branch_id (for backward compatibility)
+            retryQuery = retryQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+          }
+          
+          const { data: retryActiveMenus, error: retryError } = await retryQuery;
           
           if (retryError) {
             throw new BadRequestException(`Failed to fetch active menus: ${retryError.message}`);
@@ -688,7 +726,7 @@ export class MenuService {
     };
   }
 
-  async createFoodItem(tenantId: string, createDto: CreateFoodItemDto) {
+  async createFoodItem(tenantId: string, createDto: CreateFoodItemDto, branchId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Validate category
@@ -705,22 +743,28 @@ export class MenuService {
     }
 
     // Create food item
+    const foodItemData: any = {
+      tenant_id: tenantId,
+      category_id: createDto.categoryId,
+      name: createDto.name,
+      description: createDto.description || null,
+      image_url: createDto.imageUrl || null,
+      base_price: createDto.basePrice,
+      stock_type: createDto.stockType || 'unlimited',
+      stock_quantity: createDto.stockQuantity || 0,
+      menu_type: createDto.menuType || 'all_day',
+      age_limit: createDto.ageLimit || null,
+      display_order: 0,
+      is_active: true,
+    };
+
+    if (branchId) {
+      foodItemData.branch_id = branchId;
+    }
+
     const { data: foodItem, error } = await supabase
       .from('food_items')
-      .insert({
-        tenant_id: tenantId,
-        category_id: createDto.categoryId,
-        name: createDto.name,
-        description: createDto.description || null,
-        image_url: createDto.imageUrl || null,
-        base_price: createDto.basePrice,
-        stock_type: createDto.stockType || 'unlimited',
-        stock_quantity: createDto.stockQuantity || 0,
-        menu_type: createDto.menuType || 'all_day',
-        age_limit: createDto.ageLimit || null,
-        display_order: 0,
-        is_active: true,
-      })
+      .insert(foodItemData)
       .select()
       .single();
 
@@ -1267,22 +1311,35 @@ export class MenuService {
   // ADD-ON GROUP MANAGEMENT
   // ============================================
 
-  async getAddOnGroups(tenantId: string, pagination?: PaginationParams): Promise<PaginatedResponse<any> | any[]> {
+  async getAddOnGroups(tenantId: string, pagination?: PaginationParams, branchId?: string): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
     
     // Get total count for pagination
-    const { count: totalCount } = await supabase
+    let countQuery = supabase
       .from('add_on_groups')
       .select('*', { count: 'exact', head: true })
       .eq('tenant_id', tenantId)
       .is('deleted_at', null);
+    
+    if (branchId) {
+      // Include items with matching branch_id OR NULL branch_id (for backward compatibility)
+      countQuery = countQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+    
+    const { count: totalCount } = await countQuery;
 
     let query = supabase
       .from('add_on_groups')
       .select('*')
       .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .order('display_order', { ascending: true });
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      // Include items with matching branch_id OR NULL branch_id (for backward compatibility)
+      query = query.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+    
+    query = query.order('display_order', { ascending: true });
 
     // Apply pagination if provided
     if (pagination) {
@@ -1381,7 +1438,7 @@ export class MenuService {
     };
   }
 
-  async createAddOnGroup(tenantId: string, createDto: CreateAddOnGroupDto) {
+  async createAddOnGroup(tenantId: string, createDto: CreateAddOnGroupDto, branchId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Auto-set maxSelections to 1 if selectionType is single
@@ -1394,19 +1451,25 @@ export class MenuService {
       ? 1
       : (createDto.minSelections ?? 0);
 
-    const { data: addOnGroup, error } = await supabase
-      .from('add_on_groups')
-      .insert({
+    const addOnGroupData: any = {
         tenant_id: tenantId,
         name: createDto.name,
         selection_type: createDto.selectionType || 'multiple',
         is_required: createDto.isRequired || false,
         min_selections: minSelections,
         max_selections: maxSelections,
-        display_order: 0,
-        is_active: true,
+      display_order: createDto.displayOrder || 0,
+      is_active: createDto.isActive ?? true,
         category: createDto.category || null,
-      })
+    };
+    
+    if (branchId) {
+      addOnGroupData.branch_id = branchId;
+    }
+
+    const { data: addOnGroup, error } = await supabase
+      .from('add_on_groups')
+      .insert(addOnGroupData)
       .select()
       .single();
 
@@ -1795,22 +1858,53 @@ export class MenuService {
   // and their menu_type field. A proper menus table can be added later.
   // ============================================
 
-  async getMenus(tenantId: string, pagination?: PaginationParams): Promise<PaginatedResponse<any> | any[]> {
+  async getMenus(tenantId: string, pagination?: PaginationParams, branchId?: string): Promise<PaginatedResponse<any> | any[]> {
     // Get menus from menu_items junction table
     const supabase = this.supabaseService.getServiceRoleClient();
     
-    // Get all unique menu types from menu_items for this tenant
-    const { data: menuItems, error } = await supabase
+    // First, get food items for this branch (to filter menu_items)
+    let foodItemsQuery = supabase
+      .from('food_items')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      // Include items with matching branch_id OR NULL branch_id (for backward compatibility)
+      foodItemsQuery = foodItemsQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+    
+    const { data: branchFoodItems, error: foodItemsError } = await foodItemsQuery;
+    
+    if (foodItemsError) {
+      throw new BadRequestException(`Failed to fetch food items: ${foodItemsError.message}`);
+    }
+    
+    const branchFoodItemIds = branchFoodItems?.map((item: any) => item.id) || [];
+    
+    // If no food items for this branch, return empty array
+    if (branchFoodItemIds.length === 0) {
+      if (pagination) {
+        return createPaginatedResponse([], 0, pagination.page || 1, pagination.limit || 10);
+      }
+      return [];
+    }
+    
+    // Get menu_items that reference food items for this branch
+    let menuItemsQuery = supabase
       .from('menu_items')
       .select('menu_type, food_item_id')
-      .eq('tenant_id', tenantId);
+      .eq('tenant_id', tenantId)
+      .in('food_item_id', branchFoodItemIds);
+    
+    const { data: menuItems, error } = await menuItemsQuery;
 
     if (error) {
       throw new BadRequestException(`Failed to fetch menus: ${error.message}`);
     }
 
     // Get unique menu types
-    const uniqueMenuTypes = [...new Set(menuItems.map((mi) => mi.menu_type))];
+    const uniqueMenuTypes = [...new Set(menuItems?.map((mi: any) => mi.menu_type) || [])];
     
     // Include default menu types if they don't exist yet
     const defaultMenuTypes = ['all_day', 'breakfast', 'lunch', 'dinner', 'kids_special'];
@@ -1823,12 +1917,12 @@ export class MenuService {
       paginatedMenuTypes = allMenuTypes.slice(offset, offset + limit);
     }
 
-    // Get active food items to filter counts
-    const foodItemIds = menuItems.map((mi) => mi.food_item_id);
+    // Get active food items to filter counts (only for this branch)
+    const foodItemIds = menuItems?.map((mi: any) => mi.food_item_id) || [];
     let activeItemIds: string[] = [];
     
     if (foodItemIds.length > 0) {
-      const { data: activeItems } = await supabase
+      let activeItemsQuery = supabase
         .from('food_items')
         .select('id')
         .eq('tenant_id', tenantId)
@@ -1836,15 +1930,28 @@ export class MenuService {
         .eq('is_active', true)
         .is('deleted_at', null);
       
-      activeItemIds = activeItems?.map((item) => item.id) || [];
+      if (branchId) {
+        // Include items with matching branch_id OR NULL branch_id (for backward compatibility)
+        activeItemsQuery = activeItemsQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+      }
+      
+      const { data: activeItems } = await activeItemsQuery;
+      activeItemIds = activeItems?.map((item: any) => item.id) || [];
     }
 
     // Try to get menu names and active status from menus table
-    const { data: menuData } = await supabase
+    let menuDataQuery = supabase
       .from('menus')
       .select('menu_type, name, is_active')
       .eq('tenant_id', tenantId)
       .in('menu_type', allMenuTypes);
+    
+    if (branchId) {
+      // When a branch is selected, only get menus from that branch (exclude NULL for strict filtering)
+      menuDataQuery = menuDataQuery.eq('branch_id', branchId);
+    }
+    
+    const { data: menuData } = await menuDataQuery;
 
     // Create maps of menu_type to name and is_active
     const menuNameMap = new Map<string, string>();
@@ -1858,11 +1965,10 @@ export class MenuService {
 
     // Group by menu_type and count all items (not just active ones)
     const menus = paginatedMenuTypes.map((menuType) => {
-      const itemsInMenu = menuItems.filter((mi) => mi.menu_type === menuType);
+      const itemsInMenu = (menuItems || []).filter((mi: any) => mi.menu_type === menuType);
       
-      // Use stored name if available, otherwise generate from menu_type
+      // Always use stored name from menus table - don't generate fallback names
       const storedName = menuNameMap.get(menuType);
-      const displayName = storedName || (menuType.charAt(0).toUpperCase() + menuType.slice(1).replace(/_/g, ' '));
       
       // Get is_active from menus table, default to true if not set
       const isActive = menuActiveMap.has(menuType) 
@@ -1871,7 +1977,7 @@ export class MenuService {
       
       return {
         menuType,
-        name: displayName,
+        name: storedName || menuType, // Use name from menus table, or menuType as last resort
         isActive,
         itemCount: itemsInMenu.length, // Count all items, not just active ones
       };
@@ -1914,6 +2020,73 @@ export class MenuService {
       .is('deleted_at', null);
 
     return activeItems.map((item) => item.id);
+  }
+
+  async getMenuItemsForTypes(tenantId: string, menuTypes: string[], branchId?: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+    
+    if (menuTypes.length === 0) {
+      return {};
+    }
+    
+    // Get food item IDs from menu_items junction table for all menu types at once
+    let menuItemsQuery = supabase
+      .from('menu_items')
+      .select('menu_type, food_item_id')
+      .eq('tenant_id', tenantId)
+      .in('menu_type', menuTypes);
+
+    const { data: menuItems, error } = await menuItemsQuery;
+
+    if (error) {
+      throw new BadRequestException(`Failed to fetch menu items: ${error.message}`);
+    }
+
+    // Group food item IDs by menu type
+    const menuItemsMap = new Map<string, Set<string>>();
+    menuTypes.forEach(type => menuItemsMap.set(type, new Set()));
+    
+    menuItems?.forEach((mi: any) => {
+      if (menuItemsMap.has(mi.menu_type)) {
+        menuItemsMap.get(mi.menu_type)!.add(mi.food_item_id);
+      }
+    });
+
+    // Get all unique food item IDs
+    const allFoodItemIds = new Set<string>();
+    menuItemsMap.forEach((ids) => {
+      ids.forEach(id => allFoodItemIds.add(id));
+    });
+
+    if (allFoodItemIds.size === 0) {
+      return Object.fromEntries(menuTypes.map(type => [type, []]));
+    }
+
+    // Verify items are still active (one query for all items)
+    let activeItemsQuery = supabase
+      .from('food_items')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .in('id', Array.from(allFoodItemIds))
+      .eq('is_active', true)
+      .is('deleted_at', null);
+
+    if (branchId) {
+      // Include items with matching branch_id OR NULL branch_id (for backward compatibility)
+      activeItemsQuery = activeItemsQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+
+    const { data: activeItems } = await activeItemsQuery;
+    const activeItemIds = new Set(activeItems?.map((item: any) => item.id) || []);
+
+    // Return map of menu type to array of active food item IDs
+    const result: Record<string, string[]> = {};
+    menuTypes.forEach(type => {
+      const typeItemIds = menuItemsMap.get(type) || new Set();
+      result[type] = Array.from(typeItemIds).filter(id => activeItemIds.has(id));
+    });
+
+    return result;
   }
 
   async assignItemsToMenu(tenantId: string, menuType: string, foodItemIds: string[]) {
@@ -2199,36 +2372,73 @@ export class MenuService {
     }
   }
 
-  async createMenu(tenantId: string, createDto: CreateMenuDto) {
+  async createMenu(tenantId: string, createDto: CreateMenuDto, branchId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Check if menu type already exists
-    const { data: existing } = await supabase
-      .from('menu_items')
+    // Check if menu type already exists for this branch
+    let existingQuery = supabase
+      .from('menus')
       .select('menu_type')
       .eq('tenant_id', tenantId)
-      .eq('menu_type', createDto.menuType)
-      .limit(1);
+      .eq('menu_type', createDto.menuType);
+    
+    if (branchId) {
+      existingQuery = existingQuery.eq('branch_id', branchId);
+    }
+    
+    const { data: existing } = await existingQuery.limit(1);
 
     if (existing && existing.length > 0) {
-      throw new ConflictException('Menu type already exists');
+      throw new ConflictException('Menu type already exists for this branch');
     }
 
+
     // Store menu name in menus table (create table if it doesn't exist - Supabase will handle it)
-    // We'll use upsert to handle both create and update
+    // Use manual check-then-update-or-insert since partial unique indexes don't work with upsert onConflict
     if (createDto.name) {
-      const { error: menuNameError } = await supabase
-        .from('menus')
-        .upsert({
+      const menuData: any = {
           tenant_id: tenantId,
           menu_type: createDto.menuType,
           name: createDto.name,
-          is_active: createDto.isActive !== undefined ? createDto.isActive : true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }, {
-          onConflict: 'tenant_id,menu_type',
-        });
+        is_active: createDto.isActive ?? true,
+          branch_id: branchId || null, // Always include branch_id, set to null if not provided
+      };
+      
+      // Check if menu already exists
+      let existingMenuQuery = supabase
+        .from('menus')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('menu_type', createDto.menuType)
+        .is('deleted_at', null);
+      
+      if (branchId) {
+        existingMenuQuery = existingMenuQuery.eq('branch_id', branchId);
+      } else {
+        existingMenuQuery = existingMenuQuery.is('branch_id', null);
+      }
+      
+      const { data: existingMenu } = await existingMenuQuery.limit(1);
+      
+      let menuNameError;
+      if (existingMenu && existingMenu.length > 0) {
+        // Update existing menu
+        const { error: updateError } = await supabase
+          .from('menus')
+          .update({
+            name: createDto.name,
+            is_active: createDto.isActive ?? true,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existingMenu[0].id);
+        menuNameError = updateError;
+      } else {
+        // Insert new menu
+        const { error: insertError } = await supabase
+          .from('menus')
+          .insert(menuData);
+        menuNameError = insertError;
+      }
 
       // If table doesn't exist, we'll continue without storing the name
       // The name will be generated from menu_type in getMenus
@@ -2325,22 +2535,35 @@ export class MenuService {
   // BUFFET MANAGEMENT
   // ============================================
 
-  async getBuffets(tenantId: string, pagination?: PaginationParams): Promise<PaginatedResponse<any> | any[]> {
+  async getBuffets(tenantId: string, pagination?: PaginationParams, branchId?: string): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
     
     // Get total count for pagination
-    const { count: totalCount } = await supabase
+    let countQuery = supabase
       .from('buffets')
       .select('*', { count: 'exact', head: true })
       .eq('tenant_id', tenantId)
       .is('deleted_at', null);
+    
+    if (branchId) {
+      // Include items with matching branch_id OR NULL branch_id (for backward compatibility)
+      countQuery = countQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+    
+    const { count: totalCount } = await countQuery;
 
     let query = supabase
       .from('buffets')
       .select('*')
       .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .order('display_order', { ascending: true });
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      // Include items with matching branch_id OR NULL branch_id (for backward compatibility)
+      query = query.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+    
+    query = query.order('display_order', { ascending: true });
 
     // Apply pagination if provided
     if (pagination) {
@@ -2431,17 +2654,22 @@ export class MenuService {
     };
   }
 
-  async createBuffet(tenantId: string, createDto: CreateBuffetDto) {
+  async createBuffet(tenantId: string, createDto: CreateBuffetDto, branchId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Check if buffet with same name already exists
-    const { data: existing } = await supabase
+    // Check if buffet with same name already exists for this branch
+    let existingQuery = supabase
       .from('buffets')
       .select('id')
       .eq('tenant_id', tenantId)
       .eq('name', createDto.name.trim())
-      .is('deleted_at', null)
-      .single();
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      existingQuery = existingQuery.eq('branch_id', branchId);
+    }
+    
+    const { data: existing } = await existingQuery.maybeSingle();
 
     if (existing) {
       throw new ConflictException('A buffet with this name already exists');
@@ -2458,9 +2686,7 @@ export class MenuService {
 
     const displayOrder = createDto.displayOrder ?? ((maxOrder?.display_order || 0) + 1);
 
-    const { data: buffet, error } = await supabase
-      .from('buffets')
-      .insert({
+    const buffetData: any = {
         tenant_id: tenantId,
         name: createDto.name.trim(),
         description: createDto.description,
@@ -2473,7 +2699,15 @@ export class MenuService {
         is_active: createDto.isActive !== undefined ? createDto.isActive : true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      })
+    };
+    
+    if (branchId) {
+      buffetData.branch_id = branchId;
+    }
+
+    const { data: buffet, error } = await supabase
+      .from('buffets')
+      .insert(buffetData)
       .select()
       .single();
 
@@ -2654,22 +2888,35 @@ export class MenuService {
   // COMBO MEAL MANAGEMENT
   // ============================================
 
-  async getComboMeals(tenantId: string, pagination?: PaginationParams): Promise<PaginatedResponse<any> | any[]> {
+  async getComboMeals(tenantId: string, pagination?: PaginationParams, branchId?: string): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
     
     // Get total count for pagination
-    const { count: totalCount } = await supabase
+    let countQuery = supabase
       .from('combo_meals')
       .select('*', { count: 'exact', head: true })
       .eq('tenant_id', tenantId)
       .is('deleted_at', null);
 
+    if (branchId) {
+      // Include items with matching branch_id OR NULL branch_id (for backward compatibility)
+      countQuery = countQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+
+    const { count: totalCount } = await countQuery;
+
     let query = supabase
       .from('combo_meals')
       .select('*')
       .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .order('display_order', { ascending: true });
+      .is('deleted_at', null);
+
+    if (branchId) {
+      // Include items with matching branch_id OR NULL branch_id (for backward compatibility)
+      query = query.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+
+    query = query.order('display_order', { ascending: true });
 
     // Apply pagination if provided
     if (pagination) {
@@ -2750,17 +2997,22 @@ export class MenuService {
     };
   }
 
-  async createComboMeal(tenantId: string, createDto: CreateComboMealDto) {
+  async createComboMeal(tenantId: string, createDto: CreateComboMealDto, branchId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Check if combo meal with same name already exists
-    const { data: existing } = await supabase
+    // Check if combo meal with same name already exists for this branch
+    let existingQuery = supabase
       .from('combo_meals')
       .select('id')
       .eq('tenant_id', tenantId)
       .eq('name', createDto.name.trim())
-      .is('deleted_at', null)
-      .single();
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      existingQuery = existingQuery.eq('branch_id', branchId);
+    }
+    
+    const { data: existing } = await existingQuery.maybeSingle();
 
     if (existing) {
       throw new ConflictException('A combo meal with this name already exists');
@@ -2791,9 +3043,7 @@ export class MenuService {
 
     const displayOrder = createDto.displayOrder ?? ((maxOrder?.display_order || 0) + 1);
 
-    const { data: comboMeal, error } = await supabase
-      .from('combo_meals')
-      .insert({
+    const comboMealData: any = {
         tenant_id: tenantId,
         name: createDto.name.trim(),
         description: createDto.description,
@@ -2806,7 +3056,15 @@ export class MenuService {
         is_active: createDto.isActive !== undefined ? createDto.isActive : true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      })
+    };
+    
+    if (branchId) {
+      comboMealData.branch_id = branchId;
+    }
+
+    const { data: comboMeal, error } = await supabase
+      .from('combo_meals')
+      .insert(comboMealData)
       .select()
       .single();
 
@@ -3001,22 +3259,35 @@ export class MenuService {
   // VARIATION GROUP MANAGEMENT
   // ============================================
 
-  async getVariationGroups(tenantId: string, pagination?: PaginationParams): Promise<PaginatedResponse<any> | any[]> {
+  async getVariationGroups(tenantId: string, pagination?: PaginationParams, branchId?: string): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
     
     // Get total count for pagination
-    const { count: totalCount } = await supabase
+    let countQuery = supabase
       .from('variation_groups')
       .select('*', { count: 'exact', head: true })
       .eq('tenant_id', tenantId)
       .is('deleted_at', null);
+    
+    if (branchId) {
+      // When a branch is selected, only show variation groups from that branch (exclude NULL for strict filtering)
+      countQuery = countQuery.eq('branch_id', branchId);
+    }
+    
+    const { count: totalCount } = await countQuery;
 
     let query = supabase
       .from('variation_groups')
       .select('*')
       .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false });
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      // When a branch is selected, only show variation groups from that branch (exclude NULL for strict filtering)
+      query = query.eq('branch_id', branchId);
+    }
+    
+    query = query.order('created_at', { ascending: false });
 
     // Apply pagination if provided
     if (pagination) {
@@ -3101,15 +3372,21 @@ export class MenuService {
     };
   }
 
-  async createVariationGroup(tenantId: string, createDto: CreateVariationGroupDto) {
+  async createVariationGroup(tenantId: string, createDto: CreateVariationGroupDto, branchId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
+
+    const variationGroupData: any = {
+        tenant_id: tenantId,
+        name: createDto.name.trim(),
+    };
+    
+    if (branchId) {
+      variationGroupData.branch_id = branchId;
+    }
 
     const { data: variationGroup, error } = await supabase
       .from('variation_groups')
-      .insert({
-        tenant_id: tenantId,
-        name: createDto.name.trim(),
-      })
+      .insert(variationGroupData)
       .select()
       .single();
 

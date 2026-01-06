@@ -36,6 +36,7 @@ import { menuApi, AddOnGroup, AddOn } from '@/lib/api/menu';
 import { inventoryApi, Ingredient, CreateRecipeDto } from '@/lib/api/inventory';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { useBranchStore } from '@/lib/store/branch-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
@@ -49,6 +50,7 @@ import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
 export function AddOnGroupsPage() {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
+  const { selectedBranchId } = useBranchStore();
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
@@ -103,7 +105,7 @@ export function AddOnGroupsPage() {
       setLoading(true);
       setError(null);
 
-      const serverGroupsResponse = await menuApi.getAddOnGroups(pagination.paginationParams);
+      const serverGroupsResponse = await menuApi.getAddOnGroups(pagination.paginationParams, selectedBranchId || undefined);
       const serverGroups = pagination.extractData(serverGroupsResponse);
       pagination.extractPagination(serverGroupsResponse);
       setAddOnGroups(serverGroups);
@@ -286,7 +288,7 @@ export function AddOnGroupsPage() {
         if (wasEditing && currentEditingGroupId) {
           savedGroup = await menuApi.updateAddOnGroup(currentEditingGroupId, groupData);
         } else {
-          savedGroup = await menuApi.createAddOnGroup(groupData);
+          savedGroup = await menuApi.createAddOnGroup(groupData, selectedBranchId || undefined);
         }
 
         notifications.show({

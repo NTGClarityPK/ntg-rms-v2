@@ -22,6 +22,7 @@ import {
 } from '@mantine/core';
 import { IconSearch, IconShoppingCart, IconChefHat, IconShoppingBag } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
+import { useBranchStore } from '@/lib/store/branch-store';
 import { t } from '@/lib/utils/translations';
 import { useThemeColor, useThemeColorShade } from '@/lib/hooks/use-theme-color';
 import { getErrorColor, getWarningColor, getBadgeColorForText } from '@/lib/utils/theme';
@@ -57,6 +58,7 @@ export function FoodItemsGrid({
   onItemTypeChange,
 }: FoodItemsGridProps) {
   const { language } = useLanguageStore();
+  const { selectedBranchId } = useBranchStore();
   const primaryColor = useThemeColor();
   const primaryShade = useThemeColorShade(6);
   const successColor = useSuccessColor();
@@ -139,28 +141,26 @@ export function FoodItemsGrid({
     }
   }, [itemType, onItemTypeChange]);
 
-  // Load categories once on mount - they don't change when switching tabs
+  // Load categories - reload when branch changes
   const loadCategories = useCallback(async () => {
-    // Only load if categories haven't been loaded yet
-    if (categoriesLoadedRef.current) return;
+    if (!selectedBranchId) return;
     
     try {
-      const catsResponse = await menuApi.getCategories();
+      const catsResponse = await menuApi.getCategories(undefined, selectedBranchId);
       const cats = Array.isArray(catsResponse) ? catsResponse : (catsResponse?.data || []);
       setCategories(cats.filter((cat: any) => cat.isActive && !cat.deletedAt));
       categoriesLoadedRef.current = true;
     } catch (error) {
       console.error('Failed to load categories:', error);
     }
-  }, []);
+  }, [selectedBranchId]);
 
-  // Load menus once on mount - cache them in state to avoid refetching
+  // Load menus - reload when branch changes
   const loadMenus = useCallback(async () => {
-    // Only load if menus haven't been loaded yet
-    if (menusLoadedRef.current) return;
+    if (!selectedBranchId) return;
     
     try {
-      const menusResponse = await menuApi.getMenus();
+      const menusResponse = await menuApi.getMenus(undefined, selectedBranchId);
       const menus = Array.isArray(menusResponse) ? menusResponse : (menusResponse?.data || []);
       const menuTypes = menus
         .filter((menu) => menu.isActive)
@@ -171,7 +171,7 @@ export function FoodItemsGrid({
     } catch (error) {
       console.error('Failed to load menus:', error);
     }
-  }, []);
+  }, [selectedBranchId]);
 
   const loadData = useCallback(async () => {
     // Use debounced search query for API calls to reduce requests
@@ -221,7 +221,8 @@ export function FoodItemsGrid({
           selectedCategoryId || undefined,
           foodItemsPagination.paginationParams,
           requestSearchQuery.trim() || undefined,
-          true // onlyActiveMenus = true - filter by active menus on backend
+          true, // onlyActiveMenus = true - filter by active menus on backend
+          selectedBranchId || undefined // branchId - filter by selected branch
         );
         
         // Check if this response is still relevant (search query hasn't changed)
@@ -250,13 +251,23 @@ export function FoodItemsGrid({
       loadingRef.current = false;
     }
      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, selectedCategoryId, debouncedSearchQuery, itemType, foodItemsPagination.page, foodItemsPagination.limit, buffetsPagination.page, buffetsPagination.limit, comboMealsPagination.page, comboMealsPagination.limit, activeMenuTypes]);
+  }, [tenantId, selectedCategoryId, debouncedSearchQuery, itemType, foodItemsPagination.page, foodItemsPagination.limit, buffetsPagination.page, buffetsPagination.limit, comboMealsPagination.page, comboMealsPagination.limit, activeMenuTypes, selectedBranchId]);
 
-  // Load categories and menus once on mount only - they don't need to reload when switching tabs
+  // Reload categories when branch changes
   useEffect(() => {
-    loadCategories();
-    loadMenus();
-  }, [loadCategories, loadMenus]);
+    if (selectedBranchId) {
+      categoriesLoadedRef.current = false; // Reset flag to allow reload
+      loadCategories();
+    }
+  }, [selectedBranchId, loadCategories]);
+
+  // Reload menus when branch changes
+  useEffect(() => {
+    if (selectedBranchId) {
+      menusLoadedRef.current = false; // Reset flag to allow reload
+      loadMenus();
+    }
+  }, [selectedBranchId, loadMenus]);
 
   // Update currentSearchRef when debounced search changes
   useEffect(() => {
@@ -281,7 +292,7 @@ export function FoodItemsGrid({
 
   const loadBuffets = async (activeMenuTypes: string[]) => {
     try {
-      const response = await menuApi.getBuffets(buffetsPagination.paginationParams);
+      const response = await menuApi.getBuffets(buffetsPagination.paginationParams, selectedBranchId || undefined);
       const serverBuffets: Buffet[] = buffetsPagination.extractData(response) as Buffet[];
       buffetsPagination.extractPagination(response);
       
@@ -329,7 +340,7 @@ export function FoodItemsGrid({
 
   const loadComboMeals = async (activeMenuTypes: string[]) => {
     try {
-      const response = await menuApi.getComboMeals(comboMealsPagination.paginationParams);
+      const response = await menuApi.getComboMeals(comboMealsPagination.paginationParams, selectedBranchId || undefined);
       const serverComboMeals: ComboMeal[] = comboMealsPagination.extractData(response) as ComboMeal[];
       comboMealsPagination.extractPagination(response);
       

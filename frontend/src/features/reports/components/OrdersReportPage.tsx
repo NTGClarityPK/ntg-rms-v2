@@ -26,10 +26,11 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { useLanguageStore } from '@/lib/store/language-store';
+import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
 import { reportsApi, OrderReport, ReportQueryParams } from '@/lib/api/reports';
 import { ReportFilters } from './ReportFilters';
-import { restaurantApi } from '@/lib/api/restaurant';
+import { authApi } from '@/lib/api/auth';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getThemeColorShade, getSuccessColor, getInfoColor, getWarningColor, getErrorColor } from '@/lib/utils/theme';
 import { useChartColors } from '@/lib/hooks/use-chart-colors';
@@ -39,6 +40,7 @@ import { notifications } from '@mantine/notifications';
 
 export default function OrdersReportPage() {
   const language = useLanguageStore((state) => state.language);
+  const { user } = useAuthStore();
   const currency = useCurrency();
   const themeColor = useThemeColor();
   const tooltipStyle = useChartTooltip();
@@ -49,17 +51,25 @@ export default function OrdersReportPage() {
 
   const loadBranches = useCallback(async () => {
     try {
-      const data = await restaurantApi.getBranches();
-      setBranches(
-        data.map((b) => ({
-          value: b.id,
-          label: b.name,
-        }))
-      );
+      const data = await authApi.getAssignedBranches();
+      const branchOptions = data.map((b) => ({
+        value: b.id,
+        label: `${b.name} (${b.code})`,
+      }));
+      
+      // If tenant owner, add "all branches" option
+      if (user?.role === 'tenant_owner') {
+        branchOptions.unshift({
+          value: 'all',
+          label: language === 'ar' ? 'جميع الفروع' : 'All Branches',
+        });
+      }
+      
+      setBranches(branchOptions);
     } catch (error) {
       console.error('Failed to load branches:', error);
     }
-  }, []);
+  }, [user?.role, language]);
 
   const loadReport = useCallback(async (reportFilters?: ReportQueryParams, silent = false) => {
     const filtersToUse = reportFilters || filters;

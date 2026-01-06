@@ -27,7 +27,6 @@ import {
   IconPlus,
   IconMinus,
   IconAdjustments,
-  IconArrowsExchange,
   IconAlertCircle,
   IconSearch,
 } from '@tabler/icons-react';
@@ -40,7 +39,6 @@ import {
   AddStockDto,
   DeductStockDto,
   AdjustStockDto,
-  TransferStockDto,
 } from '@/lib/api/inventory';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
@@ -102,7 +100,7 @@ export function StockManagementPage() {
   const [loading, setLoading] = useState(true);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
   const [opened, setOpened] = useState(false);
-  const [transactionType, setTransactionType] = useState<'add' | 'deduct' | 'adjust' | 'transfer'>('add');
+  const [transactionType, setTransactionType] = useState<'add' | 'deduct' | 'adjust'>('add');
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [ingredientFilter, setIngredientFilter] = useState<string | null>(null);
@@ -158,28 +156,11 @@ export function StockManagementPage() {
     },
   });
 
-  const transferStockForm = useForm<TransferStockDto>({
-    initialValues: {
-      ingredientId: '',
-      fromBranchId: selectedBranchId || '',
-      toBranchId: '',
-      quantity: 0,
-      reason: '',
-      transactionDate: new Date().toISOString(),
-    },
-    validate: {
-      ingredientId: (value) => (!value ? t('inventory.ingredient', language) + ' is required' : null),
-      fromBranchId: (value) => (!value ? t('inventory.fromBranch', language) + ' is required' : null),
-      toBranchId: (value) => (!value ? t('inventory.toBranch', language) + ' is required' : null),
-      quantity: (value) => (value <= 0 ? t('inventory.quantity', language) + ' must be greater than 0' : null),
-    },
-  });
-
   const loadIngredients = useCallback(async () => {
     if (!user?.tenantId) return;
 
     try {
-      // Fetch all pages of ingredients
+      // Fetch all pages of ingredients (filtered by branch if selected)
       let allServerIngredients: Ingredient[] = [];
       let page = 1;
       const limit = 100; // Fetch 100 items per page
@@ -188,7 +169,8 @@ export function StockManagementPage() {
       while (hasMore) {
         const serverIngredientsResponse = await inventoryApi.getIngredients(
           { isActive: true },
-          { page, limit }
+          { page, limit },
+          selectedBranchId || undefined
         );
 
         if (isPaginatedResponse(serverIngredientsResponse)) {
@@ -207,7 +189,7 @@ export function StockManagementPage() {
     } catch (err: any) {
       console.error('Failed to load ingredients:', err);
     }
-  }, [user?.tenantId]);
+  }, [user?.tenantId, selectedBranchId]);
 
   const loadBranches = useCallback(async () => {
     if (!user?.tenantId) return;
@@ -255,7 +237,7 @@ export function StockManagementPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ingredientFilter, selectedBranchId, startDate, endDate, transactionsPagination.page, transactionsPagination.limit, refreshKey]);
 
-  const handleOpenModal = (type: 'add' | 'deduct' | 'adjust' | 'transfer') => {
+  const handleOpenModal = (type: 'add' | 'deduct' | 'adjust') => {
     setTransactionType(type);
     setOpened(true);
     
@@ -263,14 +245,12 @@ export function StockManagementPage() {
     addStockForm.reset();
     deductStockForm.reset();
     adjustStockForm.reset();
-    transferStockForm.reset();
     
-    // Set default branch
+    // Set current branch automatically
     if (selectedBranchId) {
       addStockForm.setFieldValue('branchId', selectedBranchId);
       deductStockForm.setFieldValue('branchId', selectedBranchId);
       adjustStockForm.setFieldValue('branchId', selectedBranchId);
-      transferStockForm.setFieldValue('fromBranchId', selectedBranchId);
     }
   };
 
@@ -279,7 +259,6 @@ export function StockManagementPage() {
     addStockForm.reset();
     deductStockForm.reset();
     adjustStockForm.reset();
-    transferStockForm.reset();
   };
 
   const handleAddStock = async (values: AddStockDto) => {
@@ -288,7 +267,13 @@ export function StockManagementPage() {
     try {
       setError(null);
 
-      await inventoryApi.addStock(values);
+      // Ensure branchId is set to current branch
+      const stockData = {
+        ...values,
+        branchId: selectedBranchId || values.branchId,
+      };
+
+      await inventoryApi.addStock(stockData);
 
       notifications.show({
         title: t('common.success' as any, language) || 'Success',
@@ -317,17 +302,23 @@ export function StockManagementPage() {
     try {
       setError(null);
 
+      // Ensure branchId is set to current branch
+      const deductData = {
+        ...values,
+        branchId: selectedBranchId || values.branchId,
+      };
+
       // Check stock availability
-      const ingredient = await inventoryApi.getIngredientById(values.ingredientId);
+      const ingredient = await inventoryApi.getIngredientById(deductData.ingredientId);
       if (!ingredient) {
         throw new Error('Ingredient not found');
       }
 
-      if (ingredient.currentStock < values.quantity) {
+      if (ingredient.currentStock < deductData.quantity) {
         throw new Error(t('inventory.insufficientStock', language));
       }
 
-      await inventoryApi.deductStock(values);
+      await inventoryApi.deductStock(deductData);
 
       notifications.show({
         title: t('common.success' as any, language) || 'Success',
@@ -356,7 +347,13 @@ export function StockManagementPage() {
     try {
       setError(null);
 
-      await inventoryApi.adjustStock(values);
+      // Ensure branchId is set to current branch
+      const adjustData = {
+        ...values,
+        branchId: selectedBranchId || values.branchId,
+      };
+
+      await inventoryApi.adjustStock(adjustData);
 
       notifications.show({
         title: t('common.success' as any, language) || 'Success',
@@ -379,43 +376,6 @@ export function StockManagementPage() {
     }
   };
 
-  const handleTransferStock = async (values: TransferStockDto) => {
-    if (!user?.tenantId) return;
-
-    try {
-      setError(null);
-
-      // Check stock availability
-      const ingredient = await inventoryApi.getIngredientById(values.ingredientId);
-      if (!ingredient) {
-        throw new Error('Ingredient not found');
-      }
-
-      if (ingredient.currentStock < values.quantity) {
-        throw new Error(t('inventory.insufficientStock', language));
-      }
-
-      await inventoryApi.transferStock(values);
-
-      notifications.show({
-        title: t('common.success' as any, language) || 'Success',
-        message: t('inventory.stockTransferred', language),
-        color: successColor,
-      });
-
-      handleCloseModal();
-      loadTransactions();
-      triggerRefresh(); // Trigger refresh for all tabs
-    } catch (err: any) {
-      const errorMsg = err.response?.data?.message || err.message || t('inventory.transferStockError', language);
-      setError(errorMsg);
-      notifications.show({
-        title: t('common.error' as any, language) || 'Error',
-        message: errorMsg,
-        color: errorColor,
-      });
-    }
-  };
 
   // Filter transactions
   const filteredTransactions = transactions.filter((tx) => {
@@ -466,14 +426,6 @@ export function StockManagementPage() {
             color={primaryColor}
           >
             {t('inventory.adjustStock', language)}
-          </Button>
-          <Button
-            leftSection={<IconArrowsExchange size={16} />}
-            onClick={() => handleOpenModal('transfer')}
-            variant="light"
-            color={primaryColor}
-          >
-            {t('inventory.transferStock', language)}
           </Button>
         </Group>
       </Group>
@@ -669,16 +621,6 @@ export function StockManagementPage() {
                 {t('inventory.totalCost', language)}: {(addStockForm.values.quantity * addStockForm.values.unitCost).toFixed(2)}
               </Text>
             )}
-            {branches.length > 0 && (
-              <Select
-                label={t('restaurant.branch', language) || 'Branch'}
-                data={branches.map((b) => ({
-                  value: b.id,
-                  label: (b as any).name || (b as any).nameEn || (b as any).nameAr || '',
-                }))}
-                {...addStockForm.getInputProps('branchId')}
-              />
-            )}
             <TextInput
               label={t('inventory.supplierName', language)}
               {...addStockForm.getInputProps('supplierName')}
@@ -732,16 +674,6 @@ export function StockManagementPage() {
               decimalScale={3}
               {...deductStockForm.getInputProps('quantity')}
             />
-            {branches.length > 0 && (
-              <Select
-                label={t('restaurant.branch', language) || 'Branch'}
-                data={branches.map((b) => ({
-                  value: b.id,
-                  label: (b as any).name || (b as any).nameEn || (b as any).nameAr || '',
-                }))}
-                {...deductStockForm.getInputProps('branchId')}
-              />
-            )}
             <Select
               label={t('inventory.reason', language)}
               required
@@ -805,16 +737,6 @@ export function StockManagementPage() {
               decimalScale={3}
               {...adjustStockForm.getInputProps('newQuantity')}
             />
-            {branches.length > 0 && (
-              <Select
-                label={t('restaurant.branch', language) || 'Branch'}
-                data={branches.map((b) => ({
-                  value: b.id,
-                  label: (b as any).name || (b as any).nameEn || (b as any).nameAr || '',
-                }))}
-                {...adjustStockForm.getInputProps('branchId')}
-              />
-            )}
             <Textarea
               label={t('inventory.reason', language)}
               required
@@ -838,83 +760,6 @@ export function StockManagementPage() {
         </form>
       </Modal>
 
-      {/* Transfer Stock Modal */}
-      <Modal
-        opened={opened && transactionType === 'transfer'}
-        onClose={handleCloseModal}
-        title={t('inventory.transferStock', language)}
-        size="lg"
-      >
-        <form onSubmit={transferStockForm.onSubmit(handleTransferStock)}>
-          <Stack gap="md">
-            <Select
-              label={t('inventory.ingredient', language)}
-              placeholder={t('inventory.selectIngredient', language)}
-              required
-              data={getIngredientOptions()}
-              searchable
-              {...transferStockForm.getInputProps('ingredientId')}
-            />
-            {transferStockForm.values.ingredientId && (
-              <Text size="sm" c="dimmed">
-                {t('inventory.currentStock', language)}: {
-                  ingredients.find((ing) => ing.id === transferStockForm.values.ingredientId)?.currentStock || 0
-                } {
-                  ingredients.find((ing) => ing.id === transferStockForm.values.ingredientId)?.unitOfMeasurement || ''
-                }
-              </Text>
-            )}
-            {branches.length > 0 && (
-              <>
-                <Select
-                  label={t('inventory.fromBranch', language)}
-                  required
-                  data={branches.map((b) => ({
-                    value: b.id,
-                    label: (b as any).name || (b as any).nameEn || (b as any).nameAr || '',
-                  }))}
-                  {...transferStockForm.getInputProps('fromBranchId')}
-                />
-                <Select
-                  label={t('inventory.toBranch', language)}
-                  required
-                  data={branches
-                    .filter((b) => b.id !== transferStockForm.values.fromBranchId)
-                    .map((b) => ({
-                      value: b.id,
-                      label: (b as any).name || (b as any).nameEn || (b as any).nameAr || '',
-                    }))}
-                  {...transferStockForm.getInputProps('toBranchId')}
-                />
-              </>
-            )}
-            <NumberInput
-              label={t('inventory.quantity', language)}
-              required
-              min={0.001}
-              decimalScale={3}
-              {...transferStockForm.getInputProps('quantity')}
-            />
-            <Textarea
-              label={t('inventory.reason', language)}
-              {...transferStockForm.getInputProps('reason')}
-            />
-            <DateInput
-              label={t('inventory.transactionDate', language)}
-              value={transferStockForm.values.transactionDate ? new Date(transferStockForm.values.transactionDate) : null}
-              onChange={(date) => transferStockForm.setFieldValue('transactionDate', date?.toISOString() || new Date().toISOString())}
-            />
-            <Group justify="flex-end" mt="md">
-              <Button variant="subtle" onClick={handleCloseModal}>
-                {t('common.cancel' as any, language) || 'Cancel'}
-              </Button>
-              <Button type="submit" style={{ backgroundColor: primaryColor }}>
-                {t('inventory.transferStock', language)}
-              </Button>
-            </Group>
-          </Stack>
-        </form>
-      </Modal>
     </Stack>
   );
 }

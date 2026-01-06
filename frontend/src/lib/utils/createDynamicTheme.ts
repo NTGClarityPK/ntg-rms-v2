@@ -167,6 +167,39 @@ export function createDynamicTheme(
               color: config.components.input.textColor,
               fontFamily: config.typography.fontFamily.primary,
             },
+            option: {
+              fontFamily: config.typography.fontFamily.primary,
+            },
+            dropdown: {
+              fontFamily: config.typography.fontFamily.primary,
+            },
+          };
+        },
+      },
+      
+      MultiSelect: {
+        styles: (theme: MantineTheme) => {
+          const config = (theme.other as any) as typeof themeConfig;
+          return {
+            input: {
+              backgroundColor: config.components.input.backgroundColor,
+              borderColor: config.components.input.borderColor,
+              color: config.components.input.textColor,
+              fontFamily: config.typography.fontFamily.primary,
+            },
+            label: {
+              color: config.components.input.textColor,
+              fontFamily: config.typography.fontFamily.primary,
+            },
+            option: {
+              fontFamily: config.typography.fontFamily.primary,
+            },
+            dropdown: {
+              fontFamily: config.typography.fontFamily.primary,
+            },
+            pill: {
+              fontFamily: config.typography.fontFamily.primary,
+            },
           };
         },
       },

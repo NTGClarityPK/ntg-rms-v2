@@ -14,17 +14,22 @@ export class TaxesService {
   constructor(private supabaseService: SupabaseService) {}
 
   /**
-   * Get all taxes for a tenant
+   * Get all taxes for a tenant (optionally filtered by branch)
    */
-  async getTaxes(tenantId: string) {
+  async getTaxes(tenantId: string, branchId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    const { data: taxes, error } = await supabase
+    let query = supabase
       .from('taxes')
       .select('*')
       .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false });
+      .is('deleted_at', null);
+
+    if (branchId) {
+      query = query.eq('branch_id', branchId);
+    }
+
+    const { data: taxes, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
       throw new InternalServerErrorException(`Failed to fetch taxes: ${error.message}`);
@@ -113,22 +118,28 @@ export class TaxesService {
   /**
    * Create a new tax
    */
-  async createTax(tenantId: string, createDto: CreateTaxDto) {
+  async createTax(tenantId: string, createDto: CreateTaxDto, branchId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Insert tax
+    const taxData: any = {
+      tenant_id: tenantId,
+      name: createDto.name,
+      tax_code: createDto.taxCode,
+      rate: createDto.rate,
+      is_active: createDto.isActive ?? true,
+      applies_to: createDto.appliesTo || 'order',
+      applies_to_delivery: createDto.appliesToDelivery ?? false,
+      applies_to_service_charge: createDto.appliesToServiceCharge ?? false,
+    };
+
+    if (branchId) {
+      taxData.branch_id = branchId;
+    }
+
     const { data: tax, error: taxError } = await supabase
       .from('taxes')
-      .insert({
-        tenant_id: tenantId,
-        name: createDto.name,
-        tax_code: createDto.taxCode,
-        rate: createDto.rate,
-        is_active: createDto.isActive ?? true,
-        applies_to: createDto.appliesTo || 'order',
-        applies_to_delivery: createDto.appliesToDelivery ?? false,
-        applies_to_service_charge: createDto.appliesToServiceCharge ?? false,
-      })
+      .insert(taxData)
       .select()
       .single();
 
@@ -281,16 +292,21 @@ export class TaxesService {
   /**
    * Get active taxes for a tenant (for order calculation)
    */
-  async getActiveTaxes(tenantId: string) {
+  async getActiveTaxes(tenantId: string, branchId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    const { data: taxes, error } = await supabase
+    let query = supabase
       .from('taxes')
       .select('*')
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: true });
+      .is('deleted_at', null);
+
+    if (branchId) {
+      query = query.eq('branch_id', branchId);
+    }
+
+    const { data: taxes, error } = await query.order('created_at', { ascending: true });
 
     if (error) {
       throw new InternalServerErrorException(`Failed to fetch active taxes: ${error.message}`);
@@ -345,9 +361,10 @@ export class TaxesService {
     }>,
     subtotal: number,
     deliveryCharge: number = 0,
-    serviceCharge: number = 0
+    serviceCharge: number = 0,
+    branchId?: string
   ): Promise<{ taxAmount: number; taxBreakdown: Array<{ name: string; rate: number; amount: number }> }> {
-    const activeTaxes = await this.getActiveTaxes(tenantId);
+    const activeTaxes = await this.getActiveTaxes(tenantId, branchId);
 
     if (activeTaxes.length === 0) {
       return { taxAmount: 0, taxBreakdown: [] };

@@ -12,7 +12,7 @@ import {
   UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody, ApiResponse } from '@nestjs/swagger';
 import { MenuService } from './menu.service';
 import { StorageService } from './utils/storage.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -57,8 +57,9 @@ export class MenuController {
   getCategories(
     @CurrentUser() user: any,
     @Query() paginationDto?: PaginationDto,
+    @Query('branchId') branchId?: string,
   ) {
-    return this.menuService.getCategories(user.tenantId, paginationDto);
+    return this.menuService.getCategories(user.tenantId, paginationDto, branchId);
   }
 
   @Get('categories/:id')
@@ -69,8 +70,12 @@ export class MenuController {
 
   @Post('categories')
   @ApiOperation({ summary: 'Create a new category' })
-  createCategory(@CurrentUser() user: any, @Body() createDto: CreateCategoryDto) {
-    return this.menuService.createCategory(user.tenantId, createDto);
+  createCategory(
+    @CurrentUser() user: any,
+    @Body() createDto: CreateCategoryDto,
+    @Query('branchId') branchId?: string,
+  ) {
+    return this.menuService.createCategory(user.tenantId, createDto, branchId);
   }
 
   @Put('categories/:id')
@@ -129,10 +134,10 @@ export class MenuController {
     @CurrentUser() user: any,
     @Query() queryDto: GetFoodItemsDto,
   ) {
-    const { categoryId, onlyActiveMenus, search, ...paginationDto } = queryDto;
+    const { categoryId, onlyActiveMenus, search, branchId, ...paginationDto } = queryDto;
     // Default to false (show all items) unless explicitly set to true
     const filterByActiveMenus = onlyActiveMenus === true;
-    return this.menuService.getFoodItems(user.tenantId, categoryId, paginationDto, filterByActiveMenus, search);
+    return this.menuService.getFoodItems(user.tenantId, categoryId, paginationDto, filterByActiveMenus, search, branchId);
   }
 
   @Get('food-items/:id')
@@ -143,8 +148,12 @@ export class MenuController {
 
   @Post('food-items')
   @ApiOperation({ summary: 'Create a new food item' })
-  createFoodItem(@CurrentUser() user: any, @Body() createDto: CreateFoodItemDto) {
-    return this.menuService.createFoodItem(user.tenantId, createDto);
+  createFoodItem(
+    @CurrentUser() user: any,
+    @Body() createDto: CreateFoodItemDto,
+    @Query('branchId') branchId?: string,
+  ) {
+    return this.menuService.createFoodItem(user.tenantId, createDto, branchId);
   }
 
   @Put('food-items/:id')
@@ -202,8 +211,9 @@ export class MenuController {
   getAddOnGroups(
     @CurrentUser() user: any,
     @Query() paginationDto?: PaginationDto,
+    @Query('branchId') branchId?: string,
   ) {
-    return this.menuService.getAddOnGroups(user.tenantId, paginationDto);
+    return this.menuService.getAddOnGroups(user.tenantId, paginationDto, branchId);
   }
 
   @Get('add-on-groups/:id')
@@ -214,8 +224,8 @@ export class MenuController {
 
   @Post('add-on-groups')
   @ApiOperation({ summary: 'Create a new add-on group' })
-  createAddOnGroup(@CurrentUser() user: any, @Body() createDto: CreateAddOnGroupDto) {
-    return this.menuService.createAddOnGroup(user.tenantId, createDto);
+  createAddOnGroup(@CurrentUser() user: any, @Body() createDto: CreateAddOnGroupDto, @Query('branchId') branchId?: string) {
+    return this.menuService.createAddOnGroup(user.tenantId, createDto, branchId);
   }
 
   @Put('add-on-groups/:id')
@@ -297,8 +307,9 @@ export class MenuController {
   getMenus(
     @CurrentUser() user: any,
     @Query() paginationDto?: PaginationDto,
+    @Query('branchId') branchId?: string,
   ) {
-    return this.menuService.getMenus(user.tenantId, paginationDto);
+    return this.menuService.getMenus(user.tenantId, paginationDto, branchId);
   }
 
   @Get('menus/:menuType/items')
@@ -308,6 +319,17 @@ export class MenuController {
     @Param('menuType') menuType: string,
   ) {
     return this.menuService.getMenuItems(user.tenantId, menuType);
+  }
+
+  @Post('menus/items/batch')
+  @ApiOperation({ summary: 'Get food item IDs for multiple menu types at once' })
+  @ApiResponse({ status: 200, description: 'Map of menu type to array of food item IDs' })
+  getMenuItemsForTypes(
+    @CurrentUser() user: any,
+    @Body() body: { menuTypes: string[] },
+    @Query('branchId') branchId?: string,
+  ) {
+    return this.menuService.getMenuItemsForTypes(user.tenantId, body.menuTypes, branchId);
   }
 
   @Post('menus/:menuType/assign-items')
@@ -332,8 +354,8 @@ export class MenuController {
 
   @Post('menus')
   @ApiOperation({ summary: 'Create a new menu type' })
-  createMenu(@CurrentUser() user: any, @Body() createDto: CreateMenuDto) {
-    return this.menuService.createMenu(user.tenantId, createDto);
+  createMenu(@CurrentUser() user: any, @Body() createDto: CreateMenuDto, @Query('branchId') branchId?: string) {
+    return this.menuService.createMenu(user.tenantId, createDto, branchId);
   }
 
   @Delete('menus/:menuType')
@@ -351,8 +373,9 @@ export class MenuController {
   getBuffets(
     @CurrentUser() user: any,
     @Query() paginationDto?: PaginationDto,
+    @Query('branchId') branchId?: string,
   ) {
-    return this.menuService.getBuffets(user.tenantId, paginationDto);
+    return this.menuService.getBuffets(user.tenantId, paginationDto, branchId);
   }
 
   @Get('buffets/:id')
@@ -363,8 +386,8 @@ export class MenuController {
 
   @Post('buffets')
   @ApiOperation({ summary: 'Create a new buffet' })
-  createBuffet(@CurrentUser() user: any, @Body() createDto: CreateBuffetDto) {
-    return this.menuService.createBuffet(user.tenantId, createDto);
+  createBuffet(@CurrentUser() user: any, @Body() createDto: CreateBuffetDto, @Query('branchId') branchId?: string) {
+    return this.menuService.createBuffet(user.tenantId, createDto, branchId);
   }
 
   @Put('buffets/:id')
@@ -415,8 +438,9 @@ export class MenuController {
   getComboMeals(
     @CurrentUser() user: any,
     @Query() paginationDto?: PaginationDto,
+    @Query('branchId') branchId?: string,
   ) {
-    return this.menuService.getComboMeals(user.tenantId, paginationDto);
+    return this.menuService.getComboMeals(user.tenantId, paginationDto, branchId);
   }
 
   @Get('combo-meals/:id')
@@ -427,8 +451,8 @@ export class MenuController {
 
   @Post('combo-meals')
   @ApiOperation({ summary: 'Create a new combo meal' })
-  createComboMeal(@CurrentUser() user: any, @Body() createDto: CreateComboMealDto) {
-    return this.menuService.createComboMeal(user.tenantId, createDto);
+  createComboMeal(@CurrentUser() user: any, @Body() createDto: CreateComboMealDto, @Query('branchId') branchId?: string) {
+    return this.menuService.createComboMeal(user.tenantId, createDto, branchId);
   }
 
   @Put('combo-meals/:id')
@@ -479,8 +503,9 @@ export class MenuController {
   getVariationGroups(
     @CurrentUser() user: any,
     @Query() paginationDto?: PaginationDto,
+    @Query('branchId') branchId?: string,
   ) {
-    return this.menuService.getVariationGroups(user.tenantId, paginationDto);
+    return this.menuService.getVariationGroups(user.tenantId, paginationDto, branchId);
   }
 
   @Get('variation-groups/:id')
@@ -491,8 +516,8 @@ export class MenuController {
 
   @Post('variation-groups')
   @ApiOperation({ summary: 'Create a new variation group' })
-  createVariationGroup(@CurrentUser() user: any, @Body() createDto: CreateVariationGroupDto) {
-    return this.menuService.createVariationGroup(user.tenantId, createDto);
+  createVariationGroup(@CurrentUser() user: any, @Body() createDto: CreateVariationGroupDto, @Query('branchId') branchId?: string) {
+    return this.menuService.createVariationGroup(user.tenantId, createDto, branchId);
   }
 
   @Put('variation-groups/:id')

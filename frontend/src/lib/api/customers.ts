@@ -86,15 +86,29 @@ export const customersApi = {
       search?: string;
       minOrders?: number;
       minSpent?: number;
+      branchId?: string;
     },
     pagination?: PaginationParams,
   ): Promise<Customer[] | PaginatedResponse<Customer>> => {
-    // Use base API but add custom filter handling
-    return baseCustomersApi.getAll(filters, pagination, filters?.search);
+    // Build query params
+    const params = new URLSearchParams();
+    if (filters?.search) params.append('search', filters.search);
+    if (filters?.minOrders) params.append('minOrders', String(filters.minOrders));
+    if (filters?.minSpent) params.append('minSpent', String(filters.minSpent));
+    if (filters?.branchId) params.append('branchId', filters.branchId);
+    if (pagination?.page) params.append('page', String(pagination.page));
+    if (pagination?.limit) params.append('limit', String(pagination.limit));
+
+    const response = await apiClient.get(`${API_ENDPOINTS.CUSTOMERS}?${params.toString()}`);
+    return response.data;
   },
 
   getCustomerById: baseCustomersApi.getById,
-  createCustomer: baseCustomersApi.create,
+  createCustomer: async (createDto: CreateCustomerDto, branchId?: string): Promise<Customer> => {
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const response = await apiClient.post<Customer>(`${API_ENDPOINTS.CUSTOMERS}${params}`, createDto);
+    return response.data;
+  },
   updateCustomer: baseCustomersApi.update,
 
   createCustomerAddress: async (customerId: string, address: {

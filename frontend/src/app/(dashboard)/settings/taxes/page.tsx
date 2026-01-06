@@ -26,6 +26,7 @@ import { notifications } from '@mantine/notifications';
 import { taxesApi, Tax, CreateTaxDto } from '@/lib/api/taxes';
 import { menuApi } from '@/lib/api/menu';
 import { useLanguageStore } from '@/lib/store/language-store';
+import { useBranchStore } from '@/lib/store/branch-store';
 import { t } from '@/lib/utils/translations';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getSuccessColor, getErrorColor, getBadgeColorForText } from '@/lib/utils/theme';
@@ -34,6 +35,7 @@ import { isPaginatedResponse } from '@/lib/types/pagination.types';
 export default function TaxesPage() {
   const language = useLanguageStore((state) => state.language);
   const themeColor = useThemeColor();
+  const { selectedBranchId } = useBranchStore();
   const [loading, setLoading] = useState(true);
   const [taxes, setTaxes] = useState<Tax[]>([]);
   const [categories, setCategories] = useState<Array<{ value: string; label: string }>>([]);
@@ -61,9 +63,13 @@ export default function TaxesPage() {
   });
 
   const loadTaxes = useCallback(async () => {
+    if (!selectedBranchId) {
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
-      const data = await taxesApi.getTaxes();
+      const data = await taxesApi.getTaxes(selectedBranchId);
       setTaxes(data);
     } catch (error: any) {
       notifications.show({
@@ -75,7 +81,7 @@ export default function TaxesPage() {
     } finally {
       setLoading(false);
     }
-  }, [language]);
+  }, [language, selectedBranchId]);
 
   const loadCategories = useCallback(async () => {
     try {
@@ -143,6 +149,15 @@ export default function TaxesPage() {
   };
 
   const handleSubmit = async (values: typeof form.values) => {
+    if (!selectedBranchId) {
+      notifications.show({
+        title: t('common.error' as any, language),
+        message: 'Please select a branch first',
+        color: getErrorColor(),
+        icon: <IconX size={16} />,
+      });
+      return;
+    }
     try {
       if (editingTax) {
         await taxesApi.updateTax(editingTax.id, values);
@@ -153,7 +168,7 @@ export default function TaxesPage() {
           icon: <IconCheck size={16} />,
         });
       } else {
-        await taxesApi.createTax(values);
+        await taxesApi.createTax(values, selectedBranchId);
         notifications.show({
           title: t('common.success' as any, language),
           message: t('taxes.created' as any, language) || 'Tax created successfully',
@@ -193,6 +208,18 @@ export default function TaxesPage() {
       });
     }
   };
+
+  if (!selectedBranchId) {
+    return (
+      <Container size="xl">
+        <Stack gap="md">
+          <Text c="dimmed" ta="center" py="xl">
+            Please select a branch to view taxes
+          </Text>
+        </Stack>
+      </Container>
+    );
+  }
 
   if (loading) {
     return (

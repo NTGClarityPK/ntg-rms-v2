@@ -56,7 +56,7 @@ function question(query: string): Promise<string> {
   });
 }
 
-const TENANT_ID = '71fd9e18-bd95-42b0-bcdb-f5b67b16ce78';
+const TENANT_ID = '32a6ac93-7f44-4ac5-92e8-8403dd2e52e5';
 
 async function deleteTenantData() {
   try {
@@ -156,60 +156,120 @@ async function deleteTenantData() {
 
     if (orders && orders.length > 0) {
       const orderIds = orders.map(o => o.id);
+      console.log(`   ℹ️  Found ${orders.length} orders to delete`);
 
-      // Delete order item add-ons
-      console.log('   - Deleting order item add-ons...');
-      for (const orderId of orderIds) {
+      // Get all order items for these orders (batch if needed)
+      console.log('   - Fetching order items...');
+      let allOrderItems: any[] = [];
+      const BATCH_SIZE = 1000; // Process orders in batches
+      
+      for (let i = 0; i < orderIds.length; i += BATCH_SIZE) {
+        const batch = orderIds.slice(i, i + BATCH_SIZE);
         const { data: orderItems } = await supabase
           .from('order_items')
           .select('id')
-          .eq('order_id', orderId);
-
+          .in('order_id', batch);
+        
         if (orderItems) {
-          for (const item of orderItems) {
-            await supabase
-              .from('order_item_add_ons')
-              .delete()
-              .eq('order_item_id', item.id);
-          }
+          allOrderItems = allOrderItems.concat(orderItems);
         }
       }
 
-      // Delete order items
+      if (allOrderItems.length > 0) {
+        const orderItemIds = allOrderItems.map(oi => oi.id);
+        console.log(`   ℹ️  Found ${allOrderItems.length} order items`);
+
+        // Delete order item add-ons in bulk (batch if needed)
+        console.log('   - Deleting order item add-ons...');
+        for (let i = 0; i < orderItemIds.length; i += BATCH_SIZE) {
+          const batch = orderItemIds.slice(i, i + BATCH_SIZE);
+          const { error: addOnsError } = await supabase
+            .from('order_item_add_ons')
+            .delete()
+            .in('order_item_id', batch);
+          
+          if (addOnsError) {
+            console.error(`   ⚠️  Error deleting order item add-ons (batch ${Math.floor(i / BATCH_SIZE) + 1}):`, addOnsError.message);
+          }
+        }
+        console.log(`   ✅ Deleted order item add-ons`);
+      } else {
+        console.log('   ℹ️  No order items found');
+      }
+
+      // Delete order items (batch if needed)
       console.log('   - Deleting order items...');
-      await supabase
-        .from('order_items')
-        .delete()
-        .in('order_id', orderIds);
+      for (let i = 0; i < orderIds.length; i += BATCH_SIZE) {
+        const batch = orderIds.slice(i, i + BATCH_SIZE);
+        const { error: orderItemsError } = await supabase
+          .from('order_items')
+          .delete()
+          .in('order_id', batch);
+        
+        if (orderItemsError) {
+          console.error(`   ⚠️  Error deleting order items (batch ${Math.floor(i / BATCH_SIZE) + 1}):`, orderItemsError.message);
+        }
+      }
+      console.log(`   ✅ Deleted order items`);
 
-      // Delete payments
+      // Delete payments (batch if needed)
       console.log('   - Deleting payments...');
-      await supabase
-        .from('payments')
-        .delete()
-        .in('order_id', orderIds);
+      for (let i = 0; i < orderIds.length; i += BATCH_SIZE) {
+        const batch = orderIds.slice(i, i + BATCH_SIZE);
+        const { error: paymentsError } = await supabase
+          .from('payments')
+          .delete()
+          .in('order_id', batch);
+        
+        if (paymentsError) {
+          console.error(`   ⚠️  Error deleting payments (batch ${Math.floor(i / BATCH_SIZE) + 1}):`, paymentsError.message);
+        }
+      }
+      console.log(`   ✅ Deleted payments`);
 
-      // Delete coupon usages
+      // Delete coupon usages (batch if needed)
       console.log('   - Deleting coupon usages...');
-      await supabase
-        .from('coupon_usages')
-        .delete()
-        .in('order_id', orderIds);
+      for (let i = 0; i < orderIds.length; i += BATCH_SIZE) {
+        const batch = orderIds.slice(i, i + BATCH_SIZE);
+        const { error: couponUsagesError } = await supabase
+          .from('coupon_usages')
+          .delete()
+          .in('order_id', batch);
+        
+        if (couponUsagesError) {
+          console.error(`   ⚠️  Error deleting coupon usages (batch ${Math.floor(i / BATCH_SIZE) + 1}):`, couponUsagesError.message);
+        }
+      }
+      console.log(`   ✅ Deleted coupon usages`);
 
-      // Delete deliveries
+      // Delete deliveries (batch if needed)
       console.log('   - Deleting deliveries...');
-      await supabase
-        .from('deliveries')
-        .delete()
-        .in('order_id', orderIds);
+      for (let i = 0; i < orderIds.length; i += BATCH_SIZE) {
+        const batch = orderIds.slice(i, i + BATCH_SIZE);
+        const { error: deliveriesError } = await supabase
+          .from('deliveries')
+          .delete()
+          .in('order_id', batch);
+        
+        if (deliveriesError) {
+          console.error(`   ⚠️  Error deleting deliveries (batch ${Math.floor(i / BATCH_SIZE) + 1}):`, deliveriesError.message);
+        }
+      }
+      console.log(`   ✅ Deleted deliveries`);
 
-      // Delete orders
+      // Delete orders (batch if needed)
       console.log('   - Deleting orders...');
-      await supabase
-        .from('orders')
-        .delete()
-        .eq('tenant_id', TENANT_ID);
-
+      for (let i = 0; i < orderIds.length; i += BATCH_SIZE) {
+        const batch = orderIds.slice(i, i + BATCH_SIZE);
+        const { error: ordersError } = await supabase
+          .from('orders')
+          .delete()
+          .in('id', batch);
+        
+        if (ordersError) {
+          console.error(`   ⚠️  Error deleting orders (batch ${Math.floor(i / BATCH_SIZE) + 1}):`, ordersError.message);
+        }
+      }
       console.log(`   ✅ Deleted ${orders.length} orders and related data`);
     } else {
       console.log('   ℹ️  No orders found');

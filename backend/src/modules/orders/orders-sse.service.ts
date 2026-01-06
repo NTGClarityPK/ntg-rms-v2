@@ -4,6 +4,7 @@ import { Subject, Observable } from 'rxjs';
 export interface OrderUpdateEvent {
   type: 'ORDER_CREATED' | 'ORDER_UPDATED' | 'ORDER_STATUS_CHANGED' | 'ORDER_DELETED';
   tenantId: string;
+  branchId?: string | null;
   orderId: string;
   order?: any;
 }
@@ -33,16 +34,31 @@ export class OrdersSseService {
   }
 
   /**
-   * Create SSE stream for a specific tenant
-   * Filters events to only include updates for the given tenant
+   * Create SSE stream for a specific tenant and optionally branch
+   * Filters events to only include updates for the given tenant and branch
    */
-  createTenantStream(tenantId: string): Observable<OrderUpdateEvent> {
+  createTenantStream(tenantId: string, branchId?: string | null): Observable<OrderUpdateEvent> {
     return new Observable((observer) => {
       const subscription = this.orderUpdate$.subscribe((event) => {
         // Only send events for this tenant
-        if (event.tenantId === tenantId) {
-          observer.next(event);
+        if (event.tenantId !== tenantId) {
+          return;
         }
+        
+        // If branchId is specified, filter by branch
+        // If branchId is null/undefined, include events for all branches (null branchId matches)
+        if (branchId !== undefined) {
+          // Normalize null/undefined for comparison
+          const eventBranchId = event.branchId ?? null;
+          const filterBranchId = branchId ?? null;
+          
+          // Only send if branch matches (both null or both same value)
+          if (eventBranchId !== filterBranchId) {
+            return;
+          }
+        }
+        
+        observer.next(event);
       });
 
       // Cleanup on unsubscribe

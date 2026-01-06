@@ -7,6 +7,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { useBranchStore } from '@/lib/store/branch-store';
 import { authApi } from '@/lib/api/auth';
 import { rolesApi } from '@/lib/api/roles';
 import { tokenStorage } from '@/lib/api/client';
@@ -21,6 +22,7 @@ export default function DashboardLayout({
   const [mobileOpened, { toggle: toggleMobile }] = useDisclosure();
   const [desktopOpened, { toggle: toggleDesktop }] = useDisclosure(true);
   const { isAuthenticated, user, setUser, setPermissions } = useAuthStore();
+  const { selectedBranchId } = useBranchStore();
   const router = useRouter();
   const [isInitializing, setIsInitializing] = useState(true);
   
@@ -132,8 +134,14 @@ export default function DashboardLayout({
     return null;
   }
 
-  // Check authentication after initialization
+  // Check authentication and branch selection after initialization
   if (!isAuthenticated) {
+    return null;
+  }
+
+  // If authenticated but no branch selected, redirect to login to select branch
+  if (isAuthenticated && !selectedBranchId) {
+    router.push('/login');
     return null;
   }
 

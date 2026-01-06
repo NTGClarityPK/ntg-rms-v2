@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -24,8 +25,8 @@ export class TaxesController {
 
   @Get()
   @ApiOperation({ summary: 'Get all taxes' })
-  getTaxes(@CurrentUser() user: any) {
-    return this.taxesService.getTaxes(user.tenantId);
+  getTaxes(@CurrentUser() user: any, @Query('branchId') branchId?: string) {
+    return this.taxesService.getTaxes(user.tenantId, branchId);
   }
 
   @Get(':id')
@@ -36,8 +37,8 @@ export class TaxesController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new tax' })
-  createTax(@CurrentUser() user: any, @Body() createDto: CreateTaxDto) {
-    return this.taxesService.createTax(user.tenantId, createDto);
+  createTax(@CurrentUser() user: any, @Body() createDto: CreateTaxDto, @Query('branchId') branchId?: string) {
+    return this.taxesService.createTax(user.tenantId, createDto, branchId);
   }
 
   @Put(':id')

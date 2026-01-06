@@ -28,6 +28,7 @@ import { notifications } from '@mantine/notifications';
 import { couponsApi, Coupon, CreateCouponDto, UpdateCouponDto } from '@/lib/api/coupons';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { useBranchStore } from '@/lib/store/branch-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor, useWarningColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
@@ -43,6 +44,7 @@ import { DISCOUNT_TYPES, type DiscountType } from '@/shared/constants/menu.const
 export function CouponsPage() {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
+  const { selectedBranchId } = useBranchStore();
   const notificationColors = useNotificationColors();
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
@@ -87,7 +89,7 @@ export function CouponsPage() {
 
       if (navigator.onLine) {
         try {
-          const response = await couponsApi.getCoupons({}, pagination.paginationParams);
+          const response = await couponsApi.getCoupons({}, pagination.paginationParams, selectedBranchId || undefined);
           const serverCoupons = pagination.extractData(response);
           pagination.extractPagination(response);
           
@@ -180,7 +182,7 @@ export function CouponsPage() {
           validUntil: values.validUntil || undefined,
         };
 
-        await couponsApi.createCoupon(createData);
+        await couponsApi.createCoupon(createData, selectedBranchId || undefined);
 
         notifications.show({
           title: t('common.success', language) || 'Success',

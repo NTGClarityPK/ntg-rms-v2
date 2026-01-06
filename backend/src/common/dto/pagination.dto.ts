@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsOptional, IsInt, Min, Max } from 'class-validator';
+import { IsOptional, IsInt, Min, Max, IsUUID } from 'class-validator';
 
 export class PaginationDto {
   @ApiPropertyOptional({ description: 'Page number (1-indexed)', default: 1, minimum: 1 })
@@ -17,6 +17,11 @@ export class PaginationDto {
   @Min(1)
   @Max(100)
   limit?: number = 10;
+
+  @ApiPropertyOptional({ description: 'Filter by branch ID' })
+  @IsOptional()
+  @IsUUID()
+  branchId?: string;
 }
 
 export interface PaginationParams {

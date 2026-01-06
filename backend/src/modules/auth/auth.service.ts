@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../../database/supabase.service';
@@ -793,6 +793,57 @@ export class AuthService {
       createdAt: user.created_at as string,
       updatedAt: user.updated_at as string,
     };
+  }
+
+  async getUserAssignedBranches(tenantId: string, userId: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+    
+    // Check if user is tenant owner - if so, return all branches
+    const { data: user } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', userId)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    // If tenant owner, return all branches
+    if (user.role === 'tenant_owner') {
+      const { data: allBranches, error } = await supabase
+        .from('branches')
+        .select('id, name, code')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .eq('is_active', true)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        throw new BadRequestException('Failed to fetch branches: ' + error.message);
+      }
+
+      return allBranches || [];
+    }
+
+    // For other users, return only assigned branches
+    const { data: userBranches, error } = await supabase
+      .from('user_branches')
+      .select(`
+        branch:branches!inner(id, name, code)
+      `)
+      .eq('user_id', userId);
+
+    if (error) {
+      throw new BadRequestException('Failed to fetch assigned branches: ' + error.message);
+    }
+
+    return (userBranches || []).map((ub: any) => ({
+      id: ub.branch.id,
+      name: ub.branch.name,
+      code: ub.branch.code,
+    }));
   }
 
   async updateProfile(tenantId: string, userId: string, updateProfileDto: UpdateProfileDto) {

@@ -39,6 +39,7 @@ import { getSuccessColor, getErrorColor, getWarningColor, getInfoColor, getStatu
 import { useTheme } from '@/lib/hooks/use-theme';
 import { generateThemeColors } from '@/lib/utils/themeColors';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { useBranchStore } from '@/lib/store/branch-store';
 import { onOrderUpdate, notifyOrderUpdate } from '@/lib/utils/order-events';
 import { useKitchenSse, OrderUpdateEvent } from '@/lib/hooks/use-kitchen-sse';
 import { menuApi } from '@/lib/api/menu';
@@ -57,6 +58,7 @@ export default function KitchenDisplayPage() {
   const { language } = useLanguageStore();
   const primary = useThemeColor();
   const { user } = useAuthStore();
+  const { selectedBranchId } = useBranchStore();
   const router = useRouter();
   const { isDark } = useTheme();
   const themeColors = generateThemeColors(primary, isDark);
@@ -228,6 +230,7 @@ export default function KitchenDisplayPage() {
       const allOrdersResponse = await ordersApi.getOrders({
         status: ['preparing', 'ready'],
         includeItems: true,
+        branchId: selectedBranchId || undefined,
       });
       
       // Handle both paginated and non-paginated responses
@@ -353,7 +356,7 @@ export default function KitchenDisplayPage() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language]); // Removed soundEnabled and playSound to prevent infinite loops - using refs instead
+  }, [language, selectedBranchId]); // Removed soundEnabled and playSound to prevent infinite loops - using refs instead
 
   // Set dayjs locale when language changes
   useEffect(() => {
@@ -374,6 +377,7 @@ export default function KitchenDisplayPage() {
   // Receives instant updates when orders are created or status changes
   // Falls back to polling if SSE fails
   const { isConnected, isConnecting } = useKitchenSse({
+    branchId: selectedBranchId,
     onOrderUpdate: (event: OrderUpdateEvent) => {
       console.log('📨 Order update received via SSE:', event.type, event.orderId);
       

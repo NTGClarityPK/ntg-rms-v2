@@ -29,6 +29,7 @@ import { notifications } from '@mantine/notifications';
 import { menuApi, Category } from '@/lib/api/menu';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { useBranchStore } from '@/lib/store/branch-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor, useInfoColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
@@ -39,6 +40,7 @@ import { handleApiError } from '@/shared/utils/error-handler';
 export function CategoriesPage() {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
+  const { selectedBranchId } = useBranchStore();
   
   const notificationColors = useNotificationColors();
   const errorColor = useErrorColor();
@@ -73,7 +75,7 @@ export function CategoriesPage() {
       setLoading(true);
       setError(null);
 
-      const serverCategoriesResponse = await menuApi.getCategories();
+      const serverCategoriesResponse = await menuApi.getCategories(undefined, selectedBranchId || undefined);
       const serverCategories = Array.isArray(serverCategoriesResponse) ? serverCategoriesResponse : (serverCategoriesResponse?.data || []);
       setCategories(serverCategories);
     } catch (err: any) {
@@ -87,7 +89,7 @@ export function CategoriesPage() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.tenantId, language]);
+  }, [user?.tenantId, language, selectedBranchId]);
 
   useEffect(() => {
     loadCategories();
@@ -180,7 +182,7 @@ export function CategoriesPage() {
 
       } else {
         // Create
-        savedCategory = await menuApi.createCategory(categoryData);
+        savedCategory = await menuApi.createCategory(categoryData, selectedBranchId || undefined);
         
         // If image was selected during creation, upload it now
         if (imageFile) {

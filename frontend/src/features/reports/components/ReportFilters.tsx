@@ -106,7 +106,8 @@ export function ReportFilters({
       setSelectedDateRange(null);
       setStartDate(null);
       setEndDate(null);
-      applyFilters(null, null, selectedBranch, groupBy);
+      const branchId = selectedBranch === 'all' || selectedBranch === '' ? undefined : selectedBranch;
+      applyFilters(null, null, branchId, groupBy);
       return;
     }
 
@@ -141,13 +142,14 @@ export function ReportFilters({
 
     setStartDate(start);
     setEndDate(end);
-    applyFilters(start, end, selectedBranch, groupBy);
+    const branchId = selectedBranch === 'all' || selectedBranch === '' ? undefined : selectedBranch;
+    applyFilters(start, end, branchId, groupBy);
   };
 
   const applyFilters = (
     start: Date | null,
     end: Date | null,
-    branch: string,
+    branch: string | undefined,
     group: string
   ) => {
     // Format dates as YYYY-MM-DD for API
@@ -162,7 +164,7 @@ export function ReportFilters({
     const filters: ReportQueryParams = {
       startDate: formatDate(start),
       endDate: formatDate(end),
-      branchId: branch || undefined,
+      branchId: branch && branch !== 'all' ? branch : undefined,
     };
 
     // Only include groupBy if showGroupBy is true
@@ -175,13 +177,16 @@ export function ReportFilters({
 
   const handleDateChange = () => {
     setSelectedDateRange(null); // Clear selected range when custom dates are used
-    applyFilters(startDate, endDate, selectedBranch, groupBy);
+    const branchId = selectedBranch === 'all' || selectedBranch === '' ? undefined : selectedBranch;
+    applyFilters(startDate, endDate, branchId, groupBy);
   };
 
   const handleBranchChange = (value: string | null) => {
     const branch = value || '';
     setSelectedBranch(branch);
-    applyFilters(startDate, endDate, branch, groupBy);
+    // If "all" is selected, pass undefined to API (which means all branches)
+    const branchId = branch === 'all' || branch === '' ? undefined : branch;
+    applyFilters(startDate, endDate, branchId, groupBy);
   };
 
   const handleGroupByChange = (value: string | null) => {
@@ -197,7 +202,8 @@ export function ReportFilters({
       // Only apply initial filters if currentFilters is not provided
       // If currentFilters is provided, the parent is managing the state
       if (!currentFilters) {
-        applyFilters(null, null, selectedBranch, groupBy);
+        const branchId = selectedBranch === 'all' || selectedBranch === '' ? undefined : selectedBranch;
+        applyFilters(null, null, branchId, groupBy);
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -270,7 +276,8 @@ export function ReportFilters({
               setStartDate(date);
               setSelectedDateRange(null); // Clear selected range when custom dates are used
               // Always apply filters when date changes
-              applyFilters(date, endDate, selectedBranch, groupBy);
+              const branchId = selectedBranch === 'all' || selectedBranch === '' ? undefined : selectedBranch;
+              applyFilters(date, endDate, branchId, groupBy);
             }}
             leftSection={<IconCalendar size={16} />}
             style={{ flex: 1 }}
@@ -283,7 +290,8 @@ export function ReportFilters({
               setEndDate(date);
               setSelectedDateRange(null); // Clear selected range when custom dates are used
               // Always apply filters when date changes
-              applyFilters(startDate, date, selectedBranch, groupBy);
+              const branchId = selectedBranch === 'all' || selectedBranch === '' ? undefined : selectedBranch;
+              applyFilters(startDate, date, branchId, groupBy);
             }}
             leftSection={<IconCalendar size={16} />}
             style={{ flex: 1 }}
@@ -291,13 +299,10 @@ export function ReportFilters({
           />
           <Select
             label={t('reports.filterByBranch' as any, language)}
-            data={[
-              { value: '', label: String(t('reports.allBranches' as any, language) || 'All Branches') },
-              ...branches.map((b) => ({
-                value: b.value || '',
-                label: String(b.label || ''),
-              })),
-            ]}
+            data={branches.map((b) => ({
+              value: b.value || '',
+              label: String(b.label || ''),
+            }))}
             value={selectedBranch}
             onChange={handleBranchChange}
             clearable

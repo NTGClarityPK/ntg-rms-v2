@@ -38,6 +38,7 @@ import { notifications } from '@mantine/notifications';
 import { menuApi, Buffet, FoodItem } from '@/lib/api/menu';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { useBranchStore } from '@/lib/store/branch-store';
 import { t } from '@/lib/utils/translations';
 import { useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
@@ -51,6 +52,7 @@ import { isPaginatedResponse } from '@/lib/types/pagination.types';
 export function BuffetPage() {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
+  const { selectedBranchId } = useBranchStore();
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
@@ -92,15 +94,15 @@ export function BuffetPage() {
     try {
       setLoading(true);
 
-      // Load menus for menu type selection
-      const menuListResponse = await menuApi.getMenus();
+      // Load menus for menu type selection (with branch filter)
+      const menuListResponse = await menuApi.getMenus(undefined, selectedBranchId || undefined);
       const menuList = Array.isArray(menuListResponse) ? menuListResponse : (menuListResponse?.data || []);
       setMenus(menuList);
 
       // Load buffets
       if (navigator.onLine) {
         try {
-          const serverResponse = await menuApi.getBuffets(pagination.paginationParams);
+          const serverResponse = await menuApi.getBuffets(pagination.paginationParams, selectedBranchId || undefined);
           const serverBuffets = pagination.extractData(serverResponse);
           pagination.extractPagination(serverResponse);
           setBuffets(serverBuffets);
@@ -116,6 +118,7 @@ export function BuffetPage() {
     } finally {
       setLoading(false);
     }
+    //eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.tenantId, pagination]);
 
   useEffect(() => {
@@ -132,19 +135,12 @@ export function BuffetPage() {
 
   const getMenuName = (menuType: string): string => {
     const menu = menus.find((m) => m.menuType === menuType);
-    if (menu) {
-      return menu.name || menu.menuType;
+    // Always use the menu name from backend if available
+    if (menu && menu.name) {
+      return menu.name;
     }
-
-    const menuTypeLabels: Record<string, string> = {
-      all_day: t('menu.allDay', language),
-      breakfast: t('menu.breakfast', language),
-      lunch: t('menu.lunch', language),
-      dinner: t('menu.dinner', language),
-      kids_special: t('menu.kidsSpecial', language),
-    };
-
-    return menuTypeLabels[menuType] || menuType;
+    // Only fallback to menuType if no name is available
+    return menuType;
   };
 
   const loadFoodItemsFromMenus = async (menuTypes: string[]) => {
@@ -154,24 +150,27 @@ export function BuffetPage() {
     }
 
     try {
-      const allItems: FoodItem[] = [];
-      for (const menuType of menuTypes) {
-        const itemsResponse = await menuApi.getMenuItems(menuType);
-        // getMenuItems returns string[] (food item IDs), so we need to fetch the actual items
-        const items = await Promise.all(
-          itemsResponse.map(async (itemId) => {
-            try {
-              return await menuApi.getFoodItemById(itemId);
-            } catch {
-              return null;
-            }
-          })
-        );
-        allItems.push(...items.filter((item): item is FoodItem => item !== null));
+      // Get menu item IDs for all selected menu types in ONE API call (much faster!)
+      const menuItemsMap = await menuApi.getMenuItemsForTypes(menuTypes, selectedBranchId || undefined);
+      
+      // Collect all unique food item IDs from all menu types
+      const menuItemIds = new Set<string>();
+      Object.values(menuItemsMap).forEach(itemIds => {
+        itemIds.forEach(id => menuItemIds.add(id));
+      });
+      
+      if (menuItemIds.size === 0) {
+        setSelectedMenuFoodItems([]);
+        return;
       }
-      // Remove duplicates
-      const uniqueItems = Array.from(new Map(allItems.map(item => [item.id, item])).values());
-      setSelectedMenuFoodItems(uniqueItems);
+      
+      // Get all food items for the branch at once
+      const itemsResponse = await menuApi.getFoodItems(undefined, undefined, undefined, false, selectedBranchId || undefined);
+      const allFoodItems = Array.isArray(itemsResponse) ? itemsResponse : (itemsResponse?.data || []);
+      
+      // Filter food items that are in the selected menus
+      const filteredItems = allFoodItems.filter(item => menuItemIds.has(item.id));
+      setSelectedMenuFoodItems(filteredItems);
     } catch (error) {
       console.error('Failed to load food items from menus:', error);
       setSelectedMenuFoodItems([]);
@@ -271,7 +270,7 @@ export function BuffetPage() {
         if (wasEditing && currentEditingBuffet) {
           savedBuffet = await menuApi.updateBuffet(currentEditingBuffet.id, buffetData);
         } else {
-          savedBuffet = await menuApi.createBuffet(buffetData);
+          savedBuffet = await menuApi.createBuffet(buffetData, selectedBranchId || undefined);
 
           if (currentImageFile) {
             try {

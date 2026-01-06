@@ -28,6 +28,7 @@ import { notifications } from '@mantine/notifications';
 import { inventoryApi, Ingredient, CreateIngredientDto, UpdateIngredientDto } from '@/lib/api/inventory';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { useBranchStore } from '@/lib/store/branch-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
@@ -43,6 +44,7 @@ import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
 export function IngredientsPage() {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
+  const { selectedBranchId } = useBranchStore();
   const { refreshKey, triggerRefresh } = useInventoryRefresh();
   const notificationColors = useNotificationColors();
   const errorColor = useErrorColor();
@@ -92,7 +94,7 @@ export function IngredientsPage() {
       if (statusFilter !== null) filters.isActive = statusFilter;
       if (debouncedSearchQuery.trim()) filters.search = debouncedSearchQuery.trim();
 
-      const serverIngredientsResponse = await inventoryApi.getIngredients(filters, pagination.paginationParams);
+      const serverIngredientsResponse = await inventoryApi.getIngredients(filters, pagination.paginationParams, selectedBranchId || undefined);
       // Handle both paginated and non-paginated responses
       const serverIngredients = pagination.extractData(serverIngredientsResponse);
       pagination.extractPagination(serverIngredientsResponse);
@@ -180,7 +182,7 @@ export function IngredientsPage() {
           isActive: values.isActive,
         };
 
-        savedIngredient = await inventoryApi.createIngredient(createData);
+        savedIngredient = await inventoryApi.createIngredient(createData, selectedBranchId || undefined);
       }
 
       notifications.show({

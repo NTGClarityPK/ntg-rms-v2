@@ -26,6 +26,16 @@ export class CreateAddOnGroupDto {
   @IsOptional()
   maxSelections?: number;
 
+  @ApiProperty({ required: false, default: 0 })
+  @IsNumber()
+  @IsOptional()
+  displayOrder?: number;
+
+  @ApiProperty({ required: false, default: true })
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
+
   @ApiProperty({ 
     required: false,
     enum: ['Add', 'Remove', 'Change'],

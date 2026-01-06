@@ -35,6 +35,7 @@ import { notifications } from '@mantine/notifications';
 import { menuApi, VariationGroup, Variation, FoodItemVariation } from '@/lib/api/menu';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { useBranchStore } from '@/lib/store/branch-store';
 import { t } from '@/lib/utils/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
@@ -47,6 +48,7 @@ import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
 export function VariationGroupsPage() {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
+  const { selectedBranchId } = useBranchStore();
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
@@ -96,7 +98,7 @@ export function VariationGroupsPage() {
       setLoading(true);
       setError(null);
 
-      const serverGroupsResponse = await menuApi.getVariationGroups(pagination.paginationParams);
+      const serverGroupsResponse = await menuApi.getVariationGroups(pagination.paginationParams, selectedBranchId || undefined);
       const serverGroups = pagination.extractData(serverGroupsResponse);
       pagination.extractPagination(serverGroupsResponse);
       setVariationGroups(serverGroups);
@@ -253,7 +255,7 @@ export function VariationGroupsPage() {
           savedGroup = await menuApi.updateVariationGroup(currentEditingGroupId, groupData);
           
         } else {
-          savedGroup = await menuApi.createVariationGroup(groupData);
+          savedGroup = await menuApi.createVariationGroup(groupData, selectedBranchId || undefined);
           
         }
 

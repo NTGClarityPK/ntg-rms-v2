@@ -52,7 +52,7 @@ export default function CountersPage() {
     validate: {
       name: (value) => (!value ? 'Name is required' : null),
       code: (value) => (!value ? 'Code is required' : null),
-      branchId: (value) => (!value ? 'Branch is required' : null),
+      branchId: (value) => (!value ? t('common.required', language) || 'Branch is required' : null),
     },
   });
 
@@ -277,7 +277,8 @@ export default function CountersPage() {
         <form onSubmit={form.onSubmit(handleSubmit)}>
           <Stack gap="md">
             <Select
-              label="Branch"
+              label={t('common.selectBranch', language) || t('restaurant.branch', language) || 'Branch'}
+              placeholder={t('common.selectBranch', language) || 'Select Branch'}
               required
               data={branches}
               {...form.getInputProps('branchId')}

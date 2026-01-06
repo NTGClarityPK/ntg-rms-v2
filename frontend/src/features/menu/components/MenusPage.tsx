@@ -25,6 +25,7 @@ import { notifications } from '@mantine/notifications';
 import { menuApi, FoodItem } from '@/lib/api/menu';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { useBranchStore } from '@/lib/store/branch-store';
 import { t } from '@/lib/utils/translations';
 import { API_BASE_URL } from '@/lib/constants/api';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
@@ -37,6 +38,7 @@ import { handleApiError } from '@/shared/utils/error-handler';
 export function MenusPage() {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
+  const { selectedBranchId } = useBranchStore();
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
@@ -113,12 +115,12 @@ export function MenusPage() {
       setError(null);
 
       // Load menus
-      const menuListResponse = await menuApi.getMenus();
+      const menuListResponse = await menuApi.getMenus(undefined, selectedBranchId || undefined);
       const menuList = Array.isArray(menuListResponse) ? menuListResponse : (menuListResponse?.data || []);
       setMenus(menuList);
 
       // Load food items (all items, not just active, for menu assignment)
-      const itemsResponse = await menuApi.getFoodItems();
+      const itemsResponse = await menuApi.getFoodItems(undefined, undefined, undefined, false, selectedBranchId || undefined);
       const items = Array.isArray(itemsResponse) ? itemsResponse : (itemsResponse?.data || []);
       // Filter out items without names, but keep all items (active and inactive) for menu assignment
       setFoodItems(items.filter((item) => item.name && item.name.trim()));
@@ -129,7 +131,8 @@ export function MenusPage() {
         setLoading(false);
       }
     }
-  }, [user?.tenantId]);
+    //eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.tenantId, selectedBranchId]);
 
   useEffect(() => {
     loadData();
@@ -202,7 +205,7 @@ export function MenusPage() {
       const limit = 100; // Backend max limit
       
       while (hasMore) {
-        const itemsResponse = await menuApi.getFoodItems(undefined, { page, limit });
+        const itemsResponse = await menuApi.getFoodItems(undefined, { page, limit }, undefined, false, selectedBranchId || undefined);
         const items = Array.isArray(itemsResponse) ? itemsResponse : (itemsResponse?.data || []);
         allItems.push(...items);
         
@@ -318,12 +321,15 @@ export function MenusPage() {
       // Generate unique menu type from name
       const menuType = generateMenuType(values.name, menus);
 
-      await menuApi.createMenu({
-        menuType,
-        name: values.name.trim(),
-        foodItemIds: values.foodItemIds.length > 0 ? values.foodItemIds : undefined,
-        isActive: values.isActive,
-      });
+      await menuApi.createMenu(
+        {
+          menuType,
+          name: values.name.trim(),
+          foodItemIds: values.foodItemIds.length > 0 ? values.foodItemIds : undefined,
+          isActive: values.isActive,
+        },
+        selectedBranchId || undefined
+      );
 
       notifications.show({
         title: t('common.success' as any, language) || 'Success',
@@ -392,6 +398,7 @@ export function MenusPage() {
 
   const defaultMenuTypes = ['all_day', 'breakfast', 'lunch', 'dinner', 'kids_special'];
 
+
   return (
     <Stack gap="md">
       <Group justify="space-between" mb="xl">
@@ -442,7 +449,7 @@ export function MenusPage() {
               <Group>
                 <IconMenu2 size={24} color={primaryColor} />
                 <div>
-                  <Text fw={500}>{menuTypeLabels[menu.menuType] || menu.name || menu.menuType}</Text>
+                  <Text fw={500}>{menu.name || menu.menuType}</Text>
                   <Text size="sm" c="dimmed">
                     {menu.itemCount} {t('menu.foodItems', language)}
                   </Text>
@@ -497,6 +504,7 @@ export function MenusPage() {
             onChange={(value) => setSelectedItemIds(value)}
             searchable
             clearable
+            size="md"
           />
 
           <Group justify="flex-end" mt="md">
@@ -538,6 +546,7 @@ export function MenusPage() {
               {...form.getInputProps('foodItemIds')}
               searchable
               clearable
+              size="md"
             />
 
             <Switch

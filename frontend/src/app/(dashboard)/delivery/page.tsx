@@ -47,13 +47,13 @@ import {
   DeliveryPersonnel,
   AssignDeliveryDto,
 } from '@/lib/api/delivery';
-import { restaurantApi } from '@/lib/api/restaurant';
 import { customersApi, Customer } from '@/lib/api/customers';
 import { notifications } from '@mantine/notifications';
 import { useDisclosure } from '@mantine/hooks';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getStatusColor, getSuccessColor, getErrorColor, getInfoColor, getWarningColor } from '@/lib/utils/theme';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { useBranchStore } from '@/lib/store/branch-store';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
 import dayjs from 'dayjs';
@@ -78,10 +78,9 @@ export default function DeliveryPage() {
   const [deliveries, setDeliveries] = useState<DeliveryOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
+  const { selectedBranchId } = useBranchStore();
   const [selectedDeliveryPerson, setSelectedDeliveryPerson] = useState<string | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null);
-  const [branches, setBranches] = useState<{ value: string; label: string }[]>([]);
   const [personnel, setPersonnel] = useState<DeliveryPersonnel[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
@@ -92,28 +91,14 @@ export default function DeliveryPage() {
   const [selectedPersonnelId, setSelectedPersonnelId] = useState<string>('');
   const [estimatedTime, setEstimatedTime] = useState<Date | null>(null);
 
-  const loadBranches = useCallback(async () => {
-    try {
-      const data = await restaurantApi.getBranches();
-      setBranches(
-        data.map((b) => ({
-          value: b.id,
-          label: b.name,
-        }))
-      );
-    } catch (error) {
-      console.error('Failed to load branches:', error);
-    }
-  }, []);
-
   const loadPersonnel = useCallback(async () => {
     try {
-      const data = await deliveryApi.getAvailableDeliveryPersonnel(selectedBranch || undefined);
+      const data = await deliveryApi.getAvailableDeliveryPersonnel(selectedBranchId || undefined);
       setPersonnel(data);
     } catch (error) {
       console.error('Failed to load delivery personnel:', error);
     }
-  }, [selectedBranch]);
+  }, [selectedBranchId]);
 
   const loadCustomers = useCallback(async () => {
     setLoadingCustomers(true);
@@ -140,7 +125,7 @@ export default function DeliveryPage() {
         : undefined;
       const response = await deliveryApi.getDeliveryOrders({
         status,
-        branchId: selectedBranch || undefined,
+        branchId: selectedBranchId || undefined,
         deliveryPersonId: selectedDeliveryPerson || undefined,
         ...pagination.paginationParams,
       });
@@ -162,11 +147,7 @@ export default function DeliveryPage() {
         setLoading(false);
       }
     }
-  }, [selectedStatuses, selectedBranch, selectedDeliveryPerson, language, pagination]);
-
-  useEffect(() => {
-    loadBranches();
-  }, [loadBranches]);
+  }, [selectedStatuses, selectedBranchId, selectedDeliveryPerson, language, pagination]);
 
   useEffect(() => {
     loadPersonnel();
@@ -179,7 +160,7 @@ export default function DeliveryPage() {
   useEffect(() => {
     loadDeliveries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedStatuses, selectedBranch, selectedDeliveryPerson, pagination.page, pagination.limit]);
+  }, [selectedStatuses, selectedBranchId, selectedDeliveryPerson, pagination.page, pagination.limit]);
 
   const handleAssignDelivery = async () => {
     if (!selectedDelivery || !selectedPersonnelId) {
@@ -382,16 +363,7 @@ export default function DeliveryPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </Grid.Col>
-            <Grid.Col span={{ base: 12, sm: 3 }}>
-              <Select
-                placeholder={t('delivery.filterByBranch' as any, language) || 'Filter by Branch'}
-                data={branches}
-                value={selectedBranch}
-                onChange={setSelectedBranch}
-                clearable
-              />
-            </Grid.Col>
-            <Grid.Col span={{ base: 12, sm: 3 }}>
+            <Grid.Col span={{ base: 12, sm: 4 }}>
               <Select
                 placeholder={t('delivery.filterByPersonnel' as any, language) || 'Filter by Personnel'}
                 data={personnel.map((p) => ({

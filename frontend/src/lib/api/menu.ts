@@ -141,10 +141,18 @@ const baseCategoriesApi = createCrudApi<Category>('/menu/categories');
 const baseFoodItemsApi = createCrudApi<FoodItem>('/menu/food-items');
 
 export const menuApi = {
-  // Categories - Using factory for CRUD operations
-  getCategories: baseCategoriesApi.getAll,
+  // Categories - Using factory for CRUD operations with branchId support
+  getCategories: async (pagination?: PaginationParams, branchId?: string): Promise<any[] | PaginatedResponse<any>> => {
+    const filters: any = {};
+    if (branchId) filters.branchId = branchId;
+    return baseCategoriesApi.getAll(filters, pagination);
+  },
   getCategoryById: baseCategoriesApi.getById,
-  createCategory: baseCategoriesApi.create,
+  createCategory: async (category: Partial<Category>, branchId?: string): Promise<Category> => {
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const { data } = await apiClient.post(`/menu/categories${params}`, category);
+    return data;
+  },
   updateCategory: baseCategoriesApi.update,
   deleteCategory: baseCategoriesApi.delete,
 
@@ -160,16 +168,21 @@ export const menuApi = {
   },
 
   // Food Items - Using factory for CRUD operations
-  getFoodItems: async (categoryId?: string, pagination?: PaginationParams, search?: string, onlyActiveMenus?: boolean): Promise<FoodItem[] | PaginatedResponse<FoodItem>> => {
+  getFoodItems: async (categoryId?: string, pagination?: PaginationParams, search?: string, onlyActiveMenus?: boolean, branchId?: string): Promise<FoodItem[] | PaginatedResponse<FoodItem>> => {
     // Use base API but add custom filter handling
     const filters: any = {};
     if (categoryId) filters.categoryId = categoryId;
     if (onlyActiveMenus) filters.onlyActiveMenus = true;
+    if (branchId) filters.branchId = branchId;
     return baseFoodItemsApi.getAll(filters, pagination, search);
   },
 
   getFoodItemById: baseFoodItemsApi.getById,
-  createFoodItem: baseFoodItemsApi.create,
+  createFoodItem: async (foodItem: Partial<FoodItem>, branchId?: string): Promise<FoodItem> => {
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const { data } = await apiClient.post(`/menu/food-items${params}`, foodItem);
+    return data;
+  },
   updateFoodItem: baseFoodItemsApi.update,
   deleteFoodItem: baseFoodItemsApi.delete,
 
@@ -185,10 +198,11 @@ export const menuApi = {
   },
 
   // Add-on Groups
-  getAddOnGroups: async (pagination?: PaginationParams): Promise<AddOnGroup[] | PaginatedResponse<AddOnGroup>> => {
+  getAddOnGroups: async (pagination?: PaginationParams, branchId?: string): Promise<AddOnGroup[] | PaginatedResponse<AddOnGroup>> => {
     const params = new URLSearchParams();
     if (pagination?.page) params.append('page', pagination.page.toString());
     if (pagination?.limit) params.append('limit', pagination.limit.toString());
+    if (branchId) params.append('branchId', branchId);
     const { data } = await apiClient.get(`/menu/add-on-groups${params.toString() ? `?${params.toString()}` : ''}`);
     return data;
   },
@@ -198,8 +212,9 @@ export const menuApi = {
     return data;
   },
 
-  createAddOnGroup: async (group: Partial<AddOnGroup>): Promise<AddOnGroup> => {
-    const { data } = await apiClient.post('/menu/add-on-groups', group);
+  createAddOnGroup: async (group: Partial<AddOnGroup>, branchId?: string): Promise<AddOnGroup> => {
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const { data } = await apiClient.post(`/menu/add-on-groups${params}`, group);
     return data;
   },
 
@@ -238,16 +253,23 @@ export const menuApi = {
   },
 
   // Menus
-  getMenus: async (pagination?: PaginationParams): Promise<any[] | PaginatedResponse<any>> => {
+  getMenus: async (pagination?: PaginationParams, branchId?: string): Promise<any[] | PaginatedResponse<any>> => {
     const params = new URLSearchParams();
     if (pagination?.page) params.append('page', pagination.page.toString());
     if (pagination?.limit) params.append('limit', pagination.limit.toString());
+    if (branchId) params.append('branchId', branchId);
     const { data } = await apiClient.get(`/menu/menus${params.toString() ? `?${params.toString()}` : ''}`);
     return data;
   },
 
   getMenuItems: async (menuType: string): Promise<string[]> => {
     const { data } = await apiClient.get(`/menu/menus/${menuType}/items`);
+    return data;
+  },
+
+  getMenuItemsForTypes: async (menuTypes: string[], branchId?: string): Promise<Record<string, string[]>> => {
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const { data } = await apiClient.post(`/menu/menus/items/batch${params}`, { menuTypes });
     return data;
   },
 
@@ -261,8 +283,9 @@ export const menuApi = {
     return data;
   },
 
-  createMenu: async (menuData: { menuType: string; name?: string; foodItemIds?: string[]; isActive?: boolean }): Promise<any> => {
-    const { data } = await apiClient.post('/menu/menus', menuData);
+  createMenu: async (menuData: { menuType: string; name?: string; foodItemIds?: string[]; isActive?: boolean }, branchId?: string): Promise<any> => {
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const { data } = await apiClient.post(`/menu/menus${params}`, menuData);
     return data;
   },
 
@@ -271,10 +294,11 @@ export const menuApi = {
   },
 
   // Buffets
-  getBuffets: async (pagination?: PaginationParams): Promise<Buffet[] | PaginatedResponse<Buffet>> => {
+  getBuffets: async (pagination?: PaginationParams, branchId?: string): Promise<Buffet[] | PaginatedResponse<Buffet>> => {
     const params = new URLSearchParams();
     if (pagination?.page) params.append('page', pagination.page.toString());
     if (pagination?.limit) params.append('limit', pagination.limit.toString());
+    if (branchId) params.append('branchId', branchId);
     const { data } = await apiClient.get(`/menu/buffets${params.toString() ? `?${params.toString()}` : ''}`);
     return data;
   },
@@ -284,8 +308,9 @@ export const menuApi = {
     return data;
   },
 
-  createBuffet: async (buffet: Partial<Buffet>): Promise<Buffet> => {
-    const { data } = await apiClient.post('/menu/buffets', buffet);
+  createBuffet: async (buffet: Partial<Buffet>, branchId?: string): Promise<Buffet> => {
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const { data } = await apiClient.post(`/menu/buffets${params}`, buffet);
     return data;
   },
 
@@ -310,10 +335,11 @@ export const menuApi = {
   },
 
   // Combo Meals
-  getComboMeals: async (pagination?: PaginationParams): Promise<ComboMeal[] | PaginatedResponse<ComboMeal>> => {
+  getComboMeals: async (pagination?: PaginationParams, branchId?: string): Promise<ComboMeal[] | PaginatedResponse<ComboMeal>> => {
     const params = new URLSearchParams();
     if (pagination?.page) params.append('page', pagination.page.toString());
     if (pagination?.limit) params.append('limit', pagination.limit.toString());
+    if (branchId) params.append('branchId', branchId);
     const { data } = await apiClient.get(`/menu/combo-meals${params.toString() ? `?${params.toString()}` : ''}`);
     return data;
   },
@@ -323,8 +349,9 @@ export const menuApi = {
     return data;
   },
 
-  createComboMeal: async (comboMeal: Partial<ComboMeal>): Promise<ComboMeal> => {
-    const { data } = await apiClient.post('/menu/combo-meals', comboMeal);
+  createComboMeal: async (comboMeal: Partial<ComboMeal>, branchId?: string): Promise<ComboMeal> => {
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const { data } = await apiClient.post(`/menu/combo-meals${params}`, comboMeal);
     return data;
   },
 
@@ -349,10 +376,11 @@ export const menuApi = {
   },
 
   // Variation Groups
-  getVariationGroups: async (pagination?: PaginationParams): Promise<VariationGroup[] | PaginatedResponse<VariationGroup>> => {
+  getVariationGroups: async (pagination?: PaginationParams, branchId?: string): Promise<VariationGroup[] | PaginatedResponse<VariationGroup>> => {
     const params = new URLSearchParams();
     if (pagination?.page) params.append('page', pagination.page.toString());
     if (pagination?.limit) params.append('limit', pagination.limit.toString());
+    if (branchId) params.append('branchId', branchId);
     const { data } = await apiClient.get(`/menu/variation-groups${params.toString() ? `?${params.toString()}` : ''}`);
     return data;
   },
@@ -362,8 +390,9 @@ export const menuApi = {
     return data;
   },
 
-  createVariationGroup: async (group: Partial<VariationGroup>): Promise<VariationGroup> => {
-    const { data } = await apiClient.post('/menu/variation-groups', group);
+  createVariationGroup: async (group: Partial<VariationGroup>, branchId?: string): Promise<VariationGroup> => {
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const { data } = await apiClient.post(`/menu/variation-groups${params}`, group);
     return data;
   },
 

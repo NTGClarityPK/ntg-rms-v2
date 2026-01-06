@@ -10,6 +10,7 @@ export const API_ENDPOINTS = {
     ME: '/auth/me',
     PROFILE: '/auth/profile',
     GOOGLE: '/auth/google',
+    ASSIGNED_BRANCHES: '/auth/assigned-branches',
   },
   // Dashboard
   DASHBOARD: '/dashboard',

@@ -17,11 +17,14 @@ import {
   Center,
   Group,
   Checkbox,
+  Select,
+  Modal,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { IconAlertCircle, IconBrandGoogle, IconMail, IconLock } from '@tabler/icons-react';
 import { authApi } from '@/lib/api/auth';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { useBranchStore } from '@/lib/store/branch-store';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { useErrorColor, useInfoColor } from '@/lib/hooks/use-theme-colors';
@@ -43,6 +46,11 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const errorProcessedRef = useRef(false);
+  const [showBranchSelection, setShowBranchSelection] = useState(false);
+  const [branches, setBranches] = useState<Array<{ id: string; name: string; code: string }>>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
+  const [loadingBranches, setLoadingBranches] = useState(false);
+  const { setSelectedBranchId: setBranchStoreId } = useBranchStore();
 
   // Check for error in URL params (from OAuth callback) - only process once on mount
   useEffect(() => {
@@ -102,7 +110,37 @@ function LoginForm() {
         name: response.user.name || (response.user as any).nameEn || (response.user as any).nameAr || 'User',
       };
       setUser(user);
-      router.push('/dashboard');
+      
+      // Fetch assigned branches
+      setLoadingBranches(true);
+      try {
+        const assignedBranches = await authApi.getAssignedBranches();
+        setBranches(assignedBranches);
+        
+        if (assignedBranches.length === 0) {
+          setError(language === 'ar' ? 'لا توجد فروع مخصصة لك' : 'No branches assigned to you');
+          setLoading(false);
+          setLoadingBranches(false);
+          return;
+        }
+        
+        // If only one branch, auto-select it
+        if (assignedBranches.length === 1) {
+          setBranchStoreId(assignedBranches[0].id);
+          router.push('/dashboard');
+          return;
+        }
+        
+        // Show branch selection modal
+        setShowBranchSelection(true);
+        setSelectedBranchId(assignedBranches[0].id); // Default to first branch
+      } catch (branchError: any) {
+        console.error('Failed to fetch branches:', branchError);
+        setError(language === 'ar' ? 'فشل في جلب الفروع' : 'Failed to fetch branches');
+      } finally {
+        setLoadingBranches(false);
+        setLoading(false);
+      }
     } catch (err: any) {
       // Extract error message from various possible response structures
       let errorMsg = '';
@@ -151,6 +189,14 @@ function LoginForm() {
   const handleGoogleLogin = () => {
     // Redirect to backend Google OAuth endpoint
     window.location.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/auth/google`;
+  };
+
+  const handleBranchSelection = () => {
+    if (selectedBranchId) {
+      setBranchStoreId(selectedBranchId);
+      setShowBranchSelection(false);
+      router.push('/dashboard');
+    }
   };
 
   return (
@@ -256,6 +302,45 @@ function LoginForm() {
           </Anchor>
         </Text>
       </Stack>
+
+      <Modal
+        opened={showBranchSelection}
+        onClose={() => {}}
+        title={t('common.selectBranch' as any, language) || (language === 'ar' ? 'اختر الفرع' : 'Select Branch')}
+        closeOnClickOutside={false}
+        closeOnEscape={false}
+        withCloseButton={false}
+        centered
+      >
+        <Stack gap="md">
+          <Text size="sm" style={{ color: themeColors.colorTextMedium }}>
+            {language === 'ar' ? 'يرجى اختيار الفرع للاستمرار' : 'Please select a branch to continue'}
+          </Text>
+          <Select
+            label={t('common.selectBranch' as any, language) || (language === 'ar' ? 'الفرع' : 'Branch')}
+            placeholder={t('common.selectBranch', language) || 'Select Branch'}
+            data={branches.map(b => ({ value: b.id, label: `${b.name} (${b.code})` }))}
+            value={selectedBranchId}
+            onChange={(value) => setSelectedBranchId(value)}
+            required
+            searchable
+          />
+          <Button
+            fullWidth
+            onClick={handleBranchSelection}
+            size="lg"
+            radius="md"
+            disabled={!selectedBranchId}
+            loading={loadingBranches}
+            style={{
+              backgroundColor: DEFAULT_THEME_COLOR,
+              color: 'white',
+            }}
+          >
+            {language === 'ar' ? 'متابعة' : 'Continue'}
+          </Button>
+        </Stack>
+      </Modal>
     </form>
   );
 }

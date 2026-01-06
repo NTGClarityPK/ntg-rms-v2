@@ -18,7 +18,7 @@ export class CustomersService {
    */
   async getCustomers(
     tenantId: string,
-    filters?: { search?: string; minOrders?: number; minSpent?: number },
+    filters?: { search?: string; minOrders?: number; minSpent?: number; branchId?: string },
     pagination?: PaginationParams,
   ): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
@@ -36,6 +36,12 @@ export class CustomersService {
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
+
+    // Filter by branch if provided (customers are branch-specific)
+    if (filters?.branchId) {
+      query = query.eq('branch_id', filters.branchId);
+      countQuery = countQuery.eq('branch_id', filters.branchId);
+    }
 
     if (filters?.search) {
       const searchFilter = `name.ilike.%${filters.search}%,phone.ilike.%${filters.search}%`;
@@ -263,34 +269,45 @@ export class CustomersService {
   /**
    * Create a new customer
    */
-  async createCustomer(tenantId: string, createDto: CreateCustomerDto) {
+  async createCustomer(tenantId: string, createDto: CreateCustomerDto, branchId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Check if phone already exists
-    const { data: existingCustomer } = await supabase
+    // Check if phone already exists in the same branch (or tenant if no branch)
+    let phoneCheckQuery = supabase
       .from('customers')
       .select('id')
       .eq('phone', createDto.phone)
       .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .maybeSingle();
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      phoneCheckQuery = phoneCheckQuery.eq('branch_id', branchId);
+    }
+    
+    const { data: existingCustomer } = await phoneCheckQuery.maybeSingle();
 
     if (existingCustomer) {
       throw new BadRequestException('Customer with this phone number already exists');
     }
 
     // Create customer
+    const customerData: any = {
+      tenant_id: tenantId,
+      name: createDto.name,
+      phone: createDto.phone,
+      email: createDto.email,
+      date_of_birth: createDto.dateOfBirth,
+      preferred_language: createDto.preferredLanguage || 'en',
+      notes: createDto.notes,
+    };
+    
+    if (branchId) {
+      customerData.branch_id = branchId;
+    }
+
     const { data: customer, error } = await supabase
       .from('customers')
-      .insert({
-        tenant_id: tenantId,
-        name: createDto.name,
-        phone: createDto.phone,
-        email: createDto.email,
-        date_of_birth: createDto.dateOfBirth,
-        preferred_language: createDto.preferredLanguage || 'en',
-        notes: createDto.notes,
-      })
+      .insert(customerData)
       .select()
       .single();
 

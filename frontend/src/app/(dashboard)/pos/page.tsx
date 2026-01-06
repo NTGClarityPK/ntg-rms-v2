@@ -5,6 +5,7 @@ import { Grid, Box, Select, Group, Text, Stack, Skeleton, Title, Paper, Alert } 
 import { IconAlertCircle } from '@tabler/icons-react';
 import { useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { useBranchStore } from '@/lib/store/branch-store';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { FoodItemsGrid, POSCart } from '@/features/pos';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
@@ -13,7 +14,6 @@ import { ordersApi } from '@/lib/api/orders';
 import { useSettings } from '@/lib/hooks/use-settings';
 import { useSyncStatus } from '@/lib/hooks/use-sync-status';
 import { menuApi } from '@/lib/api/menu';
-import { restaurantApi } from '@/lib/api/restaurant';
 
 function POSPageContent() {
   const { user } = useAuthStore();
@@ -33,9 +33,7 @@ function POSPageContent() {
   const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [numberOfPersons, setNumberOfPersons] = useState<number>(1);
-  const [branches, setBranches] = useState<any[]>([]);
-  const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
-  const [loadingBranches, setLoadingBranches] = useState(true);
+  const { selectedBranchId } = useBranchStore();
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [currentItemType, setCurrentItemType] = useState<'food-items' | 'buffets' | 'combo-meals'>('food-items');
 
@@ -60,9 +58,6 @@ function POSPageContent() {
         const order = await ordersApi.getOrderById(editOrderId);
 
         // Set order details
-        if (order.branchId) {
-          setSelectedBranchId(order.branchId);
-        }
         if (order.tableId) {
           setSelectedTableId(order.tableId);
         }
@@ -148,33 +143,6 @@ function POSPageContent() {
     loadOrderForEditing();
   }, [editOrderId, user?.tenantId]);
 
-  // Load branches on mount
-  useEffect(() => {
-    const loadData = async () => {
-      setLoadingBranches(true);
-      try {
-        const allBranches = await restaurantApi.getBranches();
-        const activeBranches = allBranches.filter((branch: any) => branch.isActive && !branch.deletedAt);
-        setBranches(activeBranches);
-
-        // Set first branch as selected if available
-        if (activeBranches.length > 0 && !selectedBranchId) {
-          setSelectedBranchId(activeBranches[0].id);
-        }
-      } catch (error) {
-        console.error('Failed to load branches:', error);
-        setBranches([]);
-      } finally {
-        setLoadingBranches(false);
-      }
-    };
-    if (user?.tenantId) {
-      loadData();
-    } else {
-      setLoadingBranches(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.tenantId]);
 
   // Cart is now managed in memory only - no persistence needed
 
@@ -311,13 +279,6 @@ function POSPageContent() {
     }
   }, [handleClearCart]);
 
-  // Ensure a branch is always selected
-  useEffect(() => {
-    if (branches.length > 0 && !selectedBranchId) {
-      setSelectedBranchId(branches[0].id);
-    }
-  }, [branches, selectedBranchId]);
-
   if (!user?.tenantId) {
     return null;
   }
@@ -325,27 +286,8 @@ function POSPageContent() {
   // Show offline indicator if offline
   const showOfflineIndicator = !isOnline;
 
-  // Only show "no branches" message after loading is complete
-  if (!loadingBranches && branches.length === 0) {
-    return (
-      <Box p="md">
-        {showOfflineIndicator && (
-          <Alert icon={<IconAlertCircle size={16} />} color="yellow" mb="md">
-            {t('pos.offlineMode' as any, language) || 'You are currently offline. POS will work with cached menu data.'}
-          </Alert>
-        )}
-        <Text>{t('pos.selectBranch', language) || 'Please select a branch'}</Text>
-        <Text size="sm" c="dimmed" mt="xs">
-          {!isOnline 
-            ? 'No branches available offline. Please go online to sync branches, or create a branch first.'
-            : 'No branches available. Please create a branch first.'}
-        </Text>
-      </Box>
-    );
-  }
-
-  // If no branch selected but branches exist, auto-select first one
-  if (!selectedBranchId && branches.length > 0) {
+  // If no branch selected, show loading
+  if (!selectedBranchId) {
     return (
       <Box p="md">
         <Skeleton height={400} />
@@ -360,23 +302,6 @@ function POSPageContent() {
           <Title order={1} style={{ margin: 0, textAlign: 'left', paddingTop: 'var(--mantine-spacing-sm)' }}>
             {t('pos.newOrder', language) || 'New Order'}
           </Title>
-          {branches.length > 1 && (
-            <Group gap="xs">
-              <Text size="sm" fw={500}>
-                {t('restaurant.branch', language) || 'Branch'}:
-              </Text>
-              <Select
-                value={selectedBranchId}
-                onChange={(value) => setSelectedBranchId(value)}
-                data={branches.map((branch) => ({
-                  value: branch.id,
-                  label: branch.name || '',
-                }))}
-                style={{ width: 200 }}
-                size="sm"
-              />
-            </Group>
-          )}
         </Group>
       </div>
 
@@ -437,7 +362,7 @@ function POSPageContent() {
               numberOfPersons={numberOfPersons}
               onNumberOfPersonsChange={setNumberOfPersons}
               tenantId={user.tenantId}
-              branchId={selectedBranchId || (branches.length > 0 ? branches[0].id : '')}
+              branchId={selectedBranchId || ''}
               editingOrderId={editingOrderId}
             />
           </Grid.Col>

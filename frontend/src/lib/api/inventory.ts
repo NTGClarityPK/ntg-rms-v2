@@ -138,14 +138,28 @@ export const inventoryApi = {
   getIngredients: async (
     filters?: { category?: string; isActive?: boolean; search?: string },
     pagination?: PaginationParams,
+    branchId?: string,
   ): Promise<Ingredient[] | PaginatedResponse<Ingredient>> => {
     // Extract search from filters and pass it separately
     const { search, ...otherFilters } = filters || {};
-    return baseIngredientsApi.getAll(otherFilters, pagination, search);
+    const params = new URLSearchParams();
+    if (otherFilters.category) params.append('category', otherFilters.category);
+    if (otherFilters.isActive !== undefined) params.append('isActive', otherFilters.isActive.toString());
+    if (search) params.append('search', search);
+    if (pagination?.page) params.append('page', pagination.page.toString());
+    if (pagination?.limit) params.append('limit', pagination.limit.toString());
+    if (branchId) params.append('branchId', branchId);
+    
+    const response = await apiClient.get(`/inventory/ingredients${params.toString() ? `?${params.toString()}` : ''}`);
+    return response.data;
   },
 
   getIngredientById: baseIngredientsApi.getById,
-  createIngredient: baseIngredientsApi.create,
+  createIngredient: async (data: CreateIngredientDto, branchId?: string): Promise<Ingredient> => {
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const response = await apiClient.post(`/inventory/ingredients${params}`, data);
+    return response.data;
+  },
   updateIngredient: baseIngredientsApi.update,
   deleteIngredient: baseIngredientsApi.delete,
 
@@ -189,18 +203,20 @@ export const inventoryApi = {
     const response = await apiClient.get<StockTransaction[] | PaginatedResponse<StockTransaction>>(`/inventory/stock/transactions?${params.toString()}`);
     return response.data;
   },
-  getRecipes: async (foodItemId?: string, addOnId?: string, pagination?: PaginationParams): Promise<Recipe[] | PaginatedResponse<Recipe>> => {
+  getRecipes: async (foodItemId?: string, addOnId?: string, pagination?: PaginationParams, branchId?: string): Promise<Recipe[] | PaginatedResponse<Recipe>> => {
     const params = new URLSearchParams();
     if (foodItemId) params.append('foodItemId', foodItemId);
     if (addOnId) params.append('addOnId', addOnId);
     if (pagination?.page) params.append('page', pagination.page.toString());
     if (pagination?.limit) params.append('limit', pagination.limit.toString());
+    if (branchId) params.append('branchId', branchId);
     const response = await apiClient.get<Recipe[] | PaginatedResponse<Recipe>>(`/inventory/recipes${params.toString() ? `?${params.toString()}` : ''}`);
     return response.data;
   },
 
-  createOrUpdateRecipe: async (data: CreateRecipeDto): Promise<Recipe[]> => {
-    const response = await apiClient.post('/inventory/recipes', data);
+  createOrUpdateRecipe: async (data: CreateRecipeDto, branchId?: string): Promise<Recipe[]> => {
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const response = await apiClient.post(`/inventory/recipes${params}`, data);
     return response.data;
   },
 
@@ -218,17 +234,21 @@ export const inventoryApi = {
   getCurrentStockReport: async (filters?: {
     category?: string;
     lowStockOnly?: boolean;
+    branchId?: string;
   }): Promise<any[]> => {
     const params = new URLSearchParams();
     if (filters?.category) params.append('category', filters.category);
     if (filters?.lowStockOnly) params.append('lowStockOnly', 'true');
+    if (filters?.branchId) params.append('branchId', filters.branchId);
     
     const response = await apiClient.get(`/inventory/reports/current-stock?${params.toString()}`);
     return response.data;
   },
 
-  getLowStockAlerts: async (): Promise<Ingredient[]> => {
-    const response = await apiClient.get('/inventory/reports/low-stock-alerts');
+  getLowStockAlerts: async (branchId?: string): Promise<Ingredient[]> => {
+    const params = new URLSearchParams();
+    if (branchId) params.append('branchId', branchId);
+    const response = await apiClient.get(`/inventory/reports/low-stock-alerts${params.toString() ? `?${params.toString()}` : ''}`);
     return response.data;
   },
 

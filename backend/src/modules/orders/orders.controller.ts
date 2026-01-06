@@ -90,8 +90,13 @@ export class OrdersController {
 
   @Get('kitchen/stream')
   @ApiOperation({ summary: 'Server-Sent Events stream for kitchen display order updates' })
-  streamKitchenOrders(@CurrentUser() user: any, @Res({ passthrough: false }) res: Response): void {
-    console.log(`📡 SSE connection opened for tenant ${user.tenantId}`);
+  @ApiQuery({ name: 'branchId', required: false, type: String, description: 'Filter orders by branch ID' })
+  streamKitchenOrders(
+    @CurrentUser() user: any,
+    @Res({ passthrough: false }) res: Response,
+    @Query('branchId') branchId?: string
+  ): void {
+    console.log(`📡 SSE connection opened for tenant ${user.tenantId}, branch ${branchId || 'all'}`);
     console.log(`📡 Request origin: ${res.req.headers.origin}`);
     console.log(`📡 Request headers:`, JSON.stringify(res.req.headers, null, 2));
     
@@ -129,14 +134,14 @@ export class OrdersController {
         console.log('✅ Response flushed');
       }
       
-      console.log(`✅ SSE headers set and initial message sent for tenant ${user.tenantId}`);
+      console.log(`✅ SSE headers set and initial message sent for tenant ${user.tenantId}, branch ${branchId || 'all'}`);
     } catch (error) {
       console.error('❌ Error writing initial SSE message:', error);
       return;
     }
     
-    // Subscribe to order updates for this tenant
-    const subscription = this.ordersSseService.createTenantStream(user.tenantId).subscribe({
+    // Subscribe to order updates for this tenant and branch
+    const subscription = this.ordersSseService.createTenantStream(user.tenantId, branchId).subscribe({
       next: (event) => {
         try {
           // Check if response is still writable

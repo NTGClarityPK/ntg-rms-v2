@@ -40,6 +40,11 @@ export interface UseKitchenSseOptions {
    * Default: true
    */
   enabled?: boolean;
+  
+  /**
+   * Branch ID to filter orders by branch
+   */
+  branchId?: string | null;
 }
 
 /**
@@ -56,6 +61,7 @@ export function useKitchenSse({
   onConnect,
   onError,
   enabled = true,
+  branchId,
 }: UseKitchenSseOptions) {
   const { user } = useAuthStore();
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -115,9 +121,12 @@ export function useKitchenSse({
         return;
       }
 
-      // Create SSE connection with auth token in query parameter
+      // Create SSE connection with auth token and branchId in query parameter
       // Note: SSE doesn't support custom headers, so we use query param
-      const sseUrl = `${API_BASE_URL}/orders/kitchen/stream?token=${encodeURIComponent(token)}`;
+      let sseUrl = `${API_BASE_URL}/orders/kitchen/stream?token=${encodeURIComponent(token)}`;
+      if (branchId) {
+        sseUrl += `&branchId=${encodeURIComponent(branchId)}`;
+      }
       
       console.log('📡 Connecting to SSE stream...', sseUrl);
       const eventSource = new EventSource(sseUrl);
@@ -253,7 +262,7 @@ export function useKitchenSse({
         onErrorRef.current(error as Event);
       }
     }
-  }, [enabled, user?.tenantId]);
+  }, [enabled, user?.tenantId, branchId]);
 
   // Initialize connection
   useEffect(() => {
@@ -266,7 +275,7 @@ export function useKitchenSse({
     return () => {
       cleanup();
     };
-  }, [enabled, user?.tenantId, connect, cleanup]);
+  }, [enabled, user?.tenantId, branchId, connect, cleanup]);
 
   // Cleanup on unmount
   useEffect(() => {

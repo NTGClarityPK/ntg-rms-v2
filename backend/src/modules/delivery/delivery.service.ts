@@ -33,7 +33,54 @@ export class DeliveryService {
   ): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Build query for deliveries
+    // First, get all tenant order IDs (to filter deliveries by tenant)
+    const { data: tenantOrders } = await supabase
+      .from('orders')
+      .select('id, branch_id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    const tenantOrderIds = tenantOrders?.map((o: any) => o.id) || [];
+    
+    // Filter by branch if specified
+    let validOrderIds = tenantOrderIds;
+    if (filters?.branchId) {
+      const branchOrderIds = tenantOrders
+        ?.filter((o: any) => o.branch_id === filters.branchId)
+        .map((o: any) => o.id) || [];
+      validOrderIds = branchOrderIds;
+    }
+    
+    // If no valid orders, return empty result
+    if (validOrderIds.length === 0) {
+      if (filters?.page !== undefined) {
+        return createPaginatedResponse([], 0, filters.page, filters.limit || 10);
+      }
+      return [];
+    }
+
+    // Get total count - count deliveries that match filters AND belong to tenant orders
+    let countQuery = supabase
+      .from('deliveries')
+      .select('order_id', { count: 'exact', head: true })
+      .in('order_id', validOrderIds);
+    
+    if (filters?.status) {
+      countQuery = countQuery.eq('status', filters.status);
+    }
+    if (filters?.deliveryPersonId) {
+      countQuery = countQuery.eq('delivery_person_id', filters.deliveryPersonId);
+    }
+    if (filters?.startDate) {
+      countQuery = countQuery.gte('created_at', filters.startDate);
+    }
+    if (filters?.endDate) {
+      countQuery = countQuery.lte('created_at', filters.endDate);
+    }
+    
+    const { count: totalCount } = await countQuery;
+
+    // Build query for deliveries - filter by order_id FIRST
     let query = supabase
       .from('deliveries')
       .select(
@@ -86,6 +133,7 @@ export class DeliveryService {
         )
       `,
       )
+      .in('order_id', validOrderIds)
       .order('created_at', { ascending: false });
 
     // Apply filters
@@ -124,76 +172,9 @@ export class DeliveryService {
       throw new InternalServerErrorException(`Failed to fetch deliveries: ${error.message}`);
     }
 
-    // Filter by tenant (through order relationship) and branch
-    let filteredDeliveries = (deliveries || []).filter((delivery: any) => {
-      const order = delivery.order;
-      if (!order) return false;
-
-      // Check tenant through order
-      // Note: We need to check tenant_id from order, but it's not in the select
-      // We'll filter this in a second query or add tenant_id to the select
-      return true;
-    });
-
-    // If branch filter is provided, filter by order branch
-    if (filters?.branchId) {
-      filteredDeliveries = filteredDeliveries.filter(
-        (delivery: any) => delivery.order?.branch_id === filters.branchId,
-      );
-    }
-
-    // Transform to camelCase and ensure we have tenant isolation
-    // First, get all tenant order IDs (to filter deliveries by tenant)
-    const { data: tenantOrders } = await supabase
-      .from('orders')
-      .select('id, branch_id')
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null);
-    
-    const tenantOrderIds = tenantOrders?.map((o: any) => o.id) || [];
-    
-    // Filter by branch if specified
-    let validOrderIds = tenantOrderIds;
-    if (filters?.branchId) {
-      const branchOrderIds = tenantOrders
-        ?.filter((o: any) => o.branch_id === filters.branchId)
-        .map((o: any) => o.id) || [];
-      validOrderIds = branchOrderIds;
-    }
-    
-    // Get total count - count deliveries that match filters AND belong to tenant orders
-    let countQuery = supabase
-      .from('deliveries')
-      .select('order_id', { count: 'exact', head: true });
-    
-    if (validOrderIds.length > 0) {
-      countQuery = countQuery.in('order_id', validOrderIds);
-    } else {
-      // No valid orders, return 0 count
-      countQuery = countQuery.eq('id', '00000000-0000-0000-0000-000000000000'); // Impossible ID
-    }
-    
-    if (filters?.status) {
-      countQuery = countQuery.eq('status', filters.status);
-    }
-    if (filters?.deliveryPersonId) {
-      countQuery = countQuery.eq('delivery_person_id', filters.deliveryPersonId);
-    }
-    if (filters?.startDate) {
-      countQuery = countQuery.gte('created_at', filters.startDate);
-    }
-    if (filters?.endDate) {
-      countQuery = countQuery.lte('created_at', filters.endDate);
-    }
-    
-    const { count: totalCount } = await countQuery;
-    
-    // Now filter deliveries by valid order IDs
-    const orderIds = filteredDeliveries.map((d: any) => d.order_id).filter(Boolean);
-    const validOrderIdSet = new Set(validOrderIds);
-
-    const transformedDeliveries = filteredDeliveries
-      .filter((delivery: any) => validOrderIdSet.has(delivery.order_id))
+    // Transform to camelCase
+    const transformedDeliveries = (deliveries || [])
+      .filter((delivery: any) => delivery.order) // Only include deliveries with valid orders
       .map((delivery: any) => ({
         id: delivery.id,
         orderId: delivery.order_id,

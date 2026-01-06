@@ -54,8 +54,22 @@ export const couponsApi = {
   async getCoupons(
     filters?: Record<string, any>,
     pagination?: PaginationParams,
+    branchId?: string,
   ): Promise<PaginatedResponse<Coupon> | Coupon[]> {
-    return baseCouponsApi.getAll(filters, pagination);
+    const params = new URLSearchParams();
+    if (filters) {
+      Object.keys(filters).forEach(key => {
+        if (filters[key] !== undefined && filters[key] !== null) {
+          params.append(key, filters[key].toString());
+        }
+      });
+    }
+    if (pagination?.page) params.append('page', pagination.page.toString());
+    if (pagination?.limit) params.append('limit', pagination.limit.toString());
+    if (branchId) params.append('branchId', branchId);
+    
+    const response = await apiClient.get(`${API_ENDPOINTS.COUPONS.BASE}${params.toString() ? `?${params.toString()}` : ''}`);
+    return response.data;
   },
 
   /**
@@ -64,9 +78,13 @@ export const couponsApi = {
   getCouponById: baseCouponsApi.getById,
 
   /**
-   * Create coupon - Using factory
+   * Create coupon
    */
-  createCoupon: baseCouponsApi.create,
+  createCoupon: async (data: CreateCouponDto, branchId?: string): Promise<Coupon> => {
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const response = await apiClient.post(`${API_ENDPOINTS.COUPONS.BASE}${params}`, data);
+    return response.data;
+  },
 
   /**
    * Update coupon - Using factory
@@ -81,8 +99,9 @@ export const couponsApi = {
   /**
    * Validate coupon code
    */
-  async validateCoupon(data: { code: string; subtotal: number; customerId?: string }): Promise<{ discount: number; couponId: string }> {
-    const response = await apiClient.post(API_ENDPOINTS.COUPONS.VALIDATE, data);
+  async validateCoupon(data: { code: string; subtotal: number; customerId?: string }, branchId?: string): Promise<{ discount: number; couponId: string }> {
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const response = await apiClient.post(`${API_ENDPOINTS.COUPONS.VALIDATE}${params}`, data);
     return response.data;
   },
 };

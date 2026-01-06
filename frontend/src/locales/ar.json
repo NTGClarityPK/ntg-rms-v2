@@ -52,7 +52,8 @@
     "optional": "اختياري",
     "and": "و",
     "more": "المزيد",
-    "arabic": "العربية"
+    "arabic": "العربية",
+    "selectBranch": "اختر الفرع"
   },
   "auth": {
     "loginTitle": "مرحباً بعودتك",

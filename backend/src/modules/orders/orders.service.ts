@@ -212,6 +212,7 @@ export class OrdersService {
     couponCode?: string,
     orderType: string = 'dine_in',
     customerId?: string,
+    branchId?: string,
     preFetchedData?: {
       foodItemMap: Map<string, any>;
       buffetMap: Map<string, any>;
@@ -377,7 +378,7 @@ export class OrdersService {
           code: couponCode,
           subtotal: taxableAmount,
           customerId,
-        });
+        }, branchId);
         couponDiscount = result.discount;
         couponId = result.couponId;
       } catch (error) {
@@ -416,12 +417,14 @@ export class OrdersService {
         item.foodItemId !== undefined
       );
       
+      // Use branchId parameter
       const taxCalculation = await this.taxesService.calculateTaxForOrder(
         tenantId,
         foodItemsForTax,
         taxableAmount,
         deliveryCharge,
-        0 // serviceCharge (not implemented yet)
+        0, // serviceCharge (not implemented yet)
+        branchId
       );
       taxAmount = taxCalculation.taxAmount;
       
@@ -733,6 +736,7 @@ export class OrdersService {
         createDto.couponCode,
         createDto.orderType,
         createDto.customerId,
+        createDto.branchId,
         itemData, // Pass pre-fetched data to avoid duplicate queries
         settings, // Pass pre-fetched settings to avoid duplicate queries
       );
@@ -1160,10 +1164,11 @@ export class OrdersService {
       };
       
       // Emit SSE event for new order (non-blocking - fire and forget)
-      console.log(`📡 Emitting ORDER_CREATED event for order ${order.id}, tenant ${tenantId}`);
+      console.log(`📡 Emitting ORDER_CREATED event for order ${order.id}, tenant ${tenantId}, branch ${fullOrder.branchId || 'null'}`);
       this.ordersSseService.emitOrderUpdate({
         type: 'ORDER_CREATED',
         tenantId,
+        branchId: fullOrder.branchId || null,
         orderId: order.id,
         order: fullOrder,
       });
@@ -2171,6 +2176,7 @@ export class OrdersService {
         updateDto.couponCode,
         updateDto.orderType || order.order_type,
         updateDto.customerId || order.customer_id,
+        updateDto.branchId || order.branch_id,
       );
     } else {
       // Recalculate with existing items but new discount/coupon
@@ -2193,6 +2199,7 @@ export class OrdersService {
           updateDto.couponCode,
           updateDto.orderType || order.order_type,
           updateDto.customerId || order.customer_id,
+          updateDto.branchId || order.branch_id,
         );
       } else {
         // No items, use existing totals
@@ -2625,6 +2632,7 @@ export class OrdersService {
     this.ordersSseService.emitOrderUpdate({
       type: 'ORDER_STATUS_CHANGED',
       tenantId,
+      branchId: (updatedOrder as any)?.branchId || null,
       orderId,
       order: updatedOrder,
     });

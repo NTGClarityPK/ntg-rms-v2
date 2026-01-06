@@ -103,5 +103,10 @@ export const authApi = {
     const response = await apiClient.put<UserProfile>(API_ENDPOINTS.AUTH.PROFILE, data);
     return response.data;
   },
+
+  getAssignedBranches: async (): Promise<Array<{ id: string; name: string; code: string }>> => {
+    const response = await apiClient.get(API_ENDPOINTS.AUTH.ASSIGNED_BRANCHES);
+    return response.data;
+  },
 };
 

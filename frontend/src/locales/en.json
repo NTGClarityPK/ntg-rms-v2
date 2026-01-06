@@ -39,7 +39,8 @@
     "optional": "Optional",
     "and": "and",
     "more": "more",
-    "tryAgain": "Try Again"
+    "tryAgain": "Try Again",
+    "selectBranch": "Select Branch"
   },
   "error": {
     "somethingWentWrong": "Something went wrong",

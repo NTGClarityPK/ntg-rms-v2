@@ -21,6 +21,7 @@ export class CustomersController {
     @Query('search') search?: string,
     @Query('minOrders') minOrders?: number,
     @Query('minSpent') minSpent?: number,
+    @Query('branchId') branchId?: string,
     @Query() paginationDto?: PaginationDto,
   ) {
     return this.customersService.getCustomers(
@@ -29,6 +30,7 @@ export class CustomersController {
         search,
         minOrders: minOrders ? Number(minOrders) : undefined,
         minSpent: minSpent ? Number(minSpent) : undefined,
+        branchId,
       },
       paginationDto,
     );
@@ -42,8 +44,12 @@ export class CustomersController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new customer' })
-  createCustomer(@CurrentUser() user: any, @Body() createDto: CreateCustomerDto) {
-    return this.customersService.createCustomer(user.tenantId, createDto);
+  createCustomer(
+    @CurrentUser() user: any,
+    @Body() createDto: CreateCustomerDto,
+    @Query('branchId') branchId?: string,
+  ) {
+    return this.customersService.createCustomer(user.tenantId, createDto, branchId);
   }
 
   @Put(':id')
