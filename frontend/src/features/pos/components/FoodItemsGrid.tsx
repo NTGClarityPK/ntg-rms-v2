@@ -456,9 +456,9 @@ export function FoodItemsGrid({
   const currentItems = itemType === 'buffets' ? buffets : itemType === 'combo-meals' ? comboMeals : foodItems;
 
   return (
-    <Box style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <Box style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Header with Search and Categories */}
-      <Box py="md" px={0} style={{ borderBottom: `1px solid var(--mantine-color-gray-3)` }}>
+      <Box py="md" px="md" style={{ borderBottom: `1px solid var(--mantine-color-gray-3)`, flexShrink: 0 }}>
         <Stack gap="md">
           {/* Item Type Selector */}
           <SegmentedControl
@@ -525,8 +525,18 @@ export function FoodItemsGrid({
         </Stack>
       </Box>
 
-      {/* Food Items Grid */}
-      <Box pt="md">
+      {/* Food Items Grid - Scrollable Area */}
+      <Box 
+        pt="md" 
+        px="md"
+        style={{ 
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto', 
+          overflowX: 'hidden',
+          scrollbarWidth: 'thin',
+        }}
+      >
           {loading ? (
             <Grid>
               {[...Array(12)].map((_, i) => (
@@ -542,6 +552,7 @@ export function FoodItemsGrid({
               </Text>
             </Box>
           ) : (
+            <>
             <Grid>
               {currentItems.map((item) => {
                 // Handle different item types
@@ -673,24 +684,27 @@ export function FoodItemsGrid({
                 );
               })}
             </Grid>
-          )}
-          
-          {/* Pagination Controls */}
-          {currentPagination.total > 0 && (
-            <PaginationControls
-              page={currentPagination.page}
-              totalPages={currentPagination.totalPages}
-              limit={currentPagination.limit}
-              total={currentPagination.total}
-              onPageChange={(page) => {
-                currentPagination.setPage(page);
-              }}
-              onLimitChange={(newLimit) => {
-                currentPagination.setLimit(newLimit);
-                currentPagination.setPage(1);
-              }}
-              limitOptions={[12, 24, 48, 96]}
-            />
+            
+            {/* Pagination Controls */}
+            {currentPagination.total > 0 && (
+              <Box pt="md" pb="md">
+                <PaginationControls
+                  page={currentPagination.page}
+                  totalPages={currentPagination.totalPages}
+                  limit={currentPagination.limit}
+                  total={currentPagination.total}
+                  onPageChange={(page) => {
+                    currentPagination.setPage(page);
+                  }}
+                  onLimitChange={(newLimit) => {
+                    currentPagination.setLimit(newLimit);
+                    currentPagination.setPage(1);
+                  }}
+                  limitOptions={[12, 24, 48, 96]}
+                />
+              </Box>
+            )}
+            </>
           )}
         </Box>
 

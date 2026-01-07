@@ -320,20 +320,30 @@ function POSPageContent() {
 
       <div className="page-sub-title-bar"></div>
 
-      <div style={{ marginTop: '60px', paddingLeft: 'var(--mantine-spacing-md)', paddingRight: 'var(--mantine-spacing-md)', paddingTop: 'var(--mantine-spacing-sm)', paddingBottom: 'var(--mantine-spacing-xl)' }}>
+      <div style={{ 
+        marginTop: '60px', 
+        paddingLeft: 'var(--mantine-spacing-md)', 
+        paddingRight: 'var(--mantine-spacing-md)', 
+        paddingTop: 'var(--mantine-spacing-sm)', 
+        paddingBottom: 'var(--mantine-spacing-sm)',
+        height: 'calc(100vh - 130px)',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column'
+      }}>
         {showOfflineIndicator && (
-          <Alert icon={<IconAlertCircle size={16} />} color="yellow" mb="md">
+          <Alert icon={<IconAlertCircle size={16} />} color="yellow" mb="md" style={{ flexShrink: 0 }}>
             {t('pos.offlineMode' as any, language) || 'You are currently offline. POS will work with cached menu data. Orders will be queued and synced when you come back online.'}
           </Alert>
         )}
         {error && (
-          <Alert icon={<IconAlertCircle size={16} />} color="red" mb="md" onClose={() => setError(null)} withCloseButton>
+          <Alert icon={<IconAlertCircle size={16} />} color="red" mb="md" onClose={() => setError(null)} withCloseButton style={{ flexShrink: 0 }}>
             {error}
           </Alert>
         )}
-        <Grid gutter="md">
+        <Grid gutter="md" style={{ flex: 1, overflow: 'hidden', margin: 0, minHeight: 0 }}>
           {/* Left Panel - Food Items Grid (60%) */}
-          <Grid.Col span={{ base: 12, md: 7 }}>
+          <Grid.Col span={{ base: 12, md: 7 }} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingLeft: 0, paddingRight: 'calc(var(--mantine-spacing-md) / 2)', paddingTop: 0, paddingBottom: 0, minHeight: 0, height: '100%' }}>
             <FoodItemsGrid
               tenantId={user.tenantId}
               selectedCategoryId={selectedCategoryId}
@@ -347,7 +357,7 @@ function POSPageContent() {
           </Grid.Col>
 
           {/* Right Panel - Cart and Billing (40%) */}
-          <Grid.Col span={{ base: 12, md: 5 }}>
+          <Grid.Col span={{ base: 12, md: 5 }} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingLeft: 'calc(var(--mantine-spacing-md) / 2)', paddingRight: 0, paddingTop: 0, paddingBottom: 0, minHeight: 0, height: '100%' }}>
             <POSCart
               cartItems={cartItems}
               onRemoveItem={handleRemoveFromCart}

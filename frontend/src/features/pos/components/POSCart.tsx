@@ -1039,14 +1039,15 @@ export function POSCart({
   const selectedCustomer = customers.find((c) => c.id === selectedCustomerId);
 
   return (
-    <Box style={{ height: '100%', display: 'flex', flexDirection: 'column', borderLeft: `1px solid var(--mantine-color-gray-3)`, overflow: 'hidden' }}>
+    <Box style={{ height: '100%', display: 'flex', flexDirection: 'column', borderLeft: `1px solid var(--mantine-color-gray-3)`, overflow: 'hidden', minHeight: 0 }}>
       <Box
         style={{
-          height: '100%',
+          flex: 1,
+          minHeight: 0,
           overflowY: 'auto',
           overflowX: 'hidden',
-          scrollbarWidth: 'none', // Firefox
-          msOverflowStyle: 'none', // IE/Edge
+          scrollbarWidth: 'thin', // Firefox
+          msOverflowStyle: 'auto', // IE/Edge
         }}
         className="custom-scrollbar"
       >
