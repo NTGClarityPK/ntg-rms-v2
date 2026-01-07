@@ -160,7 +160,6 @@ export function POSCart({
   const [newCustomerName, setNewCustomerName] = useState('');
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [newCustomerEmail, setNewCustomerEmail] = useState('');
-  const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [manualDiscount, setManualDiscount] = useState<number>(0);
@@ -397,7 +396,6 @@ export function POSCart({
   };
 
   const handleCreateCustomer = async () => {
-    setIsCreatingCustomer(true);
     try {
       const createdCustomer = await customersApi.createCustomer({
         name: newCustomerName,
@@ -434,8 +432,6 @@ export function POSCart({
         message: errorMessage,
         color: getErrorColor(),
       });
-    } finally {
-      setIsCreatingCustomer(false);
     }
   };
 
@@ -834,6 +830,9 @@ export function POSCart({
           setPlacedOrderCustomerName(customerName);
           setPlacedOrderCustomerPhone(customerPhone);
 
+          // Open invoice modal immediately - show receipt popup instantly
+          setInvoiceModalOpened(true);
+
           // Clear cart
           onClearCart();
           setManualDiscount(0);
@@ -852,88 +851,88 @@ export function POSCart({
           if (onNumberOfPersonsChange) {
             onNumberOfPersonsChange(1);
           }
-          
-          // Reload tables to update available list (skip creation to avoid conflicts)
-          await loadTables(true);
 
-          // Notify other components about the new order
-          notifyOrderUpdate('order-created', orderId);
+          // Run async operations after modal is opened (non-blocking)
+          (async () => {
+            // Reload tables to update available list (skip creation to avoid conflicts)
+            await loadTables(true);
 
-          // Show success notification
-          notifications.show({
-            title: t('pos.orderPlacedSuccess', language),
-            message: t('pos.orderPlacedSuccess', language),
-            color: getSuccessColor(),
-            icon: <IconCheck size={16} />,
-          });
+            // Notify other components about the new order
+            notifyOrderUpdate('order-created', orderId);
 
-          // Auto print invoice if enabled
-          if (autoPrintInvoices && createdOrder) {
-            try {
-              const tenant = await restaurantApi.getInfo();
-              const branches = await restaurantApi.getBranches();
-              const branch = branches.find(b => b.id === createdOrder!.branchId);
-              
-              // Fetch full order details with customer info if needed
-              let orderWithDetails: any = createdOrder;
-              if (createdOrder.customerId && !(createdOrder as any).customer) {
-                try {
-                  orderWithDetails = await ordersApi.getOrderById(createdOrder.id);
-                } catch (error) {
-                  console.error('Failed to fetch order details:', error);
+            // Show success notification
+            notifications.show({
+              title: t('pos.orderPlacedSuccess', language),
+              message: t('pos.orderPlacedSuccess', language),
+              color: getSuccessColor(),
+              icon: <IconCheck size={16} />,
+            });
+
+            // Auto print invoice if enabled
+            if (autoPrintInvoices && createdOrder) {
+              try {
+                const tenant = await restaurantApi.getInfo();
+                const branches = await restaurantApi.getBranches();
+                const branch = branches.find(b => b.id === createdOrder!.branchId);
+                
+                // Fetch full order details with customer info if needed
+                let orderWithDetails: any = createdOrder;
+                if (createdOrder.customerId && !(createdOrder as any).customer) {
+                  try {
+                    orderWithDetails = await ordersApi.getOrderById(createdOrder.id);
+                  } catch (error) {
+                    console.error('Failed to fetch order details:', error);
+                  }
                 }
-              }
-              
-              // Get payment method from the order or use the saved one (before it was cleared)
-              const orderPaymentMethod = orderWithDetails.paymentMethod || savedPaymentMethod;
-              
-              const invoiceData = {
-                order: {
-                  ...orderWithDetails,
-                  orderType: orderWithDetails.orderType || orderType,
-                  paymentMethod: orderPaymentMethod,
-                  items: orderWithDetails.items?.map((item: any) => ({
-                    ...item,
-                    foodItemName: item.foodItem?.name || '',
-                    variationName: item.variation?.variationName || '',
-                    addOns: item.addOns?.map((a: any) => ({
-                      addOnName: a.addOn?.name || '',
+                
+                // Get payment method from the order or use the saved one (before it was cleared)
+                const orderPaymentMethod = orderWithDetails.paymentMethod || savedPaymentMethod;
+                
+                const invoiceData = {
+                  order: {
+                    ...orderWithDetails,
+                    orderType: orderWithDetails.orderType || orderType,
+                    paymentMethod: orderPaymentMethod,
+                    items: orderWithDetails.items?.map((item: any) => ({
+                      ...item,
+                      foodItemName: item.foodItem?.name || '',
+                      variationName: item.variation?.variationName || '',
+                      addOns: item.addOns?.map((a: any) => ({
+                        addOnName: a.addOn?.name || '',
+                      })) || [],
                     })) || [],
-                  })) || [],
-                } as any,
-                tenant: {
-                  ...tenant,
-                  footerText: settings?.invoice?.footerText || '',
-                  termsAndConditions: settings?.invoice?.termsAndConditions || '',
-                },
-                branch: branch || undefined,
-                invoiceSettings: {
-                  headerText: settings?.invoice?.headerText,
-                  footerText: settings?.invoice?.footerText,
-                  termsAndConditions: settings?.invoice?.termsAndConditions,
-                  showLogo: settings?.invoice?.showLogo,
-                  showVatNumber: settings?.invoice?.showVatNumber,
-                  showQrCode: settings?.invoice?.showQrCode,
-                },
-                customerName: orderWithDetails.customer
-                  ? (orderWithDetails.customer.name || '')
-                  : undefined,
-                customerPhone: orderWithDetails.customer?.phone,
-                customerAddress: undefined,
-              };
+                  } as any,
+                  tenant: {
+                    ...tenant,
+                    footerText: settings?.invoice?.footerText || '',
+                    termsAndConditions: settings?.invoice?.termsAndConditions || '',
+                  },
+                  branch: branch || undefined,
+                  invoiceSettings: {
+                    headerText: settings?.invoice?.headerText,
+                    footerText: settings?.invoice?.footerText,
+                    termsAndConditions: settings?.invoice?.termsAndConditions,
+                    showLogo: settings?.invoice?.showLogo,
+                    showVatNumber: settings?.invoice?.showVatNumber,
+                    showQrCode: settings?.invoice?.showQrCode,
+                  },
+                  customerName: orderWithDetails.customer
+                    ? (orderWithDetails.customer.name || '')
+                    : undefined,
+                  customerPhone: orderWithDetails.customer?.phone,
+                  customerAddress: undefined,
+                };
 
-              const template = settings?.invoice?.receiptTemplate === 'a4' ? 'a4' : 'thermal';
-              const html = template === 'a4' 
-                ? InvoiceGenerator.generateA4(invoiceData, language, themeConfig)
-                : InvoiceGenerator.generateThermal(invoiceData, language, themeConfig);
-              InvoiceGenerator.printInvoice(html);
-            } catch (error) {
-              console.error('Failed to auto-print invoice:', error);
+                const template = settings?.invoice?.receiptTemplate === 'a4' ? 'a4' : 'thermal';
+                const html = template === 'a4' 
+                  ? InvoiceGenerator.generateA4(invoiceData, language, themeConfig)
+                  : InvoiceGenerator.generateThermal(invoiceData, language, themeConfig);
+                InvoiceGenerator.printInvoice(html);
+              } catch (error) {
+                console.error('Failed to auto-print invoice:', error);
+              }
             }
-          }
-
-          // Open invoice modal
-          setInvoiceModalOpened(true);
+          })();
         } catch (apiError: any) {
           // If API call fails (e.g., insufficient inventory), show error and stop
           const errorMessage = apiError?.response?.data?.error?.message || 
@@ -1773,8 +1772,7 @@ export function POSCart({
           <Button
             fullWidth
             onClick={handleCreateCustomer}
-            disabled={!newCustomerName || !newCustomerPhone || isCreatingCustomer}
-            loading={isCreatingCustomer}
+            disabled={!newCustomerName || !newCustomerPhone}
             style={{ backgroundColor: primaryShade }}
           >
             {t('common.save' as any, language) || 'Save'}
