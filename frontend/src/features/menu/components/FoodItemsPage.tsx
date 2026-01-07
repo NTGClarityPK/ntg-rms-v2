@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { flushSync } from 'react-dom';
 import { useForm } from '@mantine/form';
 import { useDebouncedValue } from '@mantine/hooks';
 import {
@@ -92,6 +93,8 @@ export function FoodItemsPage() {
   const paginationLimitRef = useRef<number>(pagination.limit);
   const [pendingItem, setPendingItem] = useState<Partial<FoodItem> | null>(null);
   const [variationGroupsMap, setVariationGroupsMap] = useState<Map<string, string>>(new Map());
+  const [submitting, setSubmitting] = useState(false);
+  const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
 
   // Helper function to resolve variation group name from UUID
   const resolveVariationGroupName = useCallback((variationGroup: string | undefined): string => {
@@ -368,7 +371,7 @@ export function FoodItemsPage() {
     setImagePreview(null);
     setImageFile(null);
     setShouldSubmit(false);
-    // Don't clear pendingItem here - it should only be cleared after API call completes
+    // Don't clear pendingItem or updatingItemId here - they should only be cleared after API call completes
   };
 
   const nextStep = (e?: React.MouseEvent) => {
@@ -491,13 +494,25 @@ export function FoodItemsPage() {
     if (event) {
       event.preventDefault();
     }
-    if (!user?.tenantId) return;
+    if (!user?.tenantId || submitting) return;
 
-    // Close modal immediately
+    // Set loading state immediately to show loader on button - use flushSync to ensure immediate update
+    flushSync(() => {
+      setSubmitting(true);
+    });
+
     const wasEditing = !!editingItem;
     const currentEditingItem = editingItem;
+    const currentEditingItemId = editingItem?.id;
     const currentImageFile = imageFile;
+
+    // Close modal immediately
     handleCloseModal();
+
+    // If editing, track which item is being updated to show skeleton
+    if (wasEditing && currentEditingItemId) {
+      setUpdatingItemId(currentEditingItemId);
+    }
 
     // If creating a new item, add a skeleton item to show progress
     if (!wasEditing) {
@@ -519,9 +534,7 @@ export function FoodItemsPage() {
       });
     }
 
-    // Run API calls in background
-    (async () => {
-      try {
+    try {
       const itemData = {
         name: values.name,
         description: values.description || undefined,
@@ -529,7 +542,7 @@ export function FoodItemsPage() {
         basePrice: values.basePrice,
         stockType: values.stockType,
         stockQuantity: values.stockQuantity,
-          menuTypes: values.menuTypes || [],
+        menuTypes: values.menuTypes || [],
         ageLimit: values.ageLimit,
         imageUrl: values.imageUrl || undefined,
         variations: values.variations,
@@ -540,25 +553,22 @@ export function FoodItemsPage() {
 
       let savedItem: FoodItem;
 
-        if (wasEditing && currentEditingItem) {
-          savedItem = await menuApi.updateFoodItem(currentEditingItem.id, itemData);
-        
-
+      if (wasEditing && currentEditingItem) {
+        savedItem = await menuApi.updateFoodItem(currentEditingItem.id, itemData);
       } else {
         savedItem = await menuApi.createFoodItem(itemData, selectedBranchId || undefined);
-          
-          // If image was selected during creation, upload it now
-          if (currentImageFile) {
-            try {
-              const updated = await menuApi.uploadFoodItemImage(savedItem.id, currentImageFile);
-              savedItem = updated; // Update with image URL
-              itemData.imageUrl = updated.imageUrl;
-            } catch (err: any) {
-              console.warn('Failed to upload image after food item creation:', err);
-              // Continue even if image upload fails
-            }
-          }
         
+        // If image was selected during creation, upload it now
+        if (currentImageFile) {
+          try {
+            const updated = await menuApi.uploadFoodItemImage(savedItem.id, currentImageFile);
+            savedItem = updated; // Update with image URL
+            itemData.imageUrl = updated.imageUrl;
+          } catch (err: any) {
+            console.warn('Failed to upload image after food item creation:', err);
+            // Continue even if image upload fails
+          }
+        }
       }
 
       notifications.show({
@@ -567,12 +577,13 @@ export function FoodItemsPage() {
         color: successColor,
       });
 
-      // Remove pending item skeleton
+      // Remove pending item skeleton and updating state
       setPendingItem(null);
+      setUpdatingItemId(null);
 
       loadData();
-        // Notify other tabs that food items have been updated
-        notifyMenuDataUpdate('food-items-updated');
+      // Notify other tabs that food items have been updated
+      notifyMenuDataUpdate('food-items-updated');
     } catch (err: any) {
       handleApiError(err, {
         defaultMessage: 'Failed to save food item',
@@ -580,10 +591,12 @@ export function FoodItemsPage() {
         errorColor,
       });
       
-      // Remove pending item skeleton on error
+      // Remove pending item skeleton and updating state on error
       setPendingItem(null);
+      setUpdatingItemId(null);
+    } finally {
+      setSubmitting(false);
     }
-    })();
   };
 
   const handleDelete = (item: FoodItem) => {
@@ -812,119 +825,154 @@ export function FoodItemsPage() {
                   )}
                   {foodItems.map((item) => {
                     const category = categories.find((c) => c.id === item.categoryId);
+                    const isUpdating = updatingItemId === item.id;
                     return (
-                      <Table.Tr key={item.id}>
-                        <Table.Td style={{ maxWidth: 300 }}>
-                          <Group gap="sm" wrap="nowrap">
-                            {item.imageUrl ? (
-                              <Box
-                          w={40}
-                          h={40}
-                          style={{
-                            flexShrink: 0,
-                            borderRadius: 'var(--mantine-radius-sm)',
-                            overflow: 'hidden',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <Image
-                            src={item.imageUrl}
-                            alt={item.name || ''}
-                            width={40}
-                            height={40}
-                            fit="cover"
+                      <Table.Tr key={item.id} style={{ opacity: isUpdating ? 0.7 : 1, position: 'relative' }}>
+                        {isUpdating ? (
+                          <>
+                            <Table.Td style={{ maxWidth: 300 }}>
+                              <Group gap="sm" wrap="nowrap">
+                                <Skeleton height={40} width={40} radius="md" />
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                  <Group gap="xs" wrap="nowrap">
+                                    <Skeleton height={16} width={150} />
+                                    <Loader size={16} style={{ flexShrink: 0 }} />
+                                  </Group>
+                                  <Skeleton height={12} width={200} mt={4} />
+                                </div>
+                              </Group>
+                            </Table.Td>
+                            <Table.Td>
+                              <Skeleton height={16} width={100} />
+                            </Table.Td>
+                            <Table.Td>
+                              <Skeleton height={16} width={80} />
+                            </Table.Td>
+                            <Table.Td>
+                              <Skeleton height={24} width={120} radius="xl" />
+                            </Table.Td>
+                            <Table.Td>
+                              <Group gap="xs" wrap="nowrap">
+                                <Skeleton height={32} width={32} radius="md" />
+                                <Skeleton height={32} width={32} radius="md" />
+                              </Group>
+                            </Table.Td>
+                          </>
+                        ) : (
+                          <>
+                            <Table.Td style={{ maxWidth: 300 }}>
+                              <Group gap="sm" wrap="nowrap">
+                                {item.imageUrl ? (
+                                  <Box
+                            w={40}
+                            h={40}
                             style={{
-                              width: '100%',
-                              height: '100%',
-                              objectFit: 'cover',
-                              objectPosition: 'center',
+                              flexShrink: 0,
+                              borderRadius: 'var(--mantine-radius-sm)',
+                              overflow: 'hidden',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
                             }}
-                          />
-                        </Box>
-                            ) : (
-                              <Box
-                                w={40}
-                                h={40}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  backgroundColor: `${primaryColor}15`,
-                                  borderRadius: '4px',
-                                  flexShrink: 0,
-                                }}
-                              >
-                                <IconToolsKitchen2 size={20} color={primaryColor} />
-                              </Box>
-                            )}
-                            <div style={{ minWidth: 0, flex: 1 }}>
-                              <Text fw={500} truncate>
-                                {item.name || ''}
+                          >
+                            <Image
+                              src={item.imageUrl}
+                              alt={item.name || ''}
+                              width={40}
+                              height={40}
+                              fit="cover"
+                              style={{
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'cover',
+                                objectPosition: 'center',
+                              }}
+                            />
+                          </Box>
+                                ) : (
+                                  <Box
+                                    w={40}
+                                    h={40}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      backgroundColor: `${primaryColor}15`,
+                                      borderRadius: '4px',
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    <IconToolsKitchen2 size={20} color={primaryColor} />
+                                  </Box>
+                                )}
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                  <Text fw={500} truncate>
+                                    {item.name || ''}
+                                  </Text>
+                                  {item.description && (
+                                    <Text size="xs" c="dimmed" lineClamp={1}>
+                                      {item.description || ''}
+                                    </Text>
+                                  )}
+                                </div>
+                              </Group>
+                            </Table.Td>
+                            <Table.Td>
+                              <Text truncate>
+                                {category
+                                  ? category.name || ''
+                                  : '-'}
                               </Text>
-                              {item.description && (
-                                <Text size="xs" c="dimmed" lineClamp={1}>
-                                  {item.description || ''}
-                                </Text>
-                              )}
-                            </div>
-                          </Group>
-                        </Table.Td>
-                        <Table.Td>
-                          <Text truncate>
-                            {category
-                              ? category.name || ''
-                              : '-'}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td>
-                          <Text fw={500}>{item.basePrice.toFixed(2)}</Text>
-                        </Table.Td>
-                        <Table.Td>
-                          {item.menuTypes && item.menuTypes.length > 0 ? (
-                            <Group gap={4} wrap="wrap" style={{ maxWidth: 200 }}>
+                            </Table.Td>
+                            <Table.Td>
+                              <Text fw={500}>{item.basePrice.toFixed(2)}</Text>
+                            </Table.Td>
+                            <Table.Td>
+                              {item.menuTypes && item.menuTypes.length > 0 ? (
+                                <Group gap={4} wrap="wrap" style={{ maxWidth: 200 }}>
 {item.menuTypes.map((menuType) => {
-                              const menuTypeLabel = menuType === 'all_day' ? t('menu.allDay', language) :
-                                 menuType === 'breakfast' ? t('menu.breakfast', language) :
-                                 menuType === 'lunch' ? t('menu.lunch', language) :
-                                 menuType === 'dinner' ? t('menu.dinner', language) :
-                                 menuType === 'kids_special' ? t('menu.kidsSpecial', language) :
-                                 menuType;
-                              return (
-                                <Badge 
-                                  key={menuType} 
-                                  variant="light" 
-                                  size="sm"
-                                  color={getBadgeColorForText(menuTypeLabel)}
+                                  const menuTypeLabel = menuType === 'all_day' ? t('menu.allDay', language) :
+                                     menuType === 'breakfast' ? t('menu.breakfast', language) :
+                                     menuType === 'lunch' ? t('menu.lunch', language) :
+                                     menuType === 'dinner' ? t('menu.dinner', language) :
+                                     menuType === 'kids_special' ? t('menu.kidsSpecial', language) :
+                                     menuType;
+                                  return (
+                                    <Badge 
+                                      key={menuType} 
+                                      variant="light" 
+                                      size="sm"
+                                      color={getBadgeColorForText(menuTypeLabel)}
+                                    >
+                                      {menuTypeLabel}
+                                    </Badge>
+                                  );
+                                })}
+                                </Group>
+                              ) : (
+                                <Text c="dimmed" size="sm">-</Text>
+                              )}
+                            </Table.Td>
+                            <Table.Td>
+                              <Group gap="xs" wrap="nowrap">
+                                <ActionIcon
+                                  variant="light"
+                                  onClick={() => handleOpenModal(item)}
+                                  style={{ color: primaryColor }}
                                 >
-                                  {menuTypeLabel}
-                                </Badge>
-                              );
-                            })}
-                            </Group>
-                          ) : (
-                            <Text c="dimmed" size="sm">-</Text>
-                          )}
-                        </Table.Td>
-                        <Table.Td>
-                          <Group gap="xs" wrap="nowrap">
-                            <ActionIcon
-                              variant="light"
-                              onClick={() => handleOpenModal(item)}
-                              style={{ color: primaryColor }}
-                            >
-                              <IconEdit size={16} />
-                            </ActionIcon>
-                            <ActionIcon
-                              variant="light"
-                              color={errorColor}
-                              onClick={() => handleDelete(item)}
-                            >
-                              <IconTrash size={16} />
-                            </ActionIcon>
-                          </Group>
-                        </Table.Td>
+                                  <IconEdit size={16} />
+                                </ActionIcon>
+                                <ActionIcon
+                                  variant="light"
+                                  color={errorColor}
+                                  onClick={() => handleDelete(item)}
+                                >
+                                  <IconTrash size={16} />
+                                </ActionIcon>
+                              </Group>
+                            </Table.Td>
+                          </>
+                        )}
                       </Table.Tr>
                     );
                   })}
@@ -952,9 +1000,15 @@ export function FoodItemsPage() {
 
       <Modal
         opened={opened}
-        onClose={handleCloseModal}
+        onClose={() => {
+          if (!submitting) {
+            handleCloseModal();
+          }
+        }}
         title={editingItem ? t('menu.editFoodItem', language) : t('menu.createFoodItem', language)}
         size="xl"
+        closeOnClickOutside={!submitting}
+        closeOnEscape={!submitting}
       >
         <form 
           onSubmit={(e) => {
@@ -1353,7 +1407,7 @@ export function FoodItemsPage() {
 
           <Group justify="space-between" mt="xl">
             {activeStep > 0 && (
-              <Button type="button" variant="default" onClick={prevStep}>
+              <Button type="button" variant="default" onClick={prevStep} disabled={submitting}>
                 {t('common.previousStep' as any, language) || 'Previous Step'}
               </Button>
             )}
@@ -1366,6 +1420,7 @@ export function FoodItemsPage() {
                   nextStep(e);
                 }} 
                 style={{ backgroundColor: primaryColor }}
+                disabled={submitting}
               >
                 {t('common.nextStep' as any, language) || 'Next Step'}
               </Button>
@@ -1384,6 +1439,8 @@ export function FoodItemsPage() {
                   }
                 }}
                 style={{ backgroundColor: primaryColor }}
+                loading={submitting}
+                disabled={submitting}
               >
                 {t('common.save' as any, language) || 'Save'}
               </Button>
