@@ -22,6 +22,8 @@ import {
   Grid,
   Center,
   Box,
+  Progress,
+  Loader,
 } from '@mantine/core';
 import {
   IconPlus,
@@ -70,6 +72,19 @@ export function AddOnGroupsPage() {
   const [error, setError] = useState<string | null>(null);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [recipeIngredients, setRecipeIngredients] = useState<Array<{ ingredientId: string; quantity: number; unit: string }>>([]);
+  const [submittingGroup, setSubmittingGroup] = useState(false);
+  const [submittingAddOn, setSubmittingAddOn] = useState(false);
+  const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null);
+  const [deletingAddOnId, setDeletingAddOnId] = useState<string | null>(null);
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [creatingAddOn, setCreatingAddOn] = useState(false);
+  const [openingGroupModalId, setOpeningGroupModalId] = useState<string | null>(null);
+  const [openingAddOnModalId, setOpeningAddOnModalId] = useState<string | null>(null);
+  const [updatingGroupId, setUpdatingGroupId] = useState<string | null>(null);
+  const [updatingAddOnId, setUpdatingAddOnId] = useState<string | null>(null);
+
+  // Track if any API call is in progress
+  const isApiInProgress = loading || submittingGroup || submittingAddOn || deletingGroupId !== null || deletingAddOnId !== null || creatingGroup || creatingAddOn || openingGroupModalId !== null || openingAddOnModalId !== null || updatingGroupId !== null || updatingAddOnId !== null;
 
   const groupForm = useForm({
     initialValues: {
@@ -223,6 +238,7 @@ export function AddOnGroupsPage() {
 
   const handleOpenGroupModal = (group?: AddOnGroup) => {
     if (group) {
+      setOpeningGroupModalId(group.id);
       setEditingGroup(group);
       groupForm.setValues({
         name: group.name,
@@ -237,148 +253,174 @@ export function AddOnGroupsPage() {
       groupForm.reset();
     }
     setGroupModalOpened(true);
+    setOpeningGroupModalId(null);
   };
 
   const handleOpenAddOnModal = async (addOn?: AddOn) => {
-    // Ensure ingredients are loaded before opening modal
-    if (ingredients.length === 0) {
-      await loadIngredients();
+    if (addOn) {
+      setOpeningAddOnModalId(addOn.id);
     }
     
-    if (addOn) {
-      setEditingAddOn(addOn);
-      addOnForm.setValues({
-        name: addOn.name,
-        price: addOn.price,
-        isActive: addOn.isActive,
-        recipeIngredients: [],
-      });
-      // Load existing recipe
-      await loadAddOnRecipe(addOn.id);
-    } else {
-      setEditingAddOn(null);
-      addOnForm.reset();
-      setRecipeIngredients([]);
+    try {
+      // Ensure ingredients are loaded before opening modal
+      if (ingredients.length === 0) {
+        await loadIngredients();
+      }
+      
+      if (addOn) {
+        setEditingAddOn(addOn);
+        addOnForm.setValues({
+          name: addOn.name,
+          price: addOn.price,
+          isActive: addOn.isActive,
+          recipeIngredients: [],
+        });
+        // Load existing recipe
+        await loadAddOnRecipe(addOn.id);
+      } else {
+        setEditingAddOn(null);
+        addOnForm.reset();
+        setRecipeIngredients([]);
+      }
+      setAddOnModalOpened(true);
+    } finally {
+      setOpeningAddOnModalId(null);
     }
-    setAddOnModalOpened(true);
   };
 
   const handleGroupSubmit = async (values: typeof groupForm.values) => {
-    if (!user?.tenantId) return;
+    if (!user?.tenantId || submittingGroup) return;
 
-    // Close modal immediately
     const wasEditing = !!editingGroup;
     const currentEditingGroupId = editingGroup?.id;
+    
+    // Close modal immediately
     setGroupModalOpened(false);
+    
+    setSubmittingGroup(true);
+    if (wasEditing && currentEditingGroupId) {
+      setUpdatingGroupId(currentEditingGroupId);
+    } else {
+      setCreatingGroup(true);
+    }
+    
+    try {
+      const groupData: Partial<AddOnGroup> = {
+        name: values.name,
+        selectionType: values.selectionType as 'single' | 'multiple',
+        isRequired: values.isRequired,
+        minSelections: values.minSelections,
+        maxSelections: values.maxSelections,
+        category: (values.category as 'Add' | 'Remove' | 'Change' | undefined) || null,
+      };
 
-    // Run API calls in background
-    (async () => {
-      try {
-        const groupData: Partial<AddOnGroup> = {
-          name: values.name,
-          selectionType: values.selectionType as 'single' | 'multiple',
-          isRequired: values.isRequired,
-          minSelections: values.minSelections,
-          maxSelections: values.maxSelections,
-          category: (values.category as 'Add' | 'Remove' | 'Change' | undefined) || null,
-        };
+      let savedGroup: AddOnGroup;
 
-        let savedGroup: AddOnGroup;
-
-        if (wasEditing && currentEditingGroupId) {
-          savedGroup = await menuApi.updateAddOnGroup(currentEditingGroupId, groupData);
-        } else {
-          savedGroup = await menuApi.createAddOnGroup(groupData, selectedBranchId || undefined);
-        }
-
-        notifications.show({
-          title: t('common.success' as any, language) || 'Success',
-          message: t('menu.saveSuccess', language),
-          color: successColor,
-        });
-
-        loadAddOnGroups();
-        // Notify other tabs that add-on groups have been updated
-        notifyMenuDataUpdate('add-on-groups-updated');
-      } catch (err: any) {
-        const errorMsg = err.response?.data?.message || err.message || 'Failed to save add-on group';
-        notifications.show({
-          title: t('common.error' as any, language) || 'Error',
-          message: errorMsg,
-          color: errorColor,
-        });
+      if (wasEditing && currentEditingGroupId) {
+        savedGroup = await menuApi.updateAddOnGroup(currentEditingGroupId, groupData);
+      } else {
+        savedGroup = await menuApi.createAddOnGroup(groupData, selectedBranchId || undefined);
       }
-    })();
+
+      notifications.show({
+        title: t('common.success' as any, language) || 'Success',
+        message: t('menu.saveSuccess', language),
+        color: successColor,
+      });
+
+      loadAddOnGroups();
+      // Notify other tabs that add-on groups have been updated
+      notifyMenuDataUpdate('add-on-groups-updated');
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || err.message || 'Failed to save add-on group';
+      notifications.show({
+        title: t('common.error' as any, language) || 'Error',
+        message: errorMsg,
+        color: errorColor,
+      });
+    } finally {
+      setSubmittingGroup(false);
+      setCreatingGroup(false);
+      setUpdatingGroupId(null);
+    }
   };
 
   const handleAddOnSubmit = async (values: typeof addOnForm.values) => {
-    if (!selectedGroup) return;
+    if (!selectedGroup || submittingAddOn) return;
 
-    // Close modal immediately
-    const currentSelectedGroup = selectedGroup;
     const wasEditing = !!editingAddOn;
     const currentEditingAddOnId = editingAddOn?.id;
+    
+    // Close modal immediately
     setAddOnModalOpened(false);
+    
+    setSubmittingAddOn(true);
+    if (wasEditing && currentEditingAddOnId) {
+      setUpdatingAddOnId(currentEditingAddOnId);
+    } else {
+      setCreatingAddOn(true);
+    }
+    
+    try {
+      const addOnData = {
+        name: values.name,
+        price: values.price,
+        isActive: values.isActive,
+      };
 
-    // Run API calls in background
-    (async () => {
-      try {
-        const addOnData = {
-          name: values.name,
-          price: values.price,
-          isActive: values.isActive,
-        };
+      let savedAddOn: AddOn;
 
-        let savedAddOn: AddOn;
-
-        if (wasEditing && currentEditingAddOnId) {
-          savedAddOn = await menuApi.updateAddOn(currentSelectedGroup.id, currentEditingAddOnId, addOnData);
-        } else {
-          savedAddOn = await menuApi.createAddOn(currentSelectedGroup.id, addOnData);
-        }
-
-        // Save or delete recipe
-        try {
-          if (values.recipeIngredients && values.recipeIngredients.length > 0) {
-            // Save recipe with ingredients
-            const recipeData: CreateRecipeDto = {
-              addOnId: savedAddOn.id,
-              ingredients: values.recipeIngredients.map((ing) => ({
-                ingredientId: ing.ingredientId,
-                quantity: ing.quantity,
-                unit: ing.unit,
-              })),
-            };
-            await inventoryApi.createOrUpdateRecipe(recipeData);
-          } else {
-            // Delete recipe if no ingredients provided (createOrUpdateRecipe with empty array will delete)
-            const recipeData: CreateRecipeDto = {
-              addOnId: savedAddOn.id,
-              ingredients: [],
-            };
-            await inventoryApi.createOrUpdateRecipe(recipeData);
-          }
-        } catch (err: any) {
-          console.error('Failed to save add-on recipe:', err);
-          // Don't fail the whole operation if recipe save fails
-        }
-
-        notifications.show({
-          title: t('common.success' as any, language) || 'Success',
-          message: t('menu.saveSuccess', language),
-          color: successColor,
-        });
-
-        loadAddOns(currentSelectedGroup.id);
-      } catch (err: any) {
-        const errorMsg = err.response?.data?.message || err.message || 'Failed to save add-on';
-        notifications.show({
-          title: t('common.error' as any, language) || 'Error',
-          message: errorMsg,
-          color: errorColor,
-        });
+      if (wasEditing && currentEditingAddOnId) {
+        savedAddOn = await menuApi.updateAddOn(selectedGroup.id, currentEditingAddOnId, addOnData);
+      } else {
+        savedAddOn = await menuApi.createAddOn(selectedGroup.id, addOnData);
       }
-    })();
+
+      // Save or delete recipe
+      try {
+        if (values.recipeIngredients && values.recipeIngredients.length > 0) {
+          // Save recipe with ingredients
+          const recipeData: CreateRecipeDto = {
+            addOnId: savedAddOn.id,
+            ingredients: values.recipeIngredients.map((ing) => ({
+              ingredientId: ing.ingredientId,
+              quantity: ing.quantity,
+              unit: ing.unit,
+            })),
+          };
+          await inventoryApi.createOrUpdateRecipe(recipeData);
+        } else {
+          // Delete recipe if no ingredients provided (createOrUpdateRecipe with empty array will delete)
+          const recipeData: CreateRecipeDto = {
+            addOnId: savedAddOn.id,
+            ingredients: [],
+          };
+          await inventoryApi.createOrUpdateRecipe(recipeData);
+        }
+      } catch (err: any) {
+        console.error('Failed to save add-on recipe:', err);
+        // Don't fail the whole operation if recipe save fails
+      }
+
+      notifications.show({
+        title: t('common.success' as any, language) || 'Success',
+        message: t('menu.saveSuccess', language),
+        color: successColor,
+      });
+
+      loadAddOns(selectedGroup.id);
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || err.message || 'Failed to save add-on';
+      notifications.show({
+        title: t('common.error' as any, language) || 'Error',
+        message: errorMsg,
+        color: errorColor,
+      });
+    } finally {
+      setSubmittingAddOn(false);
+      setCreatingAddOn(false);
+      setUpdatingAddOnId(null);
+    }
   };
 
   const handleDeleteGroup = (group: AddOnGroup) => {
@@ -388,6 +430,7 @@ export function AddOnGroupsPage() {
       labels: { confirm: t('common.delete' as any, language) || 'Delete', cancel: t('common.cancel' as any, language) || 'Cancel' },
       confirmProps: { color: errorColor },
       onConfirm: async () => {
+        setDeletingGroupId(group.id);
         try {
           await menuApi.deleteAddOnGroup(group.id);
 
@@ -409,6 +452,8 @@ export function AddOnGroupsPage() {
             message: err.message || 'Failed to delete add-on group',
             color: errorColor,
           });
+        } finally {
+          setDeletingGroupId(null);
         }
       },
     });
@@ -422,6 +467,7 @@ export function AddOnGroupsPage() {
       confirmProps: { color: errorColor },
       onConfirm: async () => {
         if (!selectedGroup) return;
+        setDeletingAddOnId(addOn.id);
         try {
           await menuApi.deleteAddOn(selectedGroup.id, addOn.id);
 
@@ -438,6 +484,8 @@ export function AddOnGroupsPage() {
             message: err.message || 'Failed to delete add-on',
             color: errorColor,
           });
+        } finally {
+          setDeletingAddOnId(null);
         }
       },
     });
@@ -446,6 +494,10 @@ export function AddOnGroupsPage() {
 
   return (
     <Stack gap="md">
+      {/* Top loader for any API in progress */}
+      {isApiInProgress && (
+        <Progress value={100} animated color={primaryColor} size="xs" radius={0} style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000 }} />
+      )}
       <Group justify="flex-end">
         <Button
           leftSection={<IconPlus size={16} />}
@@ -500,7 +552,18 @@ export function AddOnGroupsPage() {
         <Grid.Col span={{ base: 12, md: 4 }}>
           <Paper p="md" withBorder>
             <Stack gap="xs">
-              {addOnGroups.length === 0 ? (
+              {creatingGroup && (
+                <Paper p="sm" withBorder>
+                  <Group justify="space-between">
+                    <Group>
+                      <Loader size="sm" />
+                      <Skeleton height={16} width={120} />
+                      <Skeleton height={16} width={60} radius="xl" />
+                    </Group>
+                  </Group>
+                </Paper>
+              )}
+              {addOnGroups.length === 0 && !creatingGroup ? (
                 <Text ta="center" c="dimmed" size="sm">
                   {t('menu.noAddOnGroups', language)}
                 </Text>
@@ -519,28 +582,38 @@ export function AddOnGroupsPage() {
                     }}
                     onClick={() => setSelectedGroup(group)}
                   >
-                    <Group justify="space-between">
-                      <div>
-                        <Text fw={500} size="sm">
-                          {group.name}
-                        </Text>
-                        <Group gap="xs" mt={4}>
-                          <Text size="xs" c="dimmed">
-                            {group.selectionType === 'single'
-                              ? t('menu.single', language)
-                              : t('menu.multiple', language)}
-                          </Text>
-                          {group.category && (
-                            <>
-                              <Text size="xs" c="dimmed">•</Text>
-                              <Badge variant="light" color="blue" size="xs">
-                                {group.category}
-                              </Badge>
-                            </>
-                          )}
+                    {updatingGroupId === group.id ? (
+                      <Group justify="space-between">
+                        <Group>
+                          <Loader size="sm" />
+                          <Skeleton height={16} width={120} />
+                          <Skeleton height={16} width={60} radius="xl" />
                         </Group>
-                      </div>
-                      <Group gap="xs">
+                      </Group>
+                    ) : (
+                      <>
+                        <Group justify="space-between">
+                          <div>
+                            <Text fw={500} size="sm">
+                              {group.name}
+                            </Text>
+                            <Group gap="xs" mt={4}>
+                              <Text size="xs" c="dimmed">
+                                {group.selectionType === 'single'
+                                  ? t('menu.single', language)
+                                  : t('menu.multiple', language)}
+                              </Text>
+                              {group.category && (
+                                <>
+                                  <Text size="xs" c="dimmed">•</Text>
+                                  <Badge variant="light" color="blue" size="xs">
+                                    {group.category}
+                                  </Badge>
+                                </>
+                              )}
+                            </Group>
+                          </div>
+                          <Group gap="xs">
                         <ActionIcon
                           size="sm"
                           variant="light"
@@ -549,8 +622,13 @@ export function AddOnGroupsPage() {
                             handleOpenGroupModal(group);
                           }}
                           style={{ color: primaryColor }}
+                          disabled={openingGroupModalId === group.id}
                         >
-                          <IconEdit size={14} />
+                          {openingGroupModalId === group.id ? (
+                            <Loader size={14} />
+                          ) : (
+                            <IconEdit size={14} />
+                          )}
                         </ActionIcon>
                         <ActionIcon
                           size="sm"
@@ -560,11 +638,18 @@ export function AddOnGroupsPage() {
                             e.stopPropagation();
                             handleDeleteGroup(group);
                           }}
+                          disabled={deletingGroupId === group.id}
                         >
-                          <IconTrash size={14} />
+                          {deletingGroupId === group.id ? (
+                            <Loader size={14} />
+                          ) : (
+                            <IconTrash size={14} />
+                          )}
                         </ActionIcon>
                       </Group>
                     </Group>
+                      </>
+                    )}
                   </Paper>
                 ))
               )}
@@ -618,10 +703,6 @@ export function AddOnGroupsPage() {
                     ))}
                   </Stack>
                 </Stack>
-              ) : addOns.length === 0 ? (
-                <Text ta="center" c="dimmed" size="sm">
-                  {t('menu.noAddOns', language)}
-                </Text>
               ) : (
                 <Table>
                   <Table.Thead>
@@ -633,39 +714,84 @@ export function AddOnGroupsPage() {
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
-                    {addOns.map((addOn) => (
-                      <Table.Tr key={addOn.id}>
-                        <Table.Td>
-                          {addOn.name}
-                        </Table.Td>
-                        <Table.Td>{addOn.price.toFixed(2)}</Table.Td>
-                        <Table.Td>
-                          <Badge variant="light" color={getBadgeColorForText(addOn.isActive ? t('menu.active', language) : t('menu.inactive', language))}>
-                            {addOn.isActive ? t('menu.active', language) : t('menu.inactive', language)}
-                          </Badge>
-                        </Table.Td>
-                        <Table.Td>
-                          <Group gap="xs">
-                            <ActionIcon
-                              size="sm"
-                              variant="light"
-                              onClick={() => handleOpenAddOnModal(addOn)}
-                              style={{ color: primaryColor }}
-                            >
-                              <IconEdit size={14} />
-                            </ActionIcon>
-                            <ActionIcon
-                              size="sm"
-                              variant="light"
-                              color={errorColor}
-                              onClick={() => handleDeleteAddOn(addOn)}
-                            >
-                              <IconTrash size={14} />
-                            </ActionIcon>
+                    {creatingAddOn && (
+                      <Table.Tr>
+                        <Table.Td colSpan={4}>
+                          <Group>
+                            <Loader size="sm" />
+                            <Skeleton height={16} width={150} />
+                            <Skeleton height={16} width={80} />
+                            <Skeleton height={32} width={32} radius="md" />
                           </Group>
                         </Table.Td>
                       </Table.Tr>
-                    ))}
+                    )}
+                    {addOns.length === 0 && !creatingAddOn ? (
+                      <Table.Tr>
+                        <Table.Td colSpan={4}>
+                          <Text ta="center" c="dimmed" size="sm">
+                            {t('menu.noAddOns', language)}
+                          </Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    ) : (
+                      addOns.map((addOn) => (
+                      <Table.Tr key={addOn.id}>
+                        {updatingAddOnId === addOn.id ? (
+                          <Table.Td colSpan={4}>
+                            <Group>
+                              <Loader size="sm" />
+                              <Skeleton height={16} width={150} />
+                              <Skeleton height={16} width={80} />
+                              <Skeleton height={32} width={32} radius="md" />
+                            </Group>
+                          </Table.Td>
+                        ) : (
+                          <>
+                            <Table.Td>
+                              {addOn.name}
+                            </Table.Td>
+                            <Table.Td>{addOn.price.toFixed(2)}</Table.Td>
+                            <Table.Td>
+                              <Badge variant="light" color={getBadgeColorForText(addOn.isActive ? t('menu.active', language) : t('menu.inactive', language))}>
+                                {addOn.isActive ? t('menu.active', language) : t('menu.inactive', language)}
+                              </Badge>
+                            </Table.Td>
+                            <Table.Td>
+                              <Group gap="xs">
+                                <ActionIcon
+                                  size="sm"
+                                  variant="light"
+                                  onClick={() => handleOpenAddOnModal(addOn)}
+                                  style={{ color: primaryColor }}
+                                  disabled={openingAddOnModalId === addOn.id}
+                                >
+                                  {openingAddOnModalId === addOn.id ? (
+                                    <Loader size={14} />
+                                  ) : (
+                                    <IconEdit size={14} />
+                                  )}
+                                </ActionIcon>
+                                <ActionIcon
+                                  size="sm"
+                                  variant="light"
+                                  color={errorColor}
+                                  onClick={() => handleDeleteAddOn(addOn)}
+                                  disabled={deletingAddOnId === addOn.id}
+                                >
+                                  {deletingAddOnId === addOn.id ? (
+                                    <Loader size={14} />
+                                  ) : (
+                                    <IconTrash size={14} />
+                                  )}
+                                </ActionIcon>
+                              </Group>
+                            </Table.Td>
+                          </>
+                        )}
+                      </Table.Tr>
+                      ))
+                    )}
                   </Table.Tbody>
                 </Table>
               )}
@@ -781,10 +907,10 @@ export function AddOnGroupsPage() {
             </Grid>
 
             <Group justify="flex-end" mt="md">
-              <Button variant="subtle" onClick={() => setGroupModalOpened(false)}>
+              <Button variant="subtle" onClick={() => setGroupModalOpened(false)} disabled={submittingGroup}>
                 {t('common.cancel' as any, language) || 'Cancel'}
               </Button>
-              <Button type="submit" style={{ backgroundColor: primaryColor }}>
+              <Button type="submit" style={{ backgroundColor: primaryColor }} loading={submittingGroup} disabled={submittingGroup}>
                 {t('common.save' as any, language) || 'Save'}
               </Button>
             </Group>
@@ -913,10 +1039,10 @@ export function AddOnGroupsPage() {
             </Stack>
 
             <Group justify="flex-end" mt="md">
-              <Button variant="subtle" onClick={() => setAddOnModalOpened(false)}>
+              <Button variant="subtle" onClick={() => setAddOnModalOpened(false)} disabled={submittingAddOn}>
                 {t('common.cancel' as any, language) || 'Cancel'}
               </Button>
-              <Button type="submit" style={{ backgroundColor: primaryColor }}>
+              <Button type="submit" style={{ backgroundColor: primaryColor }} loading={submittingAddOn} disabled={submittingAddOn}>
                 {t('common.save' as any, language) || 'Save'}
               </Button>
             </Group>
