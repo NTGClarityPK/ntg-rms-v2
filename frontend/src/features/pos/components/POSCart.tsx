@@ -941,11 +941,20 @@ export function POSCart({
                                   errorMessage.toLowerCase().includes('inventory') || 
                                   errorMessage.toLowerCase().includes('stock');
           
+          // Check if it's a customer-related error (duplicate phone, etc.)
+          const isCustomerError = errorMessage.toLowerCase().includes('customer') || 
+                                 errorMessage.toLowerCase().includes('phone number') ||
+                                 errorMessage.toLowerCase().includes('already exists');
+          
+          // For customer errors and inventory errors, show the message directly without prefix
+          // For other errors, show with prefix
+          const displayMessage = (isInventoryError || isCustomerError)
+            ? errorMessage 
+            : `${t('pos.orderPlacedError', language)}: ${errorMessage}`;
+          
           notifications.show({
             title: t('pos.orderPlacedError', language),
-            message: isInventoryError 
-              ? errorMessage 
-              : `${t('pos.orderPlacedError', language)}: ${errorMessage}`,
+            message: displayMessage,
             color: getErrorColor(),
           });
           

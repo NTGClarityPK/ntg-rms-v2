@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   InternalServerErrorException,
+  ConflictException,
 } from '@nestjs/common';
 import { SupabaseService } from '../../database/supabase.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
@@ -312,6 +313,15 @@ export class CustomersService {
       .single();
 
     if (error) {
+      // Check for duplicate phone number error
+      if (error.code === '23505' || 
+          error.message?.includes('customers_phone_key') || 
+          error.message?.includes('duplicate key') ||
+          error.message?.includes('unique constraint')) {
+        throw new ConflictException(
+          `A customer with phone number ${createDto.phone} already exists. Please use a different phone number or select the existing customer.`
+        );
+      }
       throw new InternalServerErrorException(`Failed to create customer: ${error.message}`);
     }
 
