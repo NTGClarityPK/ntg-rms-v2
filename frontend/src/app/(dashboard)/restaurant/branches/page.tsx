@@ -119,7 +119,16 @@ export default function BranchesPage() {
 
       if (editingBranch) {
         // Update branch
-        const updateData: UpdateBranchDto = { ...values };
+        // Remove isActive and clean empty strings
+        const { isActive, ...updateDataRaw } = values;
+        const updateData: UpdateBranchDto = {
+          ...updateDataRaw,
+          email: updateDataRaw.email?.trim() || undefined,
+          phone: updateDataRaw.phone?.trim() || undefined,
+          address: updateDataRaw.address?.trim() || undefined,
+          city: updateDataRaw.city?.trim() || undefined,
+          state: updateDataRaw.state?.trim() || undefined,
+        };
         await restaurantApi.updateBranch(editingBranch.id, updateData);
         
         notifications.show({

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import { useForm } from '@mantine/form';
 import {
   Title,
@@ -19,6 +20,7 @@ import {
   Skeleton,
   Alert,
   NumberInput,
+  Loader,
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import '@mantine/dates/styles.css';
@@ -61,6 +63,10 @@ export function CouponsPage() {
   const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [pendingCoupon, setPendingCoupon] = useState<Coupon | null>(null);
+  const [updatingCouponId, setUpdatingCouponId] = useState<string | null>(null);
+  const [deletingCouponId, setDeletingCouponId] = useState<string | null>(null);
 
   const form = useForm({
     initialValues: {
@@ -136,6 +142,7 @@ export function CouponsPage() {
   };
 
   const handleCloseModal = () => {
+    if (submitting) return;
     setOpened(false);
     setEditingCoupon(null);
     form.reset();
@@ -143,6 +150,10 @@ export function CouponsPage() {
 
   const handleSubmit = async (values: typeof form.values) => {
     if (!user?.tenantId) return;
+
+    flushSync(() => {
+      setSubmitting(true);
+    });
 
     try {
       setError(null);
@@ -160,6 +171,10 @@ export function CouponsPage() {
           validFrom: values.validFrom,
           validUntil: values.validUntil || undefined,
         };
+
+        setUpdatingCouponId(editingCoupon.id);
+        setOpened(false);
+        setEditingCoupon(null);
 
         await couponsApi.updateCoupon(editingCoupon.id, updateData);
 
@@ -182,6 +197,27 @@ export function CouponsPage() {
           validUntil: values.validUntil || undefined,
         };
 
+        const tempCoupon: Coupon = {
+          id: 'pending',
+          code: values.code.trim().toUpperCase(),
+          discountType: values.discountType,
+          discountValue: values.discountValue,
+          minOrderAmount: values.minOrderAmount > 0 ? values.minOrderAmount : undefined,
+          maxDiscountAmount: values.maxDiscountAmount && values.maxDiscountAmount > 0 ? values.maxDiscountAmount : undefined,
+          usageLimit: values.usageLimit && values.usageLimit > 0 ? values.usageLimit : undefined,
+          isActive: values.isActive,
+          validFrom: values.validFrom,
+          validUntil: values.validUntil || undefined,
+          usedCount: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        setPendingCoupon(tempCoupon);
+        setOpened(false);
+        setEditingCoupon(null);
+        form.reset();
+
         await couponsApi.createCoupon(createData, selectedBranchId || undefined);
 
         notifications.show({
@@ -191,7 +227,6 @@ export function CouponsPage() {
         });
       }
 
-      handleCloseModal();
       loadCoupons();
     } catch (err: any) {
       const errorMsg = handleApiError(err, {
@@ -200,6 +235,17 @@ export function CouponsPage() {
         errorColor,
       });
       setError(errorMsg);
+      // Reopen modal on error
+      if (editingCoupon) {
+        setOpened(true);
+        setEditingCoupon(editingCoupon);
+      } else {
+        setOpened(true);
+      }
+    } finally {
+      setSubmitting(false);
+      setPendingCoupon(null);
+      setUpdatingCouponId(null);
     }
   };
 
@@ -217,6 +263,7 @@ export function CouponsPage() {
       },
       confirmProps: { color: 'red' },
       onConfirm: async () => {
+        setDeletingCouponId(coupon.id);
         try {
           await couponsApi.deleteCoupon(coupon.id);
           notifications.show({
@@ -224,13 +271,15 @@ export function CouponsPage() {
             message: t('coupons.couponDeleted', language) || 'Coupon deleted successfully',
             color: successColor,
           });
-          loadCoupons();
+          await loadCoupons();
         } catch (err: any) {
           handleApiError(err, {
             defaultMessage: t('coupons.deleteError', language) || 'Failed to delete coupon',
             language,
             errorColor,
           });
+        } finally {
+          setDeletingCouponId(null);
         }
       },
     });
@@ -317,106 +366,178 @@ export function CouponsPage() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {filteredCoupons.length === 0 ? (
+              {pendingCoupon && (
+                <Table.Tr>
+                  <Table.Td>
+                    <Group gap="xs">
+                      <Loader size="sm" />
+                      <Skeleton height={20} width={100} />
+                    </Group>
+                  </Table.Td>
+                  <Table.Td>
+                    <Skeleton height={24} width={80} />
+                  </Table.Td>
+                  <Table.Td>
+                    <Skeleton height={20} width={80} />
+                  </Table.Td>
+                  <Table.Td>
+                    <Skeleton height={20} width={80} />
+                  </Table.Td>
+                  <Table.Td>
+                    <Skeleton height={20} width={60} />
+                  </Table.Td>
+                  <Table.Td>
+                    <Skeleton height={40} width={120} />
+                  </Table.Td>
+                  <Table.Td>
+                    <Skeleton height={40} width={100} />
+                  </Table.Td>
+                  <Table.Td>
+                    <Skeleton height={32} width={80} />
+                  </Table.Td>
+                </Table.Tr>
+              )}
+              {filteredCoupons.length === 0 && !pendingCoupon ? (
                 <Table.Tr>
                   <Table.Td colSpan={8} style={{ textAlign: 'center', padding: '2rem' }}>
                     <Text c="dimmed">{t('coupons.noCoupons', language) || 'No coupons found'}</Text>
                   </Table.Td>
                 </Table.Tr>
               ) : (
-                filteredCoupons.map((coupon) => (
-                  <Table.Tr key={coupon.id}>
-                    <Table.Td>
-                      <Text fw={500}>{coupon.code}</Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Badge color={coupon.discountType === 'fixed' ? primaryColor : successColor}>
-                        {coupon.discountType === 'fixed' 
-                          ? (t('coupons.fixed', language) || 'Fixed')
-                          : (t('coupons.percentage', language) || 'Percentage')}
-                      </Badge>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text fw={500} c={primaryColor}>
-                        {formatDiscount(coupon)}
-                        {coupon.discountType === 'percentage' && coupon.maxDiscountAmount && (
-                          <Text size="xs" c="dimmed">
-                            {' '}(max: {formatCurrency(coupon.maxDiscountAmount, currency)})
-                          </Text>
-                        )}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
-                      {coupon.minOrderAmount ? (
-                        <Text size="sm">{formatCurrency(coupon.minOrderAmount, currency)}</Text>
-                      ) : (
-                        <Text size="sm" c="dimmed">-</Text>
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm">
-                        {coupon.usedCount} / {coupon.usageLimit || '∞'}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Stack gap={2}>
-                        {coupon.validFrom && (
-                          <Text size="xs" c="dimmed">
-                            {t('coupons.from', language) || 'From'}: {new Date(coupon.validFrom).toLocaleDateString()}
-                          </Text>
-                        )}
-                        {coupon.validUntil && (
-                          <Text size="xs" c="dimmed">
-                            {t('coupons.until', language) || 'Until'}: {new Date(coupon.validUntil).toLocaleDateString()}
-                          </Text>
-                        )}
-                        {!coupon.validFrom && !coupon.validUntil && (
-                          <Text size="xs" c="dimmed">-</Text>
-                        )}
-                      </Stack>
-                    </Table.Td>
-                    <Table.Td>
-                      <Stack gap={4}>
-                        <Badge 
-                          color={coupon.isActive ? successColor : getBadgeColorForText(t('coupons.inactive', language) || 'Inactive')} 
-                          size="sm"
-                        >
-                          {coupon.isActive 
-                            ? (t('coupons.active', language) || 'Active')
-                            : (t('coupons.inactive', language) || 'Inactive')}
+                filteredCoupons.map((coupon) => {
+                  const isUpdating = updatingCouponId === coupon.id;
+                  
+                  if (isUpdating) {
+                    return (
+                      <Table.Tr key={coupon.id}>
+                        <Table.Td>
+                          <Group gap="xs">
+                            <Loader size="sm" />
+                            <Skeleton height={20} width={100} />
+                          </Group>
+                        </Table.Td>
+                        <Table.Td>
+                          <Skeleton height={24} width={80} />
+                        </Table.Td>
+                        <Table.Td>
+                          <Skeleton height={20} width={80} />
+                        </Table.Td>
+                        <Table.Td>
+                          <Skeleton height={20} width={80} />
+                        </Table.Td>
+                        <Table.Td>
+                          <Skeleton height={20} width={60} />
+                        </Table.Td>
+                        <Table.Td>
+                          <Skeleton height={40} width={120} />
+                        </Table.Td>
+                        <Table.Td>
+                          <Skeleton height={40} width={100} />
+                        </Table.Td>
+                        <Table.Td>
+                          <Skeleton height={32} width={80} />
+                        </Table.Td>
+                      </Table.Tr>
+                    );
+                  }
+                  
+                  return (
+                    <Table.Tr key={coupon.id}>
+                      <Table.Td>
+                        <Text fw={500}>{coupon.code}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Badge color={coupon.discountType === 'fixed' ? primaryColor : successColor}>
+                          {coupon.discountType === 'fixed' 
+                            ? (t('coupons.fixed', language) || 'Fixed')
+                            : (t('coupons.percentage', language) || 'Percentage')}
                         </Badge>
-                        {isExpired(coupon) && (
-                          <Badge color={errorColor} size="xs">
-                            {t('coupons.expired', language) || 'Expired'}
-                          </Badge>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text fw={500} c={primaryColor}>
+                          {formatDiscount(coupon)}
+                          {coupon.discountType === 'percentage' && coupon.maxDiscountAmount && (
+                            <Text size="xs" c="dimmed">
+                              {' '}(max: {formatCurrency(coupon.maxDiscountAmount, currency)})
+                            </Text>
+                          )}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        {coupon.minOrderAmount ? (
+                          <Text size="sm">{formatCurrency(coupon.minOrderAmount, currency)}</Text>
+                        ) : (
+                          <Text size="sm" c="dimmed">-</Text>
                         )}
-                        {isNotYetValid(coupon) && (
-                          <Badge color={warningColor} size="xs">
-                            {t('coupons.notYetValid', language) || 'Not Yet Valid'}
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm">
+                          {coupon.usedCount} / {coupon.usageLimit || '∞'}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Stack gap={2}>
+                          {coupon.validFrom && (
+                            <Text size="xs" c="dimmed">
+                              {t('coupons.from', language) || 'From'}: {new Date(coupon.validFrom).toLocaleDateString()}
+                            </Text>
+                          )}
+                          {coupon.validUntil && (
+                            <Text size="xs" c="dimmed">
+                              {t('coupons.until', language) || 'Until'}: {new Date(coupon.validUntil).toLocaleDateString()}
+                            </Text>
+                          )}
+                          {!coupon.validFrom && !coupon.validUntil && (
+                            <Text size="xs" c="dimmed">-</Text>
+                          )}
+                        </Stack>
+                      </Table.Td>
+                      <Table.Td>
+                        <Stack gap={4}>
+                          <Badge 
+                            color={coupon.isActive ? successColor : getBadgeColorForText(t('coupons.inactive', language) || 'Inactive')} 
+                            size="sm"
+                          >
+                            {coupon.isActive 
+                              ? (t('coupons.active', language) || 'Active')
+                              : (t('coupons.inactive', language) || 'Inactive')}
                           </Badge>
-                        )}
-                      </Stack>
-                    </Table.Td>
-                    <Table.Td>
-                      <Group gap="xs">
-                        <ActionIcon
-                          variant="subtle"
-                          color="blue"
-                          onClick={() => handleOpenModal(coupon)}
-                        >
-                          <IconEdit size={16} />
-                        </ActionIcon>
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          onClick={() => handleDelete(coupon)}
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
-                      </Group>
-                    </Table.Td>
-                  </Table.Tr>
-                ))
+                          {isExpired(coupon) && (
+                            <Badge color={errorColor} size="xs">
+                              {t('coupons.expired', language) || 'Expired'}
+                            </Badge>
+                          )}
+                          {isNotYetValid(coupon) && (
+                            <Badge color={warningColor} size="xs">
+                              {t('coupons.notYetValid', language) || 'Not Yet Valid'}
+                            </Badge>
+                          )}
+                        </Stack>
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap="xs">
+                          <ActionIcon
+                            variant="subtle"
+                            color="blue"
+                            onClick={() => handleOpenModal(coupon)}
+                            disabled={submitting || updatingCouponId === coupon.id || deletingCouponId === coupon.id}
+                          >
+                            <IconEdit size={16} />
+                          </ActionIcon>
+                          <ActionIcon
+                            variant="subtle"
+                            color="red"
+                            onClick={() => handleDelete(coupon)}
+                            disabled={submitting || updatingCouponId === coupon.id || deletingCouponId === coupon.id}
+                            loading={deletingCouponId === coupon.id}
+                          >
+                            <IconTrash size={16} />
+                          </ActionIcon>
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  );
+                })
               )}
             </Table.Tbody>
           </Table>
@@ -447,6 +568,8 @@ export function CouponsPage() {
           ? (t('coupons.editCoupon', language) || 'Edit Coupon')
           : (t('coupons.createCoupon', language) || 'Create Coupon')}
         size="lg"
+        closeOnClickOutside={!submitting}
+        closeOnEscape={!submitting}
       >
         <form onSubmit={form.onSubmit(handleSubmit)}>
           <Stack gap="md">
@@ -534,10 +657,10 @@ export function CouponsPage() {
             />
 
             <Group justify="flex-end" mt="md">
-              <Button variant="subtle" onClick={handleCloseModal}>
+              <Button variant="subtle" onClick={handleCloseModal} disabled={submitting}>
                 {t('common.cancel', language) || 'Cancel'}
               </Button>
-              <Button type="submit" style={{ backgroundColor: primaryColor }}>
+              <Button type="submit" style={{ backgroundColor: primaryColor }} loading={submitting} disabled={submitting}>
                 {editingCoupon 
                   ? (t('common.saveChanges', language) || 'Update')
                   : (t('common.create', language) || 'Create')}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import { useForm } from '@mantine/form';
 import {
   Button,
@@ -17,6 +18,7 @@ import {
   Skeleton,
   Alert,
   Grid,
+  Loader,
 } from '@mantine/core';
 import { IconPlus, IconEdit, IconTrash, IconCheck, IconAlertCircle } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
@@ -41,6 +43,10 @@ export function BranchesTab() {
   const [opened, setOpened] = useState(false);
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [pendingBranch, setPendingBranch] = useState<Branch | null>(null);
+  const [updatingBranchId, setUpdatingBranchId] = useState<string | null>(null);
+  const [deletingBranchId, setDeletingBranchId] = useState<string | null>(null);
 
   const form = useForm<CreateBranchDto & { isActive?: boolean }>({
     initialValues: {
@@ -109,6 +115,7 @@ export function BranchesTab() {
   };
 
   const handleCloseModal = () => {
+    if (submitting) return;
     setOpened(false);
     setEditingBranch(null);
     form.reset();
@@ -117,12 +124,29 @@ export function BranchesTab() {
   const handleSubmit = async (values: typeof form.values) => {
     if (!user?.tenantId) return;
 
+    flushSync(() => {
+      setSubmitting(true);
+    });
+
     try {
       setError(null);
 
       if (editingBranch) {
         // Update branch
-        const updateData: UpdateBranchDto = { ...values };
+        // Remove isActive and clean empty strings
+        const { isActive, ...updateDataRaw } = values;
+        const updateData: UpdateBranchDto = {
+          ...updateDataRaw,
+          email: updateDataRaw.email?.trim() || undefined,
+          phone: updateDataRaw.phone?.trim() || undefined,
+          address: updateDataRaw.address?.trim() || undefined,
+          city: updateDataRaw.city?.trim() || undefined,
+          state: updateDataRaw.state?.trim() || undefined,
+        };
+        setUpdatingBranchId(editingBranch.id);
+        setOpened(false);
+        setEditingBranch(null);
+
         await restaurantApi.updateBranch(editingBranch.id, updateData);
         
         notifications.show({
@@ -143,6 +167,30 @@ export function BranchesTab() {
           city: createData.city?.trim() || undefined,
           state: createData.state?.trim() || undefined,
         };
+
+        const tempBranch: Branch = {
+          id: 'pending',
+          name: values.name,
+          code: values.code,
+          address: values.address || '',
+          city: values.city || '',
+          state: values.state || '',
+          country: values.country || 'Iraq',
+          phone: values.phone || '',
+          email: values.email || '',
+          latitude: values.latitude,
+          longitude: values.longitude,
+          managerId: values.managerId,
+          isActive: values.isActive ?? true,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          tenantId: user.tenantId,
+        };
+
+        setPendingBranch(tempBranch);
+        setOpened(false);
+        setEditingBranch(null);
+        form.reset();
         
         await restaurantApi.createBranch(cleanedData);
         
@@ -154,7 +202,6 @@ export function BranchesTab() {
         });
       }
 
-      handleCloseModal();
       await loadBranches();
     } catch (err: any) {
       const errorMsg = err.response?.data?.error?.message || err.message || t('restaurant.branchManagement', language) || 'Failed to save branch';
@@ -165,6 +212,17 @@ export function BranchesTab() {
         color: notificationColors.error,
         icon: <IconAlertCircle size={16} />,
       });
+      // Reopen modal on error
+      if (editingBranch) {
+        setOpened(true);
+        setEditingBranch(editingBranch);
+      } else {
+        setOpened(true);
+      }
+    } finally {
+      setSubmitting(false);
+      setPendingBranch(null);
+      setUpdatingBranchId(null);
     }
   };
 
@@ -182,6 +240,7 @@ export function BranchesTab() {
       },
       confirmProps: { color: errorColor },
       onConfirm: async () => {
+        setDeletingBranchId(branch.id);
         try {
           await restaurantApi.deleteBranch(branch.id);
           
@@ -200,6 +259,8 @@ export function BranchesTab() {
             color: notificationColors.error,
             icon: <IconAlertCircle size={16} />,
           });
+        } finally {
+          setDeletingBranchId(null);
         }
       },
     });
@@ -274,7 +335,32 @@ export function BranchesTab() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {branches.length === 0 ? (
+              {pendingBranch && (
+                <Table.Tr>
+                  <Table.Td>
+                    <Group gap="xs">
+                      <Loader size="sm" />
+                      <Skeleton height={20} width={150} />
+                    </Group>
+                  </Table.Td>
+                  <Table.Td>
+                    <Skeleton height={20} width={80} />
+                  </Table.Td>
+                  <Table.Td>
+                    <Skeleton height={20} width={100} />
+                  </Table.Td>
+                  <Table.Td>
+                    <Skeleton height={20} width={120} />
+                  </Table.Td>
+                  <Table.Td>
+                    <Skeleton height={24} width={60} />
+                  </Table.Td>
+                  <Table.Td>
+                    <Skeleton height={32} width={80} />
+                  </Table.Td>
+                </Table.Tr>
+              )}
+              {branches.length === 0 && !pendingBranch ? (
                 <Table.Tr>
                   <Table.Td colSpan={6} style={{ textAlign: 'center' }}>
                     <Text c="dimmed" py="xl">
@@ -283,48 +369,83 @@ export function BranchesTab() {
                   </Table.Td>
                 </Table.Tr>
               ) : (
-                branches.map((branch) => (
-                  <Table.Tr key={branch.id}>
-                    <Table.Td>
-                      <Text fw={500}>{branch.name}</Text>
-                    </Table.Td>
-                    <Table.Td>{branch.code}</Table.Td>
-                    <Table.Td>{branch.city || '-'}</Table.Td>
-                    <Table.Td>{branch.phone || '-'}</Table.Td>
-                    <Table.Td>
-                      <Badge 
-                        color={branch.isActive ? successColor : errorColor}
-                        variant="light"
-                      >
-                        {branch.isActive
-                          ? (t('common.active', language) || 'Active')
-                          : (t('common.inactive', language) || 'Inactive')}
-                      </Badge>
-                    </Table.Td>
-                    <Table.Td>
-                      <Group gap="xs">
-                        <PermissionGuard resource="restaurant" action="update">
-                          <ActionIcon
-                            variant="subtle"
-                            color={infoColor}
-                            onClick={() => handleOpenModal(branch)}
-                          >
-                            <IconEdit size={16} />
-                          </ActionIcon>
-                        </PermissionGuard>
-                        <PermissionGuard resource="restaurant" action="delete">
-                          <ActionIcon
-                            variant="subtle"
-                            color={errorColor}
-                            onClick={() => handleDelete(branch)}
-                          >
-                            <IconTrash size={16} />
-                          </ActionIcon>
-                        </PermissionGuard>
-                      </Group>
-                    </Table.Td>
-                  </Table.Tr>
-                ))
+                branches.map((branch) => {
+                  const isUpdating = updatingBranchId === branch.id;
+                  
+                  if (isUpdating) {
+                    return (
+                      <Table.Tr key={branch.id}>
+                        <Table.Td>
+                          <Group gap="xs">
+                            <Loader size="sm" />
+                            <Skeleton height={20} width={150} />
+                          </Group>
+                        </Table.Td>
+                        <Table.Td>
+                          <Skeleton height={20} width={80} />
+                        </Table.Td>
+                        <Table.Td>
+                          <Skeleton height={20} width={100} />
+                        </Table.Td>
+                        <Table.Td>
+                          <Skeleton height={20} width={120} />
+                        </Table.Td>
+                        <Table.Td>
+                          <Skeleton height={24} width={60} />
+                        </Table.Td>
+                        <Table.Td>
+                          <Skeleton height={32} width={80} />
+                        </Table.Td>
+                      </Table.Tr>
+                    );
+                  }
+                  
+                  return (
+                    <Table.Tr key={branch.id}>
+                      <Table.Td>
+                        <Text fw={500}>{branch.name}</Text>
+                      </Table.Td>
+                      <Table.Td>{branch.code}</Table.Td>
+                      <Table.Td>{branch.city || '-'}</Table.Td>
+                      <Table.Td>{branch.phone || '-'}</Table.Td>
+                      <Table.Td>
+                        <Badge 
+                          color={branch.isActive ? successColor : errorColor}
+                          variant="light"
+                        >
+                          {branch.isActive
+                            ? (t('common.active', language) || 'Active')
+                            : (t('common.inactive', language) || 'Inactive')}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap="xs">
+                          <PermissionGuard resource="restaurant" action="update">
+                            <ActionIcon
+                              variant="subtle"
+                              color={infoColor}
+                              onClick={() => handleOpenModal(branch)}
+                              disabled={submitting || updatingBranchId === branch.id || deletingBranchId === branch.id}
+                            >
+                              <IconEdit size={16} />
+                            </ActionIcon>
+                          </PermissionGuard>
+                          <PermissionGuard resource="restaurant" action="delete">
+                            <ActionIcon
+                              variant="subtle"
+                              color={errorColor}
+                              onClick={() => handleDelete(branch)}
+                              disabled={submitting || updatingBranchId === branch.id || deletingBranchId === branch.id}
+                              loading={deletingBranchId === branch.id}
+                            >
+                              <IconTrash size={16} />
+                            </ActionIcon>
+                          </PermissionGuard>
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  );
+                })
               )}
             </Table.Tbody>
           </Table>
@@ -336,6 +457,8 @@ export function BranchesTab() {
         onClose={handleCloseModal}
         title={editingBranch ? t('restaurant.editBranch', language) : t('restaurant.createBranch', language)}
         size="lg"
+        closeOnClickOutside={!submitting}
+        closeOnEscape={!submitting}
       >
         <form onSubmit={form.onSubmit(handleSubmit)}>
           <Stack gap="md">
@@ -391,10 +514,11 @@ export function BranchesTab() {
               <Button
                 variant="subtle"
                 onClick={handleCloseModal}
+                disabled={submitting}
               >
                 {t('common.cancel', language) || 'Cancel'}
               </Button>
-              <Button type="submit">{t('common.save', language) || 'Save'}</Button>
+              <Button type="submit" loading={submitting} disabled={submitting}>{t('common.save', language) || 'Save'}</Button>
             </Group>
           </Stack>
         </form>

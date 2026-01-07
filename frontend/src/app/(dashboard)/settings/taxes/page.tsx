@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import { useForm } from '@mantine/form';
 import {
   Container,
@@ -20,6 +21,7 @@ import {
   MultiSelect,
   Skeleton,
   Badge,
+  Loader,
 } from '@mantine/core';
 import { IconPlus, IconEdit, IconTrash, IconCheck, IconX } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
@@ -43,6 +45,10 @@ export default function TaxesPage() {
   const [opened, setOpened] = useState(false);
   const [editingTax, setEditingTax] = useState<Tax | null>(null);
   const [deletingTax, setDeletingTax] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [pendingTax, setPendingTax] = useState<Tax | null>(null);
+  const [updatingTaxId, setUpdatingTaxId] = useState<string | null>(null);
+  const [deletingTaxId, setDeletingTaxId] = useState<string | null>(null);
   const primary = useThemeColor();
   const form = useForm<CreateTaxDto>({
     initialValues: {
@@ -143,6 +149,7 @@ export default function TaxesPage() {
   };
 
   const handleCloseModal = () => {
+    if (submitting) return;
     setOpened(false);
     setEditingTax(null);
     form.reset();
@@ -158,8 +165,17 @@ export default function TaxesPage() {
       });
       return;
     }
+    
+    flushSync(() => {
+      setSubmitting(true);
+    });
+
     try {
       if (editingTax) {
+        setUpdatingTaxId(editingTax.id);
+        setOpened(false);
+        setEditingTax(null);
+
         await taxesApi.updateTax(editingTax.id, values);
         notifications.show({
           title: t('common.success' as any, language),
@@ -168,6 +184,27 @@ export default function TaxesPage() {
           icon: <IconCheck size={16} />,
         });
       } else {
+        const tempTax: Tax = {
+          id: 'pending',
+          name: values.name,
+          taxCode: values.taxCode || '',
+          rate: values.rate,
+          isActive: values.isActive ?? true,
+          appliesTo: values.appliesTo || 'order',
+          appliesToDelivery: values.appliesToDelivery ?? false,
+          appliesToServiceCharge: values.appliesToServiceCharge ?? false,
+          categoryIds: values.categoryIds || [],
+          foodItemIds: values.foodItemIds || [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          tenantId: '',
+        };
+
+        setPendingTax(tempTax);
+        setOpened(false);
+        setEditingTax(null);
+        form.reset();
+
         await taxesApi.createTax(values, selectedBranchId);
         notifications.show({
           title: t('common.success' as any, language),
@@ -176,7 +213,6 @@ export default function TaxesPage() {
           icon: <IconCheck size={16} />,
         });
       }
-      handleCloseModal();
       loadTaxes();
     } catch (error: any) {
       notifications.show({
@@ -185,10 +221,22 @@ export default function TaxesPage() {
         color: getErrorColor(),
         icon: <IconX size={16} />,
       });
+      // Reopen modal on error
+      if (editingTax) {
+        setOpened(true);
+        setEditingTax(editingTax);
+      } else {
+        setOpened(true);
+      }
+    } finally {
+      setSubmitting(false);
+      setPendingTax(null);
+      setUpdatingTaxId(null);
     }
   };
 
   const handleDelete = async (id: string) => {
+    setDeletingTaxId(id);
     try {
       await taxesApi.deleteTax(id);
       notifications.show({
@@ -206,6 +254,8 @@ export default function TaxesPage() {
         color: getErrorColor(),
         icon: <IconX size={16} />,
       });
+    } finally {
+      setDeletingTaxId(null);
     }
   };
 
@@ -264,47 +314,107 @@ export default function TaxesPage() {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {taxes.map((tax) => (
-                  <Table.Tr key={tax.id}>
-                    <Table.Td>{tax.name}</Table.Td>
-                    <Table.Td>{tax.taxCode || '-'}</Table.Td>
-                    <Table.Td>{tax.rate}%</Table.Td>
-                    <Table.Td>
-                      {tax.appliesTo === 'order'
-                        ? t('taxes.orderWise' as any, language) || 'Order'
-                        : tax.appliesTo === 'category'
-                        ? t('taxes.categoryWise' as any, language) || 'Category'
-                        : t('taxes.itemWise' as any, language) || 'Item'}
-                    </Table.Td>
-                    <Table.Td>
-                      <Badge variant="light" color={getBadgeColorForText(tax.isActive
-                        ? (t('common.active' as any, language) || 'Active')
-                        : (t('common.inactive' as any, language) || 'Inactive'))}>
-                        {tax.isActive
-                          ? t('common.active' as any, language) || 'Active'
-                          : t('common.inactive' as any, language) || 'Inactive'}
-                      </Badge>
-                    </Table.Td>
+                {pendingTax && (
+                  <Table.Tr>
                     <Table.Td>
                       <Group gap="xs">
-                        <ActionIcon
-                          variant="light"
-                          color={themeColor}
-                          onClick={() => handleOpenModal(tax)}
-                        >
-                          <IconEdit size={16} />
-                        </ActionIcon>
-                        <ActionIcon
-                          variant="light"
-                          color={primary}
-                          onClick={() => setDeletingTax(tax.id)}
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
+                        <Loader size="sm" />
+                        <Skeleton height={20} width={150} />
                       </Group>
                     </Table.Td>
+                    <Table.Td>
+                      <Skeleton height={20} width={100} />
+                    </Table.Td>
+                    <Table.Td>
+                      <Skeleton height={20} width={60} />
+                    </Table.Td>
+                    <Table.Td>
+                      <Skeleton height={20} width={100} />
+                    </Table.Td>
+                    <Table.Td>
+                      <Skeleton height={24} width={80} />
+                    </Table.Td>
+                    <Table.Td>
+                      <Skeleton height={32} width={80} />
+                    </Table.Td>
                   </Table.Tr>
-                ))}
+                )}
+                {taxes.map((tax) => {
+                  const isUpdating = updatingTaxId === tax.id;
+                  
+                  if (isUpdating) {
+                    return (
+                      <Table.Tr key={tax.id}>
+                        <Table.Td>
+                          <Group gap="xs">
+                            <Loader size="sm" />
+                            <Skeleton height={20} width={150} />
+                          </Group>
+                        </Table.Td>
+                        <Table.Td>
+                          <Skeleton height={20} width={100} />
+                        </Table.Td>
+                        <Table.Td>
+                          <Skeleton height={20} width={60} />
+                        </Table.Td>
+                        <Table.Td>
+                          <Skeleton height={20} width={100} />
+                        </Table.Td>
+                        <Table.Td>
+                          <Skeleton height={24} width={80} />
+                        </Table.Td>
+                        <Table.Td>
+                          <Skeleton height={32} width={80} />
+                        </Table.Td>
+                      </Table.Tr>
+                    );
+                  }
+                  
+                  return (
+                    <Table.Tr key={tax.id}>
+                      <Table.Td>{tax.name}</Table.Td>
+                      <Table.Td>{tax.taxCode || '-'}</Table.Td>
+                      <Table.Td>{tax.rate}%</Table.Td>
+                      <Table.Td>
+                        {tax.appliesTo === 'order'
+                          ? t('taxes.orderWise' as any, language) || 'Order'
+                          : tax.appliesTo === 'category'
+                          ? t('taxes.categoryWise' as any, language) || 'Category'
+                          : t('taxes.itemWise' as any, language) || 'Item'}
+                      </Table.Td>
+                      <Table.Td>
+                        <Badge variant="light" color={getBadgeColorForText(tax.isActive
+                          ? (t('common.active' as any, language) || 'Active')
+                          : (t('common.inactive' as any, language) || 'Inactive'))}>
+                          {tax.isActive
+                            ? t('common.active' as any, language) || 'Active'
+                            : t('common.inactive' as any, language) || 'Inactive'}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap="xs">
+                          <ActionIcon
+                            variant="light"
+                            color={themeColor}
+                            onClick={() => handleOpenModal(tax)}
+                            disabled={submitting || updatingTaxId === tax.id || deletingTaxId === tax.id}
+                          >
+                            <IconEdit size={16} />
+                          </ActionIcon>
+                          <ActionIcon
+                            variant="light"
+                            color={primary}
+                            onClick={() => setDeletingTax(tax.id)}
+                            disabled={submitting || updatingTaxId === tax.id || deletingTaxId === tax.id}
+                            loading={deletingTaxId === tax.id}
+                          >
+                            <IconTrash size={16} />
+                          </ActionIcon>
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  );
+                })}
               </Table.Tbody>
             </Table>
           )}
@@ -315,6 +425,8 @@ export default function TaxesPage() {
           onClose={handleCloseModal}
           title={editingTax ? t('taxes.editTax' as any, language) || 'Edit Tax' : t('taxes.addTax' as any, language) || 'Add Tax'}
           size="lg"
+          closeOnClickOutside={!submitting}
+          closeOnEscape={!submitting}
         >
           <form onSubmit={form.onSubmit(handleSubmit)}>
             <Stack gap="md">
@@ -371,10 +483,10 @@ export default function TaxesPage() {
                 {...form.getInputProps('isActive', { type: 'checkbox' })}
               />
               <Group justify="flex-end" mt="md">
-                <Button variant="subtle" onClick={handleCloseModal}>
+                <Button variant="subtle" onClick={handleCloseModal} disabled={submitting}>
                   {t('common.cancel' as any, language) || 'Cancel'}
                 </Button>
-                <Button type="submit" style={{ backgroundColor: themeColor }}>
+                <Button type="submit" style={{ backgroundColor: themeColor }} loading={submitting} disabled={submitting}>
                   {t('common.save' as any, language) || 'Save'}
                 </Button>
               </Group>
@@ -393,7 +505,7 @@ export default function TaxesPage() {
               <Button variant="subtle" onClick={() => setDeletingTax(null)}>
                 {t('common.cancel' as any, language) || 'Cancel'}
               </Button>
-              <Button color={primary} onClick={() => deletingTax && handleDelete(deletingTax)}>
+              <Button color={primary} onClick={() => deletingTax && handleDelete(deletingTax)} loading={deletingTaxId === deletingTax} disabled={deletingTaxId === deletingTax}>
                 {t('common.delete' as any, language) || 'Delete'}
               </Button>
             </Group>
