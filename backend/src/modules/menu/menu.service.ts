@@ -1859,10 +1859,31 @@ export class MenuService {
   // ============================================
 
   async getMenus(tenantId: string, pagination?: PaginationParams, branchId?: string): Promise<PaginatedResponse<any> | any[]> {
-    // Get menus from menu_items junction table
+    // Get menus from menu_items junction table AND menus table
     const supabase = this.supabaseService.getServiceRoleClient();
     
-    // First, get food items for this branch (to filter menu_items)
+    // First, get all menus from the menus table (this includes menus without food items)
+    let menuDataQuery = supabase
+      .from('menus')
+      .select('menu_type, name, is_active')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      // When a branch is selected, only get menus from that branch (exclude NULL for strict filtering)
+      menuDataQuery = menuDataQuery.eq('branch_id', branchId);
+    }
+    
+    const { data: menuData, error: menuDataError } = await menuDataQuery;
+    
+    if (menuDataError && !menuDataError.message.includes('relation') && !menuDataError.message.includes('does not exist')) {
+      throw new BadRequestException(`Failed to fetch menus: ${menuDataError.message}`);
+    }
+    
+    // Get menu types from menus table
+    const menuTypesFromMenusTable = menuData?.map((m: any) => m.menu_type) || [];
+    
+    // Get food items for this branch (to filter menu_items)
     let foodItemsQuery = supabase
       .from('food_items')
       .select('id')
@@ -1882,33 +1903,32 @@ export class MenuService {
     
     const branchFoodItemIds = branchFoodItems?.map((item: any) => item.id) || [];
     
-    // If no food items for this branch, return empty array
-    if (branchFoodItemIds.length === 0) {
-      if (pagination) {
-        return createPaginatedResponse([], 0, pagination.page || 1, pagination.limit || 10);
+    // Get menu_items that reference food items for this branch (if there are any food items)
+    let menuItems: any[] = [];
+    if (branchFoodItemIds.length > 0) {
+      let menuItemsQuery = supabase
+        .from('menu_items')
+        .select('menu_type, food_item_id')
+        .eq('tenant_id', tenantId)
+        .in('food_item_id', branchFoodItemIds);
+      
+      const { data: menuItemsData, error: menuItemsError } = await menuItemsQuery;
+
+      if (menuItemsError) {
+        throw new BadRequestException(`Failed to fetch menu items: ${menuItemsError.message}`);
       }
-      return [];
-    }
-    
-    // Get menu_items that reference food items for this branch
-    let menuItemsQuery = supabase
-      .from('menu_items')
-      .select('menu_type, food_item_id')
-      .eq('tenant_id', tenantId)
-      .in('food_item_id', branchFoodItemIds);
-    
-    const { data: menuItems, error } = await menuItemsQuery;
-
-    if (error) {
-      throw new BadRequestException(`Failed to fetch menus: ${error.message}`);
+      
+      menuItems = menuItemsData || [];
     }
 
-    // Get unique menu types
-    const uniqueMenuTypes = [...new Set(menuItems?.map((mi: any) => mi.menu_type) || [])];
+    // Get unique menu types from menu_items
+    const uniqueMenuTypesFromItems = [...new Set(menuItems?.map((mi: any) => mi.menu_type) || [])];
     
     // Include default menu types if they don't exist yet
     const defaultMenuTypes = ['all_day', 'breakfast', 'lunch', 'dinner', 'kids_special'];
-    const allMenuTypes = [...new Set([...defaultMenuTypes, ...uniqueMenuTypes])];
+    
+    // Merge menu types from menus table, menu_items, and default types
+    const allMenuTypes = [...new Set([...defaultMenuTypes, ...menuTypesFromMenusTable, ...uniqueMenuTypesFromItems])];
     
     // Apply pagination if provided
     let paginatedMenuTypes = allMenuTypes;
@@ -1938,20 +1958,6 @@ export class MenuService {
       const { data: activeItems } = await activeItemsQuery;
       activeItemIds = activeItems?.map((item: any) => item.id) || [];
     }
-
-    // Try to get menu names and active status from menus table
-    let menuDataQuery = supabase
-      .from('menus')
-      .select('menu_type, name, is_active')
-      .eq('tenant_id', tenantId)
-      .in('menu_type', allMenuTypes);
-    
-    if (branchId) {
-      // When a branch is selected, only get menus from that branch (exclude NULL for strict filtering)
-      menuDataQuery = menuDataQuery.eq('branch_id', branchId);
-    }
-    
-    const { data: menuData } = await menuDataQuery;
 
     // Create maps of menu_type to name and is_active
     const menuNameMap = new Map<string, string>();
@@ -2498,35 +2504,52 @@ export class MenuService {
       throw new BadRequestException('Cannot delete default menu types');
     }
 
-    // Check if menu type exists
-    const { data: existing } = await supabase
+    // Check if menu type exists in menus table (this includes menus with 0 items)
+    const { data: existingMenu } = await supabase
+      .from('menus')
+      .select('menu_type')
+      .eq('tenant_id', tenantId)
+      .eq('menu_type', menuType)
+      .is('deleted_at', null)
+      .limit(1);
+
+    // Also check menu_items as fallback (for backward compatibility with menus that might not be in menus table)
+    const { data: existingItems } = await supabase
       .from('menu_items')
       .select('menu_type')
       .eq('tenant_id', tenantId)
       .eq('menu_type', menuType)
       .limit(1);
 
-    if (!existing || existing.length === 0) {
+    if ((!existingMenu || existingMenu.length === 0) && (!existingItems || existingItems.length === 0)) {
       throw new NotFoundException('Menu type not found');
     }
 
-    // Delete all menu_items with this menu type
-    const { error } = await supabase
+    // Delete all menu_items with this menu type (if any exist)
+    const { error: deleteItemsError } = await supabase
       .from('menu_items')
       .delete()
       .eq('tenant_id', tenantId)
       .eq('menu_type', menuType);
 
-    if (error) {
-      throw new BadRequestException(`Failed to delete menu: ${error.message}`);
+    if (deleteItemsError) {
+      throw new BadRequestException(`Failed to delete menu items: ${deleteItemsError.message}`);
     }
 
-    // Also delete menu name from menus table if it exists
-    await supabase
+    // Delete menu from menus table if it exists
+    const { error: deleteMenuError } = await supabase
       .from('menus')
       .delete()
       .eq('tenant_id', tenantId)
       .eq('menu_type', menuType);
+
+    if (deleteMenuError) {
+      // If menus table doesn't exist or has an error, that's okay - we still deleted menu_items
+      // Only throw if it's not a "relation does not exist" error
+      if (!deleteMenuError.message.includes('relation') && !deleteMenuError.message.includes('does not exist')) {
+        throw new BadRequestException(`Failed to delete menu: ${deleteMenuError.message}`);
+      }
+    }
 
     return { message: 'Menu deleted successfully', menuType };
   }

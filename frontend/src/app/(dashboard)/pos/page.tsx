@@ -341,9 +341,26 @@ function POSPageContent() {
             {error}
           </Alert>
         )}
-        <Grid gutter="md" style={{ flex: 1, overflow: 'hidden', margin: 0, minHeight: 0 }}>
+        <Grid
+          gutter="md"
+          style={{ flex: 1, overflow: 'hidden', margin: 0, minHeight: 0, height: '100%' }}
+          className="pos-grid-height-100"
+        >
           {/* Left Panel - Food Items Grid (60%) */}
-          <Grid.Col span={{ base: 12, md: 7 }} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingLeft: 0, paddingRight: 'calc(var(--mantine-spacing-md) / 2)', paddingTop: 0, paddingBottom: 0, minHeight: 0, height: '100%' }}>
+          <Grid.Col
+            span={{ base: 12, md: 7 }}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              paddingLeft: 0,
+              paddingRight: 'calc(var(--mantine-spacing-md) / 2)',
+              paddingTop: 0,
+              paddingBottom: 0,
+              minHeight: 0,
+              height: '100%',
+            }}
+          >
             <FoodItemsGrid
               tenantId={user.tenantId}
               selectedCategoryId={selectedCategoryId}
@@ -357,7 +374,20 @@ function POSPageContent() {
           </Grid.Col>
 
           {/* Right Panel - Cart and Billing (40%) */}
-          <Grid.Col span={{ base: 12, md: 5 }} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingLeft: 'calc(var(--mantine-spacing-md) / 2)', paddingRight: 0, paddingTop: 0, paddingBottom: 0, minHeight: 0, height: '100%' }}>
+          <Grid.Col
+            span={{ base: 12, md: 5 }}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              paddingLeft: 'calc(var(--mantine-spacing-md) / 2)',
+              paddingRight: 0,
+              paddingTop: 0,
+              paddingBottom: 0,
+              minHeight: 0,
+              height: '100%',
+            }}
+          >
             <POSCart
               cartItems={cartItems}
               onRemoveItem={handleRemoveFromCart}
@@ -365,17 +395,17 @@ function POSPageContent() {
               onClearCart={handleClearCart}
               orderType={orderType}
               onOrderTypeChange={(type) => {
-              // Prevent switching away from dine_in when on buffet tab
-              if (currentItemType === 'buffets' && type !== 'dine_in') {
-                return;
-              }
+                // Prevent switching away from dine_in when on buffet tab
+                if (currentItemType === 'buffets' && type !== 'dine_in') {
+                  return;
+                }
                 // Prevent switching to delivery if delivery management is disabled
                 if (type === 'delivery' && !settings?.general?.enableDeliveryManagement) {
                   return;
                 }
                 setOrderType(type);
               }}
-            isBuffetMode={currentItemType === 'buffets'}
+              isBuffetMode={currentItemType === 'buffets'}
               selectedTableId={selectedTableId}
               onTableChange={setSelectedTableId}
               selectedTableIds={selectedTableIds}
@@ -390,6 +420,11 @@ function POSPageContent() {
             />
           </Grid.Col>
         </Grid>
+        <style jsx global>{`
+          .pos-grid-height-100 > .mantine-Grid-inner {
+            height: 100% !important;
+          }
+        `}</style>
       </div>
     </>
   );
