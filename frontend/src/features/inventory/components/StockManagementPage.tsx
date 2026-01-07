@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, Fragment } from 'react';
+import { flushSync } from 'react-dom';
 import { useForm } from '@mantine/form';
 import {
   Title,
@@ -21,6 +22,7 @@ import {
   Grid,
   Tabs,
   Textarea,
+  Loader,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import {
@@ -106,6 +108,10 @@ export function StockManagementPage() {
   const [ingredientFilter, setIngredientFilter] = useState<string | null>(null);
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
+  const [submittingAdd, setSubmittingAdd] = useState(false);
+  const [submittingDeduct, setSubmittingDeduct] = useState(false);
+  const [submittingAdjust, setSubmittingAdjust] = useState(false);
+  const [pendingTransaction, setPendingTransaction] = useState<Partial<StockTransaction> | null>(null);
 
   const addStockForm = useForm<AddStockDto>({
     initialValues: {
@@ -262,16 +268,40 @@ export function StockManagementPage() {
   };
 
   const handleAddStock = async (values: AddStockDto) => {
-    if (!user?.tenantId) return;
+    if (!user?.tenantId || submittingAdd) return;
+
+    // Set loading state immediately to show loader on button - use flushSync to ensure immediate update
+    flushSync(() => {
+      setSubmittingAdd(true);
+    });
+
+    // Ensure branchId is set to current branch
+    const stockData = {
+      ...values,
+      branchId: selectedBranchId || values.branchId,
+    };
+
+    // Get ingredient name for skeleton
+    const ingredient = ingredients.find(ing => ing.id === stockData.ingredientId);
+    const ingredientName = ingredient?.name || '';
+
+    // Close modal immediately
+    handleCloseModal();
+
+    // Add pending transaction skeleton
+    setPendingTransaction({
+      id: `pending-${Date.now()}`,
+      transactionType: 'purchase',
+      quantity: stockData.quantity,
+      unitCost: stockData.unitCost,
+      totalCost: stockData.quantity * stockData.unitCost,
+      reason: stockData.reason || 'Purchase',
+      transactionDate: stockData.transactionDate || new Date().toISOString(),
+      ingredient: ingredient ? { id: ingredient.id, name: ingredientName } as Ingredient : undefined,
+    });
 
     try {
       setError(null);
-
-      // Ensure branchId is set to current branch
-      const stockData = {
-        ...values,
-        branchId: selectedBranchId || values.branchId,
-      };
 
       await inventoryApi.addStock(stockData);
 
@@ -281,7 +311,9 @@ export function StockManagementPage() {
         color: successColor,
       });
 
-      handleCloseModal();
+      // Remove pending transaction skeleton
+      setPendingTransaction(null);
+
       loadIngredients();
       loadTransactions();
       triggerRefresh(); // Trigger refresh for all tabs
@@ -293,28 +325,57 @@ export function StockManagementPage() {
         message: errorMsg,
         color: errorColor,
       });
+      
+      // Remove pending transaction skeleton on error
+      setPendingTransaction(null);
+    } finally {
+      setSubmittingAdd(false);
     }
   };
 
   const handleDeductStock = async (values: DeductStockDto) => {
-    if (!user?.tenantId) return;
+    if (!user?.tenantId || submittingDeduct) return;
+
+    // Set loading state immediately to show loader on button - use flushSync to ensure immediate update
+    flushSync(() => {
+      setSubmittingDeduct(true);
+    });
+
+    // Ensure branchId is set to current branch
+    const deductData = {
+      ...values,
+      branchId: selectedBranchId || values.branchId,
+    };
+
+    // Get ingredient name for skeleton
+    const ingredient = ingredients.find(ing => ing.id === deductData.ingredientId);
+    const ingredientName = ingredient?.name || '';
+
+    // Close modal immediately
+    handleCloseModal();
+
+    // Add pending transaction skeleton
+    setPendingTransaction({
+      id: `pending-${Date.now()}`,
+      transactionType: deductData.reason || 'usage',
+      quantity: -deductData.quantity,
+      unitCost: undefined,
+      totalCost: undefined,
+      reason: deductData.reason || 'Usage',
+      transactionDate: deductData.transactionDate || new Date().toISOString(),
+      ingredient: ingredient ? { id: ingredient.id, name: ingredientName } as Ingredient : undefined,
+    });
 
     try {
       setError(null);
 
-      // Ensure branchId is set to current branch
-      const deductData = {
-        ...values,
-        branchId: selectedBranchId || values.branchId,
-      };
-
       // Check stock availability
-      const ingredient = await inventoryApi.getIngredientById(deductData.ingredientId);
-      if (!ingredient) {
+      const ingredientData = await inventoryApi.getIngredientById(deductData.ingredientId);
+      if (!ingredientData) {
         throw new Error('Ingredient not found');
       }
 
-      if (ingredient.currentStock < deductData.quantity) {
+      if (ingredientData.currentStock < deductData.quantity) {
         throw new Error(t('inventory.insufficientStock', language));
       }
 
@@ -326,7 +387,9 @@ export function StockManagementPage() {
         color: successColor,
       });
 
-      handleCloseModal();
+      // Remove pending transaction skeleton
+      setPendingTransaction(null);
+
       loadIngredients();
       loadTransactions();
       triggerRefresh(); // Trigger refresh for all tabs
@@ -338,20 +401,51 @@ export function StockManagementPage() {
         message: errorMsg,
         color: errorColor,
       });
+      
+      // Remove pending transaction skeleton on error
+      setPendingTransaction(null);
+    } finally {
+      setSubmittingDeduct(false);
     }
   };
 
   const handleAdjustStock = async (values: AdjustStockDto) => {
-    if (!user?.tenantId) return;
+    if (!user?.tenantId || submittingAdjust) return;
+
+    // Set loading state immediately to show loader on button - use flushSync to ensure immediate update
+    flushSync(() => {
+      setSubmittingAdjust(true);
+    });
+
+    // Ensure branchId is set to current branch
+    const adjustData = {
+      ...values,
+      branchId: selectedBranchId || values.branchId,
+    };
+
+    // Get ingredient name and current stock for skeleton
+    const ingredient = ingredients.find(ing => ing.id === adjustData.ingredientId);
+    const ingredientName = ingredient?.name || '';
+    const currentStock = ingredient?.currentStock || 0;
+    const quantityChange = adjustData.newQuantity - currentStock;
+
+    // Close modal immediately
+    handleCloseModal();
+
+    // Add pending transaction skeleton
+    setPendingTransaction({
+      id: `pending-${Date.now()}`,
+      transactionType: 'adjustment',
+      quantity: quantityChange,
+      unitCost: undefined,
+      totalCost: undefined,
+      reason: adjustData.reason || 'Adjustment',
+      transactionDate: adjustData.transactionDate || new Date().toISOString(),
+      ingredient: ingredient ? { id: ingredient.id, name: ingredientName } as Ingredient : undefined,
+    });
 
     try {
       setError(null);
-
-      // Ensure branchId is set to current branch
-      const adjustData = {
-        ...values,
-        branchId: selectedBranchId || values.branchId,
-      };
 
       await inventoryApi.adjustStock(adjustData);
 
@@ -361,7 +455,9 @@ export function StockManagementPage() {
         color: successColor,
       });
 
-      handleCloseModal();
+      // Remove pending transaction skeleton
+      setPendingTransaction(null);
+
       loadIngredients();
       loadTransactions();
       triggerRefresh(); // Trigger refresh for all tabs
@@ -373,6 +469,11 @@ export function StockManagementPage() {
         message: errorMsg,
         color: errorColor,
       });
+      
+      // Remove pending transaction skeleton on error
+      setPendingTransaction(null);
+    } finally {
+      setSubmittingAdjust(false);
     }
   };
 
@@ -508,6 +609,35 @@ export function StockManagementPage() {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
+                {/* Show pending transaction skeleton when creating */}
+                {pendingTransaction && (
+                  <Table.Tr key={pendingTransaction.id} style={{ opacity: 0.7, position: 'relative' }}>
+                    <Table.Td>
+                      <Group gap="xs" wrap="nowrap">
+                        <Skeleton height={16} width={100} />
+                        <Loader size={16} style={{ flexShrink: 0 }} />
+                      </Group>
+                    </Table.Td>
+                    <Table.Td>
+                      <Skeleton height={16} width={150} />
+                    </Table.Td>
+                    <Table.Td>
+                      <Skeleton height={24} width={80} radius="xl" />
+                    </Table.Td>
+                    <Table.Td>
+                      <Skeleton height={16} width={60} />
+                    </Table.Td>
+                    <Table.Td>
+                      <Skeleton height={16} width={60} />
+                    </Table.Td>
+                    <Table.Td>
+                      <Skeleton height={16} width={60} />
+                    </Table.Td>
+                    <Table.Td>
+                      <Skeleton height={16} width={120} />
+                    </Table.Td>
+                  </Table.Tr>
+                )}
                 {filteredTransactions.map((tx) => (
                   <Table.Tr key={tx.id}>
                     <Table.Td>
@@ -582,9 +712,15 @@ export function StockManagementPage() {
       {/* Add Stock Modal */}
       <Modal
         opened={opened && transactionType === 'add'}
-        onClose={handleCloseModal}
+        onClose={() => {
+          if (!submittingAdd) {
+            handleCloseModal();
+          }
+        }}
         title={t('inventory.addStock', language)}
         size="lg"
+        closeOnClickOutside={!submittingAdd}
+        closeOnEscape={!submittingAdd}
       >
         <form onSubmit={addStockForm.onSubmit(handleAddStock)}>
           <Stack gap="md">
@@ -642,7 +778,12 @@ export function StockManagementPage() {
               <Button variant="subtle" onClick={handleCloseModal}>
                 {t('common.cancel' as any, language) || 'Cancel'}
               </Button>
-              <Button type="submit" style={{ backgroundColor: successColor }}>
+              <Button 
+                type="submit" 
+                style={{ backgroundColor: successColor }}
+                loading={submittingAdd}
+                disabled={submittingAdd}
+              >
                 {t('inventory.addStock', language)}
               </Button>
             </Group>
@@ -653,9 +794,15 @@ export function StockManagementPage() {
       {/* Deduct Stock Modal */}
       <Modal
         opened={opened && transactionType === 'deduct'}
-        onClose={handleCloseModal}
+        onClose={() => {
+          if (!submittingDeduct) {
+            handleCloseModal();
+          }
+        }}
         title={t('inventory.deductStock', language)}
         size="lg"
+        closeOnClickOutside={!submittingDeduct}
+        closeOnEscape={!submittingDeduct}
       >
         <form onSubmit={deductStockForm.onSubmit(handleDeductStock)}>
           <Stack gap="md">
@@ -696,7 +843,12 @@ export function StockManagementPage() {
               <Button variant="subtle" onClick={handleCloseModal}>
                 {t('common.cancel' as any, language) || 'Cancel'}
               </Button>
-              <Button type="submit" color={errorColor}>
+              <Button 
+                type="submit" 
+                color={errorColor}
+                loading={submittingDeduct}
+                disabled={submittingDeduct}
+              >
                 {t('inventory.deductStock', language)}
               </Button>
             </Group>
@@ -707,9 +859,15 @@ export function StockManagementPage() {
       {/* Adjust Stock Modal */}
       <Modal
         opened={opened && transactionType === 'adjust'}
-        onClose={handleCloseModal}
+        onClose={() => {
+          if (!submittingAdjust) {
+            handleCloseModal();
+          }
+        }}
         title={t('inventory.adjustStock', language)}
         size="lg"
+        closeOnClickOutside={!submittingAdjust}
+        closeOnEscape={!submittingAdjust}
       >
         <form onSubmit={adjustStockForm.onSubmit(handleAdjustStock)}>
           <Stack gap="md">
@@ -752,7 +910,12 @@ export function StockManagementPage() {
               <Button variant="subtle" onClick={handleCloseModal}>
                 {t('common.cancel' as any, language) || 'Cancel'}
               </Button>
-              <Button type="submit" style={{ backgroundColor: primaryColor }}>
+              <Button 
+                type="submit" 
+                style={{ backgroundColor: primaryColor }}
+                loading={submittingAdjust}
+                disabled={submittingAdjust}
+              >
                 {t('inventory.adjustStock', language)}
               </Button>
             </Group>

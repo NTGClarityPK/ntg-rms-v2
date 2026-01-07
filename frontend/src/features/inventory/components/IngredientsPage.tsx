@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { useForm } from '@mantine/form';
 import { useDebouncedValue } from '@mantine/hooks';
 import {
@@ -21,6 +22,7 @@ import {
   Alert,
   Grid,
   NumberInput,
+  Loader,
 } from '@mantine/core';
 import { IconPlus, IconEdit, IconTrash, IconAlertCircle, IconSearch, IconCircleCheck, IconCircleX } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
@@ -64,6 +66,10 @@ export function IngredientsPage() {
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<boolean | null>(null);
   const prevSearchQueryRef = useRef<string>('');
+  const [submitting, setSubmitting] = useState(false);
+  const [pendingIngredient, setPendingIngredient] = useState<Partial<Ingredient> | null>(null);
+  const [updatingIngredientId, setUpdatingIngredientId] = useState<string | null>(null);
+  const [deletingIngredientId, setDeletingIngredientId] = useState<string | null>(null);
 
   const form = useForm({
     initialValues: {
@@ -148,14 +154,48 @@ export function IngredientsPage() {
   };
 
   const handleSubmit = async (values: typeof form.values) => {
-    if (!user?.tenantId) return;
+    if (!user?.tenantId || submitting) return;
+
+    // Set loading state immediately to show loader on button - use flushSync to ensure immediate update
+    flushSync(() => {
+      setSubmitting(true);
+    });
+
+    const wasEditing = !!editingIngredient;
+    const currentEditingIngredient = editingIngredient;
+    const currentEditingIngredientId = editingIngredient?.id;
+
+    // Close modal immediately
+    handleCloseModal();
+
+    // If editing, track which ingredient is being updated to show skeleton
+    if (wasEditing && currentEditingIngredientId) {
+      setUpdatingIngredientId(currentEditingIngredientId);
+    }
+
+    // If creating a new ingredient, add a skeleton item to show progress
+    if (!wasEditing) {
+      setPendingIngredient({
+        id: `pending-${Date.now()}`,
+        name: values.name,
+        category: values.category || undefined,
+        unitOfMeasurement: values.unitOfMeasurement,
+        currentStock: values.currentStock,
+        minimumThreshold: values.minimumThreshold,
+        costPerUnit: values.costPerUnit,
+        storageLocation: values.storageLocation || undefined,
+        isActive: values.isActive,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
 
     try {
       setError(null);
 
       let savedIngredient: Ingredient;
 
-      if (editingIngredient) {
+      if (wasEditing && currentEditingIngredient) {
         // Update
         const updateData: UpdateIngredientDto = {
           name: values.name,
@@ -168,7 +208,7 @@ export function IngredientsPage() {
           isActive: values.isActive,
         };
 
-        savedIngredient = await inventoryApi.updateIngredient(editingIngredient.id, updateData);
+        savedIngredient = await inventoryApi.updateIngredient(currentEditingIngredient.id, updateData);
       } else {
         // Create
         const createData: CreateIngredientDto = {
@@ -187,13 +227,16 @@ export function IngredientsPage() {
 
       notifications.show({
         title: t('common.success' as any, language) || 'Success',
-        message: editingIngredient 
+        message: wasEditing 
           ? t('inventory.ingredientUpdated', language)
           : t('inventory.ingredientCreated', language),
         color: successColor,
       });
 
-      handleCloseModal();
+      // Remove pending ingredient skeleton and updating state
+      setPendingIngredient(null);
+      setUpdatingIngredientId(null);
+
       loadIngredients();
       triggerRefresh(); // Trigger refresh for all tabs
     } catch (err: any) {
@@ -204,6 +247,12 @@ export function IngredientsPage() {
         message: errorMsg,
         color: errorColor,
       });
+      
+      // Remove pending ingredient skeleton and updating state on error
+      setPendingIngredient(null);
+      setUpdatingIngredientId(null);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -214,6 +263,7 @@ export function IngredientsPage() {
       labels: { confirm: t('common.delete' as any, language) || 'Delete', cancel: t('common.cancel' as any, language) || 'Cancel' },
       confirmProps: { color: errorColor },
       onConfirm: async () => {
+        setDeletingIngredientId(ingredient.id);
         try {
           await inventoryApi.deleteIngredient(ingredient.id);
 
@@ -223,9 +273,11 @@ export function IngredientsPage() {
             color: successColor,
           });
 
+          setDeletingIngredientId(null);
           loadIngredients();
           triggerRefresh(); // Trigger refresh for all tabs
         } catch (err: any) {
+          setDeletingIngredientId(null);
           handleApiError(err, {
             defaultMessage: t('inventory.deleteError', language),
             language,
@@ -335,73 +387,148 @@ export function IngredientsPage() {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {ingredients.map((ingredient) => (
-                  <Table.Tr key={ingredient.id}>
+                {/* Show pending ingredient skeleton when creating */}
+                {pendingIngredient && !editingIngredient && (
+                  <Table.Tr key={pendingIngredient.id} style={{ opacity: 0.7, position: 'relative' }}>
                     <Table.Td>
-                      <Text fw={500}>
-                        {ingredient.name}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
-                      {ingredient.category ? (
-                        <Badge variant="light" color={getBadgeColorForText(t(`inventory.${ingredient.category}` as any, language) || ingredient.category)}>
-                          {t(`inventory.${ingredient.category}` as any, language) || ingredient.category}
-                        </Badge>
-                      ) : (
-                        <Text size="sm" c="dimmed">-</Text>
-                      )}
-                    </Table.Td>
-                    <Table.Td>
-                      <Group gap="xs">
-                        <Text>{ingredient.currentStock} {ingredient.unitOfMeasurement}</Text>
-                        {isLowStock(ingredient) && (
-                          <Badge variant="light" color={getWarningColor()} size="sm">
-                            {t('inventory.isLowStock', language)}
-                          </Badge>
-                        )}
+                      <Group gap="xs" wrap="nowrap">
+                        <Skeleton height={16} width={150} />
+                        <Loader size={16} style={{ flexShrink: 0 }} />
                       </Group>
                     </Table.Td>
                     <Table.Td>
-                      <Text>{ingredient.minimumThreshold} {ingredient.unitOfMeasurement}</Text>
+                      <Skeleton height={24} width={80} radius="xl" />
                     </Table.Td>
                     <Table.Td>
-                      <Text>{ingredient.costPerUnit.toFixed(2)}</Text>
+                      <Skeleton height={16} width={100} />
                     </Table.Td>
                     <Table.Td>
-                      <Badge
-                        color={ingredient.isActive ? successColor : getBadgeColorForText(t('menu.inactive', language) || 'Inactive')}
-                        variant="light"
-                        leftSection={
-                          ingredient.isActive ? (
-                            <IconCircleCheck size={14} />
-                          ) : (
-                            <IconCircleX size={14} />
-                          )
-                        }
-                      >
-                        {ingredient.isActive ? (t('common.active' as any, language) || 'Active') : (t('common.inactive' as any, language) || 'Inactive')}
-                      </Badge>
+                      <Skeleton height={16} width={100} />
                     </Table.Td>
                     <Table.Td>
-                      <Group gap="xs">
-                        <ActionIcon
-                          variant="light"
-                          color={primaryColor}
-                          onClick={() => handleOpenModal(ingredient)}
-                        >
-                          <IconEdit size={16} />
-                        </ActionIcon>
-                        <ActionIcon
-                          variant="light"
-                          color={errorColor}
-                          onClick={() => handleDelete(ingredient)}
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
+                      <Skeleton height={16} width={80} />
+                    </Table.Td>
+                    <Table.Td>
+                      <Skeleton height={24} width={60} radius="xl" />
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap="xs" wrap="nowrap">
+                        <Skeleton height={32} width={32} radius="md" />
+                        <Skeleton height={32} width={32} radius="md" />
                       </Group>
                     </Table.Td>
                   </Table.Tr>
-                ))}
+                )}
+                {ingredients.map((ingredient) => {
+                  const isUpdating = updatingIngredientId === ingredient.id;
+                  return (
+                    <Table.Tr key={ingredient.id} style={{ opacity: isUpdating ? 0.7 : 1, position: 'relative' }}>
+                      {isUpdating ? (
+                        <>
+                          <Table.Td>
+                            <Group gap="xs" wrap="nowrap">
+                              <Skeleton height={16} width={150} />
+                              <Loader size={16} style={{ flexShrink: 0 }} />
+                            </Group>
+                          </Table.Td>
+                          <Table.Td>
+                            <Skeleton height={24} width={80} radius="xl" />
+                          </Table.Td>
+                          <Table.Td>
+                            <Skeleton height={16} width={100} />
+                          </Table.Td>
+                          <Table.Td>
+                            <Skeleton height={16} width={100} />
+                          </Table.Td>
+                          <Table.Td>
+                            <Skeleton height={16} width={80} />
+                          </Table.Td>
+                          <Table.Td>
+                            <Skeleton height={24} width={60} radius="xl" />
+                          </Table.Td>
+                          <Table.Td>
+                            <Group gap="xs" wrap="nowrap">
+                              <Skeleton height={32} width={32} radius="md" />
+                              <Skeleton height={32} width={32} radius="md" />
+                            </Group>
+                          </Table.Td>
+                        </>
+                      ) : (
+                        <>
+                          <Table.Td>
+                            <Text fw={500}>
+                              {ingredient.name}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td>
+                            {ingredient.category ? (
+                              <Badge variant="light" color={getBadgeColorForText(t(`inventory.${ingredient.category}` as any, language) || ingredient.category)}>
+                                {t(`inventory.${ingredient.category}` as any, language) || ingredient.category}
+                              </Badge>
+                            ) : (
+                              <Text size="sm" c="dimmed">-</Text>
+                            )}
+                          </Table.Td>
+                          <Table.Td>
+                            <Group gap="xs">
+                              <Text>{ingredient.currentStock} {ingredient.unitOfMeasurement}</Text>
+                              {isLowStock(ingredient) && (
+                                <Badge variant="light" color={getWarningColor()} size="sm">
+                                  {t('inventory.isLowStock', language)}
+                                </Badge>
+                              )}
+                            </Group>
+                          </Table.Td>
+                          <Table.Td>
+                            <Text>{ingredient.minimumThreshold} {ingredient.unitOfMeasurement}</Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Text>{ingredient.costPerUnit.toFixed(2)}</Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Badge
+                              color={ingredient.isActive ? successColor : getBadgeColorForText(t('menu.inactive', language) || 'Inactive')}
+                              variant="light"
+                              leftSection={
+                                ingredient.isActive ? (
+                                  <IconCircleCheck size={14} />
+                                ) : (
+                                  <IconCircleX size={14} />
+                                )
+                              }
+                            >
+                              {ingredient.isActive ? (t('common.active' as any, language) || 'Active') : (t('common.inactive' as any, language) || 'Inactive')}
+                            </Badge>
+                          </Table.Td>
+                          <Table.Td>
+                            <Group gap="xs">
+                              <ActionIcon
+                                variant="light"
+                                color={primaryColor}
+                                onClick={() => handleOpenModal(ingredient)}
+                                disabled={deletingIngredientId === ingredient.id || updatingIngredientId === ingredient.id}
+                              >
+                                <IconEdit size={16} />
+                              </ActionIcon>
+                              <ActionIcon
+                                variant="light"
+                                color={errorColor}
+                                onClick={() => handleDelete(ingredient)}
+                                disabled={deletingIngredientId === ingredient.id || updatingIngredientId === ingredient.id}
+                              >
+                                {deletingIngredientId === ingredient.id ? (
+                                  <Loader size={16} />
+                                ) : (
+                                  <IconTrash size={16} />
+                                )}
+                              </ActionIcon>
+                            </Group>
+                          </Table.Td>
+                        </>
+                      )}
+                    </Table.Tr>
+                  );
+                })}
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
@@ -428,9 +555,15 @@ export function IngredientsPage() {
       {/* Create/Edit Modal */}
       <Modal
         opened={opened}
-        onClose={handleCloseModal}
+        onClose={() => {
+          if (!submitting) {
+            handleCloseModal();
+          }
+        }}
         title={editingIngredient ? t('inventory.editIngredient', language) : t('inventory.addIngredient', language)}
         size="lg"
+        closeOnClickOutside={!submitting}
+        closeOnEscape={!submitting}
       >
         <form onSubmit={form.onSubmit(handleSubmit)}>
           <Stack gap="md">
@@ -502,7 +635,12 @@ export function IngredientsPage() {
               <Button variant="subtle" onClick={handleCloseModal}>
                 {t('common.cancel' as any, language) || 'Cancel'}
               </Button>
-              <Button type="submit" style={{ backgroundColor: primaryColor }}>
+              <Button 
+                type="submit" 
+                style={{ backgroundColor: primaryColor }}
+                loading={submitting}
+                disabled={submitting}
+              >
                 {t('common.save' as any, language) || 'Save'}
               </Button>
             </Group>
