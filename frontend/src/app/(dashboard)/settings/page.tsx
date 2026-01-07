@@ -35,6 +35,7 @@ import { getSuccessColor, getErrorColor, getBadgeColorForText } from '@/lib/util
 import { DATE_FORMATS, INVOICE_FORMATS } from '@/lib/utils/date-formatter';
 import Link from 'next/link';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { useBranchStore } from '@/lib/store/branch-store';
 import { useDynamicTheme } from '@/lib/hooks/use-dynamic-theme';
 import { taxesApi, Tax, CreateTaxDto } from '@/lib/api/taxes';
 import { menuApi } from '@/lib/api/menu';
@@ -137,6 +138,7 @@ export default function SettingsPage() {
   const language = useLanguageStore((state) => state.language);
   const themeColor = useThemeColor();
   const { user } = useAuthStore();
+  const { selectedBranchId } = useBranchStore();
   const { restaurant, setRestaurant } = useRestaurantStore();
   const { primaryColor: themeColorFromStore } = useThemeStore();
   const { updateThemeColor } = useDynamicTheme();
@@ -280,7 +282,7 @@ export default function SettingsPage() {
   const loadSettings = useCallback(async () => {
     try {
       setLoading(true);
-      const settings = await settingsApi.getSettings();
+      const settings = await settingsApi.getSettings(selectedBranchId || undefined);
       generalForm.setValues(settings.general);
       invoiceForm.setValues(settings.invoice);
       paymentForm.setValues(settings.paymentMethods);
@@ -296,7 +298,7 @@ export default function SettingsPage() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language]);
+  }, [language, selectedBranchId]);
 
   useEffect(() => {
     loadSettings();
@@ -304,10 +306,10 @@ export default function SettingsPage() {
 
   const loadRestaurantInfo = useCallback(async () => {
     try {
-      // Load settings to get totalTables
+      // Load settings to get totalTables (branch-specific)
       try {
         if (navigator.onLine) {
-          const settings = await settingsApi.getSettings();
+          const settings = await settingsApi.getSettings(selectedBranchId || undefined);
           setTotalTables(settings.general?.totalTables || 5);
         } else {
           setTotalTables(5);
@@ -431,13 +433,13 @@ export default function SettingsPage() {
 
       const tenantId = user?.tenantId || '';
       
-      // Update settings with totalTables
+      // Update settings with totalTables (branch-specific)
       try {
         await settingsApi.updateSettings({
           general: {
             totalTables: totalTables || 5,
           },
-        });
+        }, selectedBranchId || undefined);
       } catch (err: any) {
         console.error('Failed to update settings:', err);
       }
@@ -479,7 +481,7 @@ export default function SettingsPage() {
   const loadTaxes = useCallback(async () => {
     try {
       setTaxesLoading(true);
-      const data = await taxesApi.getTaxes();
+      const data = await taxesApi.getTaxes(selectedBranchId || undefined);
       setTaxes(data);
     } catch (error: any) {
       notifications.show({
@@ -491,7 +493,7 @@ export default function SettingsPage() {
     } finally {
       setTaxesLoading(false);
     }
-  }, [language]);
+  }, [language, selectedBranchId]);
 
   const loadCategories = useCallback(async () => {
     try {
@@ -572,7 +574,7 @@ export default function SettingsPage() {
           icon: <IconCheck size={16} />,
         });
       } else {
-        await taxesApi.createTax(values);
+        await taxesApi.createTax(values, selectedBranchId || undefined);
         notifications.show({
           title: t('common.success' as any, language),
           message: t('taxes.created' as any, language) || 'Tax created successfully',
@@ -616,7 +618,13 @@ export default function SettingsPage() {
   const handleSaveGeneral = async () => {
     try {
       setSaving(true);
-      await settingsApi.updateSettings({ general: generalForm.values });
+      await settingsApi.updateSettings({ general: generalForm.values }, selectedBranchId || undefined);
+      
+      // Clear settings cache and notify other components
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('settingsUpdated'));
+      }
+      
       notifications.show({
         title: t('common.success' as any, language),
         message: t('settings.saveSuccess' as any, language) || 'Settings saved successfully',
@@ -637,7 +645,7 @@ export default function SettingsPage() {
   const handleSaveInvoice = async () => {
     try {
       setSaving(true);
-      await settingsApi.updateSettings({ invoice: invoiceForm.values });
+      await settingsApi.updateSettings({ invoice: invoiceForm.values }, selectedBranchId || undefined);
       notifications.show({
         title: t('common.success' as any, language),
         message: t('settings.saveSuccess' as any, language) || 'Settings saved successfully',
@@ -667,7 +675,7 @@ export default function SettingsPage() {
         enableBankTransfer: paymentForm.values.enableBankTransfer ?? false,
         paymentGatewayConfig: paymentForm.values.paymentGatewayConfig || {},
       };
-      await settingsApi.updateSettings({ paymentMethods: paymentMethodsToSave });
+      await settingsApi.updateSettings({ paymentMethods: paymentMethodsToSave }, selectedBranchId || undefined);
       notifications.show({
         title: t('common.success' as any, language),
         message: t('settings.saveSuccess' as any, language) || 'Settings saved successfully',
@@ -697,7 +705,7 @@ export default function SettingsPage() {
   const handleSaveTax = async () => {
     try {
       setSaving(true);
-      await settingsApi.updateSettings({ tax: { enableTaxSystem: taxForm.values.enableTaxSystem } });
+      await settingsApi.updateSettings({ tax: { enableTaxSystem: taxForm.values.enableTaxSystem } }, selectedBranchId || undefined);
       notifications.show({
         title: t('common.success' as any, language),
         message: t('settings.saveSuccess' as any, language) || 'Settings saved successfully',
@@ -1223,7 +1231,7 @@ export default function SettingsPage() {
                         {...restaurantForm.getInputProps('fiscalYearStart')}
                       />
                     </Grid.Col>
-                    <Grid.Col span={{ base: 12, md: 6 }}>
+                    {/* <Grid.Col span={{ base: 12, md: 6 }}>
                       <TextInput
                         label={t('restaurant.vatNumber', language)}
                         {...restaurantForm.getInputProps('vatNumber')}
@@ -1237,13 +1245,13 @@ export default function SettingsPage() {
                         min={0}
                         defaultValue={5}
                       />
-                    </Grid.Col>
-                    <Grid.Col span={12}>
+                    </Grid.Col> */}
+                    {/* <Grid.Col span={12}>
                       <Switch
                         label={t('restaurant.active', language)}
                         {...restaurantForm.getInputProps('isActive', { type: 'checkbox' })}
                       />
-                    </Grid.Col>
+                    </Grid.Col> */}
                   </Grid>
                 </Paper>
 

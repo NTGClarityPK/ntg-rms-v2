@@ -85,24 +85,27 @@ export const settingsApi = {
   /**
    * Get all settings
    */
-  getSettings: async (): Promise<Settings> => {
-    const response = await apiClient.get(API_ENDPOINTS.SETTINGS);
+  getSettings: async (branchId?: string): Promise<Settings> => {
+    const params = branchId ? { branchId } : {};
+    const response = await apiClient.get(API_ENDPOINTS.SETTINGS, { params });
     return response.data;
   },
 
   /**
    * Get a specific settings category
    */
-  getSettingCategory: async (category: string): Promise<any> => {
-    const response = await apiClient.get(`${API_ENDPOINTS.SETTINGS}/${category}`);
+  getSettingCategory: async (category: string, branchId?: string): Promise<any> => {
+    const params = branchId ? { branchId } : {};
+    const response = await apiClient.get(`${API_ENDPOINTS.SETTINGS}/${category}`, { params });
     return response.data;
   },
 
   /**
    * Update settings
    */
-  updateSettings: async (data: UpdateSettingsDto): Promise<Settings> => {
-    const response = await apiClient.put(API_ENDPOINTS.SETTINGS, data);
+  updateSettings: async (data: UpdateSettingsDto, branchId?: string): Promise<Settings> => {
+    const params = branchId ? { branchId } : {};
+    const response = await apiClient.put(API_ENDPOINTS.SETTINGS, data, { params });
     return response.data;
   },
 };

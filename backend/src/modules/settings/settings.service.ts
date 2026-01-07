@@ -2,27 +2,42 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  forwardRef,
+  Inject,
 } from '@nestjs/common';
 import { SupabaseService } from '../../database/supabase.service';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
+import { RestaurantService } from '../restaurant/restaurant.service';
 
 @Injectable()
 export class SettingsService {
-  constructor(private supabaseService: SupabaseService) {}
+  constructor(
+    private supabaseService: SupabaseService,
+    @Inject(forwardRef(() => RestaurantService))
+    private restaurantService: RestaurantService,
+  ) {}
 
   /**
-   * Get all settings for a tenant
+   * Get all settings for a tenant and branch
    * Settings are stored as JSON in tenant_settings table
    */
-  async getSettings(tenantId: string) {
+  async getSettings(tenantId: string, branchId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Check if settings exist
-    const { data: existing, error: fetchError } = await supabase
+    // Build query based on whether branchId is provided
+    let query = supabase
       .from('tenant_settings')
       .select('*')
-      .eq('tenant_id', tenantId)
-      .maybeSingle();
+      .eq('tenant_id', tenantId);
+
+    if (branchId) {
+      query = query.eq('branch_id', branchId);
+    } else {
+      // If no branchId, get tenant-level settings (branch_id IS NULL)
+      query = query.is('branch_id', null);
+    }
+
+    const { data: existing, error: fetchError } = await query.maybeSingle();
 
     if (fetchError && fetchError.code !== 'PGRST116') {
       // PGRST116 is "not found" which is OK
@@ -51,13 +66,13 @@ export class SettingsService {
   }
 
   /**
-   * Update settings for a tenant
+   * Update settings for a tenant and branch
    */
-  async updateSettings(tenantId: string, updateDto: UpdateSettingsDto) {
+  async updateSettings(tenantId: string, updateDto: UpdateSettingsDto, branchId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Get current settings
-    const current = await this.getSettings(tenantId);
+    const current = await this.getSettings(tenantId, branchId);
 
     // Merge updates - explicitly handle false values to ensure they override defaults
     const updated = {
@@ -79,29 +94,125 @@ export class SettingsService {
     };
 
     // Upsert settings
-    const { data, error } = await supabase
+    // Since we're using partial unique indexes, we need to handle upsert manually
+    // First, check if settings exist for this tenant/branch combination
+    let query = supabase
       .from('tenant_settings')
-      .upsert(
-        {
-          tenant_id: tenantId,
-          general: updated.general,
-          invoice: updated.invoice,
-          payment_methods: updated.payment_methods,
-          printers: updated.printers,
-          tax: updated.tax,
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: 'tenant_id',
-        }
-      )
-      .select()
-      .single();
+      .select('id')
+      .eq('tenant_id', tenantId);
+
+    if (branchId) {
+      query = query.eq('branch_id', branchId);
+    } else {
+      query = query.is('branch_id', null);
+    }
+
+    const { data: existing } = await query.maybeSingle();
+
+    const upsertData: any = {
+      tenant_id: tenantId,
+      general: updated.general,
+      invoice: updated.invoice,
+      payment_methods: updated.payment_methods,
+      printers: updated.printers,
+      tax: updated.tax,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (branchId) {
+      upsertData.branch_id = branchId;
+    } else {
+      upsertData.branch_id = null;
+    }
+
+    let data, error;
+    if (existing) {
+      // Update existing record
+      let updateQuery = supabase
+        .from('tenant_settings')
+        .update(upsertData)
+        .eq('id', existing.id)
+        .select()
+        .single();
+      
+      const result = await updateQuery;
+      data = result.data;
+      error = result.error;
+    } else {
+      // Insert new record
+      const result = await supabase
+        .from('tenant_settings')
+        .insert(upsertData)
+        .select()
+        .single();
+      
+      data = result.data;
+      error = result.error;
+    }
 
     if (error) {
       throw new InternalServerErrorException(
         `Failed to update settings: ${error.message}`
       );
+    }
+
+    // If totalTables was updated and branchId is provided, create missing tables
+    if (
+      updateDto.general?.totalTables !== undefined &&
+      branchId &&
+      updateDto.general.totalTables > 0
+    ) {
+      const newTotalTables = updateDto.general.totalTables;
+      const oldTotalTables = current.general?.totalTables || 0;
+
+      // Only create tables if totalTables increased
+      if (newTotalTables > oldTotalTables) {
+        try {
+          // Get all existing tables for this branch
+          const { data: existingTables } = await supabase
+            .from('tables')
+            .select('table_number')
+            .eq('branch_id', branchId)
+            .is('deleted_at', null);
+
+          const existingTableNumbers = new Set(
+            (existingTables || [])
+              .map((t) => {
+                const num = parseInt(t.table_number, 10);
+                return !isNaN(num) ? num : null;
+              })
+              .filter((n): n is number => n !== null)
+          );
+
+          // Create missing tables (from oldTotalTables + 1 to newTotalTables)
+          for (let i = oldTotalTables + 1; i <= newTotalTables; i++) {
+            if (!existingTableNumbers.has(i)) {
+              try {
+                await this.restaurantService.createTable(tenantId, {
+                  tableNumber: i.toString(),
+                  branchId: branchId,
+                  seatingCapacity: 4,
+                  tableType: 'regular',
+                });
+              } catch (createError: any) {
+                // If table already exists (race condition), skip it
+                if (
+                  createError?.response?.status === 409 ||
+                  createError?.status === 409 ||
+                  createError?.message?.includes('already exists')
+                ) {
+                  continue;
+                }
+                // Log other errors but don't fail the settings update
+                console.warn(`Failed to create table ${i}:`, createError);
+              }
+            }
+          }
+        } catch (tableError) {
+          // Log error but don't fail the settings update
+          console.error('Failed to create missing tables:', tableError);
+        }
+      }
     }
 
     return {
@@ -176,8 +287,8 @@ export class SettingsService {
   /**
    * Get a specific setting category
    */
-  async getSettingCategory(tenantId: string, category: string) {
-    const settings = await this.getSettings(tenantId);
+  async getSettingCategory(tenantId: string, category: string, branchId?: string) {
+    const settings = await this.getSettings(tenantId, branchId);
     return settings[category] || null;
   }
 }

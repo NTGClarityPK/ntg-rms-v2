@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Put, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { SettingsService } from './settings.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -14,20 +14,20 @@ export class SettingsController {
 
   @Get()
   @ApiOperation({ summary: 'Get all settings' })
-  getSettings(@CurrentUser() user: any) {
-    return this.settingsService.getSettings(user.tenantId);
+  getSettings(@CurrentUser() user: any, @Query('branchId') branchId?: string) {
+    return this.settingsService.getSettings(user.tenantId, branchId);
   }
 
   @Get(':category')
   @ApiOperation({ summary: 'Get a specific settings category' })
-  getSettingCategory(@CurrentUser() user: any, @Param('category') category: string) {
-    return this.settingsService.getSettingCategory(user.tenantId, category);
+  getSettingCategory(@CurrentUser() user: any, @Param('category') category: string, @Query('branchId') branchId?: string) {
+    return this.settingsService.getSettingCategory(user.tenantId, category, branchId);
   }
 
   @Put()
   @ApiOperation({ summary: 'Update settings' })
-  updateSettings(@CurrentUser() user: any, @Body() updateDto: UpdateSettingsDto) {
-    return this.settingsService.updateSettings(user.tenantId, updateDto);
+  updateSettings(@CurrentUser() user: any, @Body() updateDto: UpdateSettingsDto, @Query('branchId') branchId?: string) {
+    return this.settingsService.updateSettings(user.tenantId, updateDto, branchId);
   }
 }
 

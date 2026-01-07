@@ -1,42 +1,53 @@
 import { useState, useEffect, useCallback } from 'react';
 import { settingsApi, Settings } from '@/lib/api/settings';
+import { useBranchStore } from '@/lib/store/branch-store';
 
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-let cachedSettings: Settings | null = null;
-let cacheTimestamp: number = 0;
+// Cache per branch
+const settingsCache: Map<string, { settings: Settings; timestamp: number }> = new Map();
 
 // Function to clear cache (useful when settings are updated)
-export function clearSettingsCache() {
-  cachedSettings = null;
-  cacheTimestamp = 0;
+export function clearSettingsCache(branchId?: string) {
+  if (branchId) {
+    settingsCache.delete(branchId);
+  } else {
+    settingsCache.clear();
+  }
 }
 
 export function useSettings() {
-  const [settings, setSettings] = useState<Settings | null>(cachedSettings);
-  const [loading, setLoading] = useState(!cachedSettings);
+  const { selectedBranchId } = useBranchStore();
+  const cacheKey = selectedBranchId || 'tenant-level';
+  const cached = settingsCache.get(cacheKey);
+  
+  const [settings, setSettings] = useState<Settings | null>(cached?.settings || null);
+  const [loading, setLoading] = useState(!cached);
 
   const loadSettings = useCallback(async () => {
+    const currentCacheKey = selectedBranchId || 'tenant-level';
     try {
-      const data = await settingsApi.getSettings();
+      const data = await settingsApi.getSettings(selectedBranchId || undefined);
       setSettings(data);
-      cachedSettings = data;
-      cacheTimestamp = Date.now();
+      settingsCache.set(currentCacheKey, { settings: data, timestamp: Date.now() });
     } catch (error) {
       console.error('Failed to load settings:', error);
       // Use cached settings if available
-      if (cachedSettings) {
-        setSettings(cachedSettings);
+      const cached = settingsCache.get(currentCacheKey);
+      if (cached) {
+        setSettings(cached.settings);
       }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedBranchId]);
 
   useEffect(() => {
     // Use cache if fresh, otherwise load
-    if (cachedSettings && Date.now() - cacheTimestamp < CACHE_DURATION) {
-      setSettings(cachedSettings);
+    const currentCacheKey = selectedBranchId || 'tenant-level';
+    const cached = settingsCache.get(currentCacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+      setSettings(cached.settings);
       setLoading(false);
     } else {
       loadSettings();
@@ -44,14 +55,14 @@ export function useSettings() {
 
     // Listen for settings update events to refresh
     const handleSettingsUpdate = () => {
-      clearSettingsCache();
+      clearSettingsCache(selectedBranchId || undefined);
       loadSettings();
     };
     window.addEventListener('settingsUpdated', handleSettingsUpdate);
     return () => {
       window.removeEventListener('settingsUpdated', handleSettingsUpdate);
     };
-  }, [loadSettings]);
+  }, [loadSettings, selectedBranchId]);
 
   return { settings, loading, refresh: loadSettings };
 }

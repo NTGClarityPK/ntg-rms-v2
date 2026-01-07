@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   Stack,
@@ -127,28 +127,32 @@ export function POSCart({
   const paymentMethods = settings?.paymentMethods;
   
   // Build enabled payment methods array - only include methods that are explicitly set to true
-  const enabledPaymentMethods: Array<{ label: string; value: string }> = [];
-  
-  if (paymentMethods?.enableCash === true) {
-    enabledPaymentMethods.push({ label: t('pos.cash', language), value: 'cash' });
-  }
-  if (paymentMethods?.enableCard === true) {
-    enabledPaymentMethods.push({ label: t('pos.card', language), value: 'card' });
-  }
-  if (paymentMethods?.enableZainCash === true) {
-    enabledPaymentMethods.push({ label: t('pos.zainCash' as any, language) || 'ZainCash', value: 'zainCash' });
-  }
-  if (paymentMethods?.enableAsiaHawala === true) {
-    enabledPaymentMethods.push({ label: t('pos.asiaHawala' as any, language) || 'Asia Hawala', value: 'asiaHawala' });
-  }
-  if (paymentMethods?.enableBankTransfer === true) {
-    enabledPaymentMethods.push({ label: t('pos.bankTransfer' as any, language) || 'Bank Transfer', value: 'bankTransfer' });
-  }
-  
-  // If no payment methods are enabled, default to cash to prevent empty state
-  if (enabledPaymentMethods.length === 0) {
-    enabledPaymentMethods.push({ label: t('pos.cash', language), value: 'cash' });
-  }
+  const enabledPaymentMethods: Array<{ label: string; value: string }> = useMemo(() => {
+    const methods: Array<{ label: string; value: string }> = [];
+    
+    if (paymentMethods?.enableCash === true) {
+      methods.push({ label: t('pos.cash', language), value: 'cash' });
+    }
+    if (paymentMethods?.enableCard === true) {
+      methods.push({ label: t('pos.card', language), value: 'card' });
+    }
+    if (paymentMethods?.enableZainCash === true) {
+      methods.push({ label: t('pos.zainCash' as any, language) || 'ZainCash', value: 'zainCash' });
+    }
+    if (paymentMethods?.enableAsiaHawala === true) {
+      methods.push({ label: t('pos.asiaHawala' as any, language) || 'Asia Hawala', value: 'asiaHawala' });
+    }
+    if (paymentMethods?.enableBankTransfer === true) {
+      methods.push({ label: t('pos.bankTransfer' as any, language) || 'Bank Transfer', value: 'bankTransfer' });
+    }
+    
+    // If no payment methods are enabled, default to cash to prevent empty state
+    if (methods.length === 0) {
+      methods.push({ label: t('pos.cash', language), value: 'cash' });
+    }
+    
+    return methods;
+  }, [paymentMethods, language]);
   const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [selectedCustomerData, setSelectedCustomerData] = useState<any>(null);
@@ -211,6 +215,74 @@ export function POSCart({
     loadVariationGroups();
   }, []);
 
+  const loadActiveTaxes = useCallback(async () => {
+    if (!branchId) {
+      setActiveTaxes([]);
+      return;
+    }
+    try {
+      const allTaxes = await taxesApi.getTaxes(branchId);
+      const active = allTaxes.filter((tax) => tax.isActive);
+      setActiveTaxes(active);
+    } catch (error) {
+      console.error('Failed to load taxes:', error);
+      setActiveTaxes([]);
+    }
+  }, [branchId]);
+
+  const loadTables = useCallback(async (skipCreation = false) => {
+    if (!branchId) return;
+    try {
+      const totalTables = settings?.general?.totalTables || 0;
+      
+      // If totalTables is set, use available tables API and filter by range
+      if (totalTables > 0) {
+        try {
+          // Get available tables for this branch
+          // Note: We don't auto-create tables on load - tables should be created manually in settings
+          const availableTables = await restaurantApi.getAvailableTables(branchId);
+          
+          // Filter tables to only include those within 1 to totalTables range
+          const filteredTables = availableTables.filter((table) => {
+            const tableNum = parseInt(table.tableNumber, 10);
+            return !isNaN(tableNum) && tableNum >= 1 && tableNum <= totalTables;
+          });
+          
+          // Sort by table number
+          filteredTables.sort((a, b) => {
+            const aNum = parseInt(a.tableNumber, 10);
+            const bNum = parseInt(b.tableNumber, 10);
+            return aNum - bNum;
+          });
+          
+          // Convert to RestaurantTable format
+          const tablesToStore = filteredTables.map((table) => ({
+            id: table.id,
+            tenantId,
+            branchId: table.branchId,
+            tableNumber: table.tableNumber,
+            name: `Table ${table.tableNumber}`,
+            capacity: table.seatingCapacity || 4,
+            status: table.status || 'available',
+            createdAt: table.createdAt || new Date().toISOString(),
+            updatedAt: table.updatedAt || new Date().toISOString(),
+            syncStatus: 'synced' as const,
+            lastSynced: new Date().toISOString(),
+          }));
+          
+          setTables(tablesToStore as any);
+        } catch (error) {
+          console.error('Failed to load available tables from API:', error);
+          setTables([]);
+        }
+      } else {
+        setTables([]);
+      }
+    } catch (error) {
+      console.error('Failed to load tables:', error);
+    }
+  }, [branchId, settings?.general?.totalTables, tenantId]);
+
   useEffect(() => {
     if (tenantId) {
       loadCustomers();
@@ -219,19 +291,7 @@ export function POSCart({
     if (branchId) {
       loadTables();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, branchId, settings?.general?.totalTables]);
-
-  const loadActiveTaxes = async () => {
-    try {
-      const allTaxes = await taxesApi.getTaxes();
-      const active = allTaxes.filter((tax) => tax.isActive);
-      setActiveTaxes(active);
-    } catch (error) {
-      console.error('Failed to load taxes:', error);
-      setActiveTaxes([]);
-    }
-  };
+  }, [tenantId, branchId, loadActiveTaxes, loadTables]);
 
   // Load customer data when selected customer changes
   useEffect(() => {
@@ -287,57 +347,6 @@ export function POSCart({
       setNewAddressState('');
     }
   }, [orderType]);
-
-  const loadTables = async () => {
-    if (!branchId) return;
-    try {
-      const totalTables = settings?.general?.totalTables || 0;
-      
-      // If totalTables is set, use available tables API and filter by range
-      if (totalTables > 0) {
-        try {
-          const availableTables = await restaurantApi.getAvailableTables(branchId);
-          
-          // Filter tables to only include those within 1 to totalTables range
-          const filteredTables = availableTables.filter((table) => {
-            const tableNum = parseInt(table.tableNumber, 10);
-            return !isNaN(tableNum) && tableNum >= 1 && tableNum <= totalTables;
-          });
-          
-          // Sort by table number
-          filteredTables.sort((a, b) => {
-            const aNum = parseInt(a.tableNumber, 10);
-            const bNum = parseInt(b.tableNumber, 10);
-            return aNum - bNum;
-          });
-          
-          // Convert to RestaurantTable format
-          const tablesToStore = filteredTables.map((table) => ({
-            id: table.id,
-            tenantId,
-            branchId: table.branchId,
-            tableNumber: table.tableNumber,
-            name: `Table ${table.tableNumber}`,
-            capacity: table.seatingCapacity || 4,
-            status: table.status || 'available',
-            createdAt: table.createdAt || new Date().toISOString(),
-            updatedAt: table.updatedAt || new Date().toISOString(),
-            syncStatus: 'synced' as const,
-            lastSynced: new Date().toISOString(),
-          }));
-          
-          setTables(tablesToStore as any);
-        } catch (error) {
-          console.error('Failed to load available tables from API:', error);
-          setTables([]);
-        }
-      } else {
-        setTables([]);
-      }
-    } catch (error) {
-      console.error('Failed to load tables:', error);
-    }
-  };
 
   const loadCustomers = async () => {
     try {
@@ -840,8 +849,8 @@ export function POSCart({
             onNumberOfPersonsChange(1);
           }
           
-          // Reload tables to update available list
-          await loadTables();
+          // Reload tables to update available list (skip creation to avoid conflicts)
+          await loadTables(true);
 
           // Notify other components about the new order
           notifyOrderUpdate('order-created', orderId);
@@ -1053,14 +1062,19 @@ export function POSCart({
               fullWidth
               value={orderType}
               onChange={(value) => onOrderTypeChange(value as 'dine_in' | 'takeaway' | 'delivery')}
-              data={[
-                { label: t('pos.dineIn', language), value: 'dine_in' },
+              data={useMemo(() => {
+                const options = [
+                  { label: t('pos.dineIn', language), value: 'dine_in' },
+                ];
                 // Hide takeaway and delivery when in buffet mode
-                ...(isBuffetMode ? [] : [
-                  { label: t('pos.takeaway', language), value: 'takeaway' },
-                  ...(enableDeliveryManagement ? [{ label: t('pos.delivery', language), value: 'delivery' }] : []),
-                ]),
-              ]}
+                if (!isBuffetMode) {
+                  options.push({ label: t('pos.takeaway', language), value: 'takeaway' });
+                  if (enableDeliveryManagement) {
+                    options.push({ label: t('pos.delivery', language), value: 'delivery' });
+                  }
+                }
+                return options;
+              }, [isBuffetMode, enableDeliveryManagement, language])}
             />
           </Box>
 

@@ -37,15 +37,28 @@ function POSPageContent() {
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [currentItemType, setCurrentItemType] = useState<'food-items' | 'buffets' | 'combo-meals'>('food-items');
 
-  // Update order type when settings change (only on initial load, not when editing)
+  // Update order type when settings change or branch changes (only on initial load, not when editing)
   useEffect(() => {
-    if (settings?.general?.defaultOrderType && !editOrderId) {
-      setOrderType(settings.general.defaultOrderType as 'dine_in' | 'takeaway' | 'delivery');
-    } else if (!settings?.general?.defaultOrderType && !editOrderId) {
-      // If no default is set, use 'dine_in'
-      setOrderType('dine_in');
+    if (!editOrderId) {
+      if (settings?.general?.defaultOrderType) {
+        setOrderType(settings.general.defaultOrderType as 'dine_in' | 'takeaway' | 'delivery');
+      } else {
+        // If no default is set, use 'dine_in'
+        setOrderType('dine_in');
+      }
     }
-  }, [settings?.general?.defaultOrderType, editOrderId]);
+  }, [settings?.general?.defaultOrderType, editOrderId, selectedBranchId]);
+
+  // If delivery management is disabled and current order type is delivery, switch to default
+  useEffect(() => {
+    if (!editOrderId && orderType === 'delivery' && !settings?.general?.enableDeliveryManagement) {
+      if (settings?.general?.defaultOrderType && settings.general.defaultOrderType !== 'delivery') {
+        setOrderType(settings.general.defaultOrderType as 'dine_in' | 'takeaway' | 'delivery');
+      } else {
+        setOrderType('dine_in');
+      }
+    }
+  }, [settings?.general?.enableDeliveryManagement, orderType, editOrderId, settings?.general?.defaultOrderType]);
 
   // Load order for editing if editOrderId is present
   useEffect(() => {

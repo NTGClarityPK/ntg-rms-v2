@@ -388,9 +388,10 @@ export class OrdersService {
     }
 
     // Get settings for tax and delivery configuration
-    const settings = await this.settingsService.getSettings(tenantId);
-    const taxSettings = settings.tax || {};
-    const generalSettings = settings.general || {};
+    // Use branchId if provided to get branch-specific settings
+    let settings: any = await this.settingsService.getSettings(tenantId, branchId);
+    let taxSettings = settings.tax || {};
+    let generalSettings = settings.general || {};
 
     // Calculate delivery charge first (needed for tax calculation)
     let deliveryCharge = 0;
@@ -572,7 +573,8 @@ export class OrdersService {
       }
 
       // Fetch settings early (will be reused in calculateOrderTotals and table validation)
-      const settingsPromise = this.settingsService.getSettings(tenantId);
+      // Use branchId to get branch-specific settings
+      const settingsPromise = this.settingsService.getSettings(tenantId, effectiveBranchId);
       let tableValidationSettings: any = null;
 
       if (createDto.orderType === 'dine_in' && tableIdsToValidate.length > 0) {
