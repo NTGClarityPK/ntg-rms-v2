@@ -160,6 +160,7 @@ export function POSCart({
   const [newCustomerName, setNewCustomerName] = useState('');
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [newCustomerEmail, setNewCustomerEmail] = useState('');
+  const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [manualDiscount, setManualDiscount] = useState<number>(0);
@@ -396,6 +397,7 @@ export function POSCart({
   };
 
   const handleCreateCustomer = async () => {
+    setIsCreatingCustomer(true);
     try {
       const createdCustomer = await customersApi.createCustomer({
         name: newCustomerName,
@@ -432,6 +434,8 @@ export function POSCart({
         message: errorMessage,
         color: getErrorColor(),
       });
+    } finally {
+      setIsCreatingCustomer(false);
     }
   };
 
@@ -1769,7 +1773,8 @@ export function POSCart({
           <Button
             fullWidth
             onClick={handleCreateCustomer}
-            disabled={!newCustomerName || !newCustomerPhone}
+            disabled={!newCustomerName || !newCustomerPhone || isCreatingCustomer}
+            loading={isCreatingCustomer}
             style={{ backgroundColor: primaryShade }}
           >
             {t('common.save' as any, language) || 'Save'}

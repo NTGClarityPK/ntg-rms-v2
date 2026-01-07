@@ -81,6 +81,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm({
     initialValues: {
@@ -228,6 +229,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
   const handleSubmit = async (values: typeof form.values) => {
     if (!user?.tenantId) return;
 
+    setIsSubmitting(true);
     try {
       setError(null);
 
@@ -291,6 +293,8 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
         color: notificationColors.error,
         icon: <IconAlertCircle size={16} />,
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -505,10 +509,12 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
             </Grid>
 
             <Group justify="flex-end" mt="md">
-              <Button variant="default" onClick={handleCloseModal}>
+              <Button variant="default" onClick={handleCloseModal} disabled={isSubmitting}>
                 {t('common.cancel' as any, language) || 'Cancel'}
               </Button>
-              <Button type="submit">{t('common.save' as any, language) || 'Save'}</Button>
+              <Button type="submit" loading={isSubmitting}>
+                {t('common.save' as any, language) || 'Save'}
+              </Button>
             </Group>
           </Stack>
         </form>
