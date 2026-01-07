@@ -69,6 +69,32 @@ export default function OrdersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery] = useDebouncedValue(searchQuery, 300);
   const { selectedBranchId } = useBranchStore();
+  
+  // Track previous search value to detect when search is cleared
+  const prevSearchRef = useRef<string>('');
+  
+  // Reset pagination and force reload when search is cleared
+  useEffect(() => {
+    const trimmedSearch = debouncedSearchQuery.trim();
+    const prevTrimmedSearch = prevSearchRef.current.trim();
+    
+    // Detect when search is cleared (had value, now empty)
+    if (prevTrimmedSearch !== '' && trimmedSearch === '') {
+      // Clear the last request ref to force a reload
+      lastOrdersRequestRef.current = '';
+      // Reset pagination to page 1
+      if (pagination.page !== 1) {
+        pagination.setPage(1);
+      } else {
+        // If already on page 1, explicitly reload to ensure results reset
+        // Use the ref to avoid dependency issues
+        loadOrdersRef.current?.(false);
+      }
+    }
+    
+    // Update previous search value
+    prevSearchRef.current = debouncedSearchQuery;
+  }, [debouncedSearchQuery, pagination]);
   const [selectedOrderType, setSelectedOrderType] = useState<string | null>(null);
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState<string | null>(null);
   const [showMyOrdersOnly, setShowMyOrdersOnly] = useState(false);
@@ -85,22 +111,38 @@ export default function OrdersPage() {
   const loadingOrdersRef = useRef(false);
   const lastOrdersRequestRef = useRef<string>('');
   const ordersRequestSequenceRef = useRef<number>(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const currentSearchRef = useRef<string>('');
 
   const loadOrders = useCallback(async (silent = false) => {
     // Create a unique key for this request to prevent duplicates
+    // Use undefined for empty search to match API params and ensure proper comparison
+    const trimmedSearch = debouncedSearchQuery.trim();
     const requestKey = JSON.stringify({
       status: selectedStatuses,
       branchId: selectedBranchId,
       orderType: selectedOrderType,
       paymentStatus: selectedPaymentStatus,
-      search: debouncedSearchQuery.trim(),
+      search: trimmedSearch || undefined,
       waiterEmail: showMyOrdersOnly && user?.email ? user.email : undefined,
       page: pagination.page,
       limit: pagination.limit,
     });
     
+    // Cancel any in-flight requests
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    
+    // Create new AbortController for this request
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    
     // Prevent duplicate calls with the same parameters
-    if (lastOrdersRequestRef.current === requestKey && loadingOrdersRef.current && !silent) {
+    // But allow if last request ref was cleared (e.g., when search is cleared)
+    // Also allow if the request key is different (search/filter changed)
+    const isSameRequest = lastOrdersRequestRef.current === requestKey;
+    if (isSameRequest && loadingOrdersRef.current && !silent && lastOrdersRequestRef.current !== '') {
       return;
     }
     
@@ -108,9 +150,20 @@ export default function OrdersPage() {
     const currentRequestSequence = ++ordersRequestSequenceRef.current;
     lastOrdersRequestRef.current = requestKey;
     
-    // Prevent duplicate calls if already loading (unless it's a silent refresh)
-    if (loadingOrdersRef.current && !silent) {
+    // Store current search term to verify results match
+    currentSearchRef.current = trimmedSearch;
+    
+    // If request parameters changed (different request key), allow reload even if loading
+    // This ensures search clearing and filter changes always trigger a reload
+    const requestChanged = !isSameRequest;
+    if (loadingOrdersRef.current && !silent && !requestChanged) {
       return;
+    }
+    
+    // If this is a new request (parameters changed), immediately clear old results
+    // to prevent showing stale data while loading
+    if (requestChanged && !silent) {
+      setOrders([]);
     }
     
     loadingOrdersRef.current = true;
@@ -125,7 +178,7 @@ export default function OrdersPage() {
         branchId: selectedBranchId || undefined,
         orderType: selectedOrderType as OrderType | undefined,
         paymentStatus: selectedPaymentStatus as PaymentStatus | undefined,
-        search: debouncedSearchQuery.trim() || undefined,
+        search: trimmedSearch || undefined,
         waiterEmail: showMyOrdersOnly && user?.email ? user.email : undefined,
         ...pagination.paginationParams,
       };
@@ -135,9 +188,21 @@ export default function OrdersPage() {
       try {
         backendResponse = await ordersApi.getOrders(params);
         
+        // Check if request was aborted
+        if (abortController.signal.aborted) {
+          console.log('⚠️ Request was aborted, ignoring response');
+          return;
+        }
+        
         // Check if this is still the latest request
         if (currentRequestSequence !== ordersRequestSequenceRef.current) {
           console.log('⚠️ Ignoring outdated orders request response');
+          return;
+        }
+        
+        // Verify the search term hasn't changed (double-check to prevent race conditions)
+        if (currentSearchRef.current !== trimmedSearch) {
+          console.log('⚠️ Search term changed during request, ignoring response');
           return;
         }
         
@@ -147,8 +212,16 @@ export default function OrdersPage() {
         // Set orders from backend
         setOrders(backendOrders);
       } catch (error: any) {
+        // Don't set error state if request was aborted
+        if (abortController.signal.aborted) {
+          console.log('⚠️ Request was aborted');
+          return;
+        }
         console.error('Failed to load orders from backend:', error);
-        setOrders([]);
+        // Only update state if this is still the latest request
+        if (currentRequestSequence === ordersRequestSequenceRef.current) {
+          setOrders([]);
+        }
       }
     } catch (error: any) {
       if (!silent) {
@@ -159,10 +232,17 @@ export default function OrdersPage() {
         });
       }
     } finally {
-      if (!silent) {
-        setLoading(false);
+      // Only update loading state if this is still the current request
+      if (currentRequestSequence === ordersRequestSequenceRef.current) {
+        if (!silent) {
+          setLoading(false);
+        }
+        loadingOrdersRef.current = false;
+        // Clear abort controller if this was the current request
+        if (abortControllerRef.current === abortController) {
+          abortControllerRef.current = null;
+        }
       }
-      loadingOrdersRef.current = false;
     }
   }, [selectedBranchId, selectedOrderType, selectedPaymentStatus, selectedStatuses, debouncedSearchQuery, showMyOrdersOnly, user?.email, language, pagination]);
 
