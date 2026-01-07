@@ -520,7 +520,7 @@ export function CouponsPage() {
                             variant="subtle"
                             color="blue"
                             onClick={() => handleOpenModal(coupon)}
-                            disabled={submitting || updatingCouponId === coupon.id || deletingCouponId === coupon.id}
+                            disabled={updatingCouponId === coupon.id || deletingCouponId === coupon.id}
                           >
                             <IconEdit size={16} />
                           </ActionIcon>
@@ -528,7 +528,7 @@ export function CouponsPage() {
                             variant="subtle"
                             color="red"
                             onClick={() => handleDelete(coupon)}
-                            disabled={submitting || updatingCouponId === coupon.id || deletingCouponId === coupon.id}
+                            disabled={updatingCouponId === coupon.id || deletingCouponId === coupon.id}
                             loading={deletingCouponId === coupon.id}
                           >
                             <IconTrash size={16} />

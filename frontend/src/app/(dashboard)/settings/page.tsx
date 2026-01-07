@@ -1154,7 +1154,7 @@ export default function SettingsPage() {
                                     variant="light"
                                     color={themeColor}
                                     onClick={() => handleOpenTaxModal(tax)}
-                                    disabled={submittingTax || updatingTaxId === tax.id || deletingTaxId === tax.id}
+                                    disabled={updatingTaxId === tax.id || deletingTaxId === tax.id}
                                   >
                                     <IconEdit size={16} />
                                   </ActionIcon>
@@ -1162,7 +1162,7 @@ export default function SettingsPage() {
                                     variant="light"
                                     color={primary}
                                     onClick={() => setDeletingTax(tax.id)}
-                                    disabled={submittingTax || updatingTaxId === tax.id || deletingTaxId === tax.id}
+                                    disabled={updatingTaxId === tax.id || deletingTaxId === tax.id}
                                     loading={deletingTaxId === tax.id}
                                   >
                                     <IconTrash size={16} />

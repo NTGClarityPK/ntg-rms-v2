@@ -425,7 +425,7 @@ export function BranchesTab() {
                               variant="subtle"
                               color={infoColor}
                               onClick={() => handleOpenModal(branch)}
-                              disabled={submitting || updatingBranchId === branch.id || deletingBranchId === branch.id}
+                              disabled={updatingBranchId === branch.id || deletingBranchId === branch.id}
                             >
                               <IconEdit size={16} />
                             </ActionIcon>
@@ -435,7 +435,7 @@ export function BranchesTab() {
                               variant="subtle"
                               color={errorColor}
                               onClick={() => handleDelete(branch)}
-                              disabled={submitting || updatingBranchId === branch.id || deletingBranchId === branch.id}
+                              disabled={updatingBranchId === branch.id || deletingBranchId === branch.id}
                               loading={deletingBranchId === branch.id}
                             >
                               <IconTrash size={16} />

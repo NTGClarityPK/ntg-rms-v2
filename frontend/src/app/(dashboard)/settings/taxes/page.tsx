@@ -397,7 +397,7 @@ export default function TaxesPage() {
                             variant="light"
                             color={themeColor}
                             onClick={() => handleOpenModal(tax)}
-                            disabled={submitting || updatingTaxId === tax.id || deletingTaxId === tax.id}
+                            disabled={updatingTaxId === tax.id || deletingTaxId === tax.id}
                           >
                             <IconEdit size={16} />
                           </ActionIcon>
@@ -405,7 +405,7 @@ export default function TaxesPage() {
                             variant="light"
                             color={primary}
                             onClick={() => setDeletingTax(tax.id)}
-                            disabled={submitting || updatingTaxId === tax.id || deletingTaxId === tax.id}
+                            disabled={updatingTaxId === tax.id || deletingTaxId === tax.id}
                             loading={deletingTaxId === tax.id}
                           >
                             <IconTrash size={16} />
