@@ -22,6 +22,8 @@ import {
   FileButton,
   Image,
   Box,
+  Progress,
+  Loader,
 } from '@mantine/core';
 import { IconPlus, IconEdit, IconTrash, IconUpload, IconToolsKitchen2, IconAlertCircle } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
@@ -55,6 +57,10 @@ export function CategoriesPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
+
+  // Track if any API call is in progress
+  const isApiInProgress = loading || submitting || deletingCategoryId !== null;
 
   const form = useForm({
     initialValues: {
@@ -231,6 +237,7 @@ export function CategoriesPage() {
       labels: { confirm: t('common.delete' as any, language) || 'Delete', cancel: t('common.cancel' as any, language) || 'Cancel' },
       confirmProps: { color: errorColor },
       onConfirm: async () => {
+        setDeletingCategoryId(category.id);
         try {
           await menuApi.deleteCategory(category.id);
 
@@ -252,6 +259,8 @@ export function CategoriesPage() {
             message: err.message || 'Failed to delete category',
             color: errorColor,
           });
+        } finally {
+          setDeletingCategoryId(null);
         }
       },
     });
@@ -265,6 +274,10 @@ export function CategoriesPage() {
 
   return (
     <Stack gap="md">
+      {/* Top loader for any API in progress */}
+      {isApiInProgress && (
+        <Progress value={100} animated color={primaryColor} size="xs" radius={0} style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000 }} />
+      )}
       <Group justify="flex-end">
         <Button
           leftSection={<IconPlus size={16} />}
@@ -368,8 +381,13 @@ export function CategoriesPage() {
                       variant="light"
                       color={errorColor}
                       onClick={() => handleDelete(category)}
+                      disabled={deletingCategoryId !== null}
                     >
-                      <IconTrash size={16} />
+                      {deletingCategoryId === category.id ? (
+                        <Loader size={16} />
+                      ) : (
+                        <IconTrash size={16} />
+                      )}
                     </ActionIcon>
                   </Group>
                 </Group>
@@ -399,8 +417,13 @@ export function CategoriesPage() {
                             variant="subtle"
                             color={errorColor}
                             onClick={() => handleDelete(sub)}
+                            disabled={deletingCategoryId !== null}
                           >
-                            <IconTrash size={14} />
+                            {deletingCategoryId === sub.id ? (
+                              <Loader size={14} />
+                            ) : (
+                              <IconTrash size={14} />
+                            )}
                           </ActionIcon>
                         </Group>
                       </Group>
