@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import { useForm } from '@mantine/form';
 import {
   Title,
@@ -18,6 +19,7 @@ import {
   TextInput,
   ActionIcon,
   Grid,
+  Loader,
 } from '@mantine/core';
 import { IconMenu2, IconAlertCircle, IconCheck, IconPlus, IconTrash } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
@@ -50,6 +52,10 @@ export function MenusPage() {
   const [selectedMenuType, setSelectedMenuType] = useState<string>('');
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [pendingMenu, setPendingMenu] = useState<Partial<any> | null>(null);
+  const [updatingMenuType, setUpdatingMenuType] = useState<string | null>(null);
+  const [deletingMenuType, setDeletingMenuType] = useState<string | null>(null);
 
   const form = useForm({
     initialValues: {
@@ -242,6 +248,9 @@ export function MenusPage() {
     const currentItemIds = selectedItemIds;
     setAssignModalOpened(false);
 
+    // Track updating state for this menu
+    setUpdatingMenuType(currentMenuType);
+
     // Run API calls in background
     (async () => {
       try {
@@ -253,10 +262,12 @@ export function MenusPage() {
           color: successColor,
         });
 
+        setUpdatingMenuType(null);
         loadData();
         // Notify other tabs that menus have been updated
         notifyMenuDataUpdate('menus-updated');
       } catch (err: any) {
+        setUpdatingMenuType(null);
         notifications.show({
           title: t('common.error' as any, language) || 'Error',
           message: err.message || 'Failed to assign items',
@@ -317,10 +328,28 @@ export function MenusPage() {
   };
 
   const handleCreateMenu = async (values: typeof form.values) => {
-    try {
-      // Generate unique menu type from name
-      const menuType = generateMenuType(values.name, menus);
+    if (!user?.tenantId || submitting) return;
 
+    // Set loading state immediately to show loader on button - use flushSync to ensure immediate update
+    flushSync(() => {
+      setSubmitting(true);
+    });
+
+    // Generate unique menu type from name
+    const menuType = generateMenuType(values.name, menus);
+
+    // Close modal immediately
+    handleCloseCreateModal();
+
+    // Add pending menu skeleton
+    setPendingMenu({
+      menuType,
+      name: values.name.trim(),
+      itemCount: values.foodItemIds.length,
+      isActive: values.isActive,
+    });
+
+    try {
       await menuApi.createMenu(
         {
           menuType,
@@ -337,7 +366,9 @@ export function MenusPage() {
         color: successColor,
       });
 
-      handleCloseCreateModal();
+      // Remove pending menu skeleton
+      setPendingMenu(null);
+
       loadData();
       notifyMenuDataUpdate('menus-updated');
     } catch (err: any) {
@@ -347,6 +378,11 @@ export function MenusPage() {
         message: errorMsg,
         color: errorColor,
       });
+      
+      // Remove pending menu skeleton on error
+      setPendingMenu(null);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -364,6 +400,7 @@ export function MenusPage() {
       },
       confirmProps: { color: errorColor },
       onConfirm: async () => {
+        setDeletingMenuType(menu.menuType);
         try {
           await menuApi.deleteMenu(menu.menuType);
           
@@ -373,9 +410,11 @@ export function MenusPage() {
             color: successColor,
           });
 
+          setDeletingMenuType(null);
           loadData();
           notifyMenuDataUpdate('menus-updated');
         } catch (err: any) {
+          setDeletingMenuType(null);
           const errorMsg = err.response?.data?.message || err.message || 'Failed to delete menu';
           notifications.show({
             title: t('common.error' as any, language) || 'Error',
@@ -443,47 +482,99 @@ export function MenusPage() {
         </Stack>
       ) : (
         <Stack gap="md">
-        {menus.map((menu) => (
-          <Paper key={menu.menuType} p="md" withBorder>
+        {/* Show pending menu skeleton when creating */}
+        {pendingMenu && (
+          <Paper p="md" withBorder style={{ opacity: 0.7, position: 'relative' }}>
             <Group justify="space-between">
               <Group>
-                <IconMenu2 size={24} color={primaryColor} />
+                <Skeleton height={24} width={24} radius="md" />
                 <div>
-                  <Text fw={500}>{menu.name || menu.menuType}</Text>
-                  <Text size="sm" c="dimmed">
-                    {menu.itemCount} {t('menu.foodItems', language)}
-                  </Text>
+                  <Group gap="xs" wrap="nowrap">
+                    <Skeleton height={20} width={150} />
+                    <Loader size={16} style={{ flexShrink: 0 }} />
+                  </Group>
+                  <Skeleton height={16} width={100} mt={4} />
                 </div>
-                <Badge variant="light" color={getBadgeColorForText(menu.isActive ? t('menu.active', language) : t('menu.inactive', language))}>
-                  {menu.isActive ? t('menu.active', language) : t('menu.inactive', language)}
-                </Badge>
+                <Skeleton height={24} width={60} radius="xl" />
               </Group>
               <Group>
-                <Button
-                  variant="light"
-                  onClick={() => handleAssignItems(menu.menuType)}
-                  style={{ color: primaryColor }}
-                >
-                  {t('menu.assignItems', language)}
-                </Button>
-                <Switch
-                  checked={menu.isActive}
-                  onChange={(e) => handleToggleMenu(menu.menuType, e.currentTarget.checked)}
-                  label={menu.isActive ? t('menu.active', language) : t('menu.inactive', language)}
-                />
-                {!defaultMenuTypes.includes(menu.menuType) && (
-                  <ActionIcon
-                    variant="light"
-                    color={errorColor}
-                    onClick={() => handleDeleteMenu(menu)}
-                  >
-                    <IconTrash size={16} />
-                  </ActionIcon>
-                )}
+                <Skeleton height={36} width={120} radius="md" />
+                <Skeleton height={20} width={60} />
               </Group>
             </Group>
           </Paper>
-        ))}
+        )}
+        {menus.map((menu) => {
+          const isUpdating = updatingMenuType === menu.menuType;
+          return (
+            <Paper key={menu.menuType} p="md" withBorder style={{ opacity: isUpdating ? 0.7 : 1, position: 'relative' }}>
+              {isUpdating ? (
+                <Group justify="space-between">
+                  <Group>
+                    <Skeleton height={24} width={24} radius="md" />
+                    <div>
+                      <Group gap="xs" wrap="nowrap">
+                        <Skeleton height={20} width={150} />
+                        <Loader size={16} style={{ flexShrink: 0 }} />
+                      </Group>
+                      <Skeleton height={16} width={100} mt={4} />
+                    </div>
+                    <Skeleton height={24} width={60} radius="xl" />
+                  </Group>
+                  <Group>
+                    <Skeleton height={36} width={120} radius="md" />
+                    <Skeleton height={20} width={60} />
+                  </Group>
+                </Group>
+              ) : (
+                <Group justify="space-between">
+                  <Group>
+                    <IconMenu2 size={24} color={primaryColor} />
+                    <div>
+                      <Text fw={500}>{menu.name || menu.menuType}</Text>
+                      <Text size="sm" c="dimmed">
+                        {menu.itemCount} {t('menu.foodItems', language)}
+                      </Text>
+                    </div>
+                    <Badge variant="light" color={getBadgeColorForText(menu.isActive ? t('menu.active', language) : t('menu.inactive', language))}>
+                      {menu.isActive ? t('menu.active', language) : t('menu.inactive', language)}
+                    </Badge>
+                  </Group>
+                  <Group>
+                    <Button
+                      variant="light"
+                      onClick={() => handleAssignItems(menu.menuType)}
+                      style={{ color: primaryColor }}
+                      disabled={deletingMenuType === menu.menuType || updatingMenuType === menu.menuType}
+                    >
+                      {t('menu.assignItems', language)}
+                    </Button>
+                    <Switch
+                      checked={menu.isActive}
+                      onChange={(e) => handleToggleMenu(menu.menuType, e.currentTarget.checked)}
+                      label={menu.isActive ? t('menu.active', language) : t('menu.inactive', language)}
+                      disabled={deletingMenuType === menu.menuType || updatingMenuType === menu.menuType}
+                    />
+                    {!defaultMenuTypes.includes(menu.menuType) && (
+                      <ActionIcon
+                        variant="light"
+                        color={errorColor}
+                        onClick={() => handleDeleteMenu(menu)}
+                        disabled={deletingMenuType === menu.menuType || updatingMenuType === menu.menuType}
+                      >
+                        {deletingMenuType === menu.menuType ? (
+                          <Loader size={16} />
+                        ) : (
+                          <IconTrash size={16} />
+                        )}
+                      </ActionIcon>
+                    )}
+                  </Group>
+                </Group>
+              )}
+            </Paper>
+          );
+        })}
       </Stack>
       )}
 
@@ -523,9 +614,15 @@ export function MenusPage() {
 
       <Modal
         opened={createModalOpened}
-        onClose={handleCloseCreateModal}
+        onClose={() => {
+          if (!submitting) {
+            handleCloseCreateModal();
+          }
+        }}
         title={t('menu.createMenu', language) || 'Create Menu'}
         size="lg"
+        closeOnClickOutside={!submitting}
+        closeOnEscape={!submitting}
       >
         <form onSubmit={form.onSubmit(handleCreateMenu)}>
           <Stack gap="md">
@@ -561,6 +658,8 @@ export function MenusPage() {
               <Button
                 type="submit"
                 style={{ backgroundColor: primaryColor }}
+                loading={submitting}
+                disabled={submitting}
               >
                 {t('common.create' as any, language) || 'Create'}
               </Button>

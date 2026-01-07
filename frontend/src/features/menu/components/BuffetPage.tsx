@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import { useForm } from '@mantine/form';
 import {
   Container,
@@ -24,6 +25,7 @@ import {
   MultiSelect,
   Table,
   Textarea,
+  Loader,
 } from '@mantine/core';
 import {
   IconPlus,
@@ -70,6 +72,10 @@ export function BuffetPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [pendingBuffet, setPendingBuffet] = useState<Partial<Buffet> | null>(null);
+  const [updatingBuffetId, setUpdatingBuffetId] = useState<string | null>(null);
+  const [deletingBuffetId, setDeletingBuffetId] = useState<string | null>(null);
 
   const form = useForm({
     initialValues: {
@@ -246,59 +252,97 @@ export function BuffetPage() {
   };
 
   const handleSubmit = async (values: typeof form.values) => {
-    if (!user?.tenantId) return;
+    if (!user?.tenantId || submitting) return;
+
+    // Set loading state immediately to show loader on button - use flushSync to ensure immediate update
+    flushSync(() => {
+      setSubmitting(true);
+    });
 
     const wasEditing = !!editingBuffet;
     const currentEditingBuffet = editingBuffet;
+    const currentEditingBuffetId = editingBuffet?.id;
     const currentImageFile = imageFile;
+
+    // Close modal immediately
     handleCloseModal();
 
-    (async () => {
-      try {
-        const buffetData = {
-          name: values.name,
-          description: values.description || undefined,
-          pricePerPerson: values.pricePerPerson,
-          minPersons: values.minPersons,
-          duration: values.duration,
-          menuTypes: values.menuTypes,
-          imageUrl: values.imageUrl || undefined,
-        };
+    // If editing, track which buffet is being updated to show skeleton
+    if (wasEditing && currentEditingBuffetId) {
+      setUpdatingBuffetId(currentEditingBuffetId);
+    }
 
-        let savedBuffet: Buffet;
+    // If creating a new buffet, add a skeleton item to show progress
+    if (!wasEditing) {
+      setPendingBuffet({
+        id: `pending-${Date.now()}`,
+        name: values.name,
+        description: values.description,
+        pricePerPerson: values.pricePerPerson,
+        minPersons: values.minPersons,
+        duration: values.duration,
+        menuTypes: values.menuTypes,
+        imageUrl: values.imageUrl || undefined,
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
 
-        if (wasEditing && currentEditingBuffet) {
-          savedBuffet = await menuApi.updateBuffet(currentEditingBuffet.id, buffetData);
-        } else {
-          savedBuffet = await menuApi.createBuffet(buffetData, selectedBranchId || undefined);
+    try {
+      const buffetData = {
+        name: values.name,
+        description: values.description || undefined,
+        pricePerPerson: values.pricePerPerson,
+        minPersons: values.minPersons,
+        duration: values.duration,
+        menuTypes: values.menuTypes,
+        imageUrl: values.imageUrl || undefined,
+      };
 
-          if (currentImageFile) {
-            try {
-              const updated = await menuApi.uploadBuffetImage(savedBuffet.id, currentImageFile);
-              savedBuffet = updated;
-            } catch (err) {
-              console.warn('Failed to upload image after buffet creation:', err);
-            }
+      let savedBuffet: Buffet;
+
+      if (wasEditing && currentEditingBuffet) {
+        savedBuffet = await menuApi.updateBuffet(currentEditingBuffet.id, buffetData);
+      } else {
+        savedBuffet = await menuApi.createBuffet(buffetData, selectedBranchId || undefined);
+
+        if (currentImageFile) {
+          try {
+            const updated = await menuApi.uploadBuffetImage(savedBuffet.id, currentImageFile);
+            savedBuffet = updated;
+          } catch (err) {
+            console.warn('Failed to upload image after buffet creation:', err);
           }
         }
-
-        notifications.show({
-          title: t('common.success' as any, language) || 'Success',
-          message: t('menu.saveSuccess', language),
-          color: successColor,
-        });
-
-        loadData();
-        notifyMenuDataUpdate('buffets-updated');
-      } catch (err: any) {
-        const errorMsg = err.response?.data?.message || err.message || 'Failed to save buffet';
-        notifications.show({
-          title: t('common.error' as any, language) || 'Error',
-          message: errorMsg,
-          color: errorColor,
-        });
       }
-    })();
+
+      notifications.show({
+        title: t('common.success' as any, language) || 'Success',
+        message: t('menu.saveSuccess', language),
+        color: successColor,
+      });
+
+      // Remove pending buffet skeleton and updating state
+      setPendingBuffet(null);
+      setUpdatingBuffetId(null);
+
+      loadData();
+      notifyMenuDataUpdate('buffets-updated');
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || err.message || 'Failed to save buffet';
+      notifications.show({
+        title: t('common.error' as any, language) || 'Error',
+        message: errorMsg,
+        color: errorColor,
+      });
+      
+      // Remove pending buffet skeleton and updating state on error
+      setPendingBuffet(null);
+      setUpdatingBuffetId(null);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleDelete = (buffet: Buffet) => {
@@ -311,6 +355,7 @@ export function BuffetPage() {
       },
       confirmProps: { color: errorColor },
       onConfirm: async () => {
+        setDeletingBuffetId(buffet.id);
         try {
           await menuApi.deleteBuffet(buffet.id);
         notifications.show({
@@ -318,9 +363,11 @@ export function BuffetPage() {
           message: t('menu.deleteSuccess', language),
           color: successColor,
         });
+          setDeletingBuffetId(null);
           loadData();
           notifyMenuDataUpdate('buffets-updated');
         } catch (err: any) {
+          setDeletingBuffetId(null);
           notifications.show({
             title: t('common.error' as any, language) || 'Error',
             message: err.message || 'Failed to delete buffet',
@@ -417,113 +464,198 @@ export function BuffetPage() {
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {buffets.map((buffet) => (
-                    <Table.Tr key={buffet.id}>
+                  {/* Show pending buffet skeleton when creating */}
+                  {pendingBuffet && !editingBuffet && (
+                    <Table.Tr key={pendingBuffet.id} style={{ opacity: 0.7, position: 'relative' }}>
                       <Table.Td style={{ maxWidth: 300 }}>
                         <Group gap="sm" wrap="nowrap">
-                          {buffet.imageUrl ? (
-                            <Box
-                          w={40}
-                          h={40}
-                          style={{
-                            flexShrink: 0,
-                            borderRadius: 'var(--mantine-radius-sm)',
-                            overflow: 'hidden',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <Image
-                            src={buffet.imageUrl}
-                            alt={buffet.name}
-                            width={40}
-                            height={40}
-                            fit="cover"
-                            style={{
-                              width: '100%',
-                              height: '100%',
-                              objectFit: 'cover',
-                              objectPosition: 'center',
-                            }}
-                          />
-                        </Box>
-                          ) : (
-                            <Box
-                              w={40}
-                              h={40}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                backgroundColor: `${primaryColor}15`,
-                                borderRadius: '4px',
-                                flexShrink: 0,
-                              }}
-                            >
-                              <IconToolsKitchen2 size={20} color={primaryColor} />
-                            </Box>
-                          )}
+                          <Skeleton height={40} width={40} radius="md" />
                           <div style={{ minWidth: 0, flex: 1 }}>
-                            <Text fw={500} truncate>
-                              {buffet.name}
-                            </Text>
-                            {buffet.description && (
-                              <Text size="xs" c="dimmed" lineClamp={1}>
-                                {buffet.description}
-                              </Text>
-                            )}
+                            <Group gap="xs" wrap="nowrap">
+                              <Skeleton height={16} width={150} />
+                              <Loader size={16} style={{ flexShrink: 0 }} />
+                            </Group>
+                            <Skeleton height={12} width={200} mt={4} />
                           </div>
                         </Group>
                       </Table.Td>
                       <Table.Td>
-                        <Text fw={500}>{buffet.pricePerPerson.toFixed(2)}</Text>
+                        <Skeleton height={16} width={80} />
                       </Table.Td>
                       <Table.Td>
-                        <Text size="sm" c="dimmed">
-                          {t('menu.unlimited', language) || 'Unlimited'}
-                        </Text>
+                        <Skeleton height={16} width={80} />
                       </Table.Td>
                       <Table.Td>
-                        {buffet.menuTypes && buffet.menuTypes.length > 0 ? (
-                          <Group gap={4} wrap="wrap" style={{ maxWidth: 200 }}>
-                            {buffet.menuTypes.map((menuType) => (
-                              <Badge key={menuType} variant="light" size="sm" style={{ color: primaryColor }}>
-                                {getMenuName(menuType)}
-                              </Badge>
-                            ))}
-                          </Group>
-                        ) : (
-                          <Text c="dimmed" size="sm">
-                            -
-                          </Text>
-                        )}
+                        <Skeleton height={24} width={120} radius="xl" />
                       </Table.Td>
                       <Table.Td>
-                        <Badge 
-                          variant="light" 
-                          color={buffet.isActive ? successColor : getBadgeColorForText(t('menu.inactive', language) || 'Inactive')} 
-                          size="sm"
-                        >
-                          {buffet.isActive ? t('menu.active', language) : t('menu.inactive', language)}
-                        </Badge>
+                        <Skeleton height={24} width={60} radius="xl" />
                       </Table.Td>
                       <Table.Td>
                         <Group gap="xs" wrap="nowrap">
-                          <ActionIcon
-                            variant="light"
-                            onClick={() => handleOpenModal(buffet)}
-                            style={{ color: primaryColor }}
-                          >
-                            <IconEdit size={16} />
-                          </ActionIcon>
-                          <ActionIcon variant="light" color={errorColor} onClick={() => handleDelete(buffet)}>
-                            <IconTrash size={16} />
-                          </ActionIcon>
+                          <Skeleton height={32} width={32} radius="md" />
+                          <Skeleton height={32} width={32} radius="md" />
                         </Group>
                       </Table.Td>
                     </Table.Tr>
-                  ))}
+                  )}
+                  {buffets.map((buffet) => {
+                    const isUpdating = updatingBuffetId === buffet.id;
+                    return (
+                      <Table.Tr key={buffet.id} style={{ opacity: isUpdating ? 0.7 : 1, position: 'relative' }}>
+                        {isUpdating ? (
+                          <>
+                            <Table.Td style={{ maxWidth: 300 }}>
+                              <Group gap="sm" wrap="nowrap">
+                                <Skeleton height={40} width={40} radius="md" />
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                  <Group gap="xs" wrap="nowrap">
+                                    <Skeleton height={16} width={150} />
+                                    <Loader size={16} style={{ flexShrink: 0 }} />
+                                  </Group>
+                                  <Skeleton height={12} width={200} mt={4} />
+                                </div>
+                              </Group>
+                            </Table.Td>
+                            <Table.Td>
+                              <Skeleton height={16} width={80} />
+                            </Table.Td>
+                            <Table.Td>
+                              <Skeleton height={16} width={80} />
+                            </Table.Td>
+                            <Table.Td>
+                              <Skeleton height={24} width={120} radius="xl" />
+                            </Table.Td>
+                            <Table.Td>
+                              <Skeleton height={24} width={60} radius="xl" />
+                            </Table.Td>
+                            <Table.Td>
+                              <Group gap="xs" wrap="nowrap">
+                                <Skeleton height={32} width={32} radius="md" />
+                                <Skeleton height={32} width={32} radius="md" />
+                              </Group>
+                            </Table.Td>
+                          </>
+                        ) : (
+                          <>
+                            <Table.Td style={{ maxWidth: 300 }}>
+                              <Group gap="sm" wrap="nowrap">
+                                {buffet.imageUrl ? (
+                                  <Box
+                            w={40}
+                            h={40}
+                            style={{
+                              flexShrink: 0,
+                              borderRadius: 'var(--mantine-radius-sm)',
+                              overflow: 'hidden',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Image
+                              src={buffet.imageUrl}
+                              alt={buffet.name}
+                              width={40}
+                              height={40}
+                              fit="cover"
+                              style={{
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'cover',
+                                objectPosition: 'center',
+                              }}
+                            />
+                          </Box>
+                                ) : (
+                                  <Box
+                                    w={40}
+                                    h={40}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      backgroundColor: `${primaryColor}15`,
+                                      borderRadius: '4px',
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    <IconToolsKitchen2 size={20} color={primaryColor} />
+                                  </Box>
+                                )}
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                  <Text fw={500} truncate>
+                                    {buffet.name}
+                                  </Text>
+                                  {buffet.description && (
+                                    <Text size="xs" c="dimmed" lineClamp={1}>
+                                      {buffet.description}
+                                    </Text>
+                                  )}
+                                </div>
+                              </Group>
+                            </Table.Td>
+                            <Table.Td>
+                              <Text fw={500}>{buffet.pricePerPerson.toFixed(2)}</Text>
+                            </Table.Td>
+                            <Table.Td>
+                              <Text size="sm" c="dimmed">
+                                {t('menu.unlimited', language) || 'Unlimited'}
+                              </Text>
+                            </Table.Td>
+                            <Table.Td>
+                              {buffet.menuTypes && buffet.menuTypes.length > 0 ? (
+                                <Group gap={4} wrap="wrap" style={{ maxWidth: 200 }}>
+                                  {buffet.menuTypes.map((menuType) => (
+                                    <Badge key={menuType} variant="light" size="sm" style={{ color: primaryColor }}>
+                                      {getMenuName(menuType)}
+                                    </Badge>
+                                  ))}
+                                </Group>
+                              ) : (
+                                <Text c="dimmed" size="sm">
+                                  -
+                                </Text>
+                              )}
+                            </Table.Td>
+                            <Table.Td>
+                              <Badge 
+                                variant="light" 
+                                color={buffet.isActive ? successColor : getBadgeColorForText(t('menu.inactive', language) || 'Inactive')} 
+                                size="sm"
+                              >
+                                {buffet.isActive ? t('menu.active', language) : t('menu.inactive', language)}
+                              </Badge>
+                            </Table.Td>
+                            <Table.Td>
+                              <Group gap="xs" wrap="nowrap">
+                                <ActionIcon
+                                  variant="light"
+                                  onClick={() => handleOpenModal(buffet)}
+                                  style={{ color: primaryColor }}
+                                  disabled={deletingBuffetId === buffet.id || updatingBuffetId === buffet.id}
+                                >
+                                  <IconEdit size={16} />
+                                </ActionIcon>
+                                <ActionIcon 
+                                  variant="light" 
+                                  color={errorColor} 
+                                  onClick={() => handleDelete(buffet)}
+                                  disabled={deletingBuffetId === buffet.id || updatingBuffetId === buffet.id}
+                                >
+                                  {deletingBuffetId === buffet.id ? (
+                                    <Loader size={16} />
+                                  ) : (
+                                    <IconTrash size={16} />
+                                  )}
+                                </ActionIcon>
+                              </Group>
+                            </Table.Td>
+                          </>
+                        )}
+                      </Table.Tr>
+                    );
+                  })}
                 </Table.Tbody>
               </Table>
             </Table.ScrollContainer>
@@ -546,7 +678,18 @@ export function BuffetPage() {
         </>
       )}
 
-      <Modal opened={opened} onClose={handleCloseModal} title={editingBuffet ? t('menu.editBuffet', language) : t('menu.createBuffet', language)} size="xl">
+      <Modal 
+        opened={opened} 
+        onClose={() => {
+          if (!submitting) {
+            handleCloseModal();
+          }
+        }}
+        title={editingBuffet ? t('menu.editBuffet', language) : t('menu.createBuffet', language)} 
+        size="xl"
+        closeOnClickOutside={!submitting}
+        closeOnEscape={!submitting}
+      >
         <form onSubmit={form.onSubmit(handleSubmit)}>
           <Stack gap="md">
             <Grid>
@@ -657,7 +800,12 @@ export function BuffetPage() {
               <Button variant="subtle" onClick={handleCloseModal}>
                 {t('common.cancel' as any, language) || 'Cancel'}
               </Button>
-              <Button type="submit" style={{ backgroundColor: primaryColor }}>
+              <Button 
+                type="submit" 
+                style={{ backgroundColor: primaryColor }}
+                loading={submitting}
+                disabled={submitting}
+              >
                 {t('common.save' as any, language) || 'Save'}
               </Button>
             </Group>
