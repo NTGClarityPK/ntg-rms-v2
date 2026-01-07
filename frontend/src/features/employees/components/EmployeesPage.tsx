@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { flushSync } from 'react-dom';
 import { useForm } from '@mantine/form';
 import {
   Title,
@@ -22,6 +23,7 @@ import {
   NumberInput,
   MultiSelect,
   PasswordInput,
+  Loader,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import {
@@ -83,6 +85,10 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [pendingEmployee, setPendingEmployee] = useState<Partial<Employee> | null>(null);
+  const [updatingEmployeeId, setUpdatingEmployeeId] = useState<string | null>(null);
+  const [deletingEmployeeId, setDeletingEmployeeId] = useState<string | null>(null);
 
   const form = useForm({
     initialValues: {
@@ -223,12 +229,48 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
   };
 
   const handleSubmit = async (values: typeof form.values) => {
-    if (!user?.tenantId) return;
+    if (!user?.tenantId || submitting) return;
+
+    // Set loading state immediately to show loader on button - use flushSync to ensure immediate update
+    flushSync(() => {
+      setSubmitting(true);
+    });
+
+    const wasEditing = !!editingEmployee;
+    const currentEditingEmployee = editingEmployee;
+    const currentEditingEmployeeId = editingEmployee?.id;
+
+    // Close modal immediately
+    handleCloseModal();
+
+    // If editing, track which employee is being updated to show skeleton
+    if (wasEditing && currentEditingEmployeeId) {
+      setUpdatingEmployeeId(currentEditingEmployeeId);
+    }
+
+    // If creating a new employee, add a skeleton item to show progress
+    if (!wasEditing) {
+      setPendingEmployee({
+        id: `pending-${Date.now()}`,
+        name: values.name,
+        email: values.email,
+        phone: values.phone,
+        employeeId: values.employeeId,
+        employmentType: values.employmentType,
+        isActive: values.isActive,
+        roles: values.roleIds.map(roleId => {
+          const role = roles.find(r => r.id === roleId);
+          return role ? { id: role.id, name: role.name } as Role : null;
+        }).filter(Boolean) as Role[],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
 
     try {
       setError(null);
 
-      if (editingEmployee) {
+      if (wasEditing && currentEditingEmployee) {
         // Update
         const updateDto: UpdateEmployeeDto = {
           name: values.name,
@@ -245,7 +287,7 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
           branchIds: values.branchIds,
         };
 
-        const updated = await employeesApi.updateEmployee(editingEmployee.id, updateDto);
+        const updated = await employeesApi.updateEmployee(currentEditingEmployee.id, updateDto);
         setEmployees((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
 
         notifications.show({
@@ -282,7 +324,10 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
         });
       }
 
-      handleCloseModal();
+      // Remove pending employee skeleton and updating state
+      setPendingEmployee(null);
+      setUpdatingEmployeeId(null);
+
       // Reload employees to get fresh data with roles
       await loadEmployees();
     } catch (err: any) {
@@ -292,6 +337,12 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
         errorColor: notificationColors.error,
       });
       setError(errorMsg);
+      
+      // Remove pending employee skeleton and updating state on error
+      setPendingEmployee(null);
+      setUpdatingEmployeeId(null);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -306,6 +357,7 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
       labels: { confirm: t('common.delete' as any, language) || 'Delete', cancel: t('common.cancel' as any, language) || 'Cancel' },
       confirmProps: { color: errorColor },
       onConfirm: async () => {
+        setDeletingEmployeeId(employee.id);
         try {
           await employeesApi.deleteEmployee(employee.id);
           setEmployees((prev) => prev.filter((e) => e.id !== employee.id));
@@ -315,7 +367,10 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
             message: t('employees.deleteSuccess', language),
             color: notificationColors.success,
           });
+          
+          setDeletingEmployeeId(null);
         } catch (err: any) {
+          setDeletingEmployeeId(null);
           handleApiError(err, {
             defaultMessage: 'Failed to delete employee',
             language,
@@ -453,88 +508,171 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {filteredEmployees.length === 0 ? (
+                {/* Show pending employee skeleton when creating */}
+                {pendingEmployee && !editingEmployee && (
+                  <Table.Tr key={pendingEmployee.id} style={{ opacity: 0.7, position: 'relative' }}>
+                    <Table.Td>
+                      <Group gap="xs" wrap="nowrap">
+                        <Skeleton height={16} width={150} />
+                        <Loader size={16} style={{ flexShrink: 0 }} />
+                      </Group>
+                    </Table.Td>
+                    <Table.Td>
+                      <Skeleton height={16} width={200} />
+                    </Table.Td>
+                    <Table.Td>
+                      <Skeleton height={24} width={100} radius="xl" />
+                    </Table.Td>
+                    <Table.Td>
+                      <Skeleton height={16} width={100} />
+                    </Table.Td>
+                    <Table.Td>
+                      <Skeleton height={16} width={80} />
+                    </Table.Td>
+                    <Table.Td>
+                      <Skeleton height={24} width={60} radius="xl" />
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap="xs" wrap="nowrap">
+                        <Skeleton height={32} width={32} radius="md" />
+                        <Skeleton height={32} width={32} radius="md" />
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                )}
+                {filteredEmployees.length === 0 && !pendingEmployee ? (
                   <Table.Tr>
                     <Table.Td colSpan={7} ta="center" py="xl">
                       <Text c="dimmed">{t('employees.noEmployees', language)}</Text>
                     </Table.Td>
                   </Table.Tr>
                 ) : (
-                  filteredEmployees.map((employee) => (
-                    <Table.Tr key={employee.id}>
-                      <Table.Td>
-                        <Text fw={500}>
-                          {employee.name}
-                        </Text>
-                        {employee.employeeId && (
-                          <Text size="xs" c="dimmed">
-                            {t('employees.employeeId', language)}: {employee.employeeId}
-                          </Text>
-                        )}
-                      </Table.Td>
-                      <Table.Td>{employee.email}</Table.Td>
-                      <Table.Td>
-                        <Group gap="xs">
-                          {(() => {
-                            // Debug: log employee roles
-                            if (employee.name === 'Lingo' || employee.email === 'lingo@gmail.com') {
-                              console.log('Lingo employee data:', {
-                                name: employee.name,
-                                roles: employee.roles,
-                                role: employee.role,
-                                fullEmployee: employee
-                              });
-                            }
-                            
-                            // Display multiple roles if available
-                            if (employee.roles && Array.isArray(employee.roles) && employee.roles.length > 0) {
-                              return employee.roles.map((role) => {
-                                const roleLabel = getRoleLabel(role.name);
-                                return (
-                                  <Badge key={role.id} color={getBadgeColorForText(roleLabel)} variant="light">
-                                    {roleLabel}
-                                  </Badge>
-                                );
-                              });
-                            }
-                            // Fallback to single role
-                            return (
-                              <Badge color={primaryColor} variant="light">
-                                {getRoleLabel(employee.role)}
+                  filteredEmployees.map((employee) => {
+                    const isUpdating = updatingEmployeeId === employee.id;
+                    return (
+                      <Table.Tr key={employee.id} style={{ opacity: isUpdating ? 0.7 : 1, position: 'relative' }}>
+                        {isUpdating ? (
+                          <>
+                            <Table.Td>
+                              <Group gap="xs" wrap="nowrap">
+                                <Skeleton height={16} width={150} />
+                                <Loader size={16} style={{ flexShrink: 0 }} />
+                              </Group>
+                            </Table.Td>
+                            <Table.Td>
+                              <Skeleton height={16} width={200} />
+                            </Table.Td>
+                            <Table.Td>
+                              <Skeleton height={24} width={100} radius="xl" />
+                            </Table.Td>
+                            <Table.Td>
+                              <Skeleton height={16} width={100} />
+                            </Table.Td>
+                            <Table.Td>
+                              <Skeleton height={16} width={80} />
+                            </Table.Td>
+                            <Table.Td>
+                              <Skeleton height={24} width={60} radius="xl" />
+                            </Table.Td>
+                            <Table.Td>
+                              <Group gap="xs" wrap="nowrap">
+                                <Skeleton height={32} width={32} radius="md" />
+                                <Skeleton height={32} width={32} radius="md" />
+                              </Group>
+                            </Table.Td>
+                          </>
+                        ) : (
+                          <>
+                            <Table.Td>
+                              <Text fw={500}>
+                                {employee.name}
+                              </Text>
+                              {employee.employeeId && (
+                                <Text size="xs" c="dimmed">
+                                  {t('employees.employeeId', language)}: {employee.employeeId}
+                                </Text>
+                              )}
+                            </Table.Td>
+                            <Table.Td>{employee.email}</Table.Td>
+                            <Table.Td>
+                              <Group gap="xs">
+                                {(() => {
+                                  // Debug: log employee roles
+                                  if (employee.name === 'Lingo' || employee.email === 'lingo@gmail.com') {
+                                    console.log('Lingo employee data:', {
+                                      name: employee.name,
+                                      roles: employee.roles,
+                                      role: employee.role,
+                                      fullEmployee: employee
+                                    });
+                                  }
+                                  
+                                  // Display multiple roles if available
+                                  if (employee.roles && Array.isArray(employee.roles) && employee.roles.length > 0) {
+                                    return employee.roles.map((role) => {
+                                      const roleLabel = getRoleLabel(role.name);
+                                      return (
+                                        <Badge key={role.id} color={getBadgeColorForText(roleLabel)} variant="light">
+                                          {roleLabel}
+                                        </Badge>
+                                      );
+                                    });
+                                  }
+                                  // Fallback to single role
+                                  return (
+                                    <Badge color={primaryColor} variant="light">
+                                      {getRoleLabel(employee.role)}
+                                    </Badge>
+                                  );
+                                })()}
+                              </Group>
+                            </Table.Td>
+                            <Table.Td>{employee.phone || '-'}</Table.Td>
+                            <Table.Td>{getEmploymentTypeLabel(employee.employmentType)}</Table.Td>
+                            <Table.Td>
+                              <Badge
+                                color={employee.isActive ? successColor : errorColor}
+                                variant="light"
+                                leftSection={employee.isActive ? <IconCircleCheck size={12} /> : <IconCircleX size={12} />}
+                              >
+                                {employee.isActive
+                                  ? (t('common.active' as any, language) || 'Active')
+                                  : (t('common.inactive' as any, language) || 'Inactive')}
                               </Badge>
-                            );
-                          })()}
-                        </Group>
-                      </Table.Td>
-                      <Table.Td>{employee.phone || '-'}</Table.Td>
-                      <Table.Td>{getEmploymentTypeLabel(employee.employmentType)}</Table.Td>
-                      <Table.Td>
-                        <Badge
-                          color={employee.isActive ? successColor : errorColor}
-                          variant="light"
-                          leftSection={employee.isActive ? <IconCircleCheck size={12} /> : <IconCircleX size={12} />}
-                        >
-                          {employee.isActive
-                            ? (t('common.active' as any, language) || 'Active')
-                            : (t('common.inactive' as any, language) || 'Inactive')}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        <Group gap="xs">
-                          <PermissionGuard resource="employees" action="update">
-                            <ActionIcon variant="subtle" color={primaryColor} onClick={() => handleOpenModal(employee)}>
-                              <IconEdit size={16} />
-                            </ActionIcon>
-                          </PermissionGuard>
-                          <PermissionGuard resource="employees" action="delete">
-                            <ActionIcon variant="subtle" color={errorColor} onClick={() => handleDelete(employee)}>
-                              <IconTrash size={16} />
-                            </ActionIcon>
-                          </PermissionGuard>
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))
+                            </Table.Td>
+                            <Table.Td>
+                              <Group gap="xs">
+                                <PermissionGuard resource="employees" action="update">
+                                  <ActionIcon 
+                                    variant="subtle" 
+                                    color={primaryColor} 
+                                    onClick={() => handleOpenModal(employee)}
+                                    disabled={deletingEmployeeId === employee.id || updatingEmployeeId === employee.id}
+                                  >
+                                    <IconEdit size={16} />
+                                  </ActionIcon>
+                                </PermissionGuard>
+                                <PermissionGuard resource="employees" action="delete">
+                                  <ActionIcon 
+                                    variant="subtle" 
+                                    color={errorColor} 
+                                    onClick={() => handleDelete(employee)}
+                                    disabled={deletingEmployeeId === employee.id || updatingEmployeeId === employee.id}
+                                  >
+                                    {deletingEmployeeId === employee.id ? (
+                                      <Loader size={16} />
+                                    ) : (
+                                      <IconTrash size={16} />
+                                    )}
+                                  </ActionIcon>
+                                </PermissionGuard>
+                              </Group>
+                            </Table.Td>
+                          </>
+                        )}
+                      </Table.Tr>
+                    );
+                  })
                 )}
               </Table.Tbody>
             </Table>
@@ -561,9 +699,15 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
 
       <Modal
         opened={opened}
-        onClose={handleCloseModal}
+        onClose={() => {
+          if (!submitting) {
+            handleCloseModal();
+          }
+        }}
         title={editingEmployee ? t('employees.editEmployee', language) : t('employees.addEmployee', language)}
         size="lg"
+        closeOnClickOutside={!submitting}
+        closeOnEscape={!submitting}
       >
         <form onSubmit={form.onSubmit(handleSubmit)}>
           <Stack gap="md">
@@ -685,7 +829,13 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
               <Button variant="default" onClick={handleCloseModal}>
                 {t('common.cancel' as any, language) || 'Cancel'}
               </Button>
-              <Button type="submit">{t('common.save' as any, language) || 'Save'}</Button>
+              <Button 
+                type="submit"
+                loading={submitting}
+                disabled={submitting}
+              >
+                {t('common.save' as any, language) || 'Save'}
+              </Button>
             </Group>
           </Stack>
         </form>
