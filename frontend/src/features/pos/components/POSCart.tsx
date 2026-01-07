@@ -162,6 +162,7 @@ export function POSCart({
   const [newCustomerEmail, setNewCustomerEmail] = useState('');
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
   const [editingItem, setEditingItem] = useState<any>(null);
+  const [editingItemLoadingIndex, setEditingItemLoadingIndex] = useState<number | null>(null);
   const [manualDiscount, setManualDiscount] = useState<number>(0);
   const [couponCode, setCouponCode] = useState<string>('');
   const [appliedCouponDiscount, setAppliedCouponDiscount] = useState<number>(0);
@@ -360,30 +361,37 @@ export function POSCart({
   };
 
   const handleEditItem = async (index: number, item: CartItem) => {
-    // Check if item is a buffet or combo meal (these typically can't be edited in the same way)
-    if (item.buffetId || item.comboMealId) {
-      // For buffets and combo meals, we can still allow editing quantity and special instructions
-      setEditingItem({ 
-        ...item, 
-        cartItemIndex: index,
-        isBuffet: !!item.buffetId,
-        isComboMeal: !!item.comboMealId,
-      });
-      setEditingItemIndex(index);
-      return;
-    }
+    setEditingItemLoadingIndex(index);
     
-    // Load food item details only if it's a food item
-    if (item.foodItemId) {
-      try {
-        const foodItem = await menuApi.getFoodItemById(item.foodItemId);
-        if (foodItem) {
-          setEditingItem({ ...foodItem, cartItemIndex: index });
-          setEditingItemIndex(index);
-        }
-      } catch (error) {
-        console.error('Failed to load food item:', error);
+    try {
+      // Check if item is a buffet or combo meal (these typically can't be edited in the same way)
+      if (item.buffetId || item.comboMealId) {
+        // For buffets and combo meals, we can still allow editing quantity and special instructions
+        setEditingItem({ 
+          ...item, 
+          cartItemIndex: index,
+          isBuffet: !!item.buffetId,
+          isComboMeal: !!item.comboMealId,
+        });
+        setEditingItemIndex(index);
+        setEditingItemLoadingIndex(null);
+        return;
       }
+      
+      // Load food item details only if it's a food item
+      if (item.foodItemId) {
+        try {
+          const foodItem = await menuApi.getFoodItemById(item.foodItemId);
+          if (foodItem) {
+            setEditingItem({ ...foodItem, cartItemIndex: index });
+            setEditingItemIndex(index);
+          }
+        } catch (error) {
+          console.error('Failed to load food item:', error);
+        }
+      }
+    } finally {
+      setEditingItemLoadingIndex(null);
     }
   };
 
@@ -1511,9 +1519,14 @@ export function POSCart({
                             {formatCurrency(item.subtotal, currency)}
                           </Text>
                           <Button
-                            variant="subtle"
+                            variant={editingItemLoadingIndex === index ? "filled" : "subtle"}
                             size="xs"
+                            color={primaryColor}
                             onClick={() => handleEditItem(index, item)}
+                            loading={editingItemLoadingIndex === index}
+                            disabled={editingItemLoadingIndex === index}
+                            loaderProps={{ size: 14 }}
+                            style={{ minWidth: '60px' }}
                           >
                             {t('common.edit' as any, language) || 'Edit'}
                           </Button>
