@@ -90,6 +90,8 @@ export default function DeliveryPage() {
   const [assigningDelivery, setAssigningDelivery] = useState(false);
   const [selectedPersonnelId, setSelectedPersonnelId] = useState<string>('');
   const [estimatedTime, setEstimatedTime] = useState<Date | null>(null);
+  const [actionPending, setActionPending] = useState(false);
+  const [pendingDeliveryId, setPendingDeliveryId] = useState<string | null>(null);
 
   const loadPersonnel = useCallback(async () => {
     try {
@@ -198,6 +200,10 @@ export default function DeliveryPage() {
     );
 
     setAssigningDelivery(true);
+    setActionPending(true);
+    if (selectedDelivery) {
+      setPendingDeliveryId(selectedDelivery.id);
+    }
     try {
       const assignDto: AssignDeliveryDto = {
         orderId: selectedDelivery.orderId,
@@ -226,10 +232,14 @@ export default function DeliveryPage() {
       });
     } finally {
       setAssigningDelivery(false);
+      setActionPending(false);
+      setPendingDeliveryId(null);
     }
   };
 
   const handleUpdateStatus = async (delivery: DeliveryOrder, newStatus: DeliveryStatus) => {
+    setActionPending(true);
+    setPendingDeliveryId(delivery.id);
 
     // Optimistic update: update delivery status immediately
     const previousDeliveries = deliveries;
@@ -266,6 +276,9 @@ export default function DeliveryPage() {
         message: error?.response?.data?.message || t('delivery.updateError' as any, language) || 'Failed to update status',
         color: getErrorColor(),
       });
+    } finally {
+      setActionPending(false);
+      setPendingDeliveryId(null);
     }
   };
 
@@ -340,7 +353,7 @@ export default function DeliveryPage() {
             variant="light"
             size="lg"
             onClick={() => loadDeliveries(false)}
-            loading={loading}
+            loading={loading || actionPending}
             title={t('common.refresh' as any, language)}
           >
             <IconRefresh size={18} />
@@ -565,11 +578,15 @@ export default function DeliveryPage() {
                           )}
                         </Group>
                       </Stack>
-                      <Menu>
+                      <Menu disabled={pendingDeliveryId === delivery.id}>
                         <Menu.Target>
-                          <ActionIcon variant="subtle">
-                            <IconDotsVertical size={16} />
-                          </ActionIcon>
+                          {pendingDeliveryId === delivery.id ? (
+                            <Skeleton height={34} width={34} circle />
+                          ) : (
+                            <ActionIcon variant="subtle">
+                              <IconDotsVertical size={16} />
+                            </ActionIcon>
+                          )}
                         </Menu.Target>
                         <Menu.Dropdown>
                           {delivery.status === 'pending' && (
