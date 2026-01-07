@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { flushSync } from 'react-dom';
 import { useForm } from '@mantine/form';
 import {
   Title,
@@ -21,6 +22,7 @@ import {
   Tabs,
   Card,
   Divider,
+  Loader,
 } from '@mantine/core';
 import {
   IconPlus,
@@ -82,6 +84,9 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
+  const [updatingCustomerId, setUpdatingCustomerId] = useState<string | null>(null);
 
   const form = useForm({
     initialValues: {
@@ -194,6 +199,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
   };
 
   const handleCloseModal = () => {
+    if (submitting) return;
     setOpened(false);
     setEditingCustomer(null);
     form.reset();
@@ -229,7 +235,11 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
   const handleSubmit = async (values: typeof form.values) => {
     if (!user?.tenantId) return;
 
-    setIsSubmitting(true);
+    flushSync(() => {
+      setSubmitting(true);
+      setIsSubmitting(true);
+    });
+
     try {
       setError(null);
 
@@ -243,6 +253,10 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
           preferredLanguage: values.preferredLanguage,
           notes: values.notes || undefined,
         };
+
+        setUpdatingCustomerId(editingCustomer.id);
+        setOpened(false);
+        setEditingCustomer(null);
 
         const updated = await customersApi.updateCustomer(editingCustomer.id, updateDto);
         setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
@@ -272,6 +286,28 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
             : undefined,
         };
 
+        const tempCustomer: Customer = {
+          id: 'pending',
+          name: values.name,
+          phone: values.phone,
+          email: values.email || '',
+          dateOfBirth: values.dateOfBirth ? values.dateOfBirth.toISOString().split('T')[0] : undefined,
+          preferredLanguage: values.preferredLanguage,
+          notes: values.notes || '',
+          totalOrders: 0,
+          totalSpent: 0,
+          averageOrderValue: 0,
+          loyaltyTier: 'regular',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          tenantId: user.tenantId,
+        };
+
+        setPendingCustomer(tempCustomer);
+        setOpened(false);
+        setEditingCustomer(null);
+        form.reset();
+
         const created = await customersApi.createCustomer(createDto, selectedBranchId || undefined);
         setCustomers((prev) => [created, ...prev]);
 
@@ -282,7 +318,6 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
         });
       }
 
-      handleCloseModal();
       loadCustomers();
     } catch (err: any) {
       const errorMsg = err.response?.data?.error?.message || err.message || 'Failed to save customer';
@@ -293,8 +328,18 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
         color: notificationColors.error,
         icon: <IconAlertCircle size={16} />,
       });
+      // Reopen modal on error
+      if (editingCustomer) {
+        setOpened(true);
+        setEditingCustomer(editingCustomer);
+      } else {
+        setOpened(true);
+      }
     } finally {
+      setSubmitting(false);
       setIsSubmitting(false);
+      setPendingCustomer(null);
+      setUpdatingCustomerId(null);
     }
   };
 
@@ -367,7 +412,36 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {filteredCustomers.length === 0 ? (
+                {pendingCustomer && (
+                  <Table.Tr>
+                    <Table.Td>
+                      <Group gap="xs">
+                        <Loader size="sm" />
+                        <Skeleton height={20} width={150} />
+                      </Group>
+                      <Skeleton height={12} width={200} mt={4} />
+                    </Table.Td>
+                    <Table.Td>
+                      <Skeleton height={20} width={120} />
+                    </Table.Td>
+                    <Table.Td>
+                      <Skeleton height={24} width={40} />
+                    </Table.Td>
+                    <Table.Td>
+                      <Skeleton height={20} width={80} />
+                    </Table.Td>
+                    <Table.Td>
+                      <Skeleton height={24} width={100} />
+                    </Table.Td>
+                    <Table.Td>
+                      <Skeleton height={20} width={100} />
+                    </Table.Td>
+                    <Table.Td>
+                      <Skeleton height={32} width={80} />
+                    </Table.Td>
+                  </Table.Tr>
+                )}
+                {filteredCustomers.length === 0 && !pendingCustomer ? (
                   <Table.Tr>
                     <Table.Td colSpan={7} ta="center" py="xl">
                       <Text c="dimmed">{t('customers.noCustomers', language)}</Text>
@@ -376,6 +450,40 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
                 ) : (
                   filteredCustomers.map((customer) => {
                     const tierInfo = getLoyaltyTierInfo(customer.loyaltyTier);
+                    const isUpdating = updatingCustomerId === customer.id;
+                    
+                    if (isUpdating) {
+                      return (
+                        <Table.Tr key={customer.id}>
+                          <Table.Td>
+                            <Group gap="xs">
+                              <Loader size="sm" />
+                              <Skeleton height={20} width={150} />
+                            </Group>
+                            <Skeleton height={12} width={200} mt={4} />
+                          </Table.Td>
+                          <Table.Td>
+                            <Skeleton height={20} width={120} />
+                          </Table.Td>
+                          <Table.Td>
+                            <Skeleton height={24} width={40} />
+                          </Table.Td>
+                          <Table.Td>
+                            <Skeleton height={20} width={80} />
+                          </Table.Td>
+                          <Table.Td>
+                            <Skeleton height={24} width={100} />
+                          </Table.Td>
+                          <Table.Td>
+                            <Skeleton height={20} width={100} />
+                          </Table.Td>
+                          <Table.Td>
+                            <Skeleton height={32} width={80} />
+                          </Table.Td>
+                        </Table.Tr>
+                      );
+                    }
+                    
                     return (
                       <Table.Tr key={customer.id}>
                         <Table.Td>
@@ -417,10 +525,16 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
                               variant="subtle"
                               color={primaryColor}
                               onClick={() => handleViewProfile(customer)}
+                              disabled={submitting || updatingCustomerId === customer.id}
                             >
                               <IconUser size={16} />
                             </ActionIcon>
-                            <ActionIcon variant="subtle" color={primaryColor} onClick={() => handleOpenModal(customer)}>
+                            <ActionIcon 
+                              variant="subtle" 
+                              color={primaryColor} 
+                              onClick={() => handleOpenModal(customer)}
+                              disabled={submitting || updatingCustomerId === customer.id}
+                            >
                               <IconEdit size={16} />
                             </ActionIcon>
                           </Group>
@@ -458,6 +572,8 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
         onClose={handleCloseModal}
         title={editingCustomer ? t('customers.editCustomer', language) : t('customers.addCustomer', language)}
         size="lg"
+        closeOnClickOutside={!submitting}
+        closeOnEscape={!submitting}
       >
         <form onSubmit={form.onSubmit(handleSubmit)}>
           <Stack gap="md">
@@ -509,10 +625,10 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
             </Grid>
 
             <Group justify="flex-end" mt="md">
-              <Button variant="default" onClick={handleCloseModal} disabled={isSubmitting}>
+              <Button variant="default" onClick={handleCloseModal} disabled={submitting}>
                 {t('common.cancel' as any, language) || 'Cancel'}
               </Button>
-              <Button type="submit" loading={isSubmitting}>
+              <Button type="submit" loading={submitting} disabled={submitting}>
                 {t('common.save' as any, language) || 'Save'}
               </Button>
             </Group>
