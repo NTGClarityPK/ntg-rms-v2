@@ -29,6 +29,7 @@ export interface AuthResponse {
   };
   accessToken: string;
   refreshToken: string;
+  branchId?: string; // Optional: included when there's exactly one branch for the tenant
 }
 
 export interface UserProfile {

@@ -401,49 +401,49 @@ export function BranchesTab() {
                   }
                   
                   return (
-                    <Table.Tr key={branch.id}>
-                      <Table.Td>
-                        <Text fw={500}>{branch.name}</Text>
-                      </Table.Td>
-                      <Table.Td>{branch.code}</Table.Td>
-                      <Table.Td>{branch.city || '-'}</Table.Td>
-                      <Table.Td>{branch.phone || '-'}</Table.Td>
-                      <Table.Td>
-                        <Badge 
-                          color={branch.isActive ? successColor : errorColor}
-                          variant="light"
-                        >
-                          {branch.isActive
-                            ? (t('common.active', language) || 'Active')
-                            : (t('common.inactive', language) || 'Inactive')}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        <Group gap="xs">
-                          <PermissionGuard resource="restaurant" action="update">
-                            <ActionIcon
-                              variant="subtle"
-                              color={infoColor}
-                              onClick={() => handleOpenModal(branch)}
+                  <Table.Tr key={branch.id}>
+                    <Table.Td>
+                      <Text fw={500}>{branch.name}</Text>
+                    </Table.Td>
+                    <Table.Td>{branch.code}</Table.Td>
+                    <Table.Td>{branch.city || '-'}</Table.Td>
+                    <Table.Td>{branch.phone || '-'}</Table.Td>
+                    <Table.Td>
+                      <Badge 
+                        color={branch.isActive ? successColor : errorColor}
+                        variant="light"
+                      >
+                        {branch.isActive
+                          ? (t('common.active', language) || 'Active')
+                          : (t('common.inactive', language) || 'Inactive')}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap="xs">
+                        <PermissionGuard resource="restaurant" action="update">
+                          <ActionIcon
+                            variant="subtle"
+                            color={infoColor}
+                            onClick={() => handleOpenModal(branch)}
                               disabled={updatingBranchId === branch.id || deletingBranchId === branch.id}
-                            >
-                              <IconEdit size={16} />
-                            </ActionIcon>
-                          </PermissionGuard>
-                          <PermissionGuard resource="restaurant" action="delete">
-                            <ActionIcon
-                              variant="subtle"
-                              color={errorColor}
-                              onClick={() => handleDelete(branch)}
+                          >
+                            <IconEdit size={16} />
+                          </ActionIcon>
+                        </PermissionGuard>
+                        <PermissionGuard resource="restaurant" action="delete">
+                          <ActionIcon
+                            variant="subtle"
+                            color={errorColor}
+                            onClick={() => handleDelete(branch)}
                               disabled={updatingBranchId === branch.id || deletingBranchId === branch.id}
                               loading={deletingBranchId === branch.id}
-                            >
-                              <IconTrash size={16} />
-                            </ActionIcon>
-                          </PermissionGuard>
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
+                          >
+                            <IconTrash size={16} />
+                          </ActionIcon>
+                        </PermissionGuard>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
                   );
                 })
               )}

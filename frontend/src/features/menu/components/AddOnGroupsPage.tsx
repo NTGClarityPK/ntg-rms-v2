@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import { useForm } from '@mantine/form';
 import {
   Title,
@@ -293,18 +294,25 @@ export function AddOnGroupsPage() {
 
     const wasEditing = !!editingGroup;
     const currentEditingGroupId = editingGroup?.id;
-    
-    // Close modal immediately
-    setGroupModalOpened(false);
-    
-    setSubmittingGroup(true);
-    if (wasEditing && currentEditingGroupId) {
-      setUpdatingGroupId(currentEditingGroupId);
-    } else {
-      setCreatingGroup(true);
-    }
-    
+
+    flushSync(() => {
+      setSubmittingGroup(true);
+    });
+
     try {
+      // Close modal immediately after validation passes
+      setGroupModalOpened(false);
+      
+      if (wasEditing && currentEditingGroupId) {
+        flushSync(() => {
+          setUpdatingGroupId(currentEditingGroupId);
+        });
+      } else {
+        flushSync(() => {
+          setCreatingGroup(true);
+        });
+      }
+      
       const groupData: Partial<AddOnGroup> = {
         name: values.name,
         selectionType: values.selectionType as 'single' | 'multiple',
@@ -318,8 +326,12 @@ export function AddOnGroupsPage() {
 
       if (wasEditing && currentEditingGroupId) {
         savedGroup = await menuApi.updateAddOnGroup(currentEditingGroupId, groupData);
+        await loadAddOnGroups();
+        setUpdatingGroupId(null);
       } else {
         savedGroup = await menuApi.createAddOnGroup(groupData, selectedBranchId || undefined);
+        await loadAddOnGroups();
+        setCreatingGroup(false);
       }
 
       notifications.show({
@@ -328,7 +340,6 @@ export function AddOnGroupsPage() {
         color: successColor,
       });
 
-      loadAddOnGroups();
       // Notify other tabs that add-on groups have been updated
       notifyMenuDataUpdate('add-on-groups-updated');
     } catch (err: any) {
@@ -338,10 +349,21 @@ export function AddOnGroupsPage() {
         message: errorMsg,
         color: errorColor,
       });
+      // Reopen modal on error
+      if (editingGroup) {
+        setGroupModalOpened(true);
+        setEditingGroup(editingGroup);
+        groupForm.setValues(values);
+      } else {
+        setGroupModalOpened(true);
+        groupForm.setValues(values);
+      }
     } finally {
       setSubmittingGroup(false);
       setCreatingGroup(false);
       setUpdatingGroupId(null);
+      setEditingGroup(null);
+      groupForm.reset();
     }
   };
 
@@ -815,11 +837,16 @@ export function AddOnGroupsPage() {
       {/* Add-on Group Modal */}
       <Modal
         opened={groupModalOpened}
-        onClose={() => setGroupModalOpened(false)}
+        onClose={() => {
+          if (submittingGroup) return;
+          setGroupModalOpened(false);
+        }}
         title={
           editingGroup ? t('menu.editAddOnGroup', language) : t('menu.createAddOnGroup', language)
         }
         size="lg"
+        closeOnClickOutside={!submittingGroup}
+        closeOnEscape={!submittingGroup}
       >
         <form onSubmit={groupForm.onSubmit(handleGroupSubmit)}>
           <Stack gap="md">
@@ -829,6 +856,7 @@ export function AddOnGroupsPage() {
                   label={t('menu.addOnGroupName', language)}
                   required
                   {...groupForm.getInputProps('name')}
+                  disabled={submittingGroup}
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 6 }}>
@@ -842,6 +870,7 @@ export function AddOnGroupsPage() {
                   ]}
                   required
                   {...groupForm.getInputProps('category')}
+                  disabled={submittingGroup}
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 6 }}>
@@ -852,7 +881,9 @@ export function AddOnGroupsPage() {
                     { value: 'multiple', label: t('menu.multiple', language) },
                   ]}
                   {...groupForm.getInputProps('selectionType')}
+                  disabled={submittingGroup}
                   onChange={(value) => {
+                    if (submittingGroup) return;
                     groupForm.setFieldValue('selectionType', value || 'multiple');
                     // Auto-set maxSelections to 1 when selection type is single
                     if (value === 'single') {
@@ -871,6 +902,7 @@ export function AddOnGroupsPage() {
                   min={0}
                   max={groupForm.values.selectionType === 'single' ? 1 : undefined}
                   {...groupForm.getInputProps('minSelections')}
+                  disabled={submittingGroup}
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 6 }}>
@@ -878,8 +910,9 @@ export function AddOnGroupsPage() {
                   label={t('menu.maxSelections', language)}
                   min={0}
                   value={groupForm.values.selectionType === 'single' ? 1 : (groupForm.values.maxSelections ?? undefined)}
-                  disabled={groupForm.values.selectionType === 'single'}
+                  disabled={groupForm.values.selectionType === 'single' || submittingGroup}
                   onChange={(value) => {
+                    if (submittingGroup) return;
                     if (groupForm.values.selectionType !== 'single') {
                       groupForm.setFieldValue('maxSelections', typeof value === 'number' ? value : undefined);
                     }
@@ -891,7 +924,9 @@ export function AddOnGroupsPage() {
                   <Switch
                     label={t('menu.isRequired', language)}
                     {...groupForm.getInputProps('isRequired', { type: 'checkbox' })}
+                    disabled={submittingGroup}
                     onChange={(event) => {
+                      if (submittingGroup) return;
                       const isRequired = event.currentTarget.checked;
                       groupForm.setFieldValue('isRequired', isRequired);
                       // If required and single selection, set min to 1
@@ -907,7 +942,14 @@ export function AddOnGroupsPage() {
             </Grid>
 
             <Group justify="flex-end" mt="md">
-              <Button variant="subtle" onClick={() => setGroupModalOpened(false)} disabled={submittingGroup}>
+              <Button 
+                variant="subtle" 
+                onClick={() => {
+                  if (submittingGroup) return;
+                  setGroupModalOpened(false);
+                }} 
+                disabled={submittingGroup}
+              >
                 {t('common.cancel' as any, language) || 'Cancel'}
               </Button>
               <Button type="submit" style={{ backgroundColor: primaryColor }} loading={submittingGroup} disabled={submittingGroup}>

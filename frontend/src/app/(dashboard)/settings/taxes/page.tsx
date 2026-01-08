@@ -371,48 +371,48 @@ export default function TaxesPage() {
                   }
                   
                   return (
-                    <Table.Tr key={tax.id}>
-                      <Table.Td>{tax.name}</Table.Td>
-                      <Table.Td>{tax.taxCode || '-'}</Table.Td>
-                      <Table.Td>{tax.rate}%</Table.Td>
-                      <Table.Td>
-                        {tax.appliesTo === 'order'
-                          ? t('taxes.orderWise' as any, language) || 'Order'
-                          : tax.appliesTo === 'category'
-                          ? t('taxes.categoryWise' as any, language) || 'Category'
-                          : t('taxes.itemWise' as any, language) || 'Item'}
-                      </Table.Td>
-                      <Table.Td>
-                        <Badge variant="light" color={getBadgeColorForText(tax.isActive
-                          ? (t('common.active' as any, language) || 'Active')
-                          : (t('common.inactive' as any, language) || 'Inactive'))}>
-                          {tax.isActive
-                            ? t('common.active' as any, language) || 'Active'
-                            : t('common.inactive' as any, language) || 'Inactive'}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        <Group gap="xs">
-                          <ActionIcon
-                            variant="light"
-                            color={themeColor}
-                            onClick={() => handleOpenModal(tax)}
+                  <Table.Tr key={tax.id}>
+                    <Table.Td>{tax.name}</Table.Td>
+                    <Table.Td>{tax.taxCode || '-'}</Table.Td>
+                    <Table.Td>{tax.rate}%</Table.Td>
+                    <Table.Td>
+                      {tax.appliesTo === 'order'
+                        ? t('taxes.orderWise' as any, language) || 'Order'
+                        : tax.appliesTo === 'category'
+                        ? t('taxes.categoryWise' as any, language) || 'Category'
+                        : t('taxes.itemWise' as any, language) || 'Item'}
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge variant="light" color={getBadgeColorForText(tax.isActive
+                        ? (t('common.active' as any, language) || 'Active')
+                        : (t('common.inactive' as any, language) || 'Inactive'))}>
+                        {tax.isActive
+                          ? t('common.active' as any, language) || 'Active'
+                          : t('common.inactive' as any, language) || 'Inactive'}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap="xs">
+                        <ActionIcon
+                          variant="light"
+                          color={themeColor}
+                          onClick={() => handleOpenModal(tax)}
                             disabled={updatingTaxId === tax.id || deletingTaxId === tax.id}
-                          >
-                            <IconEdit size={16} />
-                          </ActionIcon>
-                          <ActionIcon
-                            variant="light"
-                            color={primary}
-                            onClick={() => setDeletingTax(tax.id)}
+                        >
+                          <IconEdit size={16} />
+                        </ActionIcon>
+                        <ActionIcon
+                          variant="light"
+                          color={primary}
+                          onClick={() => setDeletingTax(tax.id)}
                             disabled={updatingTaxId === tax.id || deletingTaxId === tax.id}
                             loading={deletingTaxId === tax.id}
-                          >
-                            <IconTrash size={16} />
-                          </ActionIcon>
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
+                        >
+                          <IconTrash size={16} />
+                        </ActionIcon>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
                   );
                 })}
               </Table.Tbody>

@@ -111,7 +111,15 @@ function LoginForm() {
       };
       setUser(user);
       
-      // Fetch assigned branches
+      // If branchId is in the response (meaning there's exactly one branch), set it and redirect
+      if (response.branchId) {
+        setBranchStoreId(response.branchId);
+        router.push('/dashboard');
+        setLoading(false);
+        return;
+      }
+      
+      // Otherwise, fetch assigned branches to show branch selection
       setLoadingBranches(true);
       try {
         const assignedBranches = await authApi.getAssignedBranches();
