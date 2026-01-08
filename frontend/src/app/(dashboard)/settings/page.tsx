@@ -577,11 +577,17 @@ export default function SettingsPage() {
 
     try {
       if (editingTax) {
-        setUpdatingTaxId(editingTax.id);
+        const currentEditingTaxId = editingTax.id;
+        flushSync(() => {
+          setUpdatingTaxId(currentEditingTaxId);
+        });
         setTaxModalOpened(false);
         setEditingTax(null);
 
-        await taxesApi.updateTax(editingTax.id, values);
+        await taxesApi.updateTax(currentEditingTaxId, values);
+        await loadTaxes();
+        setUpdatingTaxId(null);
+        
         notifications.show({
           title: t('common.success' as any, language),
           message: t('taxes.updated' as any, language) || 'Tax updated successfully',
@@ -611,6 +617,9 @@ export default function SettingsPage() {
         taxFormModal.reset();
 
         await taxesApi.createTax(values, selectedBranchId || undefined);
+        await loadTaxes();
+        setPendingTax(null);
+        
         notifications.show({
           title: t('common.success' as any, language),
           message: t('taxes.created' as any, language) || 'Tax created successfully',
@@ -618,7 +627,6 @@ export default function SettingsPage() {
           icon: <IconCheck size={16} />,
         });
       }
-      loadTaxes();
     } catch (error: any) {
       notifications.show({
         title: t('common.error' as any, language),
@@ -630,13 +638,16 @@ export default function SettingsPage() {
       if (editingTax) {
         setTaxModalOpened(true);
         setEditingTax(editingTax);
+        taxFormModal.setValues(values);
       } else {
         setTaxModalOpened(true);
+        taxFormModal.setValues(values);
       }
-    } finally {
-      setSubmittingTax(false);
+      // Clear loading states on error
       setPendingTax(null);
       setUpdatingTaxId(null);
+    } finally {
+      setSubmittingTax(false);
     }
   };
 
@@ -1054,7 +1065,7 @@ export default function SettingsPage() {
 
                   {taxesLoading ? (
                     <Skeleton height={200} />
-                  ) : taxes.length === 0 ? (
+                  ) : taxes.length === 0 && !pendingTax ? (
                     <Text c="dimmed" ta="center" py="xl">
                       {t('taxes.noTaxes' as any, language) || 'No taxes configured'}
                     </Text>
@@ -1193,10 +1204,12 @@ export default function SettingsPage() {
                       label={t('taxes.name' as any, language) || 'Name'}
                       required
                       {...taxFormModal.getInputProps('name')}
+                      disabled={submittingTax}
                     />
                     <TextInput
                       label={t('taxes.code' as any, language) || 'Tax Code'}
                       {...taxFormModal.getInputProps('taxCode')}
+                      disabled={submittingTax}
                     />
                     <NumberInput
                       label={t('taxes.rate' as any, language) || 'Rate (%)'}
@@ -1205,6 +1218,7 @@ export default function SettingsPage() {
                       max={100}
                       decimalScale={2}
                       {...taxFormModal.getInputProps('rate')}
+                      disabled={submittingTax}
                     />
                     <Select
                       label={t('taxes.appliesTo' as any, language) || 'Applies To'}
@@ -1214,12 +1228,14 @@ export default function SettingsPage() {
                         { value: 'item', label: t('taxes.itemWise' as any, language) || 'Item' },
                       ]}
                       {...taxFormModal.getInputProps('appliesTo')}
+                      disabled={submittingTax}
                     />
                     {taxFormModal.values.appliesTo === 'category' && (
                       <MultiSelect
                         label={t('taxes.categories' as any, language) || 'Categories'}
                         data={categories}
                         {...taxFormModal.getInputProps('categoryIds')}
+                        disabled={submittingTax}
                       />
                     )}
                     {taxFormModal.values.appliesTo === 'item' && (
@@ -1227,6 +1243,7 @@ export default function SettingsPage() {
                         label={t('taxes.foodItems' as any, language) || 'Food Items'}
                         data={foodItems}
                         {...taxFormModal.getInputProps('foodItemIds')}
+                        disabled={submittingTax}
                       />
                     )}
                     {/* <Switch
@@ -1240,6 +1257,7 @@ export default function SettingsPage() {
                     <Switch
                       label={t('common.active' as any, language) || 'Active'}
                       {...taxFormModal.getInputProps('isActive', { type: 'checkbox' })}
+                      disabled={submittingTax}
                     />
                     <Group justify="flex-end" mt="md">
                       <Button variant="subtle" onClick={handleCloseTaxModal} disabled={submittingTax}>
