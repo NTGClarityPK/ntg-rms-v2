@@ -1959,6 +1959,15 @@ export class MenuService {
       activeItemIds = activeItems?.map((item: any) => item.id) || [];
     }
 
+    // Default menu type to name mapping
+    const defaultMenuNames: Record<string, string> = {
+      'all_day': 'All Day',
+      'breakfast': 'Breakfast',
+      'lunch': 'Lunch',
+      'dinner': 'Dinner',
+      'kids_special': "Kids' Special",
+    };
+
     // Create maps of menu_type to name and is_active
     const menuNameMap = new Map<string, string>();
     const menuActiveMap = new Map<string, boolean>();
@@ -1973,8 +1982,10 @@ export class MenuService {
     const menus = paginatedMenuTypes.map((menuType) => {
       const itemsInMenu = (menuItems || []).filter((mi: any) => mi.menu_type === menuType);
       
-      // Always use stored name from menus table - don't generate fallback names
+      // Use stored name from menus table, or default name mapping, or menuType as last resort
       const storedName = menuNameMap.get(menuType);
+      const defaultName = defaultMenuNames[menuType];
+      const displayName = storedName || defaultName || menuType;
       
       // Get is_active from menus table, default to true if not set
       const isActive = menuActiveMap.has(menuType) 
@@ -1983,7 +1994,7 @@ export class MenuService {
       
       return {
         menuType,
-        name: storedName || menuType, // Use name from menus table, or menuType as last resort
+        name: displayName,
         isActive,
         itemCount: itemsInMenu.length, // Count all items, not just active ones
       };
@@ -2493,6 +2504,59 @@ export class MenuService {
       itemCount: createDto.foodItemIds?.length || 0,
       isActive: createDto.isActive !== undefined ? createDto.isActive : true,
     };
+  }
+
+  async createDefaultMenus(tenantId: string, branchId?: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Default menu types with their proper display names
+    const defaultMenus = [
+      { menuType: 'all_day', name: 'All Day' },
+      { menuType: 'breakfast', name: 'Breakfast' },
+      { menuType: 'lunch', name: 'Lunch' },
+      { menuType: 'dinner', name: 'Dinner' },
+      { menuType: 'kids_special', name: "Kids' Special" },
+    ];
+
+    // Check which menus already exist
+    let existingQuery = supabase
+      .from('menus')
+      .select('menu_type')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      existingQuery = existingQuery.eq('branch_id', branchId);
+    } else {
+      existingQuery = existingQuery.is('branch_id', null);
+    }
+
+    const { data: existingMenus } = await existingQuery;
+    const existingMenuTypes = new Set(existingMenus?.map((m: any) => m.menu_type) || []);
+
+    // Create menus that don't exist yet
+    const menusToCreate = defaultMenus
+      .filter(menu => !existingMenuTypes.has(menu.menuType))
+      .map(menu => ({
+        tenant_id: tenantId,
+        branch_id: branchId || null,
+        menu_type: menu.menuType,
+        name: menu.name,
+        is_active: true,
+      }));
+
+    if (menusToCreate.length > 0) {
+      const { error: insertError } = await supabase
+        .from('menus')
+        .insert(menusToCreate);
+
+      if (insertError && !insertError.message.includes('relation') && !insertError.message.includes('does not exist')) {
+        console.warn('Failed to create default menus:', insertError.message);
+        // Don't throw - this is non-critical
+      } else {
+        console.log(`Created ${menusToCreate.length} default menus for tenant:`, tenantId);
+      }
+    }
   }
 
   async deleteMenu(tenantId: string, menuType: string) {

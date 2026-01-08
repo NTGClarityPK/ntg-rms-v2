@@ -162,6 +162,7 @@ export class AuthService {
     }
 
     // Create a default branch for the tenant if this is a new tenant
+    let defaultBranchId: string | undefined;
     if (!signupDto.tenantId) {
       try {
         const { data: branchData, error: branchError } = await supabase
@@ -179,14 +180,15 @@ export class AuthService {
           console.error('Failed to create default branch:', branchError);
           // Don't fail signup if branch creation fails, but log it
         } else {
-          console.log('Default branch created:', branchData.id);
+          defaultBranchId = branchData.id;
+          console.log('Default branch created:', defaultBranchId);
           
           // Create default tables (5 tables) for the branch
           try {
             const defaultTables = [];
             for (let i = 1; i <= 5; i++) {
               defaultTables.push({
-                branch_id: branchData.id,
+                branch_id: defaultBranchId,
                 table_number: i.toString(),
                 seating_capacity: 4,
                 table_type: 'regular',
@@ -203,7 +205,7 @@ export class AuthService {
               console.error('Failed to create default tables:', tablesError);
               // Don't fail signup if table creation fails, but log it
             } else {
-              console.log(`Created ${tablesData?.length || 0} default tables for branch:`, branchData.id);
+              console.log(`Created ${tablesData?.length || 0} default tables for branch:`, defaultBranchId);
             }
           } catch (tablesError) {
             console.error('Error creating default tables:', tablesError);
@@ -213,6 +215,17 @@ export class AuthService {
       } catch (error) {
         console.error('Error creating default branch:', error);
         // Don't fail signup if branch creation fails
+      }
+
+      // Create default menus with proper names for new tenant (branch-specific)
+      if (defaultBranchId) {
+        try {
+          await this.menuService.createDefaultMenus(tenantId, defaultBranchId);
+          console.log('Default menus created for branch:', defaultBranchId);
+        } catch (menuError) {
+          console.warn('⚠️  Failed to create default menus (non-critical, signup will continue):', menuError?.message || menuError);
+          // Don't fail signup if menu creation fails - this is non-critical
+        }
       }
 
       // Create trial subscription for new tenant
@@ -227,11 +240,11 @@ export class AuthService {
 
       // Create sample data for new tenant (non-blocking - runs in background)
       // Don't await this to avoid timeout issues - let it run asynchronously
-      this.seedSampleData(tenantId).catch((seedError) => {
+      this.seedSampleData(tenantId, defaultBranchId).catch((seedError) => {
         console.error('❌ Failed to create sample data (background job):', seedError?.message || seedError);
         console.error('Stack trace:', seedError);
       });
-      console.log('📦 Sample data creation started in background for tenant:', tenantId);
+      console.log('📦 Sample data creation started in background for tenant:', tenantId, 'branch:', defaultBranchId);
     }
 
     // Generate tokens
@@ -428,6 +441,47 @@ export class AuthService {
       .update({ last_login_at: new Date().toISOString() })
       .eq('id', user.id);
 
+    // Check if there's only one branch available for this user
+    // If so, include it in the response to auto-select it on the frontend
+    // Use the same logic as getUserAssignedBranches: tenant owners see all branches, others see assigned branches
+    let branchId: string | undefined;
+    try {
+      let branches: any[] = [];
+      
+      // If tenant owner, check all branches
+      if (user.role === 'tenant_owner') {
+        const { data: allBranches } = await serviceSupabase
+          .from('branches')
+          .select('id')
+          .eq('tenant_id', user.tenant_id)
+          .is('deleted_at', null)
+          .eq('is_active', true)
+          .order('created_at', { ascending: true });
+        
+        branches = allBranches || [];
+      } else {
+        // For other users, check only assigned branches using the same pattern as getUserAssignedBranches
+        const { data: userBranches } = await serviceSupabase
+          .from('user_branches')
+          .select(`
+            branch:branches!inner(id)
+          `)
+          .eq('user_id', user.id);
+        
+        if (userBranches) {
+          branches = userBranches.map((ub: any) => ({ id: ub.branch?.id }));
+        }
+      }
+
+      // If there's exactly one branch, include it in the response
+      if (branches.length === 1 && branches[0].id) {
+        branchId = branches[0].id;
+      }
+    } catch (branchError) {
+      // Don't fail login if branch check fails, just log it
+      console.warn('Failed to check branches for auto-selection:', branchError);
+    }
+
     // Generate tokens
     const tokens = await this.generateTokens(user);
 
@@ -440,6 +494,7 @@ export class AuthService {
         tenantId: user.tenant_id as string,
       },
       ...tokens,
+      ...(branchId && { branchId }), // Include branchId only if there's exactly one branch
     };
   }
 
@@ -896,8 +951,8 @@ export class AuthService {
     };
   }
 
-  private async seedSampleData(tenantId: string) {
-    console.log('🚀 Starting sample data creation for tenant:', tenantId);
+  private async seedSampleData(tenantId: string, branchId?: string) {
+    console.log('🚀 Starting sample data creation for tenant:', tenantId, 'branch:', branchId);
     try {
       const supabase = this.supabaseService.getServiceRoleClient();
 
@@ -910,7 +965,7 @@ export class AuthService {
           description: 'Delicious main course options',
           categoryType: 'food',
           isActive: true,
-        });
+        }, branchId);
         console.log('Category 1 created:', category1.id);
 
         category2 = await this.menuService.createCategory(tenantId, {
@@ -918,7 +973,7 @@ export class AuthService {
           description: 'Perfect sides and appetizers to complement your meal',
           categoryType: 'food',
           isActive: true,
-        });
+        }, branchId);
         console.log('Category 2 created:', category2.id);
       } catch (error) {
         console.error('Failed to create sample categories:', error);
@@ -942,7 +997,7 @@ export class AuthService {
           isRequired: false,
           minSelections: 0,
           category: 'Add',
-        });
+        }, branchId);
         console.log('Add-on group 1 created:', addOnGroup1.id);
 
         // Create add-ons for first group
@@ -970,7 +1025,7 @@ export class AuthService {
           isRequired: false,
           minSelections: 0,
           category: 'Change',
-        });
+        }, branchId);
         console.log('Add-on group 2 created:', addOnGroup2.id);
 
         // Create add-ons for second group
@@ -1008,7 +1063,7 @@ export class AuthService {
         // First variation group: Size
         variationGroup1 = await this.menuService.createVariationGroup(tenantId, {
           name: 'Size',
-        });
+        }, branchId);
         console.log('Variation group 1 created:', variationGroup1.id);
 
         // Create variations for Size group
@@ -1037,7 +1092,7 @@ export class AuthService {
         // Second variation group: Spice Level
         variationGroup2 = await this.menuService.createVariationGroup(tenantId, {
           name: 'Spice Level',
-        });
+        }, branchId);
         console.log('Variation group 2 created:', variationGroup2.id);
 
         // Create variations for Spice Level group
@@ -1096,7 +1151,7 @@ export class AuthService {
             priceAdjustment: 0,
             displayOrder: 1,
           }] : [],
-        });
+        }, branchId);
         foodItems.push(foodItem1);
         console.log('Food item 1 created:', foodItem1.id);
 
@@ -1116,7 +1171,7 @@ export class AuthService {
             priceAdjustment: 0,
             displayOrder: 1,
           }] : [],
-        });
+        }, branchId);
         foodItems.push(foodItem2);
         console.log('Food item 2 created:', foodItem2.id);
 
@@ -1129,7 +1184,7 @@ export class AuthService {
           stockType: 'unlimited',
           menuTypes: ['all_day'],
           imageUrl: 'https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=400&h=300&fit=crop',
-        });
+        }, branchId);
         foodItems.push(foodItem3);
         console.log('Food item 3 created:', foodItem3.id);
 
@@ -1142,7 +1197,7 @@ export class AuthService {
           stockType: 'unlimited',
           menuTypes: ['all_day'],
           imageUrl: 'https://plus.unsplash.com/premium_photo-1711752902734-a36167479983?q=80&w=688&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
-        });
+        }, branchId);
         foodItems.push(foodItem4);
         console.log('Food item 4 created:', foodItem4.id);
       } catch (error) {
@@ -1299,7 +1354,7 @@ export class AuthService {
           imageUrl: 'https://images.unsplash.com/photo-1555244162-803834f70033?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8YnVmZmV0fGVufDB8fDB8fHww',
           displayOrder: 1,
           isActive: true,
-        });
+        }, branchId);
         console.log('Buffet 1 created:', buffet1.id);
 
         const buffet2 = await this.menuService.createBuffet(tenantId, {
@@ -1311,7 +1366,7 @@ export class AuthService {
           imageUrl: 'https://images.unsplash.com/photo-1583338917496-7ea264c374ce?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8M3x8YnVmZmV0fGVufDB8fDB8fHww',
           displayOrder: 2,
           isActive: true,
-        });
+        }, branchId);
         console.log('Buffet 2 created:', buffet2.id);
       } catch (error) {
         console.error('Failed to create buffets:', error);
@@ -1330,7 +1385,7 @@ export class AuthService {
             imageUrl: 'https://plus.unsplash.com/premium_photo-1683619761468-b06992704398?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MXx8YnVyZ2VyfGVufDB8fDB8fHww',
             displayOrder: 1,
             isActive: true,
-          });
+          }, branchId);
           console.log('Combo meal 1 created:', comboMeal1.id);
 
           // Second combo meal
@@ -1343,7 +1398,7 @@ export class AuthService {
             imageUrl: 'https://media.istockphoto.com/id/1151446369/photo/tasty-supreme-pizza-with-olives-peppers-onions-and-sausage.webp?a=1&b=1&s=612x612&w=0&k=20&c=LprgiVWgVb5nJ6psO3R2bAYLPBV6V9gLVW9PlTbtGLU=',
             displayOrder: 2,
             isActive: true,
-          });
+          }, branchId);
           console.log('Combo meal 2 created:', comboMeal2.id);
         } catch (error) {
           console.error('Failed to create combo meals:', error);
