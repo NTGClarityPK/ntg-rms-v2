@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import { useForm } from '@mantine/form';
 import {
   Title,
@@ -21,6 +22,7 @@ import {
   Center,
   Box,
   Tabs,
+  Loader,
 } from '@mantine/core';
 import {
   IconPlus,
@@ -69,6 +71,17 @@ export function VariationGroupsPage() {
   const [foodItemsWithGroup, setFoodItemsWithGroup] = useState<any[]>([]);
   const [showFoodItemsTable, setShowFoodItemsTable] = useState(false);
   const [editingFoodItems, setEditingFoodItems] = useState(false);
+  // Loading states for variation groups
+  const [submittingGroup, setSubmittingGroup] = useState(false);
+  const [pendingGroup, setPendingGroup] = useState<VariationGroup | null>(null);
+  const [updatingGroupId, setUpdatingGroupId] = useState<string | null>(null);
+  const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null);
+  const [openingGroupModalId, setOpeningGroupModalId] = useState<string | null>(null);
+  // Loading states for variations
+  const [submittingVariation, setSubmittingVariation] = useState(false);
+  const [pendingVariation, setPendingVariation] = useState<Variation | null>(null);
+  const [updatingVariationId, setUpdatingVariationId] = useState<string | null>(null);
+  const [deletingVariationId, setDeletingVariationId] = useState<string | null>(null);
 
   const groupForm = useForm({
     initialValues: {
@@ -183,16 +196,21 @@ export function VariationGroupsPage() {
 
   const handleOpenGroupModal = async (group?: VariationGroup) => {
     if (group) {
+      setOpeningGroupModalId(group.id);
       setEditingGroup(group);
       groupForm.setValues({
         name: group.name,
       });
       
-      // Check if food items have blank values
-      const hasBlankValues = await checkFoodItemsHaveBlankValues(group.id, group.name);
-      if (hasBlankValues) {
-        setShowFoodItemsTable(true);
-        await loadFoodItemsWithGroup(group.id);
+      try {
+        // Check if food items have blank values
+        const hasBlankValues = await checkFoodItemsHaveBlankValues(group.id, group.name);
+        if (hasBlankValues) {
+          setShowFoodItemsTable(true);
+          await loadFoodItemsWithGroup(group.id);
+        }
+      } finally {
+        setOpeningGroupModalId(null);
       }
     } else {
       setEditingGroup(null);
@@ -220,109 +238,175 @@ export function VariationGroupsPage() {
   const handleGroupSubmit = async (values: typeof groupForm.values) => {
     if (!user?.tenantId) return;
 
-    // If editing, check for blank values
-    if (editingGroup) {
-      const hasBlankValues = await checkFoodItemsHaveBlankValues(editingGroup.id, values.name);
-      if (hasBlankValues && !editingFoodItems) {
-        notifications.show({
-          title: t('common.error' as any, language) || 'Error',
-          message: t('menu.variationGroupHasBlankValues', language) || 'Cannot save: Some food items have blank variation values. Please edit them first.',
-          color: errorColor,
-        });
-        setShowFoodItemsTable(true);
-        await loadFoodItemsWithGroup(editingGroup.id);
-        return;
-      }
-    }
+    // Show loader immediately
+    flushSync(() => {
+      setSubmittingGroup(true);
+    });
 
-    // Close modal immediately
-    const wasEditing = !!editingGroup;
-    const currentEditingGroupId = editingGroup?.id;
-    setGroupModalOpened(false);
-    setShowFoodItemsTable(false);
-    setEditingFoodItems(false);
-
-    // Run API calls in background
-    (async () => {
-      try {
-        const groupData: Partial<VariationGroup> = {
-          name: values.name,
-        };
-
-        let savedGroup: VariationGroup;
-
-        if (wasEditing && currentEditingGroupId) {
-          savedGroup = await menuApi.updateVariationGroup(currentEditingGroupId, groupData);
-          
-        } else {
-          savedGroup = await menuApi.createVariationGroup(groupData, selectedBranchId || undefined);
-          
+    try {
+      // If editing, check for blank values
+      if (editingGroup) {
+        const hasBlankValues = await checkFoodItemsHaveBlankValues(editingGroup.id, values.name);
+        if (hasBlankValues && !editingFoodItems) {
+          setSubmittingGroup(false);
+          notifications.show({
+            title: t('common.error' as any, language) || 'Error',
+            message: t('menu.variationGroupHasBlankValues', language) || 'Cannot save: Some food items have blank variation values. Please edit them first.',
+            color: errorColor,
+          });
+          setShowFoodItemsTable(true);
+          await loadFoodItemsWithGroup(editingGroup.id);
+          return;
         }
-
-        notifications.show({
-          title: t('common.success' as any, language) || 'Success',
-          message: t('menu.saveSuccess', language),
-          color: successColor,
-        });
-
-        loadVariationGroups();
-        // Notify other tabs that variation groups have been updated
-        notifyMenuDataUpdate('variation-groups-updated');
-      } catch (err: any) {
-        const errorMsg = err.response?.data?.message || err.message || 'Failed to save variation group';
-        notifications.show({
-          title: t('common.error' as any, language) || 'Error',
-          message: errorMsg,
-          color: errorColor,
-        });
       }
-    })();
+
+      const wasEditing = !!editingGroup;
+      const currentEditingGroupId = editingGroup?.id;
+
+      // Close modal immediately after validation passes
+      setGroupModalOpened(false);
+      setShowFoodItemsTable(false);
+      setEditingFoodItems(false);
+
+      const groupData: Partial<VariationGroup> = {
+        name: values.name,
+      };
+
+      if (wasEditing && currentEditingGroupId) {
+        flushSync(() => {
+          setUpdatingGroupId(currentEditingGroupId);
+        });
+        try {
+          const savedGroup = await menuApi.updateVariationGroup(currentEditingGroupId, groupData);
+          await loadVariationGroups();
+        } finally {
+          setUpdatingGroupId(null);
+        }
+      } else {
+        const tempGroup: VariationGroup = {
+          id: 'pending',
+          name: values.name,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        setPendingGroup(tempGroup);
+        const savedGroup = await menuApi.createVariationGroup(groupData, selectedBranchId || undefined);
+        await loadVariationGroups();
+        setPendingGroup(null);
+      }
+
+      notifications.show({
+        title: t('common.success' as any, language) || 'Success',
+        message: t('menu.saveSuccess', language),
+        color: successColor,
+      });
+
+      // Notify other tabs that variation groups have been updated
+      notifyMenuDataUpdate('variation-groups-updated');
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || err.message || 'Failed to save variation group';
+      notifications.show({
+        title: t('common.error' as any, language) || 'Error',
+        message: errorMsg,
+        color: errorColor,
+      });
+      // Reopen modal on error
+      if (editingGroup) {
+        setGroupModalOpened(true);
+        setEditingGroup(editingGroup);
+        groupForm.setValues({ name: values.name });
+      } else {
+        setGroupModalOpened(true);
+        groupForm.setValues({ name: values.name });
+      }
+    } finally {
+      setSubmittingGroup(false);
+      setUpdatingGroupId(null);
+      setPendingGroup(null);
+      setEditingGroup(null);
+      groupForm.reset();
+    }
   };
 
   const handleVariationSubmit = async (values: typeof variationForm.values) => {
     if (!selectedGroup) return;
 
-    // Close modal immediately
     const currentSelectedGroup = selectedGroup;
     const wasEditing = !!editingVariation;
     const currentEditingVariationId = editingVariation?.id;
-    setVariationModalOpened(false);
 
-    // Run API calls in background
-    (async () => {
-      try {
-        const variationData = {
+    flushSync(() => {
+      setSubmittingVariation(true);
+    });
+
+    try {
+      // Close modal immediately after validation
+      setVariationModalOpened(false);
+
+      const variationData = {
+        name: values.name,
+        recipeMultiplier: values.recipeMultiplier,
+        pricingAdjustment: values.pricingAdjustment,
+      };
+
+      if (wasEditing && currentEditingVariationId) {
+        setUpdatingVariationId(currentEditingVariationId);
+        await menuApi.updateVariation(currentSelectedGroup.id, currentEditingVariationId, variationData);
+        await loadVariations(currentSelectedGroup.id);
+        setUpdatingVariationId(null);
+      } else {
+        const tempVariation: Variation = {
+          id: 'pending',
           name: values.name,
           recipeMultiplier: values.recipeMultiplier,
           pricingAdjustment: values.pricingAdjustment,
+          variationGroupId: currentSelectedGroup.id,
+          displayOrder: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
         };
+        setPendingVariation(tempVariation);
+        await menuApi.createVariation(currentSelectedGroup.id, variationData);
+        await loadVariations(currentSelectedGroup.id);
+        setPendingVariation(null);
+      }
 
-        let savedVariation: Variation;
-
-        if (wasEditing && currentEditingVariationId) {
-          savedVariation = await menuApi.updateVariation(currentSelectedGroup.id, currentEditingVariationId, variationData);
-          
-        } else {
-          savedVariation = await menuApi.createVariation(currentSelectedGroup.id, variationData);
-          
-        }
-
-        notifications.show({
-          title: t('common.success' as any, language) || 'Success',
-          message: t('menu.saveSuccess', language),
-          color: successColor,
+      notifications.show({
+        title: t('common.success' as any, language) || 'Success',
+        message: t('menu.saveSuccess', language),
+        color: successColor,
+      });
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || err.message || 'Failed to save variation';
+      notifications.show({
+        title: t('common.error' as any, language) || 'Error',
+        message: errorMsg,
+        color: errorColor,
+      });
+      // Reopen modal on error
+      if (editingVariation) {
+        setVariationModalOpened(true);
+        setEditingVariation(editingVariation);
+        variationForm.setValues({
+          name: values.name,
+          recipeMultiplier: values.recipeMultiplier,
+          pricingAdjustment: values.pricingAdjustment,
         });
-
-        loadVariations(currentSelectedGroup.id);
-      } catch (err: any) {
-        const errorMsg = err.response?.data?.message || err.message || 'Failed to save variation';
-        notifications.show({
-          title: t('common.error' as any, language) || 'Error',
-          message: errorMsg,
-          color: errorColor,
+      } else {
+        setVariationModalOpened(true);
+        variationForm.setValues({
+          name: values.name,
+          recipeMultiplier: values.recipeMultiplier,
+          pricingAdjustment: values.pricingAdjustment,
         });
       }
-    })();
+    } finally {
+      setSubmittingVariation(false);
+      setUpdatingVariationId(null);
+      setPendingVariation(null);
+      setEditingVariation(null);
+      variationForm.reset();
+    }
   };
 
   const handleDeleteGroup = (group: VariationGroup) => {
@@ -332,17 +416,17 @@ export function VariationGroupsPage() {
       labels: { confirm: t('common.delete' as any, language) || 'Delete', cancel: t('common.cancel' as any, language) || 'Cancel' },
       confirmProps: { color: errorColor },
       onConfirm: async () => {
+        setDeletingGroupId(group.id);
         try {
           await menuApi.deleteVariationGroup(group.id);
+          await loadVariationGroups();
           
-
           notifications.show({
             title: t('common.success' as any, language) || 'Success',
             message: t('menu.deleteSuccess', language),
             color: successColor,
           });
 
-          loadVariationGroups();
           // Notify other tabs that variation groups have been updated
           notifyMenuDataUpdate('variation-groups-updated');
           if (selectedGroup?.id === group.id) {
@@ -354,6 +438,8 @@ export function VariationGroupsPage() {
             message: err.message || 'Failed to delete variation group',
             color: errorColor,
           });
+        } finally {
+          setDeletingGroupId(null);
         }
       },
     });
@@ -367,23 +453,24 @@ export function VariationGroupsPage() {
       confirmProps: { color: errorColor },
       onConfirm: async () => {
         if (!selectedGroup) return;
+        setDeletingVariationId(variation.id);
         try {
           await menuApi.deleteVariation(selectedGroup.id, variation.id);
+          await loadVariations(selectedGroup.id);
           
-
           notifications.show({
             title: t('common.success' as any, language) || 'Success',
             message: t('menu.deleteSuccess', language),
             color: successColor,
           });
-
-          loadVariations(selectedGroup.id);
         } catch (err: any) {
           notifications.show({
             title: t('common.error' as any, language) || 'Error',
             message: err.message || 'Failed to delete variation',
             color: errorColor,
           });
+        } finally {
+          setDeletingVariationId(null);
         }
       },
     });
@@ -445,58 +532,91 @@ export function VariationGroupsPage() {
         <Grid.Col span={{ base: 12, md: 4 }}>
           <Paper p="md" withBorder>
             <Stack gap="xs">
-              {variationGroups.length === 0 ? (
+              {pendingGroup && (
+                <Paper p="sm" withBorder>
+                  <Group justify="space-between">
+                    <Group gap="xs">
+                      <Loader size="sm" />
+                      <Skeleton height={16} width={120} />
+                    </Group>
+                    <Skeleton height={24} width={60} radius="xl" />
+                  </Group>
+                </Paper>
+              )}
+              {variationGroups.length === 0 && !pendingGroup ? (
                 <Text ta="center" c="dimmed" size="sm">
                   {t('menu.noVariationGroups', language)}
                 </Text>
               ) : (
-                variationGroups.map((group) => (
-                  <Paper
-                    key={group.id}
-                    p="sm"
-                    withBorder
-                    style={{
-                      cursor: 'pointer',
-                      backgroundColor:
-                        selectedGroup?.id === group.id ? `${primaryColor}10` : undefined,
-                      borderColor:
-                        selectedGroup?.id === group.id ? primaryColor : undefined,
-                    }}
-                    onClick={() => setSelectedGroup(group)}
-                  >
-                    <Group justify="space-between">
-                      <div>
-                        <Text fw={500} size="sm">
-                          {group.name}
-                        </Text>
-                      </div>
-                      <Group gap="xs">
-                        <ActionIcon
-                          size="sm"
-                          variant="light"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenGroupModal(group);
-                          }}
-                          style={{ color: primaryColor }}
-                        >
-                          <IconEdit size={14} />
-                        </ActionIcon>
-                        <ActionIcon
-                          size="sm"
-                          variant="light"
-                          color={errorColor}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteGroup(group);
-                          }}
-                        >
-                          <IconTrash size={14} />
-                        </ActionIcon>
+                variationGroups.map((group) => {
+                  const isUpdating = updatingGroupId === group.id;
+                  
+                  if (isUpdating) {
+                    return (
+                      <Paper key={group.id} p="sm" withBorder>
+                        <Group justify="space-between">
+                          <Group gap="xs">
+                            <Loader size="sm" />
+                            <Skeleton height={16} width={120} />
+                          </Group>
+                          <Skeleton height={24} width={60} radius="xl" />
+                        </Group>
+                      </Paper>
+                    );
+                  }
+                  
+                  return (
+                    <Paper
+                      key={group.id}
+                      p="sm"
+                      withBorder
+                      style={{
+                        cursor: 'pointer',
+                        backgroundColor:
+                          selectedGroup?.id === group.id ? `${primaryColor}10` : undefined,
+                        borderColor:
+                          selectedGroup?.id === group.id ? primaryColor : undefined,
+                      }}
+                      onClick={() => setSelectedGroup(group)}
+                    >
+                      <Group justify="space-between">
+                        <div>
+                          <Text fw={500} size="sm">
+                            {group.name}
+                          </Text>
+                        </div>
+                        <Group gap="xs">
+                          <ActionIcon
+                            size="sm"
+                            variant="light"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenGroupModal(group);
+                            }}
+                            style={{ color: primaryColor }}
+                            disabled={updatingGroupId === group.id || deletingGroupId === group.id || openingGroupModalId === group.id}
+                            loading={openingGroupModalId === group.id}
+                          >
+                            <IconEdit size={14} />
+                          </ActionIcon>
+                          <ActionIcon
+                            size="sm"
+                            variant="light"
+                            color={errorColor}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteGroup(group);
+                            }}
+                            disabled={updatingGroupId === group.id || deletingGroupId === group.id}
+                            loading={deletingGroupId === group.id}
+                          >
+                            <IconTrash size={14} />
+                          </ActionIcon>
+                        </Group>
                       </Group>
-                    </Group>
-                  </Paper>
-                ))
+                    </Paper>
+                  );
+                })
               )}
             </Stack>
             {pagination.total > 0 && (
@@ -548,7 +668,7 @@ export function VariationGroupsPage() {
                     ))}
                   </Stack>
                 </Stack>
-              ) : variations.length === 0 ? (
+              ) : variations.length === 0 && !pendingVariation ? (
                 <Text ta="center" c="dimmed" size="sm">
                   {t('menu.noVariations', language)}
                 </Text>
@@ -563,35 +683,83 @@ export function VariationGroupsPage() {
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
-                    {variations.map((variation) => (
-                      <Table.Tr key={variation.id}>
-                        <Table.Td>
-                          {variation.name}
-                        </Table.Td>
-                        <Table.Td>{variation.recipeMultiplier || 1}</Table.Td>
-                        <Table.Td>{variation.pricingAdjustment || 0}</Table.Td>
+                    {pendingVariation && (
+                      <Table.Tr>
                         <Table.Td>
                           <Group gap="xs">
-                            <ActionIcon
-                              size="sm"
-                              variant="light"
-                              onClick={() => handleOpenVariationModal(variation)}
-                              style={{ color: primaryColor }}
-                            >
-                              <IconEdit size={14} />
-                            </ActionIcon>
-                            <ActionIcon
-                              size="sm"
-                              variant="light"
-                              color={errorColor}
-                              onClick={() => handleDeleteVariation(variation)}
-                            >
-                              <IconTrash size={14} />
-                            </ActionIcon>
+                            <Loader size="sm" />
+                            <Skeleton height={16} width={150} />
                           </Group>
                         </Table.Td>
+                        <Table.Td>
+                          <Skeleton height={16} width={80} />
+                        </Table.Td>
+                        <Table.Td>
+                          <Skeleton height={16} width={80} />
+                        </Table.Td>
+                        <Table.Td>
+                          <Skeleton height={32} width={80} />
+                        </Table.Td>
                       </Table.Tr>
-                    ))}
+                    )}
+                    {variations.map((variation) => {
+                      const isUpdating = updatingVariationId === variation.id;
+                      
+                      if (isUpdating) {
+                        return (
+                          <Table.Tr key={variation.id}>
+                            <Table.Td>
+                              <Group gap="xs">
+                                <Loader size="sm" />
+                                <Skeleton height={16} width={150} />
+                              </Group>
+                            </Table.Td>
+                            <Table.Td>
+                              <Skeleton height={16} width={80} />
+                            </Table.Td>
+                            <Table.Td>
+                              <Skeleton height={16} width={80} />
+                            </Table.Td>
+                            <Table.Td>
+                              <Skeleton height={32} width={80} />
+                            </Table.Td>
+                          </Table.Tr>
+                        );
+                      }
+                      
+                      return (
+                        <Table.Tr key={variation.id}>
+                          <Table.Td>
+                            {variation.name}
+                          </Table.Td>
+                          <Table.Td>{variation.recipeMultiplier || 1}</Table.Td>
+                          <Table.Td>{variation.pricingAdjustment || 0}</Table.Td>
+                          <Table.Td>
+                            <Group gap="xs">
+                              <ActionIcon
+                                size="sm"
+                                variant="light"
+                                onClick={() => handleOpenVariationModal(variation)}
+                                style={{ color: primaryColor }}
+                                disabled={updatingVariationId === variation.id || deletingVariationId === variation.id}
+                              >
+                                <IconEdit size={14} />
+                              </ActionIcon>
+                              <ActionIcon
+                                size="sm"
+                                variant="light"
+                                color={errorColor}
+                                onClick={() => handleDeleteVariation(variation)}
+                                disabled={updatingVariationId === variation.id || deletingVariationId === variation.id}
+                                loading={deletingVariationId === variation.id}
+                              >
+                                <IconTrash size={14} />
+                              </ActionIcon>
+                            </Group>
+                          </Table.Td>
+                        </Table.Tr>
+                      );
+                    })}
                   </Table.Tbody>
                 </Table>
               )}
@@ -616,6 +784,7 @@ export function VariationGroupsPage() {
       <Modal
         opened={groupModalOpened}
         onClose={() => {
+          if (submittingGroup) return;
           setGroupModalOpened(false);
           setShowFoodItemsTable(false);
           setEditingFoodItems(false);
@@ -624,6 +793,8 @@ export function VariationGroupsPage() {
           editingGroup ? t('menu.editVariationGroup', language) : t('menu.createVariationGroup', language)
         }
         size="lg"
+        closeOnClickOutside={!submittingGroup}
+        closeOnEscape={!submittingGroup}
       >
         <Tabs value={showFoodItemsTable ? 'food-items' : 'group'}>
           <Tabs.List>
@@ -650,17 +821,28 @@ export function VariationGroupsPage() {
                   label={t('menu.variationGroupName', language)}
                   required
                   {...groupForm.getInputProps('name')}
+                  disabled={submittingGroup}
                 />
 
                 <Group justify="flex-end" mt="md">
-                  <Button variant="subtle" onClick={() => {
-                    setGroupModalOpened(false);
-                    setShowFoodItemsTable(false);
-                    setEditingFoodItems(false);
-                  }}>
+                  <Button 
+                    variant="subtle" 
+                    onClick={() => {
+                      if (submittingGroup) return;
+                      setGroupModalOpened(false);
+                      setShowFoodItemsTable(false);
+                      setEditingFoodItems(false);
+                    }}
+                    disabled={submittingGroup}
+                  >
                     {t('common.cancel' as any, language) || 'Cancel'}
                   </Button>
-                  <Button type="submit" style={{ backgroundColor: primaryColor }}>
+                  <Button 
+                    type="submit" 
+                    style={{ backgroundColor: primaryColor }}
+                    loading={submittingGroup}
+                    disabled={submittingGroup}
+                  >
                     {t('common.save' as any, language) || 'Save'}
                   </Button>
                 </Group>
@@ -722,8 +904,13 @@ export function VariationGroupsPage() {
       {/* Variation Modal */}
       <Modal
         opened={variationModalOpened}
-        onClose={() => setVariationModalOpened(false)}
+        onClose={() => {
+          if (submittingVariation) return;
+          setVariationModalOpened(false);
+        }}
         title={editingVariation ? t('menu.editVariation', language) : t('menu.createVariation', language)}
+        closeOnClickOutside={!submittingVariation}
+        closeOnEscape={!submittingVariation}
       >
         <form onSubmit={variationForm.onSubmit(handleVariationSubmit)}>
           <Stack gap="md">
@@ -733,6 +920,7 @@ export function VariationGroupsPage() {
                   label={t('menu.variationName', language)}
                   required
                   {...variationForm.getInputProps('name')}
+                  disabled={submittingVariation}
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 6 }}>
@@ -743,6 +931,7 @@ export function VariationGroupsPage() {
                   decimalScale={2}
                   required
                   {...variationForm.getInputProps('recipeMultiplier')}
+                  disabled={submittingVariation}
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 6 }}>
@@ -751,15 +940,28 @@ export function VariationGroupsPage() {
                   decimalScale={2}
                   description={t('menu.pricingAdjustmentDescription', language) || 'Price adjustment for this variation'}
                   {...variationForm.getInputProps('pricingAdjustment')}
+                  disabled={submittingVariation}
                 />
               </Grid.Col>
             </Grid>
 
             <Group justify="flex-end" mt="md">
-              <Button variant="subtle" onClick={() => setVariationModalOpened(false)}>
+              <Button 
+                variant="subtle" 
+                onClick={() => {
+                  if (submittingVariation) return;
+                  setVariationModalOpened(false);
+                }}
+                disabled={submittingVariation}
+              >
                 {t('common.cancel' as any, language) || 'Cancel'}
               </Button>
-              <Button type="submit" style={{ backgroundColor: primaryColor }}>
+              <Button 
+                type="submit" 
+                style={{ backgroundColor: primaryColor }}
+                loading={submittingVariation}
+                disabled={submittingVariation}
+              >
                 {t('common.save' as any, language) || 'Save'}
               </Button>
             </Group>
