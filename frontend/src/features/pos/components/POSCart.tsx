@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { flushSync } from 'react-dom';
 import {
   Box,
   Stack,
@@ -22,6 +23,7 @@ import {
   useMantineTheme,
   Tooltip,
   Flex,
+  Loader,
 } from '@mantine/core';
 import {
   IconTrash,
@@ -160,6 +162,7 @@ export function POSCart({
   const [newCustomerName, setNewCustomerName] = useState('');
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [newCustomerEmail, setNewCustomerEmail] = useState('');
+  const [submittingCustomer, setSubmittingCustomer] = useState(false);
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [editingItemLoadingIndex, setEditingItemLoadingIndex] = useState<number | null>(null);
@@ -404,11 +407,31 @@ export function POSCart({
   };
 
   const handleCreateCustomer = async () => {
+    // Validate required fields
+    if (!newCustomerName.trim() || !newCustomerPhone.trim()) {
+      return;
+    }
+
+    // Save form values before clearing
+    const customerName = newCustomerName.trim();
+    const customerPhone = newCustomerPhone.trim();
+    const customerEmail = newCustomerEmail.trim();
+
+    flushSync(() => {
+      setSubmittingCustomer(true);
+    });
+
     try {
+      // Close modal immediately after validation
+      setCustomerModalOpened(false);
+      setNewCustomerName('');
+      setNewCustomerPhone('');
+      setNewCustomerEmail('');
+
       const createdCustomer = await customersApi.createCustomer({
-        name: newCustomerName,
-        phone: newCustomerPhone,
-        email: newCustomerEmail || undefined,
+        name: customerName,
+        phone: customerPhone,
+        email: customerEmail || undefined,
       });
 
       // Refresh customers list
@@ -416,12 +439,6 @@ export function POSCart({
       
       // Select the newly created customer
       onCustomerChange(createdCustomer.id);
-      
-      // Close modal and clear fields
-      setCustomerModalOpened(false);
-      setNewCustomerName('');
-      setNewCustomerPhone('');
-      setNewCustomerEmail('');
 
       // Show success notification
       notifications.show({
@@ -440,6 +457,14 @@ export function POSCart({
         message: errorMessage,
         color: getErrorColor(),
       });
+      
+      // Reopen modal on error
+      setCustomerModalOpened(true);
+      setNewCustomerName(customerName);
+      setNewCustomerPhone(customerPhone);
+      setNewCustomerEmail(customerEmail);
+    } finally {
+      setSubmittingCustomer(false);
     }
   };
 
@@ -1105,25 +1130,34 @@ export function POSCart({
               {t('pos.customerInformation', language)}
             </Text>
             <Group gap="xs">
-              <Select
-                placeholder={t('pos.selectCustomer', language)}
-                data={[
-                  { value: 'walk-in', label: t('pos.walkInCustomer', language) },
-                  ...customers.map((c) => ({
-                    value: c.id,
-                    label: `${c.name} (${c.phone})`,
-                  })),
-                ]}
-                value={selectedCustomerId || 'walk-in'}
-                onChange={(value) => {
-                  if (value === 'walk-in') {
-                    onCustomerChange(null);
-                  } else if (value) {
-                    onCustomerChange(value);
-                  }
-                }}
-                style={{ flex: 1 }}
-              />
+              {submittingCustomer ? (
+                <Group gap="xs" style={{ flex: 1 }}>
+                  <Loader size="sm" />
+                  <Text size="sm" c="dimmed">
+                    {t('pos.creatingCustomer' as any, language) || 'Creating customer...'}
+                  </Text>
+                </Group>
+              ) : (
+                <Select
+                  placeholder={t('pos.selectCustomer', language)}
+                  data={[
+                    { value: 'walk-in', label: t('pos.walkInCustomer', language) },
+                    ...customers.map((c) => ({
+                      value: c.id,
+                      label: `${c.name} (${c.phone})`,
+                    })),
+                  ]}
+                  value={selectedCustomerId || 'walk-in'}
+                  onChange={(value) => {
+                    if (value === 'walk-in') {
+                      onCustomerChange(null);
+                    } else if (value) {
+                      onCustomerChange(value);
+                    }
+                  }}
+                  style={{ flex: 1 }}
+                />
+              )}
               <Tooltip
                 label={!isOnline ? (t('pos.customerOfflineDisabled' as any, language) || 'Customer creation is not available offline') : ''}
                 disabled={isOnline}
@@ -1132,11 +1166,11 @@ export function POSCart({
                   variant="light"
                   size="sm"
                   onClick={() => setCustomerModalOpened(true)}
-                  disabled={!isOnline}
+                  disabled={!isOnline || submittingCustomer}
                   style={{ 
                     color: primaryShade,
-                    opacity: !isOnline ? 0.5 : 1,
-                    cursor: !isOnline ? 'not-allowed' : 'pointer',
+                    opacity: !isOnline || submittingCustomer ? 0.5 : 1,
+                    cursor: !isOnline || submittingCustomer ? 'not-allowed' : 'pointer',
                   }}
                 >
                   <IconUser size={16} />
@@ -1752,6 +1786,7 @@ export function POSCart({
       <Modal
         opened={customerModalOpened}
         onClose={() => {
+          if (submittingCustomer) return;
           setCustomerModalOpened(false);
           setNewCustomerName('');
           setNewCustomerPhone('');
@@ -1759,6 +1794,8 @@ export function POSCart({
         }}
         title={t('pos.newCustomer', language)}
         centered
+        closeOnClickOutside={!submittingCustomer}
+        closeOnEscape={!submittingCustomer}
       >
         <Stack gap="md">
           <TextInput
@@ -1767,6 +1804,7 @@ export function POSCart({
             value={newCustomerName}
             onChange={(e) => setNewCustomerName(e.target.value)}
             required
+            disabled={submittingCustomer}
           />
           <TextInput
             label={t('pos.customerPhone', language)}
@@ -1774,6 +1812,7 @@ export function POSCart({
             value={newCustomerPhone}
             onChange={(e) => setNewCustomerPhone(e.target.value)}
             required
+            disabled={submittingCustomer}
           />
           <TextInput
             label={t('pos.customerEmail', language)}
@@ -1781,11 +1820,13 @@ export function POSCart({
             value={newCustomerEmail}
             onChange={(e) => setNewCustomerEmail(e.target.value)}
             type="email"
+            disabled={submittingCustomer}
           />
           <Button
             fullWidth
             onClick={handleCreateCustomer}
-            disabled={!newCustomerName || !newCustomerPhone}
+            disabled={!newCustomerName || !newCustomerPhone || submittingCustomer}
+            loading={submittingCustomer}
             style={{ backgroundColor: primaryShade }}
           >
             {t('common.save' as any, language) || 'Save'}

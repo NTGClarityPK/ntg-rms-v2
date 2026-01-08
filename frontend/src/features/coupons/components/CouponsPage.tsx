@@ -442,100 +442,100 @@ export function CouponsPage() {
                   }
                   
                   return (
-                    <Table.Tr key={coupon.id}>
-                      <Table.Td>
-                        <Text fw={500}>{coupon.code}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Badge color={coupon.discountType === 'fixed' ? primaryColor : successColor}>
-                          {coupon.discountType === 'fixed' 
-                            ? (t('coupons.fixed', language) || 'Fixed')
-                            : (t('coupons.percentage', language) || 'Percentage')}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text fw={500} c={primaryColor}>
-                          {formatDiscount(coupon)}
-                          {coupon.discountType === 'percentage' && coupon.maxDiscountAmount && (
-                            <Text size="xs" c="dimmed">
-                              {' '}(max: {formatCurrency(coupon.maxDiscountAmount, currency)})
-                            </Text>
-                          )}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        {coupon.minOrderAmount ? (
-                          <Text size="sm">{formatCurrency(coupon.minOrderAmount, currency)}</Text>
-                        ) : (
-                          <Text size="sm" c="dimmed">-</Text>
+                  <Table.Tr key={coupon.id}>
+                    <Table.Td>
+                      <Text fw={500}>{coupon.code}</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge color={coupon.discountType === 'fixed' ? primaryColor : successColor}>
+                        {coupon.discountType === 'fixed' 
+                          ? (t('coupons.fixed', language) || 'Fixed')
+                          : (t('coupons.percentage', language) || 'Percentage')}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text fw={500} c={primaryColor}>
+                        {formatDiscount(coupon)}
+                        {coupon.discountType === 'percentage' && coupon.maxDiscountAmount && (
+                          <Text size="xs" c="dimmed">
+                            {' '}(max: {formatCurrency(coupon.maxDiscountAmount, currency)})
+                          </Text>
                         )}
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm">
-                          {coupon.usedCount} / {coupon.usageLimit || '∞'}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Stack gap={2}>
-                          {coupon.validFrom && (
-                            <Text size="xs" c="dimmed">
-                              {t('coupons.from', language) || 'From'}: {new Date(coupon.validFrom).toLocaleDateString()}
-                            </Text>
-                          )}
-                          {coupon.validUntil && (
-                            <Text size="xs" c="dimmed">
-                              {t('coupons.until', language) || 'Until'}: {new Date(coupon.validUntil).toLocaleDateString()}
-                            </Text>
-                          )}
-                          {!coupon.validFrom && !coupon.validUntil && (
-                            <Text size="xs" c="dimmed">-</Text>
-                          )}
-                        </Stack>
-                      </Table.Td>
-                      <Table.Td>
-                        <Stack gap={4}>
-                          <Badge 
-                            color={coupon.isActive ? successColor : getBadgeColorForText(t('coupons.inactive', language) || 'Inactive')} 
-                            size="sm"
-                          >
-                            {coupon.isActive 
-                              ? (t('coupons.active', language) || 'Active')
-                              : (t('coupons.inactive', language) || 'Inactive')}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      {coupon.minOrderAmount ? (
+                        <Text size="sm">{formatCurrency(coupon.minOrderAmount, currency)}</Text>
+                      ) : (
+                        <Text size="sm" c="dimmed">-</Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm">
+                        {coupon.usedCount} / {coupon.usageLimit || '∞'}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Stack gap={2}>
+                        {coupon.validFrom && (
+                          <Text size="xs" c="dimmed">
+                            {t('coupons.from', language) || 'From'}: {new Date(coupon.validFrom).toLocaleDateString()}
+                          </Text>
+                        )}
+                        {coupon.validUntil && (
+                          <Text size="xs" c="dimmed">
+                            {t('coupons.until', language) || 'Until'}: {new Date(coupon.validUntil).toLocaleDateString()}
+                          </Text>
+                        )}
+                        {!coupon.validFrom && !coupon.validUntil && (
+                          <Text size="xs" c="dimmed">-</Text>
+                        )}
+                      </Stack>
+                    </Table.Td>
+                    <Table.Td>
+                      <Stack gap={4}>
+                        <Badge 
+                          color={coupon.isActive ? successColor : getBadgeColorForText(t('coupons.inactive', language) || 'Inactive')} 
+                          size="sm"
+                        >
+                          {coupon.isActive 
+                            ? (t('coupons.active', language) || 'Active')
+                            : (t('coupons.inactive', language) || 'Inactive')}
+                        </Badge>
+                        {isExpired(coupon) && (
+                          <Badge color={errorColor} size="xs">
+                            {t('coupons.expired', language) || 'Expired'}
                           </Badge>
-                          {isExpired(coupon) && (
-                            <Badge color={errorColor} size="xs">
-                              {t('coupons.expired', language) || 'Expired'}
-                            </Badge>
-                          )}
-                          {isNotYetValid(coupon) && (
-                            <Badge color={warningColor} size="xs">
-                              {t('coupons.notYetValid', language) || 'Not Yet Valid'}
-                            </Badge>
-                          )}
-                        </Stack>
-                      </Table.Td>
-                      <Table.Td>
-                        <Group gap="xs">
-                          <ActionIcon
-                            variant="subtle"
-                            color="blue"
-                            onClick={() => handleOpenModal(coupon)}
+                        )}
+                        {isNotYetValid(coupon) && (
+                          <Badge color={warningColor} size="xs">
+                            {t('coupons.notYetValid', language) || 'Not Yet Valid'}
+                          </Badge>
+                        )}
+                      </Stack>
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap="xs">
+                        <ActionIcon
+                          variant="subtle"
+                          color="blue"
+                          onClick={() => handleOpenModal(coupon)}
                             disabled={updatingCouponId === coupon.id || deletingCouponId === coupon.id}
-                          >
-                            <IconEdit size={16} />
-                          </ActionIcon>
-                          <ActionIcon
-                            variant="subtle"
-                            color="red"
-                            onClick={() => handleDelete(coupon)}
+                        >
+                          <IconEdit size={16} />
+                        </ActionIcon>
+                        <ActionIcon
+                          variant="subtle"
+                          color="red"
+                          onClick={() => handleDelete(coupon)}
                             disabled={updatingCouponId === coupon.id || deletingCouponId === coupon.id}
                             loading={deletingCouponId === coupon.id}
-                          >
-                            <IconTrash size={16} />
-                          </ActionIcon>
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
+                        >
+                          <IconTrash size={16} />
+                        </ActionIcon>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
                   );
                 })
               )}

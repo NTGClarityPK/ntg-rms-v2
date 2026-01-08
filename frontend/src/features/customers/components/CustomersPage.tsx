@@ -237,7 +237,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
 
     flushSync(() => {
       setSubmitting(true);
-      setIsSubmitting(true);
+    setIsSubmitting(true);
     });
 
     try {
@@ -525,7 +525,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
                               variant="subtle"
                               color={primaryColor}
                               onClick={() => handleViewProfile(customer)}
-                              disabled={submitting || updatingCustomerId === customer.id}
+                              disabled={updatingCustomerId === customer.id}
                             >
                               <IconUser size={16} />
                             </ActionIcon>
@@ -533,7 +533,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
                               variant="subtle" 
                               color={primaryColor} 
                               onClick={() => handleOpenModal(customer)}
-                              disabled={submitting || updatingCustomerId === customer.id}
+                              disabled={updatingCustomerId === customer.id}
                             >
                               <IconEdit size={16} />
                             </ActionIcon>

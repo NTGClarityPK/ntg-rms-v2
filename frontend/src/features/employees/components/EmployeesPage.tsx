@@ -583,76 +583,76 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
                           </>
                         ) : (
                           <>
-                            <Table.Td>
-                              <Text fw={500}>
-                                {employee.name}
-                              </Text>
-                              {employee.employeeId && (
-                                <Text size="xs" c="dimmed">
-                                  {t('employees.employeeId', language)}: {employee.employeeId}
-                                </Text>
-                              )}
-                            </Table.Td>
-                            <Table.Td>{employee.email}</Table.Td>
-                            <Table.Td>
-                              <Group gap="xs">
-                                {(() => {
-                                  // Debug: log employee roles
-                                  if (employee.name === 'Lingo' || employee.email === 'lingo@gmail.com') {
-                                    console.log('Lingo employee data:', {
-                                      name: employee.name,
-                                      roles: employee.roles,
-                                      role: employee.role,
-                                      fullEmployee: employee
-                                    });
-                                  }
-                                  
-                                  // Display multiple roles if available
-                                  if (employee.roles && Array.isArray(employee.roles) && employee.roles.length > 0) {
-                                    return employee.roles.map((role) => {
-                                      const roleLabel = getRoleLabel(role.name);
-                                      return (
-                                        <Badge key={role.id} color={getBadgeColorForText(roleLabel)} variant="light">
-                                          {roleLabel}
-                                        </Badge>
-                                      );
-                                    });
-                                  }
-                                  // Fallback to single role
-                                  return (
-                                    <Badge color={primaryColor} variant="light">
-                                      {getRoleLabel(employee.role)}
-                                    </Badge>
-                                  );
-                                })()}
-                              </Group>
-                            </Table.Td>
-                            <Table.Td>{employee.phone || '-'}</Table.Td>
-                            <Table.Td>{getEmploymentTypeLabel(employee.employmentType)}</Table.Td>
-                            <Table.Td>
-                              <Badge
-                                color={employee.isActive ? successColor : errorColor}
-                                variant="light"
-                                leftSection={employee.isActive ? <IconCircleCheck size={12} /> : <IconCircleX size={12} />}
-                              >
-                                {employee.isActive
-                                  ? (t('common.active' as any, language) || 'Active')
-                                  : (t('common.inactive' as any, language) || 'Inactive')}
+                      <Table.Td>
+                        <Text fw={500}>
+                          {employee.name}
+                        </Text>
+                        {employee.employeeId && (
+                          <Text size="xs" c="dimmed">
+                            {t('employees.employeeId', language)}: {employee.employeeId}
+                          </Text>
+                        )}
+                      </Table.Td>
+                      <Table.Td>{employee.email}</Table.Td>
+                      <Table.Td>
+                        <Group gap="xs">
+                          {(() => {
+                            // Debug: log employee roles
+                            if (employee.name === 'Lingo' || employee.email === 'lingo@gmail.com') {
+                              console.log('Lingo employee data:', {
+                                name: employee.name,
+                                roles: employee.roles,
+                                role: employee.role,
+                                fullEmployee: employee
+                              });
+                            }
+                            
+                            // Display multiple roles if available
+                            if (employee.roles && Array.isArray(employee.roles) && employee.roles.length > 0) {
+                              return employee.roles.map((role) => {
+                                const roleLabel = getRoleLabel(role.name);
+                                return (
+                                  <Badge key={role.id} color={getBadgeColorForText(roleLabel)} variant="light">
+                                    {roleLabel}
+                                  </Badge>
+                                );
+                              });
+                            }
+                            // Fallback to single role
+                            return (
+                              <Badge color={primaryColor} variant="light">
+                                {getRoleLabel(employee.role)}
                               </Badge>
-                            </Table.Td>
-                            <Table.Td>
-                              <Group gap="xs">
-                                <PermissionGuard resource="employees" action="update">
+                            );
+                          })()}
+                        </Group>
+                      </Table.Td>
+                      <Table.Td>{employee.phone || '-'}</Table.Td>
+                      <Table.Td>{getEmploymentTypeLabel(employee.employmentType)}</Table.Td>
+                      <Table.Td>
+                        <Badge
+                          color={employee.isActive ? successColor : errorColor}
+                          variant="light"
+                          leftSection={employee.isActive ? <IconCircleCheck size={12} /> : <IconCircleX size={12} />}
+                        >
+                          {employee.isActive
+                            ? (t('common.active' as any, language) || 'Active')
+                            : (t('common.inactive' as any, language) || 'Inactive')}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap="xs">
+                          <PermissionGuard resource="employees" action="update">
                                   <ActionIcon 
                                     variant="subtle" 
                                     color={primaryColor} 
                                     onClick={() => handleOpenModal(employee)}
                                     disabled={deletingEmployeeId === employee.id || updatingEmployeeId === employee.id}
                                   >
-                                    <IconEdit size={16} />
-                                  </ActionIcon>
-                                </PermissionGuard>
-                                <PermissionGuard resource="employees" action="delete">
+                              <IconEdit size={16} />
+                            </ActionIcon>
+                          </PermissionGuard>
+                          <PermissionGuard resource="employees" action="delete">
                                   <ActionIcon 
                                     variant="subtle" 
                                     color={errorColor} 
@@ -662,15 +662,15 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
                                     {deletingEmployeeId === employee.id ? (
                                       <Loader size={16} />
                                     ) : (
-                                      <IconTrash size={16} />
+                              <IconTrash size={16} />
                                     )}
-                                  </ActionIcon>
-                                </PermissionGuard>
-                              </Group>
-                            </Table.Td>
+                            </ActionIcon>
+                          </PermissionGuard>
+                        </Group>
+                      </Table.Td>
                           </>
                         )}
-                      </Table.Tr>
+                    </Table.Tr>
                     );
                   })
                 )}
