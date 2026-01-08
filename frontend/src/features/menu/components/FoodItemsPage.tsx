@@ -57,6 +57,8 @@ import { isPaginatedResponse } from '@/lib/types/pagination.types';
 import { FOOD_ITEM_LABELS, MENU_TYPES, STOCK_TYPES, DISCOUNT_TYPES } from '@/shared/constants/menu.constants';
 import { handleApiError } from '@/shared/utils/error-handler';
 import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
+import { TranslationStatusBadge, LanguageIndicator, RetranslateButton } from '@/components/translations';
+import { translationsApi, SupportedLanguage } from '@/lib/api/translations';
 
 export function FoodItemsPage() {
   const { language } = useLanguageStore();
@@ -95,6 +97,8 @@ export function FoodItemsPage() {
   const [variationGroupsMap, setVariationGroupsMap] = useState<Map<string, string>>(new Map());
   const [submitting, setSubmitting] = useState(false);
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
+  const [supportedLanguages, setSupportedLanguages] = useState<SupportedLanguage[]>([]);
+  const [itemTranslations, setItemTranslations] = useState<{ [itemId: string]: { [fieldName: string]: { [languageCode: string]: string } } }>({});
 
   // Helper function to resolve variation group name from UUID
   const resolveVariationGroupName = useCallback((variationGroup: string | undefined): string => {
@@ -139,7 +143,8 @@ export function FoodItemsPage() {
       setLoading(true);
 
       // Load categories (only active ones for selection)
-      const catsResponse = await menuApi.getCategories(undefined, selectedBranchId || undefined);
+      const language = useLanguageStore.getState().language;
+      const catsResponse = await menuApi.getCategories(undefined, selectedBranchId || undefined, language);
       const cats = Array.isArray(catsResponse) ? catsResponse : (catsResponse?.data || []);
       setCategories((cats as Category[]).filter((cat: Category) => cat.isActive));
 
@@ -188,7 +193,7 @@ export function FoodItemsPage() {
       const serverItemsResponse = await menuApi.getFoodItems(undefined, {
         page: currentPage,
         limit: currentLimit,
-      }, currentSearch, false, selectedBranchId || undefined);
+      }, currentSearch, false, selectedBranchId || undefined, language);
       const serverItems = pagination.extractData(serverItemsResponse);
       
       // Extract pagination info from server response
@@ -257,6 +262,36 @@ export function FoodItemsPage() {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pagination.page, pagination.limit]);
+
+  // Load supported languages and translations
+  useEffect(() => {
+    const loadTranslationData = async () => {
+      try {
+        // Load supported languages
+        const languages = await translationsApi.getSupportedLanguages(true);
+        setSupportedLanguages(languages);
+
+        // Load translations for all food items
+        const translationsMap: { [itemId: string]: { [fieldName: string]: { [languageCode: string]: string } } } = {};
+        for (const item of foodItems) {
+          try {
+            const translations = await translationsApi.getEntityTranslations('food_item', item.id);
+            translationsMap[item.id] = translations;
+          } catch (err) {
+            // Ignore errors for individual translations
+            console.warn(`Failed to load translations for food item ${item.id}:`, err);
+          }
+        }
+        setItemTranslations(translationsMap);
+      } catch (err) {
+        console.warn('Failed to load translation data:', err);
+      }
+    };
+
+    if (foodItems.length > 0) {
+      loadTranslationData();
+    }
+  }, [foodItems]);
 
   // Helper function to get menu name from menu type
   const getMenuName = (menuType: string): string => {
@@ -554,7 +589,7 @@ export function FoodItemsPage() {
       let savedItem: FoodItem;
 
       if (wasEditing && currentEditingItem) {
-        savedItem = await menuApi.updateFoodItem(currentEditingItem.id, itemData);
+        savedItem = await menuApi.updateFoodItem(currentEditingItem.id, itemData, language);
       } else {
         savedItem = await menuApi.createFoodItem(itemData, selectedBranchId || undefined);
         
@@ -906,9 +941,18 @@ export function FoodItemsPage() {
                                   </Box>
                                 )}
                                 <div style={{ minWidth: 0, flex: 1 }}>
-                                  <Text fw={500} truncate>
-                                    {item.name || ''}
-                                  </Text>
+                                  <Group gap="xs" wrap="nowrap">
+                                    <Text fw={500} truncate>
+                                      {item.name || ''}
+                                    </Text>
+                                    {supportedLanguages.length > 0 && itemTranslations[item.id] && (
+                                      <TranslationStatusBadge
+                                        translations={itemTranslations[item.id].name || {}}
+                                        supportedLanguages={supportedLanguages}
+                                        fieldName="name"
+                                      />
+                                    )}
+                                  </Group>
                                   {item.description && (
                                     <Text size="xs" c="dimmed" lineClamp={1}>
                                       {item.description || ''}
@@ -1029,6 +1073,36 @@ export function FoodItemsPage() {
             }
           }}
         >
+          <Group justify="space-between" mb="md">
+            <Title order={4}>{editingItem ? t('menu.editFoodItem', language) : t('menu.createFoodItem', language)}</Title>
+            <Group gap="xs">
+              <LanguageIndicator variant="badge" size="sm" />
+              {editingItem && user?.role === 'tenant_owner' && (
+                <RetranslateButton
+                  entityType="food_item"
+                  entityId={editingItem.id}
+                  onSuccess={() => {
+                    loadData();
+                    // Reload translations
+                    const reloadTranslations = async () => {
+                      try {
+                        const translations = await translationsApi.getEntityTranslations('food_item', editingItem.id);
+                        setItemTranslations((prev) => ({
+                          ...prev,
+                          [editingItem.id]: translations,
+                        }));
+                      } catch (err) {
+                        console.warn('Failed to reload translations:', err);
+                      }
+                    };
+                    reloadTranslations();
+                  }}
+                  size="sm"
+                  variant="light"
+                />
+              )}
+            </Group>
+          </Group>
           <Stepper 
             active={activeStep} 
             onStepClick={(step) => {

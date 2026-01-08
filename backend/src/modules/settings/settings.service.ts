@@ -8,6 +8,7 @@ import {
 import { SupabaseService } from '../../database/supabase.service';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { RestaurantService } from '../restaurant/restaurant.service';
+import { TranslationService } from '../translations/services/translation.service';
 
 @Injectable()
 export class SettingsService {
@@ -15,13 +16,14 @@ export class SettingsService {
     private supabaseService: SupabaseService,
     @Inject(forwardRef(() => RestaurantService))
     private restaurantService: RestaurantService,
+    private translationService: TranslationService,
   ) {}
 
   /**
    * Get all settings for a tenant and branch
    * Settings are stored as JSON in tenant_settings table
    */
-  async getSettings(tenantId: string, branchId?: string) {
+  async getSettings(tenantId: string, branchId?: string, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Build query based on whether branchId is provided
@@ -53,9 +55,49 @@ export class SettingsService {
 
     // Merge with defaults to ensure all settings exist
     const defaults = this.getDefaultSettings();
+    const invoiceSettings = { ...defaults.invoice, ...(existing.invoice || {}) };
+
+    // Get translations for invoice header, footer, and terms
+    try {
+      if (invoiceSettings.headerText) {
+        const headerTranslation = await this.translationService.getTranslation({
+          entityType: 'invoice',
+          entityId: tenantId,
+          languageCode: language,
+          fieldName: 'header',
+          fallbackLanguage: 'en',
+        });
+        if (headerTranslation) invoiceSettings.headerText = headerTranslation;
+      }
+
+      if (invoiceSettings.footerText) {
+        const footerTranslation = await this.translationService.getTranslation({
+          entityType: 'invoice',
+          entityId: tenantId,
+          languageCode: language,
+          fieldName: 'footer',
+          fallbackLanguage: 'en',
+        });
+        if (footerTranslation) invoiceSettings.footerText = footerTranslation;
+      }
+
+      if (invoiceSettings.termsAndConditions) {
+        const termsTranslation = await this.translationService.getTranslation({
+          entityType: 'invoice',
+          entityId: tenantId,
+          languageCode: language,
+          fieldName: 'terms_and_conditions',
+          fallbackLanguage: 'en',
+        });
+        if (termsTranslation) invoiceSettings.termsAndConditions = termsTranslation;
+      }
+    } catch (translationError) {
+      console.warn(`Failed to get invoice translations for tenant ${tenantId}:`, translationError);
+    }
+
     return {
       general: { ...defaults.general, ...(existing.general || {}) },
-      invoice: { ...defaults.invoice, ...(existing.invoice || {}) },
+      invoice: invoiceSettings,
       paymentMethods: {
         ...defaults.paymentMethods,
         ...(existing.payment_methods || {}),
@@ -68,11 +110,11 @@ export class SettingsService {
   /**
    * Update settings for a tenant and branch
    */
-  async updateSettings(tenantId: string, updateDto: UpdateSettingsDto, branchId?: string) {
+  async updateSettings(tenantId: string, updateDto: UpdateSettingsDto, branchId?: string, language: string = 'en', userId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Get current settings
-    const current = await this.getSettings(tenantId, branchId);
+    // Get current settings (in original language for comparison)
+    const current = await this.getSettings(tenantId, branchId, 'en');
 
     // Merge updates - explicitly handle false values to ensure they override defaults
     const updated = {
@@ -154,6 +196,124 @@ export class SettingsService {
       throw new InternalServerErrorException(
         `Failed to update settings: ${error.message}`
       );
+    }
+
+    // Create/Update translations for invoice header, footer, and terms if they were updated
+    try {
+      if (updateDto.invoice) {
+        if (updateDto.invoice.headerText !== undefined && updateDto.invoice.headerText !== current.invoice.headerText) {
+          // Try to create translations first (will update if exists)
+          try {
+            await this.translationService.createTranslations({
+              entityType: 'invoice',
+              entityId: tenantId,
+              fieldName: 'header',
+              text: updateDto.invoice.headerText,
+            });
+            // Then update the specific language if different from source
+            if (language !== 'en') {
+              await this.translationService.updateTranslation(
+                {
+                  entityType: 'invoice',
+                  entityId: tenantId,
+                  languageCode: language,
+                  fieldName: 'header',
+                  translatedText: updateDto.invoice.headerText,
+                  isAiGenerated: false, // Manual edit
+                },
+                userId,
+              );
+            }
+          } catch (createError) {
+            // If create fails, try update (translation might already exist)
+            await this.translationService.updateTranslation(
+              {
+                entityType: 'invoice',
+                entityId: tenantId,
+                languageCode: language,
+                fieldName: 'header',
+                translatedText: updateDto.invoice.headerText,
+                isAiGenerated: false, // Manual edit
+              },
+              userId,
+            );
+          }
+        }
+
+        if (updateDto.invoice.footerText !== undefined && updateDto.invoice.footerText !== current.invoice.footerText) {
+          try {
+            await this.translationService.createTranslations({
+              entityType: 'invoice',
+              entityId: tenantId,
+              fieldName: 'footer',
+              text: updateDto.invoice.footerText,
+            });
+            if (language !== 'en') {
+              await this.translationService.updateTranslation(
+                {
+                  entityType: 'invoice',
+                  entityId: tenantId,
+                  languageCode: language,
+                  fieldName: 'footer',
+                  translatedText: updateDto.invoice.footerText,
+                  isAiGenerated: false, // Manual edit
+                },
+                userId,
+              );
+            }
+          } catch (createError) {
+            await this.translationService.updateTranslation(
+              {
+                entityType: 'invoice',
+                entityId: tenantId,
+                languageCode: language,
+                fieldName: 'footer',
+                translatedText: updateDto.invoice.footerText,
+                isAiGenerated: false, // Manual edit
+              },
+              userId,
+            );
+          }
+        }
+
+        if (updateDto.invoice.termsAndConditions !== undefined && updateDto.invoice.termsAndConditions !== current.invoice.termsAndConditions) {
+          try {
+            await this.translationService.createTranslations({
+              entityType: 'invoice',
+              entityId: tenantId,
+              fieldName: 'terms_and_conditions',
+              text: updateDto.invoice.termsAndConditions,
+            });
+            if (language !== 'en') {
+              await this.translationService.updateTranslation(
+                {
+                  entityType: 'invoice',
+                  entityId: tenantId,
+                  languageCode: language,
+                  fieldName: 'terms_and_conditions',
+                  translatedText: updateDto.invoice.termsAndConditions,
+                  isAiGenerated: false, // Manual edit
+                },
+                userId,
+              );
+            }
+          } catch (createError) {
+            await this.translationService.updateTranslation(
+              {
+                entityType: 'invoice',
+                entityId: tenantId,
+                languageCode: language,
+                fieldName: 'terms_and_conditions',
+                translatedText: updateDto.invoice.termsAndConditions,
+                isAiGenerated: false, // Manual edit
+              },
+              userId,
+            );
+          }
+        }
+      }
+    } catch (translationError) {
+      console.error('Failed to update invoice translations:', translationError);
     }
 
     // If totalTables was updated and branchId is provided, create missing tables
@@ -287,8 +447,8 @@ export class SettingsService {
   /**
    * Get a specific setting category
    */
-  async getSettingCategory(tenantId: string, category: string, branchId?: string) {
-    const settings = await this.getSettings(tenantId, branchId);
+  async getSettingCategory(tenantId: string, category: string, branchId?: string, language: string = 'en') {
+    const settings = await this.getSettings(tenantId, branchId, language);
     return settings[category] || null;
   }
 }

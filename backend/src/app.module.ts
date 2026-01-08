@@ -17,6 +17,7 @@ import { TaxesModule } from './modules/taxes/taxes.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { SubscriptionModule } from './modules/subscription/subscription.module';
+import { TranslationsModule } from './modules/translations/translations.module';
 import { DatabaseModule } from './database/database.module';
 import { HealthController } from './health/health.controller';
 
@@ -96,6 +97,7 @@ import { HealthController } from './health/health.controller';
     DashboardModule,
     RolesModule,
     SubscriptionModule,
+    TranslationsModule,
   ],
   controllers: [HealthController],
 })

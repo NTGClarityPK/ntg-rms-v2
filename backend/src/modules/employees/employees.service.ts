@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { SupabaseService } from '../../database/supabase.service';
 import { RolesService } from '../roles/roles.service';
+import { TranslationService } from '../translations/services/translation.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { PaginationParams, PaginatedResponse, getPaginationParams, createPaginatedResponse } from '../../common/dto/pagination.dto';
@@ -15,6 +16,7 @@ export class EmployeesService {
   constructor(
     private supabaseService: SupabaseService,
     private rolesService: RolesService,
+    private translationService: TranslationService,
   ) {}
 
   /**
@@ -24,6 +26,7 @@ export class EmployeesService {
     tenantId: string,
     filters?: { branchId?: string; role?: string; status?: string },
     pagination?: PaginationParams,
+    language: string = 'en',
   ): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
 
@@ -181,35 +184,53 @@ export class EmployeesService {
       paginatedEmployees = filteredEmployees.slice(offset, offset + limit);
     }
 
-    // Transform snake_case to camelCase
+    // Transform snake_case to camelCase with translations
     console.log(`[EmployeesService] Transforming ${paginatedEmployees.length} employees for response`);
-    const transformedEmployees = paginatedEmployees.map((emp: any) => {
-      const roles = rolesByUserId.get(emp.id) || [];
-      const branches = branchesByUserId.get(emp.id) || [];
-      console.log(`[EmployeesService] Employee ${emp.id} (${emp.email}): ${roles.length} roles, ${branches.length} branches`);
-      return {
-      id: emp.id,
-      tenantId: emp.tenant_id,
-      supabaseAuthId: emp.supabase_auth_id,
-      email: emp.email,
-      name: emp.name,
-      phone: emp.phone,
-      role: emp.role, // Keep for backward compatibility
-      roles: rolesByUserId.get(emp.id) || [],
-      employeeId: emp.employee_id,
-      photoUrl: emp.photo_url,
-      nationalId: emp.national_id,
-      dateOfBirth: emp.date_of_birth,
-      employmentType: emp.employment_type,
-      joiningDate: emp.joining_date,
-      salary: emp.salary ? Number(emp.salary) : undefined,
-      isActive: emp.is_active,
-      lastLoginAt: emp.last_login_at,
-      createdAt: emp.created_at,
-      updatedAt: emp.updated_at,
-      branches: branchesByUserId.get(emp.id) || [],
-      };
-    });
+    const transformedEmployees = await Promise.all(
+      paginatedEmployees.map(async (emp: any) => {
+        const roles = rolesByUserId.get(emp.id) || [];
+        const branches = branchesByUserId.get(emp.id) || [];
+        console.log(`[EmployeesService] Employee ${emp.id} (${emp.email}): ${roles.length} roles, ${branches.length} branches`);
+
+        // Get translated name
+        let translatedName = emp.name;
+        try {
+          const nameTranslation = await this.translationService.getTranslation({
+            entityType: 'employee',
+            entityId: emp.id,
+            languageCode: language,
+            fieldName: 'name',
+            fallbackLanguage: 'en',
+          });
+          if (nameTranslation) translatedName = nameTranslation;
+        } catch (translationError) {
+          console.warn(`Failed to get translations for employee ${emp.id}:`, translationError);
+        }
+
+        return {
+        id: emp.id,
+        tenantId: emp.tenant_id,
+        supabaseAuthId: emp.supabase_auth_id,
+        email: emp.email,
+        name: translatedName,
+        phone: emp.phone,
+        role: emp.role, // Keep for backward compatibility
+        roles: rolesByUserId.get(emp.id) || [],
+        employeeId: emp.employee_id,
+        photoUrl: emp.photo_url,
+        nationalId: emp.national_id,
+        dateOfBirth: emp.date_of_birth,
+        employmentType: emp.employment_type,
+        joiningDate: emp.joining_date,
+        salary: emp.salary ? Number(emp.salary) : undefined,
+        isActive: emp.is_active,
+        lastLoginAt: emp.last_login_at,
+        createdAt: emp.created_at,
+        updatedAt: emp.updated_at,
+        branches: branchesByUserId.get(emp.id) || [],
+        };
+      })
+    );
     
     console.log(`[EmployeesService] Transformed ${transformedEmployees.length} employees. Returning paginated response with total: ${totalCount}`);
 
@@ -224,7 +245,7 @@ export class EmployeesService {
   /**
    * Get employee by ID
    */
-  async getEmployeeById(tenantId: string, employeeId: string) {
+  async getEmployeeById(tenantId: string, employeeId: string, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Query user first
@@ -260,13 +281,28 @@ export class EmployeesService {
       )
       .eq('user_id', employeeId);
 
+    // Get translated name
+    let translatedName = employee.name;
+    try {
+      const nameTranslation = await this.translationService.getTranslation({
+        entityType: 'employee',
+        entityId: employee.id,
+        languageCode: language,
+        fieldName: 'name',
+        fallbackLanguage: 'en',
+      });
+      if (nameTranslation) translatedName = nameTranslation;
+    } catch (translationError) {
+      console.warn(`Failed to get translations for employee ${employee.id}:`, translationError);
+    }
+
     // Transform snake_case to camelCase
     return {
       id: employee.id,
       tenantId: employee.tenant_id,
       supabaseAuthId: employee.supabase_auth_id,
       email: employee.email,
-      name: employee.name,
+      name: translatedName,
       phone: employee.phone,
       role: employee.role, // Keep for backward compatibility
       roles: (userRolesData || []).map((ur: any) => ({
@@ -442,29 +478,39 @@ export class EmployeesService {
       updatedAt: employee.updated_at,
       branches: assignedBranches,
     };
+
+    // Create translations for name
+    try {
+      await this.translationService.createTranslations({
+        entityType: 'employee',
+        entityId: employee.id,
+        fieldName: 'name',
+        text: createDto.name,
+      });
+    } catch (translationError) {
+      console.warn(`Failed to create translations for employee ${employee.id}:`, translationError);
+    }
   }
 
   /**
    * Update an employee
    */
-  async updateEmployee(tenantId: string, employeeId: string, updateDto: UpdateEmployeeDto, userId: string) {
+  async updateEmployee(tenantId: string, employeeId: string, updateDto: UpdateEmployeeDto, userId: string, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Check if employee exists
+    // Check if employee exists and get current values for translation comparison
+    const currentEmployee = await this.getEmployeeById(tenantId, employeeId, 'en');
+
+    // Check if email is being changed and if new email already exists
     const { data: existingEmployee } = await supabase
       .from('users')
-      .select('id, email')
+      .select('email')
       .eq('id', employeeId)
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
       .single();
 
-    if (!existingEmployee) {
-      throw new NotFoundException('Employee not found');
-    }
-
-    // Check if email is being changed and if new email already exists
-    if (updateDto.email && updateDto.email !== existingEmployee.email) {
+    if (updateDto.email && existingEmployee && updateDto.email !== existingEmployee.email) {
       const { data: emailExists } = await supabase
         .from('users')
         .select('id')
@@ -590,6 +636,25 @@ export class EmployeesService {
       }));
     }
 
+    // Update translations if name changed
+    try {
+      if (updateDto.name !== undefined && updateDto.name !== currentEmployee.name) {
+        await this.translationService.updateTranslation(
+          {
+            entityType: 'employee',
+            entityId: employeeId,
+            languageCode: language,
+            fieldName: 'name',
+            translatedText: updateDto.name,
+            isAiGenerated: false, // Manual edit
+          },
+          userId,
+        );
+      }
+    } catch (translationError) {
+      console.error('Failed to update translations for employee:', translationError);
+    }
+
     // Return updated employee data directly instead of calling getEmployeeById
     return {
       id: employee.id,
@@ -643,6 +708,13 @@ export class EmployeesService {
 
     if (error) {
       throw new InternalServerErrorException(`Failed to delete employee: ${error.message}`);
+    }
+
+    // Delete translations for this employee
+    try {
+      await this.translationService.deleteEntityTranslations('employee', employeeId);
+    } catch (translationError) {
+      console.warn(`Failed to delete translations for employee ${employeeId}:`, translationError);
     }
 
     return { message: 'Employee deleted successfully' };

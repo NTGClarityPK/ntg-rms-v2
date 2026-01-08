@@ -17,6 +17,7 @@ import { useMediaQuery } from '@mantine/hooks';
 import { useRouter } from 'next/navigation';
 import { IconToolsKitchen2, IconLanguage, IconLogout, IconUser, IconCircle } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
+import { LanguageSelector } from '@/components/layout/LanguageSelector';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useRestaurantStore } from '@/lib/store/restaurant-store';
 import { authApi } from '@/lib/api/auth';
@@ -169,14 +170,7 @@ export function Header({ mobileOpened, toggleMobile }: HeaderProps = {}) {
             </Badge>
           </Tooltip>
 
-          <Button
-            variant="subtle"
-            leftSection={<IconLanguage size={16} />}
-            onClick={toggleLanguage}
-            size="sm"
-          >
-            {language === 'en' ? 'العربية' : 'English'}
-          </Button>
+          <LanguageSelector size="sm" />
 
           <UserMenu user={user} onLogout={handleLogout} />
         </Group>

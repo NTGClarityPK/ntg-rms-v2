@@ -16,10 +16,14 @@ import { CreateRecipeDto } from './dto/create-recipe.dto';
 import { UpdateRecipeDto } from './dto/update-recipe.dto';
 import { InventoryReportsQueryDto } from './dto/inventory-reports.dto';
 import { PaginationParams, PaginatedResponse, getPaginationParams, createPaginatedResponse } from '../../common/dto/pagination.dto';
+import { TranslationService } from '../translations/services/translation.service';
 
 @Injectable()
 export class InventoryService {
-  constructor(private supabaseService: SupabaseService) {}
+  constructor(
+    private supabaseService: SupabaseService,
+    private translationService: TranslationService,
+  ) {}
 
   // ============================================
   // INGREDIENT MANAGEMENT
@@ -27,12 +31,14 @@ export class InventoryService {
 
   /**
    * Get all ingredients for a tenant (optionally filtered by branch)
+   * @param language - Language code for translations (default: 'en')
    */
   async getIngredients(
     tenantId: string,
     filters?: { category?: string; isActive?: boolean; search?: string },
     pagination?: PaginationParams,
     branchId?: string,
+    language: string = 'en',
   ): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
 
@@ -88,22 +94,58 @@ export class InventoryService {
       throw new InternalServerErrorException(`Failed to fetch ingredients: ${error.message}`);
     }
 
-    // Transform snake_case to camelCase
-    const transformedData = (data || []).map((ing: any) => ({
-      id: ing.id,
-      tenantId: ing.tenant_id,
-      name: ing.name,
-      category: ing.category,
-      unitOfMeasurement: ing.unit_of_measurement,
-      currentStock: Number(ing.current_stock) || 0,
-      minimumThreshold: Number(ing.minimum_threshold) || 0,
-      costPerUnit: Number(ing.cost_per_unit) || 0,
-      storageLocation: ing.storage_location,
-      isActive: ing.is_active,
-      createdAt: ing.created_at,
-      updatedAt: ing.updated_at,
-      deletedAt: ing.deleted_at,
-    }));
+    // Transform snake_case to camelCase and get translated names
+    const transformedData = await Promise.all(
+      (data || []).map(async (ing: any) => {
+    // Get translated name and storage location if translation exists, otherwise use original
+    let translatedName = ing.name;
+    let translatedStorageLocation = ing.storage_location;
+    try {
+      const nameTranslation = await this.translationService.getTranslation({
+        entityType: 'ingredient',
+        entityId: ing.id,
+        languageCode: language,
+        fieldName: 'name',
+        fallbackLanguage: 'en',
+      });
+      if (nameTranslation) {
+        translatedName = nameTranslation;
+      }
+
+      if (ing.storage_location) {
+        const storageTranslation = await this.translationService.getTranslation({
+          entityType: 'ingredient',
+          entityId: ing.id,
+          languageCode: language,
+          fieldName: 'storage_location',
+          fallbackLanguage: 'en',
+        });
+        if (storageTranslation) {
+          translatedStorageLocation = storageTranslation;
+        }
+      }
+    } catch (translationError) {
+      // Use original values if translation fetch fails
+      console.warn(`Failed to get translation for ingredient ${ing.id}:`, translationError);
+    }
+
+        return {
+          id: ing.id,
+          tenantId: ing.tenant_id,
+          name: translatedName,
+          category: ing.category,
+          unitOfMeasurement: ing.unit_of_measurement,
+          currentStock: Number(ing.current_stock) || 0,
+          minimumThreshold: Number(ing.minimum_threshold) || 0,
+          costPerUnit: Number(ing.cost_per_unit) || 0,
+          storageLocation: translatedStorageLocation,
+          isActive: ing.is_active,
+          createdAt: ing.created_at,
+          updatedAt: ing.updated_at,
+          deletedAt: ing.deleted_at,
+        };
+      }),
+    );
 
     // Return paginated response if pagination is requested
     if (pagination) {
@@ -115,8 +157,9 @@ export class InventoryService {
 
   /**
    * Get ingredient by ID
+   * @param language - Language code for translations (default: 'en')
    */
-  async getIngredientById(tenantId: string, ingredientId: string) {
+  async getIngredientById(tenantId: string, ingredientId: string, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     const { data, error } = await supabase
@@ -134,11 +177,43 @@ export class InventoryService {
       throw new InternalServerErrorException(`Failed to fetch ingredient: ${error.message}`);
     }
 
+    // Get translated name and storage location if translation exists, otherwise use original
+    let translatedName = data.name;
+    let translatedStorageLocation = data.storage_location;
+    try {
+      const nameTranslation = await this.translationService.getTranslation({
+        entityType: 'ingredient',
+        entityId: ingredientId,
+        languageCode: language,
+        fieldName: 'name',
+        fallbackLanguage: 'en',
+      });
+      if (nameTranslation) {
+        translatedName = nameTranslation;
+      }
+
+      if (data.storage_location) {
+        const storageTranslation = await this.translationService.getTranslation({
+          entityType: 'ingredient',
+          entityId: ingredientId,
+          languageCode: language,
+          fieldName: 'storage_location',
+          fallbackLanguage: 'en',
+        });
+        if (storageTranslation) {
+          translatedStorageLocation = storageTranslation;
+        }
+      }
+    } catch (translationError) {
+      // Use original values if translation fetch fails
+      console.warn(`Failed to get translation for ingredient ${ingredientId}:`, translationError);
+    }
+
     // Transform snake_case to camelCase
     return {
       id: data.id,
       tenantId: data.tenant_id,
-      name: data.name,
+      name: translatedName,
       category: data.category,
       unitOfMeasurement: data.unit_of_measurement,
       currentStock: Number(data.current_stock) || 0,
@@ -184,6 +259,28 @@ export class InventoryService {
       throw new InternalServerErrorException(`Failed to create ingredient: ${error.message}`);
     }
 
+    // Generate translations for the name and storage location
+    try {
+      await this.translationService.createTranslations({
+        entityType: 'ingredient',
+        entityId: data.id,
+        fieldName: 'name',
+        text: createDto.name,
+      });
+
+      if (createDto.storageLocation) {
+        await this.translationService.createTranslations({
+          entityType: 'ingredient',
+          entityId: data.id,
+          fieldName: 'storage_location',
+          text: createDto.storageLocation,
+        });
+      }
+    } catch (translationError) {
+      // Log but don't fail - ingredient is created, translations can be added later
+      console.error('Failed to create translations for ingredient:', translationError);
+    }
+
     // Transform snake_case to camelCase
     return {
       id: data.id,
@@ -204,16 +301,19 @@ export class InventoryService {
 
   /**
    * Update an ingredient
+   * @param language - Current user's language (default: 'en'). If name is updated, only this language's translation is updated.
    */
   async updateIngredient(
     tenantId: string,
     ingredientId: string,
     updateDto: UpdateIngredientDto,
+    language: string = 'en',
+    userId?: string,
   ) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Check if ingredient exists
-    await this.getIngredientById(tenantId, ingredientId);
+    // Check if ingredient exists and get current data (using default language for comparison)
+    const currentIngredient = await this.getIngredientById(tenantId, ingredientId, 'en');
 
     const updateData: any = {};
     if (updateDto.name !== undefined) updateData.name = updateDto.name;
@@ -238,6 +338,26 @@ export class InventoryService {
 
     if (error) {
       throw new InternalServerErrorException(`Failed to update ingredient: ${error.message}`);
+    }
+
+    // If name was updated, update translation for the current language
+    if (updateDto.name !== undefined && updateDto.name !== currentIngredient.name) {
+      try {
+        await this.translationService.updateTranslation(
+          {
+            entityType: 'ingredient',
+            entityId: ingredientId,
+            languageCode: language,
+            fieldName: 'name',
+            translatedText: updateDto.name,
+            isAiGenerated: false, // Manual edit
+          },
+          userId,
+        );
+      } catch (translationError) {
+        // Log but don't fail - ingredient is updated, translation can be fixed later
+        console.error('Failed to update translation for ingredient:', translationError);
+      }
     }
 
     // Transform snake_case to camelCase
@@ -290,6 +410,14 @@ export class InventoryService {
       throw new InternalServerErrorException(`Failed to delete ingredient: ${error.message}`);
     }
 
+    // Delete translations for this ingredient
+    try {
+      await this.translationService.deleteEntityTranslations('ingredient', ingredientId);
+    } catch (translationError) {
+      // Log but don't fail - ingredient is deleted, translations cleanup can happen later
+      console.warn(`Failed to delete translations for ingredient ${ingredientId}:`, translationError);
+    }
+
     return { message: 'Ingredient deleted successfully' };
   }
 
@@ -300,7 +428,7 @@ export class InventoryService {
   /**
    * Add stock (Purchase Entry)
    */
-  async addStock(tenantId: string, userId: string, addDto: AddStockDto) {
+  async addStock(tenantId: string, userId: string, addDto: AddStockDto, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Verify ingredient exists
@@ -332,6 +460,29 @@ export class InventoryService {
       throw new InternalServerErrorException(
         `Failed to create stock transaction: ${transactionError.message}`,
       );
+    }
+
+    // Create translations for reason and supplier_name (if provided)
+    try {
+      if (addDto.reason) {
+        await this.translationService.createTranslations({
+          entityType: 'stock_operation',
+          entityId: transaction.id,
+          fieldName: 'reason',
+          text: addDto.reason,
+        });
+      }
+
+      if (addDto.supplierName) {
+        await this.translationService.createTranslations({
+          entityType: 'stock_operation',
+          entityId: transaction.id,
+          fieldName: 'supplier_name',
+          text: addDto.supplierName,
+        });
+      }
+    } catch (translationError) {
+      console.warn(`Failed to create translations for stock transaction ${transaction.id}:`, translationError);
     }
 
     // Update ingredient stock
@@ -372,7 +523,7 @@ export class InventoryService {
   /**
    * Deduct stock (Usage/Waste)
    */
-  async deductStock(tenantId: string, userId: string, deductDto: DeductStockDto) {
+  async deductStock(tenantId: string, userId: string, deductDto: DeductStockDto, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Verify ingredient exists and has enough stock
@@ -421,6 +572,20 @@ export class InventoryService {
       );
     }
 
+    // Create translations for reason
+    try {
+      if (reasonText) {
+        await this.translationService.createTranslations({
+          entityType: 'stock_operation',
+          entityId: transaction.id,
+          fieldName: 'reason',
+          text: reasonText,
+        });
+      }
+    } catch (translationError) {
+      console.warn(`Failed to create translations for stock transaction ${transaction.id}:`, translationError);
+    }
+
     // Update ingredient stock
     const newStock = Number(ingredient.currentStock) - Number(deductDto.quantity);
     const { error: updateError } = await supabase
@@ -466,7 +631,7 @@ export class InventoryService {
   /**
    * Adjust stock (Physical count correction)
    */
-  async adjustStock(tenantId: string, userId: string, adjustDto: AdjustStockDto) {
+  async adjustStock(tenantId: string, userId: string, adjustDto: AdjustStockDto, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Verify ingredient exists
@@ -496,6 +661,20 @@ export class InventoryService {
       throw new InternalServerErrorException(
         `Failed to create stock transaction: ${transactionError.message}`,
       );
+    }
+
+    // Create translations for reason
+    try {
+      if (adjustDto.reason) {
+        await this.translationService.createTranslations({
+          entityType: 'stock_operation',
+          entityId: transaction.id,
+          fieldName: 'reason',
+          text: adjustDto.reason,
+        });
+      }
+    } catch (translationError) {
+      console.warn(`Failed to create translations for stock transaction ${transaction.id}:`, translationError);
     }
 
     // Update ingredient stock
@@ -656,6 +835,7 @@ export class InventoryService {
     tenantId: string,
     filters?: InventoryReportsQueryDto,
     pagination?: PaginationParams,
+    language: string = 'en',
   ): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
 
@@ -715,43 +895,77 @@ export class InventoryService {
       );
     }
 
-    // Transform snake_case to camelCase
-    const transformedData = (data || []).map((tx: any) => ({
-      id: tx.id,
-      tenantId: tx.tenant_id,
-      branchId: tx.branch_id,
-      ingredientId: tx.ingredient_id,
-      transactionType: tx.transaction_type,
-      quantity: Number(tx.quantity) || 0,
-      unitCost: tx.unit_cost ? Number(tx.unit_cost) : undefined,
-      totalCost: tx.total_cost ? Number(tx.total_cost) : undefined,
-      reason: tx.reason,
-      supplierName: tx.supplier_name,
-      invoiceNumber: tx.invoice_number,
-      referenceId: tx.reference_id,
-      transactionDate: tx.transaction_date,
-      createdAt: tx.created_at,
-      createdBy: tx.created_by,
-      ingredient: tx.ingredient
-        ? {
-            id: tx.ingredient.id,
-            name: tx.ingredient.name,
-            unitOfMeasurement: tx.ingredient.unit_of_measurement,
+    // Transform snake_case to camelCase with translations
+    const transformedData = await Promise.all(
+      (data || []).map(async (tx: any) => {
+        // Get translations for reason and supplier_name
+        let translatedReason = tx.reason;
+        let translatedSupplierName = tx.supplier_name;
+
+        try {
+          if (tx.reason) {
+            const reasonTranslation = await this.translationService.getTranslation({
+              entityType: 'stock_operation',
+              entityId: tx.id,
+              languageCode: language,
+              fieldName: 'reason',
+              fallbackLanguage: 'en',
+            });
+            if (reasonTranslation) translatedReason = reasonTranslation;
           }
-        : undefined,
-      branch: tx.branch
-        ? {
-            id: tx.branch.id,
-            name: tx.branch.name,
+
+          if (tx.supplier_name) {
+            const supplierNameTranslation = await this.translationService.getTranslation({
+              entityType: 'stock_operation',
+              entityId: tx.id,
+              languageCode: language,
+              fieldName: 'supplier_name',
+              fallbackLanguage: 'en',
+            });
+            if (supplierNameTranslation) translatedSupplierName = supplierNameTranslation;
           }
-        : undefined,
-      createdByUser: tx.created_by_user
-        ? {
-            id: tx.created_by_user.id,
-            name: tx.created_by_user.name,
-          }
-        : undefined,
-    }));
+        } catch (translationError) {
+          console.warn(`Failed to get translations for stock transaction ${tx.id}:`, translationError);
+        }
+
+        return {
+          id: tx.id,
+          tenantId: tx.tenant_id,
+          branchId: tx.branch_id,
+          ingredientId: tx.ingredient_id,
+          transactionType: tx.transaction_type,
+          quantity: Number(tx.quantity) || 0,
+          unitCost: tx.unit_cost ? Number(tx.unit_cost) : undefined,
+          totalCost: tx.total_cost ? Number(tx.total_cost) : undefined,
+          reason: translatedReason,
+          supplierName: translatedSupplierName,
+          invoiceNumber: tx.invoice_number,
+          referenceId: tx.reference_id,
+          transactionDate: tx.transaction_date,
+          createdAt: tx.created_at,
+          createdBy: tx.created_by,
+          ingredient: tx.ingredient
+            ? {
+                id: tx.ingredient.id,
+                name: tx.ingredient.name,
+                unitOfMeasurement: tx.ingredient.unit_of_measurement,
+              }
+            : undefined,
+          branch: tx.branch
+            ? {
+                id: tx.branch.id,
+                name: tx.branch.name,
+              }
+            : undefined,
+          createdByUser: tx.created_by_user
+            ? {
+                id: tx.created_by_user.id,
+                name: tx.created_by_user.name,
+              }
+            : undefined,
+        };
+      })
+    );
 
     // Return paginated response if pagination is requested
     if (pagination) {

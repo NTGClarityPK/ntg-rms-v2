@@ -42,6 +42,8 @@ import { isPaginatedResponse } from '@/lib/types/pagination.types';
 import { INGREDIENT_CATEGORIES, MEASUREMENT_UNITS } from '@/shared/constants/ingredients.constants';
 import { handleApiError } from '@/shared/utils/error-handler';
 import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
+import { TranslationStatusBadge, LanguageIndicator, RetranslateButton } from '@/components/translations';
+import { translationsApi, SupportedLanguage } from '@/lib/api/translations';
 
 export function IngredientsPage() {
   const { language } = useLanguageStore();
@@ -70,6 +72,8 @@ export function IngredientsPage() {
   const [pendingIngredient, setPendingIngredient] = useState<Partial<Ingredient> | null>(null);
   const [updatingIngredientId, setUpdatingIngredientId] = useState<string | null>(null);
   const [deletingIngredientId, setDeletingIngredientId] = useState<string | null>(null);
+  const [supportedLanguages, setSupportedLanguages] = useState<SupportedLanguage[]>([]);
+  const [ingredientTranslations, setIngredientTranslations] = useState<{ [ingredientId: string]: { [fieldName: string]: { [languageCode: string]: string } } }>({});
 
   const form = useForm({
     initialValues: {
@@ -100,7 +104,7 @@ export function IngredientsPage() {
       if (statusFilter !== null) filters.isActive = statusFilter;
       if (debouncedSearchQuery.trim()) filters.search = debouncedSearchQuery.trim();
 
-      const serverIngredientsResponse = await inventoryApi.getIngredients(filters, pagination.paginationParams, selectedBranchId || undefined);
+      const serverIngredientsResponse = await inventoryApi.getIngredients(filters, pagination.paginationParams, selectedBranchId || undefined, language);
       // Handle both paginated and non-paginated responses
       const serverIngredients = pagination.extractData(serverIngredientsResponse);
       pagination.extractPagination(serverIngredientsResponse);
@@ -126,6 +130,36 @@ export function IngredientsPage() {
   useEffect(() => {
     loadIngredients();
   }, [loadIngredients, refreshKey]);
+
+  // Load supported languages and translations
+  useEffect(() => {
+    const loadTranslationData = async () => {
+      try {
+        // Load supported languages
+        const languages = await translationsApi.getSupportedLanguages(true);
+        setSupportedLanguages(languages);
+
+        // Load translations for all ingredients
+        const translationsMap: { [ingredientId: string]: { [fieldName: string]: { [languageCode: string]: string } } } = {};
+        for (const ingredient of ingredients) {
+          try {
+            const translations = await translationsApi.getEntityTranslations('ingredient', ingredient.id);
+            translationsMap[ingredient.id] = translations;
+          } catch (err) {
+            // Ignore errors for individual translations
+            console.warn(`Failed to load translations for ingredient ${ingredient.id}:`, err);
+          }
+        }
+        setIngredientTranslations(translationsMap);
+      } catch (err) {
+        console.warn('Failed to load translation data:', err);
+      }
+    };
+
+    if (ingredients.length > 0) {
+      loadTranslationData();
+    }
+  }, [ingredients]);
 
   const handleOpenModal = (ingredient?: Ingredient) => {
     if (ingredient) {
@@ -208,7 +242,7 @@ export function IngredientsPage() {
           isActive: values.isActive,
         };
 
-        savedIngredient = await inventoryApi.updateIngredient(currentEditingIngredient.id, updateData);
+        savedIngredient = await inventoryApi.updateIngredient(currentEditingIngredient.id, updateData, language);
       } else {
         // Create
         const createData: CreateIngredientDto = {
@@ -456,9 +490,18 @@ export function IngredientsPage() {
                       ) : (
                         <>
                           <Table.Td>
-                            <Text fw={500}>
-                              {ingredient.name}
-                            </Text>
+                            <Group gap="xs" wrap="nowrap">
+                              <Text fw={500}>
+                                {ingredient.name}
+                              </Text>
+                              {supportedLanguages.length > 0 && ingredientTranslations[ingredient.id] && (
+                                <TranslationStatusBadge
+                                  translations={ingredientTranslations[ingredient.id].name || {}}
+                                  supportedLanguages={supportedLanguages}
+                                  fieldName="name"
+                                />
+                              )}
+                            </Group>
                           </Table.Td>
                           <Table.Td>
                             {ingredient.category ? (
@@ -567,6 +610,36 @@ export function IngredientsPage() {
       >
         <form onSubmit={form.onSubmit(handleSubmit)}>
           <Stack gap="md">
+            <Group justify="space-between">
+              <Title order={4}>{editingIngredient ? t('inventory.editIngredient', language) : t('inventory.addIngredient', language)}</Title>
+              <Group gap="xs">
+                <LanguageIndicator variant="badge" size="sm" />
+                {editingIngredient && user?.role === 'tenant_owner' && (
+                  <RetranslateButton
+                    entityType="ingredient"
+                    entityId={editingIngredient.id}
+                    onSuccess={() => {
+                      loadIngredients();
+                      // Reload translations
+                      const reloadTranslations = async () => {
+                        try {
+                          const translations = await translationsApi.getEntityTranslations('ingredient', editingIngredient.id);
+                          setIngredientTranslations((prev) => ({
+                            ...prev,
+                            [editingIngredient.id]: translations,
+                          }));
+                        } catch (err) {
+                          console.warn('Failed to reload translations:', err);
+                        }
+                      };
+                      reloadTranslations();
+                    }}
+                    size="sm"
+                    variant="light"
+                  />
+                )}
+              </Group>
+            </Group>
             <TextInput
               label={t('inventory.ingredientName', language) || 'Ingredient Name'}
               placeholder={t('inventory.ingredientName', language) || 'Enter ingredient name'}

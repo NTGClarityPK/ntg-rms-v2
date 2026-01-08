@@ -22,14 +22,24 @@ export class EmployeesController {
     @Query('role') role?: string,
     @Query('status') status?: string,
     @Query() paginationDto?: PaginationDto,
+    @Query('language') language?: string,
   ) {
-    return this.employeesService.getEmployees(user.tenantId, { branchId, role, status }, paginationDto);
+    return this.employeesService.getEmployees(
+      user.tenantId,
+      { branchId, role, status },
+      paginationDto,
+      language || 'en',
+    );
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get employee by ID' })
-  getEmployeeById(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.employeesService.getEmployeeById(user.tenantId, id);
+  getEmployeeById(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Query('language') language?: string,
+  ) {
+    return this.employeesService.getEmployeeById(user.tenantId, id, language || 'en');
   }
 
   @Post()
@@ -40,8 +50,13 @@ export class EmployeesController {
 
   @Put(':id')
   @ApiOperation({ summary: 'Update an employee' })
-  updateEmployee(@CurrentUser() user: any, @Param('id') id: string, @Body() updateDto: UpdateEmployeeDto) {
-    return this.employeesService.updateEmployee(user.tenantId, id, updateDto, user.id);
+  updateEmployee(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() updateDto: UpdateEmployeeDto,
+    @Query('language') language?: string,
+  ) {
+    return this.employeesService.updateEmployee(user.tenantId, id, updateDto, user.id, language || 'en');
   }
 
   @Delete(':id')

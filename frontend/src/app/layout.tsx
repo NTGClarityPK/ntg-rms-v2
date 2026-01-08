@@ -38,6 +38,7 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Language will be set dynamically by Providers component
   return (
     <html lang="en">
       <body className={`${primaryFont.variable} ${headingFont.variable} ${monoFont.variable}`}>

@@ -1089,7 +1089,7 @@ export default function KitchenDisplayPage() {
 
 interface OrderCardProps {
   order: Order;
-  language: 'en' | 'ar';
+  language: 'en' | 'ar' | 'ku' | 'fr';
   primary: string;
   onItemClick: (order: Order, itemId: string, currentSection: 'preparing' | 'ready') => void;
   onBulkAction: (order: Order, action: 'ready' | 'served') => void;

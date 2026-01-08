@@ -1,5 +1,6 @@
 import apiClient from './client';
 import { API_ENDPOINTS } from '../constants/api';
+import { getApiLanguage } from '../hooks/use-api-language';
 
 export interface GeneralSettings {
   defaultLanguage?: string;
@@ -85,8 +86,10 @@ export const settingsApi = {
   /**
    * Get all settings
    */
-  getSettings: async (branchId?: string): Promise<Settings> => {
-    const params = branchId ? { branchId } : {};
+  getSettings: async (branchId?: string, language?: string): Promise<Settings> => {
+    const lang = language || getApiLanguage();
+    const params: any = { language: lang };
+    if (branchId) params.branchId = branchId;
     const response = await apiClient.get(API_ENDPOINTS.SETTINGS, { params });
     return response.data;
   },
@@ -94,8 +97,10 @@ export const settingsApi = {
   /**
    * Get a specific settings category
    */
-  getSettingCategory: async (category: string, branchId?: string): Promise<any> => {
-    const params = branchId ? { branchId } : {};
+  getSettingCategory: async (category: string, branchId?: string, language?: string): Promise<any> => {
+    const lang = language || getApiLanguage();
+    const params: any = { language: lang };
+    if (branchId) params.branchId = branchId;
     const response = await apiClient.get(`${API_ENDPOINTS.SETTINGS}/${category}`, { params });
     return response.data;
   },
@@ -103,8 +108,10 @@ export const settingsApi = {
   /**
    * Update settings
    */
-  updateSettings: async (data: UpdateSettingsDto, branchId?: string): Promise<Settings> => {
-    const params = branchId ? { branchId } : {};
+  updateSettings: async (data: UpdateSettingsDto, branchId?: string, language?: string): Promise<Settings> => {
+    const lang = language || getApiLanguage();
+    const params: any = { language: lang };
+    if (branchId) params.branchId = branchId;
     const response = await apiClient.put(API_ENDPOINTS.SETTINGS, data, { params });
     return response.data;
   },

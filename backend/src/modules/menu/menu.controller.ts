@@ -58,14 +58,19 @@ export class MenuController {
     @CurrentUser() user: any,
     @Query() paginationDto?: PaginationDto,
     @Query('branchId') branchId?: string,
+    @Query('language') language?: string,
   ) {
-    return this.menuService.getCategories(user.tenantId, paginationDto, branchId);
+    return this.menuService.getCategories(user.tenantId, paginationDto, branchId, language || 'en');
   }
 
   @Get('categories/:id')
   @ApiOperation({ summary: 'Get category by ID' })
-  getCategoryById(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.menuService.getCategoryById(user.tenantId, id);
+  getCategoryById(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Query('language') language?: string,
+  ) {
+    return this.menuService.getCategoryById(user.tenantId, id, language || 'en');
   }
 
   @Post('categories')
@@ -84,8 +89,9 @@ export class MenuController {
     @CurrentUser() user: any,
     @Param('id') id: string,
     @Body() updateDto: UpdateCategoryDto,
+    @Query('language') language?: string,
   ) {
-    return this.menuService.updateCategory(user.tenantId, id, updateDto);
+    return this.menuService.updateCategory(user.tenantId, id, updateDto, language || 'en', user.id);
   }
 
   @Delete('categories/:id')
@@ -134,16 +140,20 @@ export class MenuController {
     @CurrentUser() user: any,
     @Query() queryDto: GetFoodItemsDto,
   ) {
-    const { categoryId, onlyActiveMenus, search, branchId, ...paginationDto } = queryDto;
+    const { categoryId, onlyActiveMenus, search, branchId, language, ...paginationDto } = queryDto;
     // Default to false (show all items) unless explicitly set to true
     const filterByActiveMenus = onlyActiveMenus === true;
-    return this.menuService.getFoodItems(user.tenantId, categoryId, paginationDto, filterByActiveMenus, search, branchId);
+    return this.menuService.getFoodItems(user.tenantId, categoryId, paginationDto, filterByActiveMenus, search, branchId, language || 'en');
   }
 
   @Get('food-items/:id')
   @ApiOperation({ summary: 'Get food item by ID' })
-  getFoodItemById(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.menuService.getFoodItemById(user.tenantId, id);
+  getFoodItemById(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Query('language') language?: string,
+  ) {
+    return this.menuService.getFoodItemById(user.tenantId, id, language || 'en');
   }
 
   @Post('food-items')
@@ -162,8 +172,9 @@ export class MenuController {
     @CurrentUser() user: any,
     @Param('id') id: string,
     @Body() updateDto: UpdateFoodItemDto,
+    @Query('language') language?: string,
   ) {
-    return this.menuService.updateFoodItem(user.tenantId, id, updateDto);
+    return this.menuService.updateFoodItem(user.tenantId, id, updateDto, language || 'en', user.id);
   }
 
   @Delete('food-items/:id')
@@ -212,14 +223,19 @@ export class MenuController {
     @CurrentUser() user: any,
     @Query() paginationDto?: PaginationDto,
     @Query('branchId') branchId?: string,
+    @Query('language') language?: string,
   ) {
-    return this.menuService.getAddOnGroups(user.tenantId, paginationDto, branchId);
+    return this.menuService.getAddOnGroups(user.tenantId, paginationDto, branchId, language || 'en');
   }
 
   @Get('add-on-groups/:id')
   @ApiOperation({ summary: 'Get add-on group by ID' })
-  getAddOnGroupById(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.menuService.getAddOnGroupById(user.tenantId, id);
+  getAddOnGroupById(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Query('language') language?: string,
+  ) {
+    return this.menuService.getAddOnGroupById(user.tenantId, id, language || 'en');
   }
 
   @Post('add-on-groups')
@@ -234,8 +250,9 @@ export class MenuController {
     @CurrentUser() user: any,
     @Param('id') id: string,
     @Body() updateDto: UpdateAddOnGroupDto,
+    @Query('language') language?: string,
   ) {
-    return this.menuService.updateAddOnGroup(user.tenantId, id, updateDto);
+    return this.menuService.updateAddOnGroup(user.tenantId, id, updateDto, language || 'en', user.id);
   }
 
   @Delete('add-on-groups/:id')
@@ -253,8 +270,9 @@ export class MenuController {
   getAddOns(
     @CurrentUser() user: any,
     @Param('addOnGroupId') addOnGroupId: string,
+    @Query('language') language?: string,
   ) {
-    return this.menuService.getAddOns(user.tenantId, addOnGroupId);
+    return this.menuService.getAddOns(user.tenantId, addOnGroupId, language || 'en');
   }
 
   @Get('add-on-groups/:addOnGroupId/add-ons/:id')
@@ -263,8 +281,9 @@ export class MenuController {
     @CurrentUser() user: any,
     @Param('addOnGroupId') addOnGroupId: string,
     @Param('id') id: string,
+    @Query('language') language?: string,
   ) {
-    return this.menuService.getAddOnById(user.tenantId, addOnGroupId, id);
+    return this.menuService.getAddOnById(user.tenantId, addOnGroupId, id, language || 'en');
   }
 
   @Post('add-on-groups/:addOnGroupId/add-ons')
@@ -284,8 +303,9 @@ export class MenuController {
     @Param('addOnGroupId') addOnGroupId: string,
     @Param('id') id: string,
     @Body() updateDto: UpdateAddOnDto,
+    @Query('language') language?: string,
   ) {
-    return this.menuService.updateAddOn(user.tenantId, addOnGroupId, id, updateDto);
+    return this.menuService.updateAddOn(user.tenantId, addOnGroupId, id, updateDto, language || 'en', user.id);
   }
 
   @Delete('add-on-groups/:addOnGroupId/add-ons/:id')
@@ -308,8 +328,9 @@ export class MenuController {
     @CurrentUser() user: any,
     @Query() paginationDto?: PaginationDto,
     @Query('branchId') branchId?: string,
+    @Query('language') language?: string,
   ) {
-    return this.menuService.getMenus(user.tenantId, paginationDto, branchId);
+    return this.menuService.getMenus(user.tenantId, paginationDto, branchId, language || 'en');
   }
 
   @Get('menus/:menuType/items')
@@ -374,14 +395,19 @@ export class MenuController {
     @CurrentUser() user: any,
     @Query() paginationDto?: PaginationDto,
     @Query('branchId') branchId?: string,
+    @Query('language') language?: string,
   ) {
-    return this.menuService.getBuffets(user.tenantId, paginationDto, branchId);
+    return this.menuService.getBuffets(user.tenantId, paginationDto, branchId, language || 'en');
   }
 
   @Get('buffets/:id')
   @ApiOperation({ summary: 'Get buffet by ID' })
-  getBuffetById(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.menuService.getBuffetById(user.tenantId, id);
+  getBuffetById(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Query('language') language?: string,
+  ) {
+    return this.menuService.getBuffetById(user.tenantId, id, language || 'en');
   }
 
   @Post('buffets')
@@ -396,8 +422,9 @@ export class MenuController {
     @CurrentUser() user: any,
     @Param('id') id: string,
     @Body() updateDto: UpdateBuffetDto,
+    @Query('language') language?: string,
   ) {
-    return this.menuService.updateBuffet(user.tenantId, id, updateDto);
+    return this.menuService.updateBuffet(user.tenantId, id, updateDto, language || 'en', user.id);
   }
 
   @Delete('buffets/:id')
@@ -439,14 +466,19 @@ export class MenuController {
     @CurrentUser() user: any,
     @Query() paginationDto?: PaginationDto,
     @Query('branchId') branchId?: string,
+    @Query('language') language?: string,
   ) {
-    return this.menuService.getComboMeals(user.tenantId, paginationDto, branchId);
+    return this.menuService.getComboMeals(user.tenantId, paginationDto, branchId, language || 'en');
   }
 
   @Get('combo-meals/:id')
   @ApiOperation({ summary: 'Get combo meal by ID' })
-  getComboMealById(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.menuService.getComboMealById(user.tenantId, id);
+  getComboMealById(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Query('language') language?: string,
+  ) {
+    return this.menuService.getComboMealById(user.tenantId, id, language || 'en');
   }
 
   @Post('combo-meals')
@@ -461,8 +493,9 @@ export class MenuController {
     @CurrentUser() user: any,
     @Param('id') id: string,
     @Body() updateDto: UpdateComboMealDto,
+    @Query('language') language?: string,
   ) {
-    return this.menuService.updateComboMeal(user.tenantId, id, updateDto);
+    return this.menuService.updateComboMeal(user.tenantId, id, updateDto, language || 'en', user.id);
   }
 
   @Delete('combo-meals/:id')
@@ -504,14 +537,19 @@ export class MenuController {
     @CurrentUser() user: any,
     @Query() paginationDto?: PaginationDto,
     @Query('branchId') branchId?: string,
+    @Query('language') language?: string,
   ) {
-    return this.menuService.getVariationGroups(user.tenantId, paginationDto, branchId);
+    return this.menuService.getVariationGroups(user.tenantId, paginationDto, branchId, language || 'en');
   }
 
   @Get('variation-groups/:id')
   @ApiOperation({ summary: 'Get variation group by ID' })
-  getVariationGroupById(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.menuService.getVariationGroupById(user.tenantId, id);
+  getVariationGroupById(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Query('language') language?: string,
+  ) {
+    return this.menuService.getVariationGroupById(user.tenantId, id, language || 'en');
   }
 
   @Post('variation-groups')
@@ -526,8 +564,9 @@ export class MenuController {
     @CurrentUser() user: any,
     @Param('id') id: string,
     @Body() updateDto: UpdateVariationGroupDto,
+    @Query('language') language?: string,
   ) {
-    return this.menuService.updateVariationGroup(user.tenantId, id, updateDto);
+    return this.menuService.updateVariationGroup(user.tenantId, id, updateDto, language || 'en', user.id);
   }
 
   @Delete('variation-groups/:id')
@@ -545,8 +584,9 @@ export class MenuController {
   getVariations(
     @CurrentUser() user: any,
     @Param('variationGroupId') variationGroupId: string,
+    @Query('language') language?: string,
   ) {
-    return this.menuService.getVariations(user.tenantId, variationGroupId);
+    return this.menuService.getVariations(user.tenantId, variationGroupId, language || 'en');
   }
 
   @Get('variation-groups/:variationGroupId/variations/:id')
@@ -555,8 +595,9 @@ export class MenuController {
     @CurrentUser() user: any,
     @Param('variationGroupId') variationGroupId: string,
     @Param('id') id: string,
+    @Query('language') language?: string,
   ) {
-    return this.menuService.getVariationById(user.tenantId, variationGroupId, id);
+    return this.menuService.getVariationById(user.tenantId, variationGroupId, id, language || 'en');
   }
 
   @Post('variation-groups/:variationGroupId/variations')
@@ -576,8 +617,9 @@ export class MenuController {
     @Param('variationGroupId') variationGroupId: string,
     @Param('id') id: string,
     @Body() updateDto: UpdateVariationDto,
+    @Query('language') language?: string,
   ) {
-    return this.menuService.updateVariation(user.tenantId, variationGroupId, id, updateDto);
+    return this.menuService.updateVariation(user.tenantId, variationGroupId, id, updateDto, language || 'en', user.id);
   }
 
   @Delete('variation-groups/:variationGroupId/variations/:id')

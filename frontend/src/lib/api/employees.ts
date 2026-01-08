@@ -2,6 +2,7 @@ import apiClient from './client';
 import { API_ENDPOINTS } from '../constants/api';
 import { PaginationParams, PaginatedResponse } from '../types/pagination.types';
 import { createCrudApi, extendCrudApi } from '@/shared/services/api/factory';
+import { getApiLanguage } from '../hooks/use-api-language';
 
 export interface Role {
   id: string;
@@ -79,13 +80,26 @@ export const employeesApi = {
   getEmployees: async (
     filters?: { branchId?: string; role?: string; status?: string },
     pagination?: PaginationParams,
+    language?: string,
   ): Promise<Employee[] | PaginatedResponse<Employee>> => {
-    // Use base API but add custom filter handling
-    return baseEmployeesApi.getAll(filters, pagination);
+    const lang = language || getApiLanguage();
+    const params: any = { language: lang, ...filters };
+    if (pagination?.page) params.page = pagination.page;
+    if (pagination?.limit) params.limit = pagination.limit;
+    const response = await apiClient.get(API_ENDPOINTS.EMPLOYEES, { params });
+    return response.data;
   },
 
-  getEmployeeById: baseEmployeesApi.getById,
+  getEmployeeById: async (id: string, language?: string): Promise<Employee> => {
+    const lang = language || getApiLanguage();
+    const response = await apiClient.get(`${API_ENDPOINTS.EMPLOYEES}/${id}?language=${lang}`);
+    return response.data;
+  },
   createEmployee: baseEmployeesApi.create,
-  updateEmployee: baseEmployeesApi.update,
+  updateEmployee: async (id: string, data: UpdateEmployeeDto, language?: string): Promise<Employee> => {
+    const lang = language || getApiLanguage();
+    const response = await apiClient.put(`${API_ENDPOINTS.EMPLOYEES}/${id}?language=${lang}`, data);
+    return response.data;
+  },
   deleteEmployee: baseEmployeesApi.delete,
 };

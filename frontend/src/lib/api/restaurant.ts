@@ -1,6 +1,7 @@
 import apiClient from './client';
 import { API_ENDPOINTS } from '../constants/api';
 import { createCrudApi } from '@/shared/services/api/factory';
+import { getApiLanguage } from '../hooks/use-api-language';
 
 export interface RestaurantInfo {
   id: string;
@@ -149,13 +150,15 @@ const baseBranchesApi = createCrudApi<Branch>(API_ENDPOINTS.RESTAURANT.BRANCHES)
 
 export const restaurantApi = {
   // Business Information
-  async getInfo(): Promise<RestaurantInfo> {
-    const response = await apiClient.get(API_ENDPOINTS.RESTAURANT.INFO);
+  async getInfo(language?: string): Promise<RestaurantInfo> {
+    const lang = language || getApiLanguage();
+    const response = await apiClient.get(`${API_ENDPOINTS.RESTAURANT.INFO}?language=${lang}`);
     return response.data;
   },
 
-  async updateInfo(data: UpdateRestaurantInfoDto): Promise<RestaurantInfo> {
-    const response = await apiClient.put(API_ENDPOINTS.RESTAURANT.INFO, data);
+  async updateInfo(data: UpdateRestaurantInfoDto, language?: string): Promise<RestaurantInfo> {
+    const lang = language || getApiLanguage();
+    const response = await apiClient.put(`${API_ENDPOINTS.RESTAURANT.INFO}?language=${lang}`, data);
     return response.data;
   },
 
@@ -171,14 +174,23 @@ export const restaurantApi = {
   },
 
   // Branches - Using factory for CRUD operations
-  async getBranches(): Promise<Branch[]> {
-    const result = await baseBranchesApi.getAll();
-    return Array.isArray(result) ? result : [];
+  async getBranches(language?: string): Promise<Branch[]> {
+    const lang = language || getApiLanguage();
+    const response = await apiClient.get(`${API_ENDPOINTS.RESTAURANT.BRANCHES}?language=${lang}`);
+    return Array.isArray(response.data) ? response.data : [];
   },
 
-  getBranch: baseBranchesApi.getById,
+  getBranch: async (id: string, language?: string): Promise<Branch> => {
+    const lang = language || getApiLanguage();
+    const response = await apiClient.get(`${API_ENDPOINTS.RESTAURANT.BRANCHES}/${id}?language=${lang}`);
+    return response.data;
+  },
   createBranch: baseBranchesApi.create,
-  updateBranch: baseBranchesApi.update,
+  updateBranch: async (id: string, data: UpdateBranchDto, language?: string): Promise<Branch> => {
+    const lang = language || getApiLanguage();
+    const response = await apiClient.put(`${API_ENDPOINTS.RESTAURANT.BRANCHES}/${id}?language=${lang}`, data);
+    return response.data;
+  },
   deleteBranch: baseBranchesApi.delete,
 
   // Counters

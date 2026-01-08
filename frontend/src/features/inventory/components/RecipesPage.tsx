@@ -140,7 +140,8 @@ export function RecipesPage() {
 
       // Fetch all pages sequentially
       while (hasMore) {
-        const response = await inventoryApi.getIngredients({ isActive: true }, { page, limit }, selectedBranchId || undefined);
+        const language = useLanguageStore.getState().language;
+        const response = await inventoryApi.getIngredients({ isActive: true }, { page, limit }, selectedBranchId || undefined, language);
         
         if (isPaginatedResponse(response)) {
           allServerIngredients.push(...response.data);

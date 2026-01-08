@@ -11,6 +11,7 @@ import { RolesModule } from '../roles/roles.module';
 import { SubscriptionModule } from '../subscription/subscription.module';
 import { MenuModule } from '../menu/menu.module';
 import { InventoryModule } from '../inventory/inventory.module';
+import { TranslationsModule } from '../translations/translations.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { InventoryModule } from '../inventory/inventory.module';
     SubscriptionModule,
     MenuModule,
     InventoryModule,
+    TranslationsModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, GoogleOAuthStrategy, JwtAuthGuard],

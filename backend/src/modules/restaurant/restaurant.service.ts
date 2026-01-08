@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { SupabaseService } from '../../database/supabase.service';
+import { TranslationService } from '../translations/services/translation.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { CreateBranchDto } from './dto/create-branch.dto';
@@ -11,12 +12,15 @@ import { UpdateTableDto } from './dto/update-table.dto';
 
 @Injectable()
 export class RestaurantService {
-  constructor(private supabaseService: SupabaseService) {}
+  constructor(
+    private supabaseService: SupabaseService,
+    private translationService: TranslationService,
+  ) {}
 
   /**
    * Get restaurant information (tenant details)
    */
-  async getRestaurantInfo(tenantId: string) {
+  async getRestaurantInfo(tenantId: string, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
     
     const { data: tenant, error } = await supabase
@@ -30,9 +34,24 @@ export class RestaurantService {
       throw new NotFoundException('Restaurant information not found');
     }
 
+    // Get translated name
+    let translatedName = tenant.name;
+    try {
+      const nameTranslation = await this.translationService.getTranslation({
+        entityType: 'restaurant',
+        entityId: tenantId,
+        languageCode: language,
+        fieldName: 'name',
+        fallbackLanguage: 'en',
+      });
+      if (nameTranslation) translatedName = nameTranslation;
+    } catch (translationError) {
+      console.warn(`Failed to get translations for restaurant ${tenantId}:`, translationError);
+    }
+
     return {
       id: tenant.id,
-      name: tenant.name,
+      name: translatedName,
       subdomain: tenant.subdomain,
       email: tenant.email,
       phone: tenant.phone,
@@ -51,8 +70,11 @@ export class RestaurantService {
   /**
    * Update restaurant information (tenant details)
    */
-  async updateRestaurantInfo(tenantId: string, updateDto: UpdateTenantDto) {
+  async updateRestaurantInfo(tenantId: string, updateDto: UpdateTenantDto, language: string = 'en', userId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
+    
+    // Get current restaurant info for translation comparison
+    const currentRestaurant = await this.getRestaurantInfo(tenantId, 'en');
     
     // Build update object
     const updateData: any = {};
@@ -90,6 +112,25 @@ export class RestaurantService {
       throw new NotFoundException('Restaurant not found');
     }
 
+    // Update translations if name changed
+    try {
+      if (updateDto.name !== undefined && updateDto.name !== currentRestaurant.name) {
+        await this.translationService.updateTranslation(
+          {
+            entityType: 'restaurant',
+            entityId: tenantId,
+            languageCode: language,
+            fieldName: 'name',
+            translatedText: updateDto.name,
+            isAiGenerated: false, // Manual edit
+          },
+          userId,
+        );
+      }
+    } catch (translationError) {
+      console.error('Failed to update translations for restaurant:', translationError);
+    }
+
     return {
       id: tenant.id,
       name: tenant.name,
@@ -110,7 +151,7 @@ export class RestaurantService {
   /**
    * Get all branches for a tenant
    */
-  async getBranches(tenantId: string) {
+  async getBranches(tenantId: string, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
     
     const { data: branches, error } = await supabase
@@ -148,31 +189,77 @@ export class RestaurantService {
       }
     }
 
-    return branches.map(branch => ({
-      id: branch.id,
-      tenantId: branch.tenant_id,
-      name: branch.name,
-      code: branch.code,
-      address: branch.address,
-      city: branch.city,
-      state: branch.state,
-      country: branch.country,
-      phone: branch.phone,
-      email: branch.email,
-      latitude: branch.latitude,
-      longitude: branch.longitude,
-      managerId: branch.manager_id,
-      manager: branch.manager_id ? managersMap[branch.manager_id] : null,
-      isActive: branch.is_active,
-      createdAt: branch.created_at,
-      updatedAt: branch.updated_at,
-    }));
+    // Get translations for each branch
+    const branchesWithTranslations = await Promise.all(
+      branches.map(async (branch) => {
+        let translatedName = branch.name;
+        let translatedCity = branch.city;
+        let translatedAddress = branch.address;
+
+        try {
+          const nameTranslation = await this.translationService.getTranslation({
+            entityType: 'branch',
+            entityId: branch.id,
+            languageCode: language,
+            fieldName: 'name',
+            fallbackLanguage: 'en',
+          });
+          if (nameTranslation) translatedName = nameTranslation;
+
+          if (branch.city) {
+            const cityTranslation = await this.translationService.getTranslation({
+              entityType: 'branch',
+              entityId: branch.id,
+              languageCode: language,
+              fieldName: 'city',
+              fallbackLanguage: 'en',
+            });
+            if (cityTranslation) translatedCity = cityTranslation;
+          }
+
+          if (branch.address) {
+            const addressTranslation = await this.translationService.getTranslation({
+              entityType: 'branch',
+              entityId: branch.id,
+              languageCode: language,
+              fieldName: 'address',
+              fallbackLanguage: 'en',
+            });
+            if (addressTranslation) translatedAddress = addressTranslation;
+          }
+        } catch (translationError) {
+          console.warn(`Failed to get translations for branch ${branch.id}:`, translationError);
+        }
+
+        return {
+          id: branch.id,
+          tenantId: branch.tenant_id,
+          name: translatedName,
+          code: branch.code,
+          address: translatedAddress,
+          city: translatedCity,
+          state: branch.state,
+          country: branch.country,
+          phone: branch.phone,
+          email: branch.email,
+          latitude: branch.latitude,
+          longitude: branch.longitude,
+          managerId: branch.manager_id,
+          manager: branch.manager_id ? managersMap[branch.manager_id] : null,
+          isActive: branch.is_active,
+          createdAt: branch.created_at,
+          updatedAt: branch.updated_at,
+        };
+      })
+    );
+
+    return branchesWithTranslations;
   }
 
   /**
    * Get a single branch by ID
    */
-  async getBranchById(tenantId: string, branchId: string) {
+  async getBranchById(tenantId: string, branchId: string, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
     
     const { data: branch, error } = await supabase
@@ -289,6 +376,36 @@ export class RestaurantService {
       throw new BadRequestException('Failed to create branch: ' + error.message);
     }
 
+    // Create translations for name, city, and address
+    try {
+      await this.translationService.createTranslations({
+        entityType: 'branch',
+        entityId: branch.id,
+        fieldName: 'name',
+        text: createDto.name,
+      });
+
+      if (createDto.city) {
+        await this.translationService.createTranslations({
+          entityType: 'branch',
+          entityId: branch.id,
+          fieldName: 'city',
+          text: createDto.city,
+        });
+      }
+
+      if (createDto.address) {
+        await this.translationService.createTranslations({
+          entityType: 'branch',
+          entityId: branch.id,
+          fieldName: 'address',
+          text: createDto.address,
+        });
+      }
+    } catch (translationError) {
+      console.warn(`Failed to create translations for branch ${branch.id}:`, translationError);
+    }
+
     // Create default tables for the branch based on tenant's totalTables setting
     try {
       // Get tenant's totalTables setting
@@ -377,21 +494,11 @@ export class RestaurantService {
   /**
    * Update a branch
    */
-  async updateBranch(tenantId: string, branchId: string, updateDto: UpdateBranchDto) {
+  async updateBranch(tenantId: string, branchId: string, updateDto: UpdateBranchDto, language: string = 'en', userId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
     
-    // Verify branch belongs to tenant
-    const { data: existingBranch } = await supabase
-      .from('branches')
-      .select('id')
-      .eq('id', branchId)
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .maybeSingle();
-
-    if (!existingBranch) {
-      throw new NotFoundException('Branch not found');
-    }
+    // Verify branch belongs to tenant and get current values for translation comparison
+    const currentBranch = await this.getBranchById(tenantId, branchId, 'en');
 
     // If code is being updated, check for conflicts
     if (updateDto.code) {
@@ -477,6 +584,53 @@ export class RestaurantService {
       }
     }
 
+    // Update translations if name, city, or address changed
+    try {
+      if (updateDto.name !== undefined && updateDto.name !== currentBranch.name) {
+        await this.translationService.updateTranslation(
+          {
+            entityType: 'branch',
+            entityId: branchId,
+            languageCode: language,
+            fieldName: 'name',
+            translatedText: updateDto.name,
+            isAiGenerated: false, // Manual edit
+          },
+          userId,
+        );
+      }
+
+      if (updateDto.city !== undefined && updateDto.city !== currentBranch.city) {
+        await this.translationService.updateTranslation(
+          {
+            entityType: 'branch',
+            entityId: branchId,
+            languageCode: language,
+            fieldName: 'city',
+            translatedText: updateDto.city,
+            isAiGenerated: false, // Manual edit
+          },
+          userId,
+        );
+      }
+
+      if (updateDto.address !== undefined && updateDto.address !== currentBranch.address) {
+        await this.translationService.updateTranslation(
+          {
+            entityType: 'branch',
+            entityId: branchId,
+            languageCode: language,
+            fieldName: 'address',
+            translatedText: updateDto.address,
+            isAiGenerated: false, // Manual edit
+          },
+          userId,
+        );
+      }
+    } catch (translationError) {
+      console.error('Failed to update translations for branch:', translationError);
+    }
+
     return {
       id: branch.id,
       tenantId: branch.tenant_id,
@@ -525,6 +679,13 @@ export class RestaurantService {
 
     if (error) {
       throw new BadRequestException('Failed to delete branch: ' + error.message);
+    }
+
+    // Delete translations for this branch
+    try {
+      await this.translationService.deleteEntityTranslations('branch', branchId);
+    } catch (translationError) {
+      console.warn(`Failed to delete translations for branch ${branchId}:`, translationError);
     }
 
     return { message: 'Branch deleted successfully' };

@@ -23,5 +23,10 @@ export class GetFoodItemsDto extends PaginationDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  @ApiPropertyOptional({ description: 'Language code for translations (e.g., en, ar, ku, fr)', default: 'en' })
+  @IsOptional()
+  @IsString()
+  language?: string;
 }
 

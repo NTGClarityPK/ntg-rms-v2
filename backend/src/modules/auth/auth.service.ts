@@ -11,6 +11,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { MenuService } from '../menu/menu.service';
 import { InventoryService } from '../inventory/inventory.service';
+import { TranslationService } from '../translations/services/translation.service';
 
 @Injectable()
 export class AuthService {
@@ -22,6 +23,7 @@ export class AuthService {
     private subscriptionService: SubscriptionService,
     private menuService: MenuService,
     private inventoryService: InventoryService,
+    private translationService: TranslationService,
   ) {}
 
   async signup(signupDto: SignupDto) {
@@ -95,6 +97,21 @@ export class AuthService {
 
       tenantId = tenantData.id;
       console.log('Tenant created:', tenantId);
+
+      // Create translations for tenant name automatically
+      try {
+        const tenantName = signupDto.name + "'s Restaurant";
+        await this.translationService.createTranslations({
+          entityType: 'restaurant',
+          entityId: tenantId,
+          fieldName: 'name',
+          text: tenantName,
+        });
+        console.log('Translations created for tenant name');
+      } catch (translationError) {
+        console.error('Failed to create translations for tenant name:', translationError);
+        // Don't fail signup if translation creation fails
+      }
     } else {
       console.log('Using existing tenant:', tenantId);
     }
@@ -180,6 +197,20 @@ export class AuthService {
           // Don't fail signup if branch creation fails, but log it
         } else {
           console.log('Default branch created:', branchData.id);
+
+          // Create translations for branch name automatically
+          try {
+            await this.translationService.createTranslations({
+              entityType: 'branch',
+              entityId: branchData.id,
+              fieldName: 'name',
+              text: 'Main Branch',
+            });
+            console.log('Translations created for branch name');
+          } catch (translationError) {
+            console.error('Failed to create translations for branch name:', translationError);
+            // Don't fail signup if translation creation fails
+          }
           
           // Create default tables (5 tables) for the branch
           try {

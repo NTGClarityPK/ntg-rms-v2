@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { SupabaseService } from '../../database/supabase.service';
 import { StorageService } from './utils/storage.service';
+import { TranslationService } from '../translations/services/translation.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateFoodItemDto } from './dto/create-food-item.dto';
@@ -33,13 +34,19 @@ export class MenuService {
   constructor(
     private supabaseService: SupabaseService,
     private storageService: StorageService,
+    private translationService: TranslationService,
   ) {}
 
   // ============================================
   // CATEGORY MANAGEMENT
   // ============================================
 
-  async getCategories(tenantId: string, pagination?: PaginationParams, branchId?: string): Promise<PaginatedResponse<any> | any[]> {
+  async getCategories(
+    tenantId: string,
+    pagination?: PaginationParams,
+    branchId?: string,
+    language: string = 'en',
+  ): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
     
     // Build count query
@@ -85,11 +92,40 @@ export class MenuService {
     const categoryMap = new Map();
     const rootCategories = [];
 
-    categories.forEach((cat) => {
-      const category = {
+    // Helper function to get translated category data
+    const getTranslatedCategory = async (cat: any) => {
+      let translatedName = cat.name;
+      let translatedDescription = cat.description;
+
+      try {
+        const nameTranslation = await this.translationService.getTranslation({
+          entityType: 'category',
+          entityId: cat.id,
+          languageCode: language,
+          fieldName: 'name',
+          fallbackLanguage: 'en',
+        });
+        if (nameTranslation) translatedName = nameTranslation;
+
+        if (cat.description) {
+          const descTranslation = await this.translationService.getTranslation({
+            entityType: 'category',
+            entityId: cat.id,
+            languageCode: language,
+            fieldName: 'description',
+            fallbackLanguage: 'en',
+          });
+          if (descTranslation) translatedDescription = descTranslation;
+        }
+      } catch (translationError) {
+        // Use original values if translation fails
+        console.warn(`Failed to get translations for category ${cat.id}:`, translationError);
+      }
+
+      return {
         id: cat.id,
-        name: cat.name,
-        description: cat.description,
+        name: translatedName,
+        description: translatedDescription,
         imageUrl: cat.image_url,
         categoryType: cat.category_type,
         parentId: cat.parent_id,
@@ -99,13 +135,23 @@ export class MenuService {
         updatedAt: cat.updated_at,
         subcategories: [],
       };
-      categoryMap.set(cat.id, category);
+    };
+
+    // Process categories with translations
+    const processedCategories = await Promise.all(
+      categories.map((cat) => getTranslatedCategory(cat))
+    );
+
+    // Build category map and organize hierarchy
+    processedCategories.forEach((category) => {
+      categoryMap.set(category.id, category);
     });
 
-    categories.forEach((cat) => {
-      const category = categoryMap.get(cat.id);
-      if (cat.parent_id) {
-        const parent = categoryMap.get(cat.parent_id);
+    processedCategories.forEach((category) => {
+      // Find original category to get parent_id for hierarchy
+      const originalCat = categories.find((c) => c.id === category.id);
+      if (originalCat?.parent_id) {
+        const parent = categoryMap.get(originalCat.parent_id);
         if (parent) {
           parent.subcategories.push(category);
         }
@@ -122,7 +168,7 @@ export class MenuService {
     return rootCategories;
   }
 
-  async getCategoryById(tenantId: string, id: string) {
+  async getCategoryById(tenantId: string, id: string, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
     
     const { data: category, error } = await supabase
@@ -146,10 +192,67 @@ export class MenuService {
       .is('deleted_at', null)
       .order('display_order', { ascending: true });
 
+    // Get translated name and description
+    let translatedName = category.name;
+    let translatedDescription = category.description;
+
+    try {
+      const nameTranslation = await this.translationService.getTranslation({
+        entityType: 'category',
+        entityId: id,
+        languageCode: language,
+        fieldName: 'name',
+        fallbackLanguage: 'en',
+      });
+      if (nameTranslation) translatedName = nameTranslation;
+
+      if (category.description) {
+        const descTranslation = await this.translationService.getTranslation({
+          entityType: 'category',
+          entityId: id,
+          languageCode: language,
+          fieldName: 'description',
+          fallbackLanguage: 'en',
+        });
+        if (descTranslation) translatedDescription = descTranslation;
+      }
+    } catch (translationError) {
+      console.warn(`Failed to get translations for category ${id}:`, translationError);
+    }
+
+    // Get translated subcategories
+    const translatedSubcategories = await Promise.all(
+      (subcategories || []).map(async (sub) => {
+        let subName = sub.name;
+        let subDesc = sub.description;
+        try {
+          const subNameTranslation = await this.translationService.getTranslation({
+            entityType: 'category',
+            entityId: sub.id,
+            languageCode: language,
+            fieldName: 'name',
+            fallbackLanguage: 'en',
+          });
+          if (subNameTranslation) subName = subNameTranslation;
+        } catch (e) {
+          // Use original
+        }
+        return {
+          id: sub.id,
+          name: subName,
+          description: subDesc,
+          imageUrl: sub.image_url,
+          categoryType: sub.category_type,
+          displayOrder: sub.display_order,
+          isActive: sub.is_active,
+        };
+      })
+    );
+
     return {
       id: category.id,
-      name: category.name,
-      description: category.description,
+      name: translatedName,
+      description: translatedDescription,
       imageUrl: category.image_url,
       categoryType: category.category_type,
       parentId: category.parent_id,
@@ -157,15 +260,7 @@ export class MenuService {
       isActive: category.is_active,
       createdAt: category.created_at,
       updatedAt: category.updated_at,
-      subcategories: subcategories?.map((sub) => ({
-        id: sub.id,
-        name: sub.name,
-        description: sub.description,
-        imageUrl: sub.image_url,
-        categoryType: sub.category_type,
-        displayOrder: sub.display_order,
-        isActive: sub.is_active,
-      })) || [],
+      subcategories: translatedSubcategories,
     };
   }
 
@@ -212,6 +307,27 @@ export class MenuService {
       throw new BadRequestException(`Failed to create category: ${error.message}`);
     }
 
+    // Generate translations for name and description
+    try {
+      await this.translationService.createTranslations({
+        entityType: 'category',
+        entityId: category.id,
+        fieldName: 'name',
+        text: createDto.name,
+      });
+
+      if (createDto.description) {
+        await this.translationService.createTranslations({
+          entityType: 'category',
+          entityId: category.id,
+          fieldName: 'description',
+          text: createDto.description,
+        });
+      }
+    } catch (translationError) {
+      console.error('Failed to create translations for category:', translationError);
+    }
+
     return {
       id: category.id,
       name: category.name,
@@ -226,7 +342,13 @@ export class MenuService {
     };
   }
 
-  async updateCategory(tenantId: string, id: string, updateDto: UpdateCategoryDto) {
+  async updateCategory(
+    tenantId: string,
+    id: string,
+    updateDto: UpdateCategoryDto,
+    language: string = 'en',
+    userId?: string,
+  ) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Check if category exists
@@ -272,6 +394,9 @@ export class MenuService {
     if (updateDto.isActive !== undefined) updateData.is_active = updateDto.isActive;
     updateData.updated_at = new Date().toISOString();
 
+    // Get current category to check if name/description changed
+    const currentCategory = await this.getCategoryById(tenantId, id);
+
     const { data: category, error } = await supabase
       .from('categories')
       .update(updateData)
@@ -282,6 +407,39 @@ export class MenuService {
 
     if (error) {
       throw new BadRequestException(`Failed to update category: ${error.message}`);
+    }
+
+    // Update translations if name or description changed
+    try {
+      if (updateDto.name !== undefined && updateDto.name !== currentCategory.name) {
+        await this.translationService.updateTranslation(
+          {
+            entityType: 'category',
+            entityId: id,
+            languageCode: language,
+            fieldName: 'name',
+            translatedText: updateDto.name,
+            isAiGenerated: false, // Manual edit
+          },
+          userId,
+        );
+      }
+
+      if (updateDto.description !== undefined && updateDto.description !== currentCategory.description) {
+        await this.translationService.updateTranslation(
+          {
+            entityType: 'category',
+            entityId: id,
+            languageCode: language,
+            fieldName: 'description',
+            translatedText: updateDto.description,
+            isAiGenerated: false, // Manual edit
+          },
+          userId,
+        );
+      }
+    } catch (translationError) {
+      console.error('Failed to update translations for category:', translationError);
     }
 
     return {
@@ -349,6 +507,13 @@ export class MenuService {
       throw new BadRequestException(`Failed to delete category: ${error.message}`);
     }
 
+    // Delete translations for this category
+    try {
+      await this.translationService.deleteEntityTranslations('category', id);
+    } catch (translationError) {
+      console.warn(`Failed to delete translations for category ${id}:`, translationError);
+    }
+
     return { message: 'Category deleted successfully' };
   }
 
@@ -356,7 +521,7 @@ export class MenuService {
   // FOOD ITEM MANAGEMENT
   // ============================================
 
-  async getFoodItems(tenantId: string, categoryId?: string, pagination?: PaginationParams, onlyActiveMenus: boolean = false, search?: string, branchId?: string): Promise<PaginatedResponse<any> | any[]> {
+  async getFoodItems(tenantId: string, categoryId?: string, pagination?: PaginationParams, onlyActiveMenus: boolean = false, search?: string, branchId?: string, language: string = 'en'): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
     
     // Get food items (without pagination first to get accurate count)
@@ -615,28 +780,63 @@ export class MenuService {
       menuItemsMap.get(m.food_item_id)!.push(m.menu_type);
     });
 
-    // Map items with their related data (no additional queries)
-    const itemsWithDetails = paginatedFoodItems.map((item) => ({
-      id: item.id,
-      name: item.name,
-      description: item.description,
-      imageUrl: item.image_url,
-      categoryId: item.category_id,
-      basePrice: parseFloat(item.base_price),
-      stockType: item.stock_type,
-      stockQuantity: item.stock_quantity,
-      menuType: item.menu_type, // Legacy field
-      menuTypes: menuItemsMap.get(item.id) || [], // Array of menu types
-      ageLimit: item.age_limit,
-      displayOrder: item.display_order,
-      isActive: item.is_active,
-      createdAt: item.created_at,
-      updatedAt: item.updated_at,
-      variations: variationsMap.get(item.id) || [],
-      labels: labelsMap.get(item.id) || [],
-      addOnGroupIds: addOnGroupsMap.get(item.id) || [],
-      activeDiscounts: discountsMap.get(item.id) || [],
-    }));
+    // Helper function to get translated food item data
+    const getTranslatedFoodItem = async (item: any) => {
+      let translatedName = item.name;
+      let translatedDescription = item.description;
+
+      try {
+        const nameTranslation = await this.translationService.getTranslation({
+          entityType: 'food_item',
+          entityId: item.id,
+          languageCode: language,
+          fieldName: 'name',
+          fallbackLanguage: 'en',
+        });
+        if (nameTranslation) translatedName = nameTranslation;
+
+        if (item.description) {
+          const descTranslation = await this.translationService.getTranslation({
+            entityType: 'food_item',
+            entityId: item.id,
+            languageCode: language,
+            fieldName: 'description',
+            fallbackLanguage: 'en',
+          });
+          if (descTranslation) translatedDescription = descTranslation;
+        }
+      } catch (translationError) {
+        // Use original values if translation fails
+        console.warn(`Failed to get translations for food item ${item.id}:`, translationError);
+      }
+
+      return {
+        id: item.id,
+        name: translatedName,
+        description: translatedDescription,
+        imageUrl: item.image_url,
+        categoryId: item.category_id,
+        basePrice: parseFloat(item.base_price),
+        stockType: item.stock_type,
+        stockQuantity: item.stock_quantity,
+        menuType: item.menu_type, // Legacy field
+        menuTypes: menuItemsMap.get(item.id) || [], // Array of menu types
+        ageLimit: item.age_limit,
+        displayOrder: item.display_order,
+        isActive: item.is_active,
+        createdAt: item.created_at,
+        updatedAt: item.updated_at,
+        variations: variationsMap.get(item.id) || [],
+        labels: labelsMap.get(item.id) || [],
+        addOnGroupIds: addOnGroupsMap.get(item.id) || [],
+        activeDiscounts: discountsMap.get(item.id) || [],
+      };
+    };
+
+    // Map items with their related data and translations
+    const itemsWithDetails = await Promise.all(
+      paginatedFoodItems.map((item) => getTranslatedFoodItem(item))
+    );
 
     // Return paginated response if pagination is requested
     if (pagination) {
@@ -647,7 +847,7 @@ export class MenuService {
     return itemsWithDetails;
   }
 
-  async getFoodItemById(tenantId: string, id: string) {
+  async getFoodItemById(tenantId: string, id: string, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
     
     const { data: foodItem, error } = await supabase
@@ -688,10 +888,39 @@ export class MenuService {
         .eq('food_item_id', id),
     ]);
 
+    // Get translations for name and description
+    let translatedName = foodItem.name;
+    let translatedDescription = foodItem.description;
+
+    try {
+      const nameTranslation = await this.translationService.getTranslation({
+        entityType: 'food_item',
+        entityId: foodItem.id,
+        languageCode: language,
+        fieldName: 'name',
+        fallbackLanguage: 'en',
+      });
+      if (nameTranslation) translatedName = nameTranslation;
+
+      if (foodItem.description) {
+        const descTranslation = await this.translationService.getTranslation({
+          entityType: 'food_item',
+          entityId: foodItem.id,
+          languageCode: language,
+          fieldName: 'description',
+          fallbackLanguage: 'en',
+        });
+        if (descTranslation) translatedDescription = descTranslation;
+      }
+    } catch (translationError) {
+      // Use original values if translation fails
+      console.warn(`Failed to get translations for food item ${foodItem.id}:`, translationError);
+    }
+
     return {
       id: foodItem.id,
-      name: foodItem.name,
-      description: foodItem.description,
+      name: translatedName,
+      description: translatedDescription,
       imageUrl: foodItem.image_url,
       categoryId: foodItem.category_id,
       basePrice: parseFloat(foodItem.base_price),
@@ -908,10 +1137,32 @@ export class MenuService {
       await Promise.all(parallelOps);
     }
 
+    // Create translations for name and description
+    try {
+      await this.translationService.createTranslations({
+        entityType: 'food_item',
+        entityId: foodItem.id,
+        fieldName: 'name',
+        text: createDto.name,
+      });
+
+      if (createDto.description) {
+        await this.translationService.createTranslations({
+          entityType: 'food_item',
+          entityId: foodItem.id,
+          fieldName: 'description',
+          text: createDto.description,
+        });
+      }
+    } catch (translationError) {
+      // Log error but don't fail the creation if translation fails
+      console.warn(`Failed to create translations for food item ${foodItem.id}:`, translationError);
+    }
+
     return this.getFoodItemById(tenantId, foodItem.id);
   }
 
-  async updateFoodItem(tenantId: string, id: string, updateDto: UpdateFoodItemDto) {
+  async updateFoodItem(tenantId: string, id: string, updateDto: UpdateFoodItemDto, language: string = 'en', userId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Check if food item exists
@@ -942,10 +1193,10 @@ export class MenuService {
       }
     }
 
-    // Get current food item state to check if isActive is being changed
+    // Get current food item state to check if isActive is being changed and for translation comparison
     const { data: currentFoodItem } = await supabase
       .from('food_items')
-      .select('is_active')
+      .select('is_active, name, description')
       .eq('id', id)
       .eq('tenant_id', tenantId)
       .single();
@@ -1263,7 +1514,40 @@ export class MenuService {
       }
     }
 
-    return this.getFoodItemById(tenantId, id);
+    // Update translations if name or description changed
+    try {
+      if (updateDto.name !== undefined && updateDto.name.trim() !== currentFoodItem?.name) {
+        await this.translationService.updateTranslation(
+          {
+            entityType: 'food_item',
+            entityId: id,
+            languageCode: language,
+            fieldName: 'name',
+            translatedText: updateDto.name.trim(),
+            isAiGenerated: false, // Manual edit
+          },
+          userId,
+        );
+      }
+
+      if (updateDto.description !== undefined && updateDto.description !== currentFoodItem?.description) {
+        await this.translationService.updateTranslation(
+          {
+            entityType: 'food_item',
+            entityId: id,
+            languageCode: language,
+            fieldName: 'description',
+            translatedText: updateDto.description,
+            isAiGenerated: false, // Manual edit
+          },
+          userId,
+        );
+      }
+    } catch (translationError) {
+      console.error('Failed to update translations for food item:', translationError);
+    }
+
+    return this.getFoodItemById(tenantId, id, language);
   }
 
   async deleteFoodItem(tenantId: string, id: string) {
@@ -1304,6 +1588,13 @@ export class MenuService {
       throw new BadRequestException(`Failed to delete food item: ${error.message}`);
     }
 
+    // Delete translations for this food item
+    try {
+      await this.translationService.deleteEntityTranslations('food_item', id);
+    } catch (translationError) {
+      console.warn(`Failed to delete translations for food item ${id}:`, translationError);
+    }
+
     return { message: 'Food item deleted successfully' };
   }
 
@@ -1311,7 +1602,7 @@ export class MenuService {
   // ADD-ON GROUP MANAGEMENT
   // ============================================
 
-  async getAddOnGroups(tenantId: string, pagination?: PaginationParams, branchId?: string): Promise<PaginatedResponse<any> | any[]> {
+  async getAddOnGroups(tenantId: string, pagination?: PaginationParams, branchId?: string, language: string = 'en'): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
     
     // Get total count for pagination
@@ -1353,7 +1644,7 @@ export class MenuService {
       throw new BadRequestException(`Failed to fetch add-on groups: ${error.message}`);
     }
 
-    // Get add-ons for each group
+    // Get add-ons for each group and translations
     const groupsWithAddOns = await Promise.all(
       addOnGroups.map(async (group) => {
         const { data: addOns } = await supabase
@@ -1363,9 +1654,51 @@ export class MenuService {
           .is('deleted_at', null)
           .order('display_order', { ascending: true });
 
+        // Get translation for group name
+        let translatedName = group.name;
+        try {
+          const nameTranslation = await this.translationService.getTranslation({
+            entityType: 'addon_group',
+            entityId: group.id,
+            languageCode: language,
+            fieldName: 'name',
+            fallbackLanguage: 'en',
+          });
+          if (nameTranslation) translatedName = nameTranslation;
+        } catch (translationError) {
+          console.warn(`Failed to get translations for add-on group ${group.id}:`, translationError);
+        }
+
+        // Get translations for add-ons
+        const addOnsWithTranslations = await Promise.all(
+          (addOns || []).map(async (addOn) => {
+            let translatedAddOnName = addOn.name;
+            try {
+              const addOnNameTranslation = await this.translationService.getTranslation({
+                entityType: 'addon',
+                entityId: addOn.id,
+                languageCode: language,
+                fieldName: 'name',
+                fallbackLanguage: 'en',
+              });
+              if (addOnNameTranslation) translatedAddOnName = addOnNameTranslation;
+            } catch (translationError) {
+              console.warn(`Failed to get translations for add-on ${addOn.id}:`, translationError);
+            }
+
+            return {
+              id: addOn.id,
+              name: translatedAddOnName,
+              price: parseFloat(addOn.price),
+              isActive: addOn.is_active,
+              displayOrder: addOn.display_order,
+            };
+          })
+        );
+
         return {
           id: group.id,
-          name: group.name,
+          name: translatedName,
           selectionType: group.selection_type,
           isRequired: group.is_required,
           minSelections: group.min_selections,
@@ -1375,13 +1708,7 @@ export class MenuService {
           category: group.category || null,
           createdAt: group.created_at,
           updatedAt: group.updated_at,
-          addOns: addOns?.map((addOn) => ({
-            id: addOn.id,
-            name: addOn.name,
-            price: parseFloat(addOn.price),
-            isActive: addOn.is_active,
-            displayOrder: addOn.display_order,
-          })) || [],
+          addOns: addOnsWithTranslations,
         };
       })
     );
@@ -1394,7 +1721,7 @@ export class MenuService {
     return groupsWithAddOns;
   }
 
-  async getAddOnGroupById(tenantId: string, id: string) {
+  async getAddOnGroupById(tenantId: string, id: string, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
     
     const { data: addOnGroup, error } = await supabase
@@ -1416,9 +1743,51 @@ export class MenuService {
       .is('deleted_at', null)
       .order('display_order', { ascending: true });
 
+    // Get translation for group name
+    let translatedName = addOnGroup.name;
+    try {
+      const nameTranslation = await this.translationService.getTranslation({
+        entityType: 'addon_group',
+        entityId: addOnGroup.id,
+        languageCode: language,
+        fieldName: 'name',
+        fallbackLanguage: 'en',
+      });
+      if (nameTranslation) translatedName = nameTranslation;
+    } catch (translationError) {
+      console.warn(`Failed to get translations for add-on group ${addOnGroup.id}:`, translationError);
+    }
+
+    // Get translations for add-ons
+    const addOnsWithTranslations = await Promise.all(
+      (addOns || []).map(async (addOn) => {
+        let translatedAddOnName = addOn.name;
+        try {
+          const addOnNameTranslation = await this.translationService.getTranslation({
+            entityType: 'addon',
+            entityId: addOn.id,
+            languageCode: language,
+            fieldName: 'name',
+            fallbackLanguage: 'en',
+          });
+          if (addOnNameTranslation) translatedAddOnName = addOnNameTranslation;
+        } catch (translationError) {
+          console.warn(`Failed to get translations for add-on ${addOn.id}:`, translationError);
+        }
+
+        return {
+          id: addOn.id,
+          name: translatedAddOnName,
+          price: parseFloat(addOn.price),
+          isActive: addOn.is_active,
+          displayOrder: addOn.display_order,
+        };
+      })
+    );
+
     return {
       id: addOnGroup.id,
-      name: addOnGroup.name,
+      name: translatedName,
       selectionType: addOnGroup.selection_type,
       isRequired: addOnGroup.is_required,
       minSelections: addOnGroup.min_selections,
@@ -1428,13 +1797,7 @@ export class MenuService {
       category: addOnGroup.category || null,
       createdAt: addOnGroup.created_at,
       updatedAt: addOnGroup.updated_at,
-      addOns: addOns?.map((addOn) => ({
-        id: addOn.id,
-        name: addOn.name,
-        price: parseFloat(addOn.price),
-        isActive: addOn.is_active,
-        displayOrder: addOn.display_order,
-      })) || [],
+      addOns: addOnsWithTranslations,
     };
   }
 
@@ -1477,6 +1840,18 @@ export class MenuService {
       throw new BadRequestException(`Failed to create add-on group: ${error.message}`);
     }
 
+    // Create translations for name
+    try {
+      await this.translationService.createTranslations({
+        entityType: 'addon_group',
+        entityId: addOnGroup.id,
+        fieldName: 'name',
+        text: createDto.name,
+      });
+    } catch (translationError) {
+      console.warn(`Failed to create translations for add-on group ${addOnGroup.id}:`, translationError);
+    }
+
     return {
       id: addOnGroup.id,
       name: addOnGroup.name,
@@ -1493,7 +1868,7 @@ export class MenuService {
     };
   }
 
-  async updateAddOnGroup(tenantId: string, id: string, updateDto: UpdateAddOnGroupDto) {
+  async updateAddOnGroup(tenantId: string, id: string, updateDto: UpdateAddOnGroupDto, language: string = 'en', userId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Check if add-on group exists
@@ -1509,10 +1884,10 @@ export class MenuService {
       throw new NotFoundException('Add-on group not found');
     }
 
-    // Get current values to check selectionType
+    // Get current values to check selectionType and name
     const { data: current } = await supabase
       .from('add_on_groups')
-      .select('selection_type, is_required')
+      .select('selection_type, is_required, name')
       .eq('id', id)
       .single();
 
@@ -1577,7 +1952,26 @@ export class MenuService {
       throw new BadRequestException(`Failed to update add-on group: ${error.message}`);
     }
 
-    return this.getAddOnGroupById(tenantId, id);
+    // Update translations if name changed
+    try {
+      if (updateDto.name !== undefined && updateDto.name.trim() !== current?.name) {
+        await this.translationService.updateTranslation(
+          {
+            entityType: 'addon_group',
+            entityId: id,
+            languageCode: language,
+            fieldName: 'name',
+            translatedText: updateDto.name.trim(),
+            isAiGenerated: false, // Manual edit
+          },
+          userId,
+        );
+      }
+    } catch (translationError) {
+      console.error('Failed to update translations for add-on group:', translationError);
+    }
+
+    return this.getAddOnGroupById(tenantId, id, language);
   }
 
   async deleteAddOnGroup(tenantId: string, id: string) {
@@ -1607,6 +2001,13 @@ export class MenuService {
       throw new BadRequestException(`Failed to delete add-on group: ${error.message}`);
     }
 
+    // Delete translations for this add-on group
+    try {
+      await this.translationService.deleteEntityTranslations('addon_group', id);
+    } catch (translationError) {
+      console.warn(`Failed to delete translations for add-on group ${id}:`, translationError);
+    }
+
     return { message: 'Add-on group deleted successfully' };
   }
 
@@ -1614,7 +2015,7 @@ export class MenuService {
   // ADD-ON MANAGEMENT
   // ============================================
 
-  async getAddOns(tenantId: string, addOnGroupId: string) {
+  async getAddOns(tenantId: string, addOnGroupId: string, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Verify add-on group belongs to tenant
@@ -1641,19 +2042,40 @@ export class MenuService {
       throw new BadRequestException(`Failed to fetch add-ons: ${error.message}`);
     }
 
-    return addOns.map((addOn) => ({
-      id: addOn.id,
-      addOnGroupId: addOn.add_on_group_id,
-      name: addOn.name,
-      price: parseFloat(addOn.price),
-      isActive: addOn.is_active,
-      displayOrder: addOn.display_order,
-      createdAt: addOn.created_at,
-      updatedAt: addOn.updated_at,
-    }));
+    // Get translations for each add-on
+    const addOnsWithTranslations = await Promise.all(
+      addOns.map(async (addOn) => {
+        let translatedName = addOn.name;
+        try {
+          const nameTranslation = await this.translationService.getTranslation({
+            entityType: 'addon',
+            entityId: addOn.id,
+            languageCode: language,
+            fieldName: 'name',
+            fallbackLanguage: 'en',
+          });
+          if (nameTranslation) translatedName = nameTranslation;
+        } catch (translationError) {
+          console.warn(`Failed to get translations for add-on ${addOn.id}:`, translationError);
+        }
+
+        return {
+          id: addOn.id,
+          addOnGroupId: addOn.add_on_group_id,
+          name: translatedName,
+          price: parseFloat(addOn.price),
+          isActive: addOn.is_active,
+          displayOrder: addOn.display_order,
+          createdAt: addOn.created_at,
+          updatedAt: addOn.updated_at,
+        };
+      })
+    );
+
+    return addOnsWithTranslations;
   }
 
-  async getAddOnById(tenantId: string, addOnGroupId: string, id: string) {
+  async getAddOnById(tenantId: string, addOnGroupId: string, id: string, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Verify add-on group belongs to tenant
@@ -1681,10 +2103,25 @@ export class MenuService {
       throw new NotFoundException('Add-on not found');
     }
 
+    // Get translation for add-on name
+    let translatedName = addOn.name;
+    try {
+      const nameTranslation = await this.translationService.getTranslation({
+        entityType: 'addon',
+        entityId: addOn.id,
+        languageCode: language,
+        fieldName: 'name',
+        fallbackLanguage: 'en',
+      });
+      if (nameTranslation) translatedName = nameTranslation;
+    } catch (translationError) {
+      console.warn(`Failed to get translations for add-on ${addOn.id}:`, translationError);
+    }
+
     return {
       id: addOn.id,
       addOnGroupId: addOn.add_on_group_id,
-      name: addOn.name,
+      name: translatedName,
       price: parseFloat(addOn.price),
       isActive: addOn.is_active,
       displayOrder: addOn.display_order,
@@ -1725,6 +2162,18 @@ export class MenuService {
       throw new BadRequestException(`Failed to create add-on: ${error.message}`);
     }
 
+    // Create translations for name
+    try {
+      await this.translationService.createTranslations({
+        entityType: 'addon',
+        entityId: addOn.id,
+        fieldName: 'name',
+        text: createDto.name,
+      });
+    } catch (translationError) {
+      console.warn(`Failed to create translations for add-on ${addOn.id}:`, translationError);
+    }
+
     return {
       id: addOn.id,
       addOnGroupId: addOn.add_on_group_id,
@@ -1737,7 +2186,7 @@ export class MenuService {
     };
   }
 
-  async updateAddOn(tenantId: string, addOnGroupId: string, id: string, updateDto: UpdateAddOnDto) {
+  async updateAddOn(tenantId: string, addOnGroupId: string, id: string, updateDto: UpdateAddOnDto, language: string = 'en', userId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Verify add-on group belongs to tenant
@@ -1753,10 +2202,10 @@ export class MenuService {
       throw new NotFoundException('Add-on group not found');
     }
 
-    // Check if add-on exists
+    // Check if add-on exists and get current name for translation comparison
     const { data: existing } = await supabase
       .from('add_ons')
-      .select('id')
+      .select('id, name')
       .eq('id', id)
       .eq('add_on_group_id', addOnGroupId)
       .is('deleted_at', null)
@@ -1783,6 +2232,25 @@ export class MenuService {
 
     if (error) {
       throw new BadRequestException(`Failed to update add-on: ${error.message}`);
+    }
+
+    // Update translations if name changed
+    try {
+      if (updateDto.name !== undefined && updateDto.name.trim() !== existing?.name) {
+        await this.translationService.updateTranslation(
+          {
+            entityType: 'addon',
+            entityId: id,
+            languageCode: language,
+            fieldName: 'name',
+            translatedText: updateDto.name.trim(),
+            isAiGenerated: false, // Manual edit
+          },
+          userId,
+        );
+      }
+    } catch (translationError) {
+      console.error('Failed to update translations for add-on:', translationError);
     }
 
     return {
@@ -1848,6 +2316,13 @@ export class MenuService {
       throw new BadRequestException(`Failed to delete add-on: ${error.message}`);
     }
 
+    // Delete translations for this add-on
+    try {
+      await this.translationService.deleteEntityTranslations('addon', id);
+    } catch (translationError) {
+      console.warn(`Failed to delete translations for add-on ${id}:`, translationError);
+    }
+
     return { message: 'Add-on deleted successfully' };
   }
 
@@ -1858,14 +2333,14 @@ export class MenuService {
   // and their menu_type field. A proper menus table can be added later.
   // ============================================
 
-  async getMenus(tenantId: string, pagination?: PaginationParams, branchId?: string): Promise<PaginatedResponse<any> | any[]> {
+  async getMenus(tenantId: string, pagination?: PaginationParams, branchId?: string, language: string = 'en'): Promise<PaginatedResponse<any> | any[]> {
     // Get menus from menu_items junction table AND menus table
     const supabase = this.supabaseService.getServiceRoleClient();
     
     // First, get all menus from the menus table (this includes menus without food items)
     let menuDataQuery = supabase
       .from('menus')
-      .select('menu_type, name, is_active')
+      .select('id, menu_type, name, is_active')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null);
     
@@ -1959,35 +2434,57 @@ export class MenuService {
       activeItemIds = activeItems?.map((item: any) => item.id) || [];
     }
 
-    // Create maps of menu_type to name and is_active
+    // Create maps of menu_type to id, name and is_active
+    const menuIdMap = new Map<string, string>();
     const menuNameMap = new Map<string, string>();
     const menuActiveMap = new Map<string, boolean>();
     if (menuData) {
       menuData.forEach((mn: any) => {
+        menuIdMap.set(mn.menu_type, mn.id);
         menuNameMap.set(mn.menu_type, mn.name);
         menuActiveMap.set(mn.menu_type, mn.is_active !== false); // Default to true if null/undefined
       });
     }
 
-    // Group by menu_type and count all items (not just active ones)
-    const menus = paginatedMenuTypes.map((menuType) => {
-      const itemsInMenu = (menuItems || []).filter((mi: any) => mi.menu_type === menuType);
-      
-      // Always use stored name from menus table - don't generate fallback names
-      const storedName = menuNameMap.get(menuType);
-      
-      // Get is_active from menus table, default to true if not set
-      const isActive = menuActiveMap.has(menuType) 
-        ? menuActiveMap.get(menuType)! 
-        : (itemsInMenu.length > 0); // Default to true if menu has items, false if empty
-      
-      return {
-        menuType,
-        name: storedName || menuType, // Use name from menus table, or menuType as last resort
-        isActive,
-        itemCount: itemsInMenu.length, // Count all items, not just active ones
-      };
-    });
+    // Group by menu_type and count all items (not just active ones), with translations
+    const menus = await Promise.all(
+      paginatedMenuTypes.map(async (menuType) => {
+        const itemsInMenu = (menuItems || []).filter((mi: any) => mi.menu_type === menuType);
+        
+        // Always use stored name from menus table - don't generate fallback names
+        const storedName = menuNameMap.get(menuType);
+        const menuId = menuIdMap.get(menuType);
+        
+        // Get translated name if translation exists
+        let translatedName = storedName || menuType;
+        if (menuId && storedName) {
+          try {
+            const nameTranslation = await this.translationService.getTranslation({
+              entityType: 'menu',
+              entityId: menuId,
+              languageCode: language,
+              fieldName: 'name',
+              fallbackLanguage: 'en',
+            });
+            if (nameTranslation) translatedName = nameTranslation;
+          } catch (translationError) {
+            console.warn(`Failed to get translations for menu ${menuType}:`, translationError);
+          }
+        }
+        
+        // Get is_active from menus table, default to true if not set
+        const isActive = menuActiveMap.has(menuType) 
+          ? menuActiveMap.get(menuType)! 
+          : (itemsInMenu.length > 0); // Default to true if menu has items, false if empty
+        
+        return {
+          menuType,
+          name: translatedName,
+          isActive,
+          itemCount: itemsInMenu.length, // Count all items, not just active ones
+        };
+      })
+    );
 
     // Return paginated response if pagination is requested
     if (pagination) {
@@ -2262,7 +2759,7 @@ export class MenuService {
       // If menu record doesn't exist, create it with the active status
       // Generate display name from menu_type
       const displayName = menuType.charAt(0).toUpperCase() + menuType.slice(1).replace(/_/g, ' ');
-      const { error } = await supabase
+      const { data: insertedMenu, error } = await supabase
         .from('menus')
         .insert({
           tenant_id: tenantId,
@@ -2271,11 +2768,27 @@ export class MenuService {
           is_active: isActive,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-        });
+        })
+        .select('id')
+        .single();
 
       // If table doesn't exist or insert fails, we'll continue (menu will still work)
       if (error && !error.message.includes('relation') && !error.message.includes('does not exist')) {
         throw new BadRequestException(`Failed to ${isActive ? 'activate' : 'deactivate'} menu: ${error.message}`);
+      }
+
+      // Create translations for menu name if menu was created successfully
+      if (insertedMenu && insertedMenu.id) {
+        try {
+          await this.translationService.createTranslations({
+            entityType: 'menu',
+            entityId: insertedMenu.id,
+            fieldName: 'name',
+            text: displayName,
+          });
+        } catch (translationError) {
+          console.warn(`Failed to create translations for menu ${insertedMenu.id}:`, translationError);
+        }
       }
     }
 
@@ -2426,8 +2939,10 @@ export class MenuService {
       
       const { data: existingMenu } = await existingMenuQuery.limit(1);
       
+      let menuId: string | null = null;
       let menuNameError;
       if (existingMenu && existingMenu.length > 0) {
+        menuId = existingMenu[0].id;
         // Update existing menu
         const { error: updateError } = await supabase
           .from('menus')
@@ -2436,13 +2951,26 @@ export class MenuService {
             is_active: createDto.isActive ?? true,
             updated_at: new Date().toISOString(),
           })
-          .eq('id', existingMenu[0].id);
+          .eq('id', existingMenu[0].id)
+          .select('id')
+          .single();
+        if (!updateError) {
+          const { data: updatedMenu } = await supabase
+            .from('menus')
+            .select('id')
+            .eq('id', existingMenu[0].id)
+            .single();
+          if (updatedMenu) menuId = updatedMenu.id;
+        }
         menuNameError = updateError;
       } else {
         // Insert new menu
-        const { error: insertError } = await supabase
+        const { data: insertedMenu, error: insertError } = await supabase
           .from('menus')
-          .insert(menuData);
+          .insert(menuData)
+          .select('id')
+          .single();
+        if (insertedMenu) menuId = insertedMenu.id;
         menuNameError = insertError;
       }
 
@@ -2450,6 +2978,20 @@ export class MenuService {
       // The name will be generated from menu_type in getMenus
       if (menuNameError && !menuNameError.message.includes('relation') && !menuNameError.message.includes('does not exist')) {
         console.warn('Failed to store menu name:', menuNameError.message);
+      }
+
+      // Create translations for menu name if menu was created/updated successfully
+      if (menuId && createDto.name) {
+        try {
+          await this.translationService.createTranslations({
+            entityType: 'menu',
+            entityId: menuId,
+            fieldName: 'name',
+            text: createDto.name,
+          });
+        } catch (translationError) {
+          console.warn(`Failed to create translations for menu ${menuId}:`, translationError);
+        }
       }
     }
 
@@ -2507,7 +3049,7 @@ export class MenuService {
     // Check if menu type exists in menus table (this includes menus with 0 items)
     const { data: existingMenu } = await supabase
       .from('menus')
-      .select('menu_type')
+      .select('id, menu_type')
       .eq('tenant_id', tenantId)
       .eq('menu_type', menuType)
       .is('deleted_at', null)
@@ -2536,6 +3078,15 @@ export class MenuService {
       throw new BadRequestException(`Failed to delete menu items: ${deleteItemsError.message}`);
     }
 
+    // Delete translations for this menu if it exists
+    if (existingMenu && existingMenu.length > 0 && existingMenu[0].id) {
+      try {
+        await this.translationService.deleteEntityTranslations('menu', existingMenu[0].id);
+      } catch (translationError) {
+        console.warn(`Failed to delete translations for menu ${existingMenu[0].id}:`, translationError);
+      }
+    }
+
     // Delete menu from menus table if it exists
     const { error: deleteMenuError } = await supabase
       .from('menus')
@@ -2558,7 +3109,7 @@ export class MenuService {
   // BUFFET MANAGEMENT
   // ============================================
 
-  async getBuffets(tenantId: string, pagination?: PaginationParams, branchId?: string): Promise<PaginatedResponse<any> | any[]> {
+  async getBuffets(tenantId: string, pagination?: PaginationParams, branchId?: string, language: string = 'en'): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
     
     // Get total count for pagination
@@ -2600,20 +3151,52 @@ export class MenuService {
       throw new BadRequestException(`Failed to fetch buffets: ${error.message}`);
     }
 
-    const formattedBuffets = buffets.map((buffet) => ({
-      id: buffet.id,
-      name: buffet.name,
-      description: buffet.description,
-      imageUrl: buffet.image_url,
-      pricePerPerson: buffet.price_per_person,
-      minPersons: buffet.min_persons,
-      duration: buffet.duration,
-      menuTypes: buffet.menu_types || [],
-      displayOrder: buffet.display_order,
-      isActive: buffet.is_active,
-      createdAt: buffet.created_at,
-      updatedAt: buffet.updated_at,
-    }));
+    // Get translations for each buffet
+    const formattedBuffets = await Promise.all(
+      buffets.map(async (buffet) => {
+        let translatedName = buffet.name;
+        let translatedDescription = buffet.description;
+
+        try {
+          const nameTranslation = await this.translationService.getTranslation({
+            entityType: 'buffet',
+            entityId: buffet.id,
+            languageCode: language,
+            fieldName: 'name',
+            fallbackLanguage: 'en',
+          });
+          if (nameTranslation) translatedName = nameTranslation;
+
+          if (buffet.description) {
+            const descTranslation = await this.translationService.getTranslation({
+              entityType: 'buffet',
+              entityId: buffet.id,
+              languageCode: language,
+              fieldName: 'description',
+              fallbackLanguage: 'en',
+            });
+            if (descTranslation) translatedDescription = descTranslation;
+          }
+        } catch (translationError) {
+          console.warn(`Failed to get translations for buffet ${buffet.id}:`, translationError);
+        }
+
+        return {
+          id: buffet.id,
+          name: translatedName,
+          description: translatedDescription,
+          imageUrl: buffet.image_url,
+          pricePerPerson: buffet.price_per_person,
+          minPersons: buffet.min_persons,
+          duration: buffet.duration,
+          menuTypes: buffet.menu_types || [],
+          displayOrder: buffet.display_order,
+          isActive: buffet.is_active,
+          createdAt: buffet.created_at,
+          updatedAt: buffet.updated_at,
+        };
+      })
+    );
 
     if (pagination) {
       return createPaginatedResponse(formattedBuffets, totalCount || 0, pagination.page || 1, pagination.limit || 10);
@@ -2622,7 +3205,7 @@ export class MenuService {
     return formattedBuffets;
   }
 
-  async getBuffetById(tenantId: string, id: string) {
+  async getBuffetById(tenantId: string, id: string, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     const { data: buffet, error } = await supabase
@@ -2660,10 +3243,38 @@ export class MenuService {
       }
     }
 
+    // Get translations for name and description
+    let translatedName = buffet.name;
+    let translatedDescription = buffet.description;
+
+    try {
+      const nameTranslation = await this.translationService.getTranslation({
+        entityType: 'buffet',
+        entityId: buffet.id,
+        languageCode: language,
+        fieldName: 'name',
+        fallbackLanguage: 'en',
+      });
+      if (nameTranslation) translatedName = nameTranslation;
+
+      if (buffet.description) {
+        const descTranslation = await this.translationService.getTranslation({
+          entityType: 'buffet',
+          entityId: buffet.id,
+          languageCode: language,
+          fieldName: 'description',
+          fallbackLanguage: 'en',
+        });
+        if (descTranslation) translatedDescription = descTranslation;
+      }
+    } catch (translationError) {
+      console.warn(`Failed to get translations for buffet ${buffet.id}:`, translationError);
+    }
+
     return {
       id: buffet.id,
-      name: buffet.name,
-      description: buffet.description,
+      name: translatedName,
+      description: translatedDescription,
       imageUrl: buffet.image_url,
       pricePerPerson: buffet.price_per_person,
       minPersons: buffet.min_persons,
@@ -2738,6 +3349,27 @@ export class MenuService {
       throw new BadRequestException(`Failed to create buffet: ${error.message}`);
     }
 
+    // Create translations for name and description
+    try {
+      await this.translationService.createTranslations({
+        entityType: 'buffet',
+        entityId: buffet.id,
+        fieldName: 'name',
+        text: createDto.name,
+      });
+
+      if (createDto.description) {
+        await this.translationService.createTranslations({
+          entityType: 'buffet',
+          entityId: buffet.id,
+          fieldName: 'description',
+          text: createDto.description,
+        });
+      }
+    } catch (translationError) {
+      console.warn(`Failed to create translations for buffet ${buffet.id}:`, translationError);
+    }
+
     return {
       id: buffet.id,
       name: buffet.name,
@@ -2754,13 +3386,13 @@ export class MenuService {
     };
   }
 
-  async updateBuffet(tenantId: string, id: string, updateDto: UpdateBuffetDto) {
+  async updateBuffet(tenantId: string, id: string, updateDto: UpdateBuffetDto, language: string = 'en', userId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Check if buffet exists
+    // Check if buffet exists and get current values for translation comparison
     const { data: existing } = await supabase
       .from('buffets')
-      .select('id')
+      .select('id, name, description')
       .eq('id', id)
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
@@ -2810,6 +3442,39 @@ export class MenuService {
       throw new BadRequestException(`Failed to update buffet: ${error.message}`);
     }
 
+    // Update translations if name or description changed
+    try {
+      if (updateDto.name !== undefined && updateDto.name.trim() !== existing?.name) {
+        await this.translationService.updateTranslation(
+          {
+            entityType: 'buffet',
+            entityId: id,
+            languageCode: language,
+            fieldName: 'name',
+            translatedText: updateDto.name.trim(),
+            isAiGenerated: false, // Manual edit
+          },
+          userId,
+        );
+      }
+
+      if (updateDto.description !== undefined && updateDto.description !== existing?.description) {
+        await this.translationService.updateTranslation(
+          {
+            entityType: 'buffet',
+            entityId: id,
+            languageCode: language,
+            fieldName: 'description',
+            translatedText: updateDto.description,
+            isAiGenerated: false, // Manual edit
+          },
+          userId,
+        );
+      }
+    } catch (translationError) {
+      console.error('Failed to update translations for buffet:', translationError);
+    }
+
     return {
       id: buffet.id,
       name: buffet.name,
@@ -2851,6 +3516,13 @@ export class MenuService {
 
     if (error) {
       throw new BadRequestException(`Failed to delete buffet: ${error.message}`);
+    }
+
+    // Delete translations for this buffet
+    try {
+      await this.translationService.deleteEntityTranslations('buffet', id);
+    } catch (translationError) {
+      console.warn(`Failed to delete translations for buffet ${id}:`, translationError);
     }
 
     return { message: 'Buffet deleted successfully', id };
@@ -2911,7 +3583,7 @@ export class MenuService {
   // COMBO MEAL MANAGEMENT
   // ============================================
 
-  async getComboMeals(tenantId: string, pagination?: PaginationParams, branchId?: string): Promise<PaginatedResponse<any> | any[]> {
+  async getComboMeals(tenantId: string, pagination?: PaginationParams, branchId?: string, language: string = 'en'): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
     
     // Get total count for pagination
@@ -2953,20 +3625,52 @@ export class MenuService {
       throw new BadRequestException(`Failed to fetch combo meals: ${error.message}`);
     }
 
-    const formattedComboMeals = comboMeals.map((combo) => ({
-      id: combo.id,
-      name: combo.name,
-      description: combo.description,
-      imageUrl: combo.image_url,
-      basePrice: combo.base_price,
-      foodItemIds: combo.food_item_ids || [],
-      menuTypes: combo.menu_types || [],
-      discountPercentage: combo.discount_percentage,
-      displayOrder: combo.display_order,
-      isActive: combo.is_active,
-      createdAt: combo.created_at,
-      updatedAt: combo.updated_at,
-    }));
+    // Get translations for each combo meal
+    const formattedComboMeals = await Promise.all(
+      comboMeals.map(async (combo) => {
+        let translatedName = combo.name;
+        let translatedDescription = combo.description;
+
+        try {
+          const nameTranslation = await this.translationService.getTranslation({
+            entityType: 'combo_meal',
+            entityId: combo.id,
+            languageCode: language,
+            fieldName: 'name',
+            fallbackLanguage: 'en',
+          });
+          if (nameTranslation) translatedName = nameTranslation;
+
+          if (combo.description) {
+            const descTranslation = await this.translationService.getTranslation({
+              entityType: 'combo_meal',
+              entityId: combo.id,
+              languageCode: language,
+              fieldName: 'description',
+              fallbackLanguage: 'en',
+            });
+            if (descTranslation) translatedDescription = descTranslation;
+          }
+        } catch (translationError) {
+          console.warn(`Failed to get translations for combo meal ${combo.id}:`, translationError);
+        }
+
+        return {
+          id: combo.id,
+          name: translatedName,
+          description: translatedDescription,
+          imageUrl: combo.image_url,
+          basePrice: combo.base_price,
+          foodItemIds: combo.food_item_ids || [],
+          menuTypes: combo.menu_types || [],
+          discountPercentage: combo.discount_percentage,
+          displayOrder: combo.display_order,
+          isActive: combo.is_active,
+          createdAt: combo.created_at,
+          updatedAt: combo.updated_at,
+        };
+      })
+    );
 
     if (pagination) {
       return createPaginatedResponse(formattedComboMeals, totalCount || 0, pagination.page || 1, pagination.limit || 10);
@@ -2975,7 +3679,7 @@ export class MenuService {
     return formattedComboMeals;
   }
 
-  async getComboMealById(tenantId: string, id: string) {
+  async getComboMealById(tenantId: string, id: string, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     const { data: comboMeal, error } = await supabase
@@ -3003,10 +3707,38 @@ export class MenuService {
       foodItems = items || [];
     }
 
+    // Get translations for name and description
+    let translatedName = comboMeal.name;
+    let translatedDescription = comboMeal.description;
+
+    try {
+      const nameTranslation = await this.translationService.getTranslation({
+        entityType: 'combo_meal',
+        entityId: comboMeal.id,
+        languageCode: language,
+        fieldName: 'name',
+        fallbackLanguage: 'en',
+      });
+      if (nameTranslation) translatedName = nameTranslation;
+
+      if (comboMeal.description) {
+        const descTranslation = await this.translationService.getTranslation({
+          entityType: 'combo_meal',
+          entityId: comboMeal.id,
+          languageCode: language,
+          fieldName: 'description',
+          fallbackLanguage: 'en',
+        });
+        if (descTranslation) translatedDescription = descTranslation;
+      }
+    } catch (translationError) {
+      console.warn(`Failed to get translations for combo meal ${comboMeal.id}:`, translationError);
+    }
+
     return {
       id: comboMeal.id,
-      name: comboMeal.name,
-      description: comboMeal.description,
+      name: translatedName,
+      description: translatedDescription,
       imageUrl: comboMeal.image_url,
       basePrice: comboMeal.base_price,
       foodItemIds: comboMeal.food_item_ids || [],
@@ -3095,6 +3827,27 @@ export class MenuService {
       throw new BadRequestException(`Failed to create combo meal: ${error.message}`);
     }
 
+    // Create translations for name and description
+    try {
+      await this.translationService.createTranslations({
+        entityType: 'combo_meal',
+        entityId: comboMeal.id,
+        fieldName: 'name',
+        text: createDto.name,
+      });
+
+      if (createDto.description) {
+        await this.translationService.createTranslations({
+          entityType: 'combo_meal',
+          entityId: comboMeal.id,
+          fieldName: 'description',
+          text: createDto.description,
+        });
+      }
+    } catch (translationError) {
+      console.warn(`Failed to create translations for combo meal ${comboMeal.id}:`, translationError);
+    }
+
     return {
       id: comboMeal.id,
       name: comboMeal.name,
@@ -3111,13 +3864,13 @@ export class MenuService {
     };
   }
 
-  async updateComboMeal(tenantId: string, id: string, updateDto: UpdateComboMealDto) {
+  async updateComboMeal(tenantId: string, id: string, updateDto: UpdateComboMealDto, language: string = 'en', userId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Check if combo meal exists
+    // Check if combo meal exists and get current values for translation comparison
     const { data: existing } = await supabase
       .from('combo_meals')
-      .select('id')
+      .select('id, name, description')
       .eq('id', id)
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
@@ -3181,6 +3934,39 @@ export class MenuService {
       throw new BadRequestException(`Failed to update combo meal: ${error.message}`);
     }
 
+    // Update translations if name or description changed
+    try {
+      if (updateDto.name !== undefined && updateDto.name.trim() !== existing?.name) {
+        await this.translationService.updateTranslation(
+          {
+            entityType: 'combo_meal',
+            entityId: id,
+            languageCode: language,
+            fieldName: 'name',
+            translatedText: updateDto.name.trim(),
+            isAiGenerated: false, // Manual edit
+          },
+          userId,
+        );
+      }
+
+      if (updateDto.description !== undefined && updateDto.description !== existing?.description) {
+        await this.translationService.updateTranslation(
+          {
+            entityType: 'combo_meal',
+            entityId: id,
+            languageCode: language,
+            fieldName: 'description',
+            translatedText: updateDto.description,
+            isAiGenerated: false, // Manual edit
+          },
+          userId,
+        );
+      }
+    } catch (translationError) {
+      console.error('Failed to update translations for combo meal:', translationError);
+    }
+
     return {
       id: comboMeal.id,
       name: comboMeal.name,
@@ -3222,6 +4008,13 @@ export class MenuService {
 
     if (error) {
       throw new BadRequestException(`Failed to delete combo meal: ${error.message}`);
+    }
+
+    // Delete translations for this combo meal
+    try {
+      await this.translationService.deleteEntityTranslations('combo_meal', id);
+    } catch (translationError) {
+      console.warn(`Failed to delete translations for combo meal ${id}:`, translationError);
     }
 
     return { message: 'Combo meal deleted successfully', id };
@@ -3282,7 +4075,7 @@ export class MenuService {
   // VARIATION GROUP MANAGEMENT
   // ============================================
 
-  async getVariationGroups(tenantId: string, pagination?: PaginationParams, branchId?: string): Promise<PaginatedResponse<any> | any[]> {
+  async getVariationGroups(tenantId: string, pagination?: PaginationParams, branchId?: string, language: string = 'en'): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
     
     // Get total count for pagination
@@ -3324,7 +4117,7 @@ export class MenuService {
       throw new BadRequestException(`Failed to fetch variation groups: ${error.message}`);
     }
 
-    // Get variations for each group
+    // Get variations for each group and translations
     const groupsWithVariations = await Promise.all(
       variationGroups.map(async (group) => {
         const { data: variations } = await supabase
@@ -3334,18 +4127,54 @@ export class MenuService {
           .is('deleted_at', null)
           .order('display_order', { ascending: true });
 
+        // Get translation for group name
+        let translatedName = group.name;
+        try {
+          const nameTranslation = await this.translationService.getTranslation({
+            entityType: 'variation_group',
+            entityId: group.id,
+            languageCode: language,
+            fieldName: 'name',
+            fallbackLanguage: 'en',
+          });
+          if (nameTranslation) translatedName = nameTranslation;
+        } catch (translationError) {
+          console.warn(`Failed to get translations for variation group ${group.id}:`, translationError);
+        }
+
+        // Get translations for variations
+        const variationsWithTranslations = await Promise.all(
+          (variations || []).map(async (variation) => {
+            let translatedVariationName = variation.name;
+            try {
+              const variationNameTranslation = await this.translationService.getTranslation({
+                entityType: 'variation',
+                entityId: variation.id,
+                languageCode: language,
+                fieldName: 'name',
+                fallbackLanguage: 'en',
+              });
+              if (variationNameTranslation) translatedVariationName = variationNameTranslation;
+            } catch (translationError) {
+              console.warn(`Failed to get translations for variation ${variation.id}:`, translationError);
+            }
+
+            return {
+              id: variation.id,
+              name: translatedVariationName,
+              recipeMultiplier: parseFloat(variation.recipe_multiplier),
+              pricingAdjustment: parseFloat(variation.pricing_adjustment),
+              displayOrder: variation.display_order,
+            };
+          })
+        );
+
         return {
           id: group.id,
-          name: group.name,
+          name: translatedName,
           createdAt: group.created_at,
           updatedAt: group.updated_at,
-          variations: variations?.map((variation) => ({
-            id: variation.id,
-            name: variation.name,
-            recipeMultiplier: parseFloat(variation.recipe_multiplier),
-            pricingAdjustment: parseFloat(variation.pricing_adjustment),
-            displayOrder: variation.display_order,
-          })) || [],
+          variations: variationsWithTranslations,
         };
       })
     );
@@ -3358,7 +4187,7 @@ export class MenuService {
     return groupsWithVariations;
   }
 
-  async getVariationGroupById(tenantId: string, id: string) {
+  async getVariationGroupById(tenantId: string, id: string, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
     
     const { data: variationGroup, error } = await supabase
@@ -3380,18 +4209,54 @@ export class MenuService {
       .is('deleted_at', null)
       .order('display_order', { ascending: true });
 
+    // Get translation for group name
+    let translatedName = variationGroup.name;
+    try {
+      const nameTranslation = await this.translationService.getTranslation({
+        entityType: 'variation_group',
+        entityId: variationGroup.id,
+        languageCode: language,
+        fieldName: 'name',
+        fallbackLanguage: 'en',
+      });
+      if (nameTranslation) translatedName = nameTranslation;
+    } catch (translationError) {
+      console.warn(`Failed to get translations for variation group ${variationGroup.id}:`, translationError);
+    }
+
+    // Get translations for variations
+    const variationsWithTranslations = await Promise.all(
+      (variations || []).map(async (variation) => {
+        let translatedVariationName = variation.name;
+        try {
+          const variationNameTranslation = await this.translationService.getTranslation({
+            entityType: 'variation',
+            entityId: variation.id,
+            languageCode: language,
+            fieldName: 'name',
+            fallbackLanguage: 'en',
+          });
+          if (variationNameTranslation) translatedVariationName = variationNameTranslation;
+        } catch (translationError) {
+          console.warn(`Failed to get translations for variation ${variation.id}:`, translationError);
+        }
+
+        return {
+          id: variation.id,
+          name: translatedVariationName,
+          recipeMultiplier: parseFloat(variation.recipe_multiplier),
+          pricingAdjustment: parseFloat(variation.pricing_adjustment),
+          displayOrder: variation.display_order,
+        };
+      })
+    );
+
     return {
       id: variationGroup.id,
-      name: variationGroup.name,
+      name: translatedName,
       createdAt: variationGroup.created_at,
       updatedAt: variationGroup.updated_at,
-      variations: variations?.map((variation) => ({
-        id: variation.id,
-        name: variation.name,
-        recipeMultiplier: parseFloat(variation.recipe_multiplier),
-        pricingAdjustment: parseFloat(variation.pricing_adjustment),
-        displayOrder: variation.display_order,
-      })) || [],
+      variations: variationsWithTranslations,
     };
   }
 
@@ -3417,6 +4282,18 @@ export class MenuService {
       throw new BadRequestException(`Failed to create variation group: ${error.message}`);
     }
 
+    // Create translations for name
+    try {
+      await this.translationService.createTranslations({
+        entityType: 'variation_group',
+        entityId: variationGroup.id,
+        fieldName: 'name',
+        text: createDto.name,
+      });
+    } catch (translationError) {
+      console.warn(`Failed to create translations for variation group ${variationGroup.id}:`, translationError);
+    }
+
     return {
       id: variationGroup.id,
       name: variationGroup.name,
@@ -3426,13 +4303,13 @@ export class MenuService {
     };
   }
 
-  async updateVariationGroup(tenantId: string, id: string, updateDto: UpdateVariationGroupDto) {
+  async updateVariationGroup(tenantId: string, id: string, updateDto: UpdateVariationGroupDto, language: string = 'en', userId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Check if variation group exists
+    // Check if variation group exists and get current name for translation comparison
     const { data: existing } = await supabase
       .from('variation_groups')
-      .select('id')
+      .select('id, name')
       .eq('id', id)
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
@@ -3458,7 +4335,26 @@ export class MenuService {
       throw new BadRequestException(`Failed to update variation group: ${error.message}`);
     }
 
-    return this.getVariationGroupById(tenantId, id);
+    // Update translations if name changed
+    try {
+      if (updateDto.name !== undefined && updateDto.name.trim() !== existing?.name) {
+        await this.translationService.updateTranslation(
+          {
+            entityType: 'variation_group',
+            entityId: id,
+            languageCode: language,
+            fieldName: 'name',
+            translatedText: updateDto.name.trim(),
+            isAiGenerated: false, // Manual edit
+          },
+          userId,
+        );
+      }
+    } catch (translationError) {
+      console.error('Failed to update translations for variation group:', translationError);
+    }
+
+    return this.getVariationGroupById(tenantId, id, language);
   }
 
   async deleteVariationGroup(tenantId: string, id: string) {
@@ -3488,6 +4384,13 @@ export class MenuService {
       throw new BadRequestException(`Failed to delete variation group: ${error.message}`);
     }
 
+    // Delete translations for this variation group
+    try {
+      await this.translationService.deleteEntityTranslations('variation_group', id);
+    } catch (translationError) {
+      console.warn(`Failed to delete translations for variation group ${id}:`, translationError);
+    }
+
     return { message: 'Variation group deleted successfully' };
   }
 
@@ -3495,7 +4398,7 @@ export class MenuService {
   // VARIATION MANAGEMENT
   // ============================================
 
-  async getVariations(tenantId: string, variationGroupId: string) {
+  async getVariations(tenantId: string, variationGroupId: string, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Verify variation group belongs to tenant
@@ -3522,18 +4425,39 @@ export class MenuService {
       throw new BadRequestException(`Failed to fetch variations: ${error.message}`);
     }
 
-    return variations?.map((variation) => ({
-      id: variation.id,
-      name: variation.name,
-      recipeMultiplier: parseFloat(variation.recipe_multiplier),
-      pricingAdjustment: parseFloat(variation.pricing_adjustment),
-      displayOrder: variation.display_order,
-      createdAt: variation.created_at,
-      updatedAt: variation.updated_at,
-    })) || [];
+    // Get translations for each variation
+    const variationsWithTranslations = await Promise.all(
+      (variations || []).map(async (variation) => {
+        let translatedName = variation.name;
+        try {
+          const nameTranslation = await this.translationService.getTranslation({
+            entityType: 'variation',
+            entityId: variation.id,
+            languageCode: language,
+            fieldName: 'name',
+            fallbackLanguage: 'en',
+          });
+          if (nameTranslation) translatedName = nameTranslation;
+        } catch (translationError) {
+          console.warn(`Failed to get translations for variation ${variation.id}:`, translationError);
+        }
+
+        return {
+          id: variation.id,
+          name: translatedName,
+          recipeMultiplier: parseFloat(variation.recipe_multiplier),
+          pricingAdjustment: parseFloat(variation.pricing_adjustment),
+          displayOrder: variation.display_order,
+          createdAt: variation.created_at,
+          updatedAt: variation.updated_at,
+        };
+      })
+    );
+
+    return variationsWithTranslations;
   }
 
-  async getVariationById(tenantId: string, variationGroupId: string, id: string) {
+  async getVariationById(tenantId: string, variationGroupId: string, id: string, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Verify variation group belongs to tenant
@@ -3561,9 +4485,24 @@ export class MenuService {
       throw new NotFoundException('Variation not found');
     }
 
+    // Get translation for variation name
+    let translatedName = variation.name;
+    try {
+      const nameTranslation = await this.translationService.getTranslation({
+        entityType: 'variation',
+        entityId: variation.id,
+        languageCode: language,
+        fieldName: 'name',
+        fallbackLanguage: 'en',
+      });
+      if (nameTranslation) translatedName = nameTranslation;
+    } catch (translationError) {
+      console.warn(`Failed to get translations for variation ${variation.id}:`, translationError);
+    }
+
     return {
       id: variation.id,
-      name: variation.name,
+      name: translatedName,
       recipeMultiplier: parseFloat(variation.recipe_multiplier),
       pricingAdjustment: parseFloat(variation.pricing_adjustment),
       displayOrder: variation.display_order,
@@ -3604,6 +4543,18 @@ export class MenuService {
       throw new BadRequestException(`Failed to create variation: ${error.message}`);
     }
 
+    // Create translations for name
+    try {
+      await this.translationService.createTranslations({
+        entityType: 'variation',
+        entityId: variation.id,
+        fieldName: 'name',
+        text: createDto.name,
+      });
+    } catch (translationError) {
+      console.warn(`Failed to create translations for variation ${variation.id}:`, translationError);
+    }
+
     return {
       id: variation.id,
       name: variation.name,
@@ -3615,7 +4566,7 @@ export class MenuService {
     };
   }
 
-  async updateVariation(tenantId: string, variationGroupId: string, id: string, updateDto: UpdateVariationDto) {
+  async updateVariation(tenantId: string, variationGroupId: string, id: string, updateDto: UpdateVariationDto, language: string = 'en', userId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Verify variation group belongs to tenant
@@ -3631,10 +4582,10 @@ export class MenuService {
       throw new NotFoundException('Variation group not found');
     }
 
-    // Check if variation exists
+    // Check if variation exists and get current name for translation comparison
     const { data: existing } = await supabase
       .from('variations')
-      .select('id')
+      .select('id, name')
       .eq('id', id)
       .eq('variation_group_id', variationGroupId)
       .is('deleted_at', null)
@@ -3661,6 +4612,25 @@ export class MenuService {
 
     if (error) {
       throw new BadRequestException(`Failed to update variation: ${error.message}`);
+    }
+
+    // Update translations if name changed
+    try {
+      if (updateDto.name !== undefined && updateDto.name.trim() !== existing?.name) {
+        await this.translationService.updateTranslation(
+          {
+            entityType: 'variation',
+            entityId: id,
+            languageCode: language,
+            fieldName: 'name',
+            translatedText: updateDto.name.trim(),
+            isAiGenerated: false, // Manual edit
+          },
+          userId,
+        );
+      }
+    } catch (translationError) {
+      console.error('Failed to update translations for variation:', translationError);
     }
 
     return {
@@ -3712,6 +4682,13 @@ export class MenuService {
 
     if (error) {
       throw new BadRequestException(`Failed to delete variation: ${error.message}`);
+    }
+
+    // Delete translations for this variation
+    try {
+      await this.translationService.deleteEntityTranslations('variation', id);
+    } catch (translationError) {
+      console.warn(`Failed to delete translations for variation ${id}:`, translationError);
     }
 
     return { message: 'Variation deleted successfully' };

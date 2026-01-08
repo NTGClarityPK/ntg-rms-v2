@@ -1,6 +1,7 @@
 import apiClient from './client';
 import { PaginationParams, PaginatedResponse } from '../types/pagination.types';
 import { createCrudApi, extendCrudApi } from '@/shared/services/api/factory';
+import { getApiLanguage } from '../hooks/use-api-language';
 
 // Types
 export interface Ingredient {
@@ -139,6 +140,7 @@ export const inventoryApi = {
     filters?: { category?: string; isActive?: boolean; search?: string },
     pagination?: PaginationParams,
     branchId?: string,
+    language?: string,
   ): Promise<Ingredient[] | PaginatedResponse<Ingredient>> => {
     // Extract search from filters and pass it separately
     const { search, ...otherFilters } = filters || {};
@@ -147,6 +149,7 @@ export const inventoryApi = {
     if (otherFilters.isActive !== undefined) params.append('isActive', otherFilters.isActive.toString());
     if (search) params.append('search', search);
     if (pagination?.page) params.append('page', pagination.page.toString());
+    if (language) params.append('language', language);
     if (pagination?.limit) params.append('limit', pagination.limit.toString());
     if (branchId) params.append('branchId', branchId);
     
@@ -154,28 +157,43 @@ export const inventoryApi = {
     return response.data;
   },
 
-  getIngredientById: baseIngredientsApi.getById,
+  getIngredientById: async (id: string, language?: string): Promise<Ingredient> => {
+    const params = new URLSearchParams();
+    if (language) params.append('language', language);
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+    const response = await apiClient.get(`/inventory/ingredients/${id}${queryString}`);
+    return response.data;
+  },
   createIngredient: async (data: CreateIngredientDto, branchId?: string): Promise<Ingredient> => {
     const params = branchId ? `?branchId=${branchId}` : '';
     const response = await apiClient.post(`/inventory/ingredients${params}`, data);
     return response.data;
   },
-  updateIngredient: baseIngredientsApi.update,
+  updateIngredient: async (id: string, data: UpdateIngredientDto, language?: string): Promise<Ingredient> => {
+    const params = new URLSearchParams();
+    if (language) params.append('language', language);
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+    const response = await apiClient.put(`/inventory/ingredients/${id}${queryString}`, data);
+    return response.data;
+  },
   deleteIngredient: baseIngredientsApi.delete,
 
   // Stock Management
-  addStock: async (data: AddStockDto): Promise<StockTransaction> => {
-    const response = await apiClient.post('/inventory/stock/add', data);
+  addStock: async (data: AddStockDto, language?: string): Promise<StockTransaction> => {
+    const lang = language || getApiLanguage();
+    const response = await apiClient.post(`/inventory/stock/add?language=${lang}`, data);
     return response.data;
   },
 
-  deductStock: async (data: DeductStockDto): Promise<StockTransaction> => {
-    const response = await apiClient.post('/inventory/stock/deduct', data);
+  deductStock: async (data: DeductStockDto, language?: string): Promise<StockTransaction> => {
+    const lang = language || getApiLanguage();
+    const response = await apiClient.post(`/inventory/stock/deduct?language=${lang}`, data);
     return response.data;
   },
 
-  adjustStock: async (data: AdjustStockDto): Promise<StockTransaction> => {
-    const response = await apiClient.post('/inventory/stock/adjust', data);
+  adjustStock: async (data: AdjustStockDto, language?: string): Promise<StockTransaction> => {
+    const lang = language || getApiLanguage();
+    const response = await apiClient.post(`/inventory/stock/adjust?language=${lang}`, data);
     return response.data;
   },
 
@@ -192,8 +210,11 @@ export const inventoryApi = {
       endDate?: string;
     },
     pagination?: PaginationParams,
+    language?: string,
   ): Promise<StockTransaction[] | PaginatedResponse<StockTransaction>> => {
+    const lang = language || getApiLanguage();
     const params = new URLSearchParams();
+    params.append('language', lang);
     if (filters?.branchId) params.append('branchId', filters.branchId);
     if (filters?.ingredientId) params.append('ingredientId', filters.ingredientId);
     if (filters?.startDate) params.append('startDate', filters.startDate);

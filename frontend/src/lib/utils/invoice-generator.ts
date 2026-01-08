@@ -42,9 +42,9 @@ export class InvoiceGenerator {
   /**
    * Generate thermal printer invoice (80mm)
    */
-  static generateThermal(data: InvoiceData, language: 'en' | 'ar' = 'en', themeConfig?: ThemeConfig): string {
+  static generateThermal(data: InvoiceData, language: 'en' | 'ar' | 'ku' | 'fr' = 'en', themeConfig?: ThemeConfig): string {
     const { order, tenant, branch, customerName, customerPhone, customerAddress, invoiceSettings } = data;
-    const isRTL = language === 'ar';
+    const isRTL = language === 'ar' || language === 'ku';
     const dir = isRTL ? 'rtl' : 'ltr';
     
     // Use invoice settings with defaults
@@ -306,9 +306,9 @@ export class InvoiceGenerator {
   /**
    * Generate A4 format invoice
    */
-  static generateA4(data: InvoiceData, language: 'en' | 'ar' = 'en', themeConfig?: ThemeConfig): string {
+  static generateA4(data: InvoiceData, language: 'en' | 'ar' | 'ku' | 'fr' = 'en', themeConfig?: ThemeConfig): string {
     const { order, tenant, branch, customerName, customerPhone, customerAddress, invoiceSettings } = data;
-    const isRTL = language === 'ar';
+    const isRTL = language === 'ar' || language === 'ku';
     const dir = isRTL ? 'rtl' : 'ltr';
     
     // Use invoice settings with defaults

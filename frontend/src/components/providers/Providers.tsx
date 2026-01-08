@@ -21,8 +21,8 @@ function FaviconProvider({ children }: { children: ReactNode }) {
 }
 
 export function Providers({ children }: ProvidersProps) {
-  const { language } = useLanguageStore();
-  const dir = language === 'ar' ? 'rtl' : 'ltr';
+  const { language, isRTL } = useLanguageStore();
+  const dir = isRTL() ? 'rtl' : 'ltr';
 
   return (
     <ThemeProvider>

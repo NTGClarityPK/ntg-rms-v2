@@ -23,6 +23,7 @@ export class CustomersController {
     @Query('minSpent') minSpent?: number,
     @Query('branchId') branchId?: string,
     @Query() paginationDto?: PaginationDto,
+    @Query('language') language?: string,
   ) {
     return this.customersService.getCustomers(
       user.tenantId,
@@ -33,6 +34,7 @@ export class CustomersController {
         branchId,
       },
       paginationDto,
+      language || 'en',
     );
   }
 
@@ -54,8 +56,13 @@ export class CustomersController {
 
   @Put(':id')
   @ApiOperation({ summary: 'Update a customer' })
-  updateCustomer(@CurrentUser() user: any, @Param('id') id: string, @Body() updateDto: UpdateCustomerDto) {
-    return this.customersService.updateCustomer(user.tenantId, id, updateDto);
+  updateCustomer(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() updateDto: UpdateCustomerDto,
+    @Query('language') language?: string,
+  ) {
+    return this.customersService.updateCustomer(user.tenantId, id, updateDto, language || 'en', user.id);
   }
 
   @Post(':id/addresses')

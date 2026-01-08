@@ -14,20 +14,34 @@ export class SettingsController {
 
   @Get()
   @ApiOperation({ summary: 'Get all settings' })
-  getSettings(@CurrentUser() user: any, @Query('branchId') branchId?: string) {
-    return this.settingsService.getSettings(user.tenantId, branchId);
+  getSettings(
+    @CurrentUser() user: any,
+    @Query('branchId') branchId?: string,
+    @Query('language') language?: string,
+  ) {
+    return this.settingsService.getSettings(user.tenantId, branchId, language || 'en');
   }
 
   @Get(':category')
   @ApiOperation({ summary: 'Get a specific settings category' })
-  getSettingCategory(@CurrentUser() user: any, @Param('category') category: string, @Query('branchId') branchId?: string) {
-    return this.settingsService.getSettingCategory(user.tenantId, category, branchId);
+  getSettingCategory(
+    @CurrentUser() user: any,
+    @Param('category') category: string,
+    @Query('branchId') branchId?: string,
+    @Query('language') language?: string,
+  ) {
+    return this.settingsService.getSettingCategory(user.tenantId, category, branchId, language || 'en');
   }
 
   @Put()
   @ApiOperation({ summary: 'Update settings' })
-  updateSettings(@CurrentUser() user: any, @Body() updateDto: UpdateSettingsDto, @Query('branchId') branchId?: string) {
-    return this.settingsService.updateSettings(user.tenantId, updateDto, branchId);
+  updateSettings(
+    @CurrentUser() user: any,
+    @Body() updateDto: UpdateSettingsDto,
+    @Query('branchId') branchId?: string,
+    @Query('language') language?: string,
+  ) {
+    return this.settingsService.updateSettings(user.tenantId, updateDto, branchId, language || 'en', user.id);
   }
 }
 

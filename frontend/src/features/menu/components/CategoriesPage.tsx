@@ -38,6 +38,8 @@ import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getBadgeColorForText } from '@/lib/utils/theme';
 import { onMenuDataUpdate, notifyMenuDataUpdate } from '@/lib/utils/menu-events';
 import { handleApiError } from '@/shared/utils/error-handler';
+import { TranslationStatusBadge, LanguageIndicator, RetranslateButton } from '@/components/translations';
+import { translationsApi, SupportedLanguage } from '@/lib/api/translations';
 
 export function CategoriesPage() {
   const { language } = useLanguageStore();
@@ -58,6 +60,8 @@ export function CategoriesPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
+  const [supportedLanguages, setSupportedLanguages] = useState<SupportedLanguage[]>([]);
+  const [categoryTranslations, setCategoryTranslations] = useState<{ [categoryId: string]: { [fieldName: string]: { [languageCode: string]: string } } }>({});
 
   // Track if any API call is in progress
   const isApiInProgress = loading || submitting || deletingCategoryId !== null;
@@ -81,7 +85,7 @@ export function CategoriesPage() {
       setLoading(true);
       setError(null);
 
-      const serverCategoriesResponse = await menuApi.getCategories(undefined, selectedBranchId || undefined);
+      const serverCategoriesResponse = await menuApi.getCategories(undefined, selectedBranchId || undefined, language);
       const serverCategories = Array.isArray(serverCategoriesResponse) ? serverCategoriesResponse : (serverCategoriesResponse?.data || []);
       setCategories(serverCategories);
     } catch (err: any) {
@@ -107,6 +111,36 @@ export function CategoriesPage() {
     
     return unsubscribe;
   }, [loadCategories]);
+
+  // Load supported languages and translations
+  useEffect(() => {
+    const loadTranslationData = async () => {
+      try {
+        // Load supported languages
+        const languages = await translationsApi.getSupportedLanguages(true);
+        setSupportedLanguages(languages);
+
+        // Load translations for all categories
+        const translationsMap: { [categoryId: string]: { [fieldName: string]: { [languageCode: string]: string } } } = {};
+        for (const category of categories) {
+          try {
+            const translations = await translationsApi.getEntityTranslations('category', category.id);
+            translationsMap[category.id] = translations;
+          } catch (err) {
+            // Ignore errors for individual translations
+            console.warn(`Failed to load translations for category ${category.id}:`, err);
+          }
+        }
+        setCategoryTranslations(translationsMap);
+      } catch (err) {
+        console.warn('Failed to load translation data:', err);
+      }
+    };
+
+    if (categories.length > 0) {
+      loadTranslationData();
+    }
+  }, [categories]);
 
   const handleOpenModal = (category?: Category) => {
     if (category) {
@@ -171,7 +205,7 @@ export function CategoriesPage() {
 
       if (editingCategory) {
         // Update
-        savedCategory = await menuApi.updateCategory(editingCategory.id, categoryData);
+        savedCategory = await menuApi.updateCategory(editingCategory.id, categoryData, language);
         
         // If image was selected during editing, upload it now
         if (imageFile) {
@@ -356,9 +390,18 @@ export function CategoriesPage() {
                       )}
                     </Box>
                     <div>
-                      <Text fw={500}>
-                        {category.name || ''}
-                      </Text>
+                      <Group gap="xs" wrap="nowrap">
+                        <Text fw={500}>
+                          {category.name || ''}
+                        </Text>
+                        {supportedLanguages.length > 0 && categoryTranslations[category.id] && (
+                          <TranslationStatusBadge
+                            translations={categoryTranslations[category.id].name || {}}
+                            supportedLanguages={supportedLanguages}
+                            fieldName="name"
+                          />
+                        )}
+                      </Group>
                       {category.description && (
                         <Text size="sm" c="dimmed">
                           {category.description || ''}
@@ -395,10 +438,17 @@ export function CategoriesPage() {
                   <Stack gap="xs" mt="md" pl="md" style={{ borderLeft: `2px solid ${primaryColor}20` }}>
                     {subcategories.map((sub) => (
                       <Group key={sub.id} justify="space-between" align="center">
-                        <Group align="center">
+                        <Group align="center" gap="xs">
                           <Text size="sm" c="dimmed">
                             {sub.name || ''}
                           </Text>
+                          {supportedLanguages.length > 0 && categoryTranslations[sub.id] && (
+                            <TranslationStatusBadge
+                              translations={categoryTranslations[sub.id].name || {}}
+                              supportedLanguages={supportedLanguages}
+                              fieldName="name"
+                            />
+                          )}
                         </Group>
                         <Group gap="xs" align="center">
                           <Badge color={getBadgeColorForText(sub.isActive ? t('menu.active', language) : t('menu.inactive', language))} variant="light">
@@ -444,6 +494,36 @@ export function CategoriesPage() {
       >
         <form onSubmit={form.onSubmit(handleSubmit)}>
           <Stack gap="md">
+            <Group justify="space-between">
+              <Title order={4}>{editingCategory ? t('menu.editCategory', language) : t('menu.createCategory', language)}</Title>
+              <Group gap="xs">
+                <LanguageIndicator variant="badge" size="sm" />
+                {editingCategory && user?.role === 'tenant_owner' && (
+                  <RetranslateButton
+                    entityType="category"
+                    entityId={editingCategory.id}
+                    onSuccess={() => {
+                      loadCategories();
+                      // Reload translations
+                      const reloadTranslations = async () => {
+                        try {
+                          const translations = await translationsApi.getEntityTranslations('category', editingCategory.id);
+                          setCategoryTranslations((prev) => ({
+                            ...prev,
+                            [editingCategory.id]: translations,
+                          }));
+                        } catch (err) {
+                          console.warn('Failed to reload translations:', err);
+                        }
+                      };
+                      reloadTranslations();
+                    }}
+                    size="sm"
+                    variant="light"
+                  />
+                )}
+              </Group>
+            </Group>
             <Grid>
               <Grid.Col span={12}>
                 <TextInput

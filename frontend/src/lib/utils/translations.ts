@@ -1,5 +1,7 @@
 import enTranslations from '@/locales/en.json';
 import arTranslations from '@/locales/ar.json';
+import kuTranslations from '@/locales/ku.json';
+import frTranslations from '@/locales/fr.json';
 import { Language } from '../store/language-store';
 
 type TranslationKey = keyof typeof enTranslations;
@@ -14,7 +16,12 @@ type TranslationKeys = NestedKeyOf<typeof enTranslations>;
 const translations = {
   en: enTranslations,
   ar: arTranslations,
+  ku: kuTranslations,
+  fr: frTranslations,
 };
+
+// Fallback chain: requested language -> English -> key formatting
+const FALLBACK_LANGUAGES: Language[] = ['en'];
 
 export const getTranslation = (
   key: TranslationKeys,
@@ -34,15 +41,23 @@ export const getTranslation = (
     }
   }
 
-  // If not found in current language, fallback to English
+  // If not found in current language, try fallback languages
   if (!found || value === undefined || (typeof value === 'object' && value !== null)) {
-    value = translations.en;
-    found = true;
-    for (const k of keys) {
-      if (value && typeof value === 'object' && k in value) {
-        value = value[k];
-      } else {
-        found = false;
+    for (const fallbackLang of FALLBACK_LANGUAGES) {
+      if (fallbackLang === language) continue; // Skip if already tried
+      
+      value = translations[fallbackLang];
+      found = true;
+      for (const k of keys) {
+        if (value && typeof value === 'object' && k in value) {
+          value = value[k];
+        } else {
+          found = false;
+          break;
+        }
+      }
+      
+      if (found && typeof value === 'string' && value.length > 0) {
         break;
       }
     }

@@ -44,6 +44,7 @@ export class InventoryController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'branchId', required: false, type: String })
+  @ApiQuery({ name: 'language', required: false, type: String, description: 'Language code for translations (default: en)' })
   getIngredients(
     @CurrentUser() user: any,
     @Query('category') category?: string,
@@ -52,6 +53,7 @@ export class InventoryController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('branchId') branchId?: string,
+    @Query('language') language?: string,
   ) {
     const filters: any = {};
     if (category) filters.category = category;
@@ -65,13 +67,18 @@ export class InventoryController {
       limit: limit ? parseInt(limit, 10) : undefined,
     };
     
-    return this.inventoryService.getIngredients(user.tenantId, filters, pagination, branchId);
+    return this.inventoryService.getIngredients(user.tenantId, filters, pagination, branchId, language || 'en');
   }
 
   @Get('ingredients/:id')
   @ApiOperation({ summary: 'Get ingredient by ID' })
-  getIngredientById(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.inventoryService.getIngredientById(user.tenantId, id);
+  @ApiQuery({ name: 'language', required: false, type: String, description: 'Language code for translations (default: en)' })
+  getIngredientById(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Query('language') language?: string,
+  ) {
+    return this.inventoryService.getIngredientById(user.tenantId, id, language || 'en');
   }
 
   @Post('ingredients')
@@ -82,12 +89,20 @@ export class InventoryController {
 
   @Put('ingredients/:id')
   @ApiOperation({ summary: 'Update an ingredient' })
+  @ApiQuery({ name: 'language', required: false, type: String, description: 'Current user language for translation updates (default: en)' })
   updateIngredient(
     @CurrentUser() user: any,
     @Param('id') id: string,
     @Body() updateDto: UpdateIngredientDto,
+    @Query('language') language?: string,
   ) {
-    return this.inventoryService.updateIngredient(user.tenantId, id, updateDto);
+    return this.inventoryService.updateIngredient(
+      user.tenantId,
+      id,
+      updateDto,
+      language || 'en',
+      user.id,
+    );
   }
 
   @Delete('ingredients/:id')
@@ -135,6 +150,7 @@ export class InventoryController {
   getStockTransactions(
     @CurrentUser() user: any,
     @Query() query: InventoryReportsQueryDto,
+    @Query('language') language?: string,
   ) {
     // Create filters without pagination fields
     const filters: InventoryReportsQueryDto = {
@@ -155,7 +171,7 @@ export class InventoryController {
           }
         : undefined;
     
-    return this.inventoryService.getStockTransactions(user.tenantId, filters, pagination);
+    return this.inventoryService.getStockTransactions(user.tenantId, filters, pagination, language || 'en');
   }
 
   // ============================================
@@ -261,14 +277,14 @@ export class InventoryController {
         unitCost: createDto.unitCost || 0,
         reason: createDto.reason,
       };
-      return this.inventoryService.addStock(user.tenantId, user.id, addDto);
+      return this.inventoryService.addStock(user.tenantId, user.id, addDto, 'en');
     } else {
       const deductDto: DeductStockDto = {
         ingredientId: createDto.ingredientId,
         quantity: createDto.quantity,
         reason: createDto.reason || 'Stock usage',
       };
-      return this.inventoryService.deductStock(user.tenantId, user.id, deductDto);
+      return this.inventoryService.deductStock(user.tenantId, user.id, deductDto, 'en');
     }
   }
 }

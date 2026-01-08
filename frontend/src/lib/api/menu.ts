@@ -142,18 +142,38 @@ const baseFoodItemsApi = createCrudApi<FoodItem>('/menu/food-items');
 
 export const menuApi = {
   // Categories - Using factory for CRUD operations with branchId support
-  getCategories: async (pagination?: PaginationParams, branchId?: string): Promise<any[] | PaginatedResponse<any>> => {
-    const filters: any = {};
-    if (branchId) filters.branchId = branchId;
-    return baseCategoriesApi.getAll(filters, pagination);
+  getCategories: async (
+    pagination?: PaginationParams,
+    branchId?: string,
+    language?: string,
+  ): Promise<any[] | PaginatedResponse<any>> => {
+    const params = new URLSearchParams();
+    if (pagination?.page) params.append('page', pagination.page.toString());
+    if (pagination?.limit) params.append('limit', pagination.limit.toString());
+    if (branchId) params.append('branchId', branchId);
+    if (language) params.append('language', language);
+    const { data } = await apiClient.get(`/menu/categories${params.toString() ? `?${params.toString()}` : ''}`);
+    return data;
   },
-  getCategoryById: baseCategoriesApi.getById,
+  getCategoryById: async (id: string, language?: string): Promise<Category> => {
+    const params = new URLSearchParams();
+    if (language) params.append('language', language);
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+    const { data } = await apiClient.get(`/menu/categories/${id}${queryString}`);
+    return data;
+  },
   createCategory: async (category: Partial<Category>, branchId?: string): Promise<Category> => {
     const params = branchId ? `?branchId=${branchId}` : '';
     const { data } = await apiClient.post(`/menu/categories${params}`, category);
     return data;
   },
-  updateCategory: baseCategoriesApi.update,
+  updateCategory: async (id: string, category: Partial<Category>, language?: string): Promise<Category> => {
+    const params = new URLSearchParams();
+    if (language) params.append('language', language);
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+    const { data } = await apiClient.put(`/menu/categories/${id}${queryString}`, category);
+    return data;
+  },
   deleteCategory: baseCategoriesApi.delete,
 
   uploadCategoryImage: async (id: string, file: File): Promise<Category> => {
@@ -168,22 +188,40 @@ export const menuApi = {
   },
 
   // Food Items - Using factory for CRUD operations
-  getFoodItems: async (categoryId?: string, pagination?: PaginationParams, search?: string, onlyActiveMenus?: boolean, branchId?: string): Promise<FoodItem[] | PaginatedResponse<FoodItem>> => {
+  getFoodItems: async (categoryId?: string, pagination?: PaginationParams, search?: string, onlyActiveMenus?: boolean, branchId?: string, language?: string): Promise<FoodItem[] | PaginatedResponse<FoodItem>> => {
     // Use base API but add custom filter handling
-    const filters: any = {};
-    if (categoryId) filters.categoryId = categoryId;
-    if (onlyActiveMenus) filters.onlyActiveMenus = true;
-    if (branchId) filters.branchId = branchId;
-    return baseFoodItemsApi.getAll(filters, pagination, search);
+    const params = new URLSearchParams();
+    if (categoryId) params.append('categoryId', categoryId);
+    if (onlyActiveMenus) params.append('onlyActiveMenus', 'true');
+    if (branchId) params.append('branchId', branchId);
+    if (language) params.append('language', language);
+    if (pagination?.page) params.append('page', pagination.page.toString());
+    if (pagination?.limit) params.append('limit', pagination.limit.toString());
+    if (search) params.append('search', search);
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+    const { data } = await apiClient.get(`/menu/food-items${queryString}`);
+    return data;
   },
 
-  getFoodItemById: baseFoodItemsApi.getById,
+  getFoodItemById: async (id: string, language?: string): Promise<FoodItem> => {
+    const params = new URLSearchParams();
+    if (language) params.append('language', language);
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+    const { data } = await apiClient.get(`/menu/food-items/${id}${queryString}`);
+    return data;
+  },
   createFoodItem: async (foodItem: Partial<FoodItem>, branchId?: string): Promise<FoodItem> => {
     const params = branchId ? `?branchId=${branchId}` : '';
     const { data } = await apiClient.post(`/menu/food-items${params}`, foodItem);
     return data;
   },
-  updateFoodItem: baseFoodItemsApi.update,
+  updateFoodItem: async (id: string, foodItem: Partial<FoodItem>, language?: string): Promise<FoodItem> => {
+    const params = new URLSearchParams();
+    if (language) params.append('language', language);
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+    const { data } = await apiClient.put(`/menu/food-items/${id}${queryString}`, foodItem);
+    return data;
+  },
   deleteFoodItem: baseFoodItemsApi.delete,
 
   uploadFoodItemImage: async (id: string, file: File): Promise<FoodItem> => {

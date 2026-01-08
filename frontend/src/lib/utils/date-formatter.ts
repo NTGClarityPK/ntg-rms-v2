@@ -3,6 +3,8 @@ import customParseFormat from 'dayjs/plugin/customParseFormat';
 import localizedFormat from 'dayjs/plugin/localizedFormat';
 import 'dayjs/locale/ar';
 import 'dayjs/locale/en';
+import 'dayjs/locale/ku';
+import 'dayjs/locale/fr';
 
 dayjs.extend(customParseFormat);
 dayjs.extend(localizedFormat);
@@ -30,14 +32,16 @@ export class DateFormatter {
   static formatDate(
     date: string | Date,
     format: DateFormat = 'YYYY-MM-DD',
-    language: 'en' | 'ar' = 'en'
+    language: 'en' | 'ar' | 'ku' | 'fr' = 'en'
   ): string {
     const d = dayjs(date);
-    if (language === 'ar') {
-      d.locale('ar');
-    } else {
-      d.locale('en');
-    }
+    const localeMap: Record<'en' | 'ar' | 'ku' | 'fr', string> = {
+      en: 'en',
+      ar: 'ar',
+      ku: 'ku',
+      fr: 'fr'
+    };
+    d.locale(localeMap[language] || 'en');
     return d.format(format);
   }
 
@@ -45,14 +49,16 @@ export class DateFormatter {
     date: string | Date,
     dateFormat: DateFormat = 'YYYY-MM-DD',
     timeFormat: TimeFormat = '24',
-    language: 'en' | 'ar' = 'en'
+    language: 'en' | 'ar' | 'ku' | 'fr' = 'en'
   ): string {
     const d = dayjs(date);
-    if (language === 'ar') {
-      d.locale('ar');
-    } else {
-      d.locale('en');
-    }
+    const localeMap: Record<'en' | 'ar' | 'ku' | 'fr', string> = {
+      en: 'en',
+      ar: 'ar',
+      ku: 'ku',
+      fr: 'fr'
+    };
+    d.locale(localeMap[language] || 'en');
     const dateStr = d.format(dateFormat);
     const timeStr = timeFormat === '12' ? d.format('hh:mm A') : d.format('HH:mm');
     return `${dateStr} ${timeStr}`;
@@ -61,14 +67,16 @@ export class DateFormatter {
   static formatTime(
     date: string | Date,
     timeFormat: TimeFormat = '24',
-    language: 'en' | 'ar' = 'en'
+    language: 'en' | 'ar' | 'ku' | 'fr' = 'en'
   ): string {
     const d = dayjs(date);
-    if (language === 'ar') {
-      d.locale('ar');
-    } else {
-      d.locale('en');
-    }
+    const localeMap: Record<'en' | 'ar' | 'ku' | 'fr', string> = {
+      en: 'en',
+      ar: 'ar',
+      ku: 'ku',
+      fr: 'fr'
+    };
+    d.locale(localeMap[language] || 'en');
     return timeFormat === '12' ? d.format('hh:mm A') : d.format('HH:mm');
   }
 }

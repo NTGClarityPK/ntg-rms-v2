@@ -6,6 +6,7 @@ import { IconToolsKitchen2, IconLanguage } from '@tabler/icons-react';
 import { DEFAULT_THEME_COLOR } from '@/lib/utils/theme';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
+import { LanguageSelector } from '@/components/layout/LanguageSelector';
 
 interface AuthLayoutProps {
   children: ReactNode;
@@ -143,17 +144,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
 
           {/* Language Switcher */}
           <Group justify="flex-end" mb="md">
-            <Button
-              variant="subtle"
-              leftSection={<IconLanguage size={16} />}
-              onClick={toggleLanguage}
-              size="sm"
-              style={{
-                color: primary,
-              }}
-            >
-              {language === 'en' ? 'العربية' : 'English'}
-            </Button>
+            <LanguageSelector size="sm" />
           </Group>
 
       {children}

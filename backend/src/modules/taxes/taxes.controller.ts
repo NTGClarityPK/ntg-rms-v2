@@ -25,14 +25,22 @@ export class TaxesController {
 
   @Get()
   @ApiOperation({ summary: 'Get all taxes' })
-  getTaxes(@CurrentUser() user: any, @Query('branchId') branchId?: string) {
-    return this.taxesService.getTaxes(user.tenantId, branchId);
+  getTaxes(
+    @CurrentUser() user: any,
+    @Query('branchId') branchId?: string,
+    @Query('language') language?: string,
+  ) {
+    return this.taxesService.getTaxes(user.tenantId, branchId, language || 'en');
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a tax by ID' })
-  getTaxById(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.taxesService.getTaxById(user.tenantId, id);
+  getTaxById(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Query('language') language?: string,
+  ) {
+    return this.taxesService.getTaxById(user.tenantId, id, language || 'en');
   }
 
   @Post()
@@ -47,8 +55,9 @@ export class TaxesController {
     @CurrentUser() user: any,
     @Param('id') id: string,
     @Body() updateDto: UpdateTaxDto,
+    @Query('language') language?: string,
   ) {
-    return this.taxesService.updateTax(user.tenantId, id, updateDto);
+    return this.taxesService.updateTax(user.tenantId, id, updateDto, language || 'en', user.id);
   }
 
   @Delete(':id')

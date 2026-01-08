@@ -8,15 +8,19 @@ import { SupabaseService } from '../../database/supabase.service';
 import { CreateTaxDto } from './dto/create-tax.dto';
 import { UpdateTaxDto } from './dto/update-tax.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { TranslationService } from '../translations/services/translation.service';
 
 @Injectable()
 export class TaxesService {
-  constructor(private supabaseService: SupabaseService) {}
+  constructor(
+    private supabaseService: SupabaseService,
+    private translationService: TranslationService,
+  ) {}
 
   /**
    * Get all taxes for a tenant (optionally filtered by branch)
    */
-  async getTaxes(tenantId: string, branchId?: string) {
+  async getTaxes(tenantId: string, branchId?: string, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     let query = supabase
@@ -35,7 +39,7 @@ export class TaxesService {
       throw new InternalServerErrorException(`Failed to fetch taxes: ${error.message}`);
     }
 
-    // Get tax applications for each tax
+    // Get tax applications for each tax and translations
     const taxesWithApplications = await Promise.all(
       taxes.map(async (tax) => {
         const { data: applications } = await supabase
@@ -43,11 +47,26 @@ export class TaxesService {
           .select('category_id, food_item_id')
           .eq('tax_id', tax.id);
 
+        // Get translated name
+        let translatedName = tax.name;
+        try {
+          const nameTranslation = await this.translationService.getTranslation({
+            entityType: 'tax',
+            entityId: tax.id,
+            languageCode: language,
+            fieldName: 'name',
+            fallbackLanguage: 'en',
+          });
+          if (nameTranslation) translatedName = nameTranslation;
+        } catch (translationError) {
+          console.warn(`Failed to get translations for tax ${tax.id}:`, translationError);
+        }
+
         // Transform snake_case to camelCase
         return {
           id: tax.id,
           tenantId: tax.tenant_id,
-          name: tax.name,
+          name: translatedName,
           taxCode: tax.tax_code || undefined,
           rate: tax.rate,
           isActive: tax.is_active,
@@ -72,7 +91,7 @@ export class TaxesService {
   /**
    * Get a single tax by ID
    */
-  async getTaxById(tenantId: string, taxId: string) {
+  async getTaxById(tenantId: string, taxId: string, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     const { data: tax, error } = await supabase
@@ -93,11 +112,26 @@ export class TaxesService {
       .select('category_id, food_item_id')
       .eq('tax_id', tax.id);
 
+    // Get translated name
+    let translatedName = tax.name;
+    try {
+      const nameTranslation = await this.translationService.getTranslation({
+        entityType: 'tax',
+        entityId: tax.id,
+        languageCode: language,
+        fieldName: 'name',
+        fallbackLanguage: 'en',
+      });
+      if (nameTranslation) translatedName = nameTranslation;
+    } catch (translationError) {
+      console.warn(`Failed to get translations for tax ${tax.id}:`, translationError);
+    }
+
     // Transform snake_case to camelCase
     return {
       id: tax.id,
       tenantId: tax.tenant_id,
-      name: tax.name,
+      name: translatedName,
       taxCode: tax.tax_code || undefined,
       rate: tax.rate,
       isActive: tax.is_active,
@@ -147,6 +181,18 @@ export class TaxesService {
       throw new InternalServerErrorException(`Failed to create tax: ${taxError?.message}`);
     }
 
+    // Create translations for name
+    try {
+      await this.translationService.createTranslations({
+        entityType: 'tax',
+        entityId: tax.id,
+        fieldName: 'name',
+        text: createDto.name,
+      });
+    } catch (translationError) {
+      console.warn(`Failed to create translations for tax ${tax.id}:`, translationError);
+    }
+
     // Create tax applications if category/item specific
     if (
       (createDto.appliesTo === 'category' && createDto.categoryIds?.length) ||
@@ -189,17 +235,17 @@ export class TaxesService {
       }
     }
 
-    return this.getTaxById(tenantId, tax.id);
+    return this.getTaxById(tenantId, tax.id, 'en');
   }
 
   /**
    * Update a tax
    */
-  async updateTax(tenantId: string, taxId: string, updateDto: UpdateTaxDto) {
+  async updateTax(tenantId: string, taxId: string, updateDto: UpdateTaxDto, language: string = 'en', userId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Verify tax exists
-    const existingTax = await this.getTaxById(tenantId, taxId);
+    // Verify tax exists and get current name for translation comparison
+    const existingTax = await this.getTaxById(tenantId, taxId, 'en');
 
     // Update tax
     const updateData: any = {};
@@ -264,7 +310,26 @@ export class TaxesService {
       }
     }
 
-    return this.getTaxById(tenantId, taxId);
+    // Update translations if name changed
+    try {
+      if (updateDto.name !== undefined && updateDto.name !== existingTax.name) {
+        await this.translationService.updateTranslation(
+          {
+            entityType: 'tax',
+            entityId: taxId,
+            languageCode: language,
+            fieldName: 'name',
+            translatedText: updateDto.name,
+            isAiGenerated: false, // Manual edit
+          },
+          userId,
+        );
+      }
+    } catch (translationError) {
+      console.error('Failed to update translations for tax:', translationError);
+    }
+
+    return this.getTaxById(tenantId, taxId, language);
   }
 
   /**
@@ -284,6 +349,13 @@ export class TaxesService {
 
     if (error) {
       throw new InternalServerErrorException(`Failed to delete tax: ${error.message}`);
+    }
+
+    // Delete translations for this tax
+    try {
+      await this.translationService.deleteEntityTranslations('tax', taxId);
+    } catch (translationError) {
+      console.warn(`Failed to delete translations for tax ${taxId}:`, translationError);
     }
 
     return { success: true, message: 'Tax deleted successfully' };

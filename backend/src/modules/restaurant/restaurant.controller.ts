@@ -50,8 +50,11 @@ export class RestaurantController {
   @ApiOperation({ summary: 'Get restaurant information' })
   @ApiResponse({ status: 200, description: 'Restaurant information retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Restaurant not found' })
-  getRestaurantInfo(@CurrentUser() user: any) {
-    return this.restaurantService.getRestaurantInfo(user.tenantId);
+  getRestaurantInfo(
+    @CurrentUser() user: any,
+    @Query('language') language?: string,
+  ) {
+    return this.restaurantService.getRestaurantInfo(user.tenantId, language || 'en');
   }
 
   @Put('info')
@@ -64,8 +67,9 @@ export class RestaurantController {
   updateRestaurantInfo(
     @CurrentUser() user: any,
     @Body() updateDto: UpdateTenantDto,
+    @Query('language') language?: string,
   ) {
-    return this.restaurantService.updateRestaurantInfo(user.tenantId, updateDto);
+    return this.restaurantService.updateRestaurantInfo(user.tenantId, updateDto, language || 'en', user.id);
   }
 
   @Post('info/upload-logo')
@@ -104,8 +108,11 @@ export class RestaurantController {
   @Get('branches')
   @ApiOperation({ summary: 'Get all branches for the restaurant' })
   @ApiResponse({ status: 200, description: 'Branches retrieved successfully' })
-  getBranches(@CurrentUser() user: any) {
-    return this.restaurantService.getBranches(user.tenantId);
+  getBranches(
+    @CurrentUser() user: any,
+    @Query('language') language?: string,
+  ) {
+    return this.restaurantService.getBranches(user.tenantId, language || 'en');
   }
 
   @Get('branches/:id')
@@ -116,8 +123,9 @@ export class RestaurantController {
   getBranchById(
     @CurrentUser() user: any,
     @Param('id') id: string,
+    @Query('language') language?: string,
   ) {
-    return this.restaurantService.getBranchById(user.tenantId, id);
+    return this.restaurantService.getBranchById(user.tenantId, id, language || 'en');
   }
 
   @Post('branches')
@@ -145,8 +153,9 @@ export class RestaurantController {
     @CurrentUser() user: any,
     @Param('id') id: string,
     @Body() updateDto: UpdateBranchDto,
+    @Query('language') language?: string,
   ) {
-    return this.restaurantService.updateBranch(user.tenantId, id, updateDto);
+    return this.restaurantService.updateBranch(user.tenantId, id, updateDto, language || 'en', user.id);
   }
 
   @Delete('branches/:id')

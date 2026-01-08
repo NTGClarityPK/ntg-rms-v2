@@ -1,5 +1,5 @@
 // Application types
-export type Language = 'en' | 'ar';
+export type Language = 'en' | 'ar' | 'ku' | 'fr';
 
 export interface Tenant {
   id: string;

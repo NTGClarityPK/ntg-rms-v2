@@ -370,7 +370,7 @@ export function StockManagementPage() {
       setError(null);
 
       // Check stock availability
-      const ingredientData = await inventoryApi.getIngredientById(deductData.ingredientId);
+      const ingredientData = await inventoryApi.getIngredientById(deductData.ingredientId, language);
       if (!ingredientData) {
         throw new Error('Ingredient not found');
       }

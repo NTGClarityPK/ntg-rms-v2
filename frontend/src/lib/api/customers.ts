@@ -2,6 +2,7 @@ import apiClient from './client';
 import { API_ENDPOINTS } from '../constants/api';
 import { PaginationParams, PaginatedResponse } from '../types/pagination.types';
 import { createCrudApi, extendCrudApi } from '@/shared/services/api/factory';
+import { getApiLanguage } from '../hooks/use-api-language';
 
 export interface Customer {
   id: string;
@@ -89,6 +90,7 @@ export const customersApi = {
       branchId?: string;
     },
     pagination?: PaginationParams,
+    language?: string,
   ): Promise<Customer[] | PaginatedResponse<Customer>> => {
     // Build query params
     const params = new URLSearchParams();
@@ -98,18 +100,27 @@ export const customersApi = {
     if (filters?.branchId) params.append('branchId', filters.branchId);
     if (pagination?.page) params.append('page', String(pagination.page));
     if (pagination?.limit) params.append('limit', String(pagination.limit));
+    params.append('language', language || getApiLanguage());
 
     const response = await apiClient.get(`${API_ENDPOINTS.CUSTOMERS}?${params.toString()}`);
     return response.data;
   },
 
-  getCustomerById: baseCustomersApi.getById,
+  getCustomerById: async (id: string, language?: string): Promise<Customer> => {
+    const lang = language || getApiLanguage();
+    const response = await apiClient.get(`${API_ENDPOINTS.CUSTOMERS}/${id}?language=${lang}`);
+    return response.data;
+  },
   createCustomer: async (createDto: CreateCustomerDto, branchId?: string): Promise<Customer> => {
     const params = branchId ? `?branchId=${branchId}` : '';
     const response = await apiClient.post<Customer>(`${API_ENDPOINTS.CUSTOMERS}${params}`, createDto);
     return response.data;
   },
-  updateCustomer: baseCustomersApi.update,
+  updateCustomer: async (id: string, data: UpdateCustomerDto, language?: string): Promise<Customer> => {
+    const lang = language || getApiLanguage();
+    const response = await apiClient.put(`${API_ENDPOINTS.CUSTOMERS}/${id}?language=${lang}`, data);
+    return response.data;
+  },
 
   createCustomerAddress: async (customerId: string, address: {
     label?: string;

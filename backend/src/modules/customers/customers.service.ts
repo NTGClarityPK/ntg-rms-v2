@@ -6,13 +6,17 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { SupabaseService } from '../../database/supabase.service';
+import { TranslationService } from '../translations/services/translation.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { PaginationParams, PaginatedResponse, getPaginationParams, createPaginatedResponse } from '../../common/dto/pagination.dto';
 
 @Injectable()
 export class CustomersService {
-  constructor(private supabaseService: SupabaseService) {}
+  constructor(
+    private supabaseService: SupabaseService,
+    private translationService: TranslationService,
+  ) {}
 
   /**
    * Get all customers for a tenant
@@ -21,6 +25,7 @@ export class CustomersService {
     tenantId: string,
     filters?: { search?: string; minOrders?: number; minSpent?: number; branchId?: string },
     pagination?: PaginationParams,
+    language: string = 'en',
   ): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
 
@@ -74,29 +79,59 @@ export class CustomersService {
       filteredCustomers = filteredCustomers.filter((c: any) => Number(c.total_spent || 0) >= filters.minSpent!);
     }
 
-    // Transform snake_case to camelCase and calculate loyalty tier
-    const transformedCustomers = filteredCustomers.map((customer: any) => {
-      const totalOrders = customer.total_orders || 0;
-      const loyaltyTier = this.calculateLoyaltyTier(totalOrders);
+    // Transform snake_case to camelCase and calculate loyalty tier, with translations
+    const transformedCustomers = await Promise.all(
+      filteredCustomers.map(async (customer: any) => {
+        const totalOrders = customer.total_orders || 0;
+        const loyaltyTier = this.calculateLoyaltyTier(totalOrders);
 
-      return {
-        id: customer.id,
-        tenantId: customer.tenant_id,
-        name: customer.name,
-        phone: customer.phone,
-        email: customer.email,
-        dateOfBirth: customer.date_of_birth,
-        preferredLanguage: customer.preferred_language,
-        notes: customer.notes,
-        totalOrders,
-        totalSpent: Number(customer.total_spent || 0),
-        averageOrderValue: totalOrders > 0 ? Number(customer.total_spent || 0) / totalOrders : 0,
-        lastOrderDate: customer.last_order_date,
-        loyaltyTier,
-        createdAt: customer.created_at,
-        updatedAt: customer.updated_at,
-      };
-    });
+        // Get translations for name and notes
+        let translatedName = customer.name;
+        let translatedNotes = customer.notes;
+
+        try {
+          const nameTranslation = await this.translationService.getTranslation({
+            entityType: 'customer',
+            entityId: customer.id,
+            languageCode: language,
+            fieldName: 'name',
+            fallbackLanguage: 'en',
+          });
+          if (nameTranslation) translatedName = nameTranslation;
+
+          if (customer.notes) {
+            const notesTranslation = await this.translationService.getTranslation({
+              entityType: 'customer',
+              entityId: customer.id,
+              languageCode: language,
+              fieldName: 'notes',
+              fallbackLanguage: 'en',
+            });
+            if (notesTranslation) translatedNotes = notesTranslation;
+          }
+        } catch (translationError) {
+          console.warn(`Failed to get translations for customer ${customer.id}:`, translationError);
+        }
+
+        return {
+          id: customer.id,
+          tenantId: customer.tenant_id,
+          name: translatedName,
+          phone: customer.phone,
+          email: customer.email,
+          dateOfBirth: customer.date_of_birth,
+          preferredLanguage: customer.preferred_language,
+          notes: translatedNotes,
+          totalOrders,
+          totalSpent: Number(customer.total_spent || 0),
+          averageOrderValue: totalOrders > 0 ? Number(customer.total_spent || 0) / totalOrders : 0,
+          lastOrderDate: customer.last_order_date,
+          loyaltyTier,
+          createdAt: customer.created_at,
+          updatedAt: customer.updated_at,
+        };
+      })
+    );
 
     // Return paginated response if pagination is requested
     if (pagination) {
@@ -164,7 +199,7 @@ export class CustomersService {
   /**
    * Get customer by ID with order history
    */
-  async getCustomerById(tenantId: string, customerId: string) {
+  async getCustomerById(tenantId: string, customerId: string, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Parallelize: Recalculate statistics, fetch customer, addresses, and orders simultaneously
@@ -223,16 +258,108 @@ export class CustomersService {
     const totalOrders = customer.total_orders || 0;
     const loyaltyTier = this.calculateLoyaltyTier(totalOrders);
 
+    // Get translations for name and notes
+    let translatedName = customer.name;
+    let translatedNotes = customer.notes;
+
+    try {
+      const nameTranslation = await this.translationService.getTranslation({
+        entityType: 'customer',
+        entityId: customer.id,
+        languageCode: language,
+        fieldName: 'name',
+        fallbackLanguage: 'en',
+      });
+      if (nameTranslation) translatedName = nameTranslation;
+
+      if (customer.notes) {
+        const notesTranslation = await this.translationService.getTranslation({
+          entityType: 'customer',
+          entityId: customer.id,
+          languageCode: language,
+          fieldName: 'notes',
+          fallbackLanguage: 'en',
+        });
+        if (notesTranslation) translatedNotes = notesTranslation;
+      }
+    } catch (translationError) {
+      console.warn(`Failed to get translations for customer ${customer.id}:`, translationError);
+    }
+
+    // Get default address for translation (if exists)
+    const defaultAddress = addresses.find((addr: any) => addr.is_default) || addresses[0];
+    let translatedAddress = defaultAddress?.address;
+    let translatedCity = defaultAddress?.city;
+    let translatedCountry = defaultAddress?.country;
+
+    if (defaultAddress) {
+      try {
+        if (defaultAddress.address) {
+          const addressTranslation = await this.translationService.getTranslation({
+            entityType: 'customer',
+            entityId: customer.id,
+            languageCode: language,
+            fieldName: 'address',
+            fallbackLanguage: 'en',
+          });
+          if (addressTranslation) translatedAddress = addressTranslation;
+        }
+
+        if (defaultAddress.city) {
+          const cityTranslation = await this.translationService.getTranslation({
+            entityType: 'customer',
+            entityId: customer.id,
+            languageCode: language,
+            fieldName: 'city',
+            fallbackLanguage: 'en',
+          });
+          if (cityTranslation) translatedCity = cityTranslation;
+        }
+
+        if (defaultAddress.country) {
+          const countryTranslation = await this.translationService.getTranslation({
+            entityType: 'customer',
+            entityId: customer.id,
+            languageCode: language,
+            fieldName: 'country',
+            fallbackLanguage: 'en',
+          });
+          if (countryTranslation) translatedCountry = countryTranslation;
+        }
+      } catch (translationError) {
+        console.warn(`Failed to get address translations for customer ${customer.id}:`, translationError);
+      }
+    }
+
     // Transform snake_case to camelCase
+    const translatedAddresses = addresses.map((addr: any) => {
+      // Use translated values for default address, otherwise use original
+      const isDefaultAddr = addr.is_default || (!defaultAddress && addr.id === addresses[0]?.id);
+      return {
+        id: addr.id,
+        customerId: addr.customer_id,
+        addressLabel: addr.address_label,
+        address: isDefaultAddr && translatedAddress ? translatedAddress : addr.address,
+        city: isDefaultAddr && translatedCity ? translatedCity : addr.city,
+        state: addr.state,
+        country: isDefaultAddr && translatedCountry ? translatedCountry : addr.country,
+        latitude: addr.latitude ? Number(addr.latitude) : undefined,
+        longitude: addr.longitude ? Number(addr.longitude) : undefined,
+        isDefault: addr.is_default,
+        createdAt: addr.created_at,
+        updatedAt: addr.updated_at,
+      };
+    });
+
     return {
       id: customer.id,
       tenantId: customer.tenant_id,
-      name: customer.name,
+      name: translatedName,
       phone: customer.phone,
       email: customer.email,
       dateOfBirth: customer.date_of_birth,
       preferredLanguage: customer.preferred_language,
-      notes: customer.notes,
+      notes: translatedNotes,
       totalOrders,
       totalSpent: Number(customer.total_spent || 0),
       averageOrderValue: totalOrders > 0 ? Number(customer.total_spent || 0) / totalOrders : 0,
@@ -240,20 +367,7 @@ export class CustomersService {
       loyaltyTier,
       createdAt: customer.created_at,
       updatedAt: customer.updated_at,
-      addresses: addresses.map((addr: any) => ({
-        id: addr.id,
-        customerId: addr.customer_id,
-        addressLabel: addr.address_label,
-        address: addr.address,
-        city: addr.city,
-        state: addr.state,
-        country: addr.country,
-        latitude: addr.latitude ? Number(addr.latitude) : undefined,
-        longitude: addr.longitude ? Number(addr.longitude) : undefined,
-        isDefault: addr.is_default,
-        createdAt: addr.created_at,
-        updatedAt: addr.updated_at,
-      })),
+      addresses: translatedAddresses,
       orderHistory: (orders || []).map((order: any) => ({
         id: order.id,
         orderNumber: order.order_number,
@@ -326,8 +440,9 @@ export class CustomersService {
     }
 
     // Create address if provided
+    let defaultAddressId: string | undefined;
     if (createDto.address) {
-      await supabase.from('customer_addresses').insert({
+      const { data: addressData } = await supabase.from('customer_addresses').insert({
         customer_id: customer.id,
         address_label: createDto.address.label || 'home',
         address: createDto.address.address,
@@ -337,7 +452,60 @@ export class CustomersService {
         latitude: createDto.address.latitude,
         longitude: createDto.address.longitude,
         is_default: true,
+      }).select('id').single();
+      
+      if (addressData) defaultAddressId = addressData.id;
+    }
+
+    // Create translations for name, notes, and address fields
+    try {
+      await this.translationService.createTranslations({
+        entityType: 'customer',
+        entityId: customer.id,
+        fieldName: 'name',
+        text: createDto.name,
       });
+
+      if (createDto.notes) {
+        await this.translationService.createTranslations({
+          entityType: 'customer',
+          entityId: customer.id,
+          fieldName: 'notes',
+          text: createDto.notes,
+        });
+      }
+
+      // Create translations for address fields if provided
+      if (createDto.address) {
+        if (createDto.address.address) {
+          await this.translationService.createTranslations({
+            entityType: 'customer',
+            entityId: customer.id,
+            fieldName: 'address',
+            text: createDto.address.address,
+          });
+        }
+
+        if (createDto.address.city) {
+          await this.translationService.createTranslations({
+            entityType: 'customer',
+            entityId: customer.id,
+            fieldName: 'city',
+            text: createDto.address.city,
+          });
+        }
+
+        if (createDto.address.country) {
+          await this.translationService.createTranslations({
+            entityType: 'customer',
+            entityId: customer.id,
+            fieldName: 'country',
+            text: createDto.address.country,
+          });
+        }
+      }
+    } catch (translationError) {
+      console.warn(`Failed to create translations for customer ${customer.id}:`, translationError);
     }
 
     // Transform snake_case to camelCase
@@ -363,24 +531,22 @@ export class CustomersService {
   /**
    * Update a customer
    */
-  async updateCustomer(tenantId: string, customerId: string, updateDto: UpdateCustomerDto) {
+  async updateCustomer(tenantId: string, customerId: string, updateDto: UpdateCustomerDto, language: string = 'en', userId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Check if customer exists
+    // Check if customer exists and get current values for translation comparison
+    const currentCustomer = await this.getCustomerById(tenantId, customerId, 'en');
+
+    // Check if phone is being changed and if new phone already exists
     const { data: existingCustomer } = await supabase
       .from('customers')
-      .select('id, phone')
+      .select('phone')
       .eq('id', customerId)
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
       .single();
 
-    if (!existingCustomer) {
-      throw new NotFoundException('Customer not found');
-    }
-
-    // Check if phone is being changed and if new phone already exists
-    if (updateDto.phone && updateDto.phone !== existingCustomer.phone) {
+    if (updateDto.phone && existingCustomer && updateDto.phone !== existingCustomer.phone) {
       const { data: phoneExists } = await supabase
         .from('customers')
         .select('id')
@@ -417,6 +583,46 @@ export class CustomersService {
 
     if (error) {
       throw new InternalServerErrorException(`Failed to update customer: ${error.message}`);
+    }
+
+    // Update translations if name, notes, address, city, or country changed
+    try {
+      // Get default address for address fields translation
+      const defaultAddress = currentCustomer.addresses?.find((addr: any) => addr.isDefault) || currentCustomer.addresses?.[0];
+
+      if (updateDto.name !== undefined && updateDto.name !== currentCustomer.name) {
+        await this.translationService.updateTranslation(
+          {
+            entityType: 'customer',
+            entityId: customerId,
+            languageCode: language,
+            fieldName: 'name',
+            translatedText: updateDto.name,
+            isAiGenerated: false, // Manual edit
+          },
+          userId,
+        );
+      }
+
+      if (updateDto.notes !== undefined && updateDto.notes !== currentCustomer.notes) {
+        await this.translationService.updateTranslation(
+          {
+            entityType: 'customer',
+            entityId: customerId,
+            languageCode: language,
+            fieldName: 'notes',
+            translatedText: updateDto.notes,
+            isAiGenerated: false, // Manual edit
+          },
+          userId,
+        );
+      }
+
+      // Note: Address, city, and country are stored in customer_addresses table
+      // These translations would need to be handled separately if address is updated
+      // For now, we only handle name and notes as direct customer fields
+    } catch (translationError) {
+      console.error('Failed to update translations for customer:', translationError);
     }
 
     // Transform snake_case to camelCase
