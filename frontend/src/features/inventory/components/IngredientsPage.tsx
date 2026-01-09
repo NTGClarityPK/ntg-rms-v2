@@ -355,7 +355,7 @@ export function IngredientsPage() {
     const translationKey = categoryMap[category] || categoryMap[category.toLowerCase()] || category;
     
     // Try to get translation with the mapped key
-    let translated = t(`inventory.${translationKey}` as any, language);
+    const translated = t(`inventory.${translationKey}` as any, language);
     
     // Check if translation was found by checking if result contains non-ASCII characters
     // (Arabic, Kurdish, etc. will have non-ASCII characters)
