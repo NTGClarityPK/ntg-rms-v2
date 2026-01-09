@@ -47,12 +47,19 @@ const apiClient: AxiosInstance = axios.create({
 // Request interceptor - Add JWT token to requests
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = tokenStorage.getAccessToken();
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
-    } else if (!token && typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-      // Log warning in development if token is missing
-      console.warn('API request made without access token:', config.url);
+    // Don't add auth header for public endpoints (signup, login)
+    const isPublicEndpoint = config.url?.includes('/auth/signup') || 
+                            config.url?.includes('/auth/login') ||
+                            config.url?.includes('/auth/refresh');
+    
+    if (!isPublicEndpoint) {
+      const token = tokenStorage.getAccessToken();
+      if (token && config.headers) {
+        config.headers.Authorization = `Bearer ${token}`;
+      } else if (!token && typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+        // Log warning in development if token is missing
+        console.warn('API request made without access token:', config.url);
+      }
     }
     return config;
   },
