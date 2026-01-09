@@ -386,6 +386,54 @@ export function RecipesPage() {
     }, 0);
   };
 
+  // Helper function to translate unit of measurement
+  const getTranslatedUnit = useCallback((unit: string | undefined | null): string => {
+    if (!unit) return '';
+    
+    // Try exact match first (for uppercase units like PIECE, SLICE, CUP)
+    let translated = t(`inventory.${unit}` as any, language);
+    const hasNonAscii = /[^\x00-\x7F]/.test(translated);
+    if (hasNonAscii) {
+      return translated;
+    }
+    
+    // Try uppercase version
+    const upperUnit = unit.toUpperCase();
+    if (upperUnit !== unit) {
+      translated = t(`inventory.${upperUnit}` as any, language);
+      const upperHasNonAscii = /[^\x00-\x7F]/.test(translated);
+      if (upperHasNonAscii) {
+        return translated;
+      }
+    }
+    
+    // Try lowercase version
+    const lowerUnit = unit.toLowerCase();
+    if (lowerUnit !== unit && lowerUnit !== upperUnit) {
+      translated = t(`inventory.${lowerUnit}` as any, language);
+      const lowerHasNonAscii = /[^\x00-\x7F]/.test(translated);
+      if (lowerHasNonAscii) {
+        return translated;
+      }
+    }
+    
+    // Check if different from formatted fallback (for English/French)
+    const formattedFallback = unit
+      .replace(/([A-Z])/g, ' $1')
+      .split(/[\s_]+/)
+      .filter(word => word.length > 0)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ')
+      .trim();
+    
+    if (translated !== formattedFallback && translated !== `inventory.${unit}` && translated !== unit) {
+      return translated;
+    }
+    
+    // If no translation found, return original
+    return unit;
+  }, [language]);
+
   return (
     <Stack gap="md">
       <Group justify="flex-end">
@@ -464,8 +512,8 @@ export function RecipesPage() {
                                       ? ingredient.name
                                       : 'Unknown'}
                                   </Text>
-                                  <Badge variant="light" color={getBadgeColorForText(`${rec.quantity} ${rec.unit}`)} size="sm">
-                                    {rec.quantity} {rec.unit}
+                                  <Badge variant="light" color={getBadgeColorForText(`${rec.quantity} ${getTranslatedUnit(rec.unit)}`)} size="sm">
+                                    {rec.quantity} {getTranslatedUnit(rec.unit)}
                                   </Badge>
                                 </Group>
                               );

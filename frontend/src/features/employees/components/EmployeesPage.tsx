@@ -43,6 +43,7 @@ import { restaurantApi } from '@/lib/api/restaurant';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { t } from '@/lib/utils/translations';
+import { translationsApi } from '@/lib/api/translations';
 import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { usePermissions } from '@/lib/hooks/use-permissions';
@@ -77,6 +78,10 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
   const [branches, setBranches] = useState<Array<{ id: string; name: string }>>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
+  // Employee name translations cache: { employeeId: { name: { languageCode: string } } }
+  const [employeeTranslationsCache, setEmployeeTranslationsCache] = useState<{
+    [employeeId: string]: { name?: { [languageCode: string]: string } };
+  }>({});
 
 
   const [opened, setOpened] = useState(false);
@@ -153,13 +158,57 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
       if (roleFilter) filters.role = roleFilter;
       if (statusFilter) filters.status = statusFilter;
 
-      // Fetch paginated data from server
-      const serverEmployeesResponse = await employeesApi.getEmployees(filters, pagination.paginationParams);
+      // Fetch paginated data from server with language parameter
+      const serverEmployeesResponse = await employeesApi.getEmployees(filters, pagination.paginationParams, language);
       // Handle both paginated and non-paginated responses
       const serverEmployees: Employee[] = pagination.extractData(serverEmployeesResponse);
       pagination.extractPagination(serverEmployeesResponse);
       
       setEmployees(serverEmployees);
+      
+      // Load employee name translations
+      if (serverEmployees.length > 0) {
+        try {
+          const newEmployeeTranslations: typeof employeeTranslationsCache = { ...employeeTranslationsCache };
+          const translationPromises = serverEmployees.map(async (employee) => {
+            // Skip if already loaded
+            if (newEmployeeTranslations[employee.id]) return;
+            
+            try {
+              const translations = await translationsApi.getEntityTranslations('user' as any, employee.id);
+              if (translations?.name) {
+                newEmployeeTranslations[employee.id] = {
+                  name: translations.name,
+                };
+              } else {
+                // Fallback to employee name from API (which might already be translated)
+                if (employee.name) {
+                  newEmployeeTranslations[employee.id] = {
+                    name: {
+                      [language]: employee.name,
+                    },
+                  };
+                }
+              }
+            } catch (err) {
+              console.warn(`Failed to load translations for employee ${employee.id}:`, err);
+              // Fallback to employee name from API
+              if (employee.name) {
+                newEmployeeTranslations[employee.id] = {
+                  name: {
+                    [language]: employee.name,
+                  },
+                };
+              }
+            }
+          });
+          
+          await Promise.all(translationPromises);
+          setEmployeeTranslationsCache(newEmployeeTranslations);
+        } catch (err) {
+          console.warn('Failed to load employee translations:', err);
+        }
+      }
     } catch (err: any) {
       const errorMsg = handleApiError(err, {
         defaultMessage: 'Failed to load employees',
@@ -170,6 +219,7 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.tenantId, roleFilter, statusFilter, pagination, language]);
 
   useEffect(() => {
@@ -585,7 +635,12 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
                           <>
                       <Table.Td>
                         <Text fw={500}>
-                          {employee.name}
+                          {(() => {
+                            const translations = employeeTranslationsCache[employee.id]?.name;
+                            return translations && translations[language] 
+                              ? translations[language] 
+                              : employee.name;
+                          })()}
                         </Text>
                         {employee.employeeId && (
                           <Text size="xs" c="dimmed">

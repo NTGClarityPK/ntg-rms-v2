@@ -164,6 +164,7 @@ export function Header({ mobileOpened, toggleMobile }: HeaderProps = {}) {
 
           {/* Online/Offline Status Badge */}
           <Tooltip
+            zIndex={2000}
             label={isOnline ? t('common.connectedToServer' as any, language) : t('common.noInternetConnection' as any, language)}
             position="bottom"
             withArrow

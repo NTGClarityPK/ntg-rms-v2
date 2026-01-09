@@ -97,6 +97,7 @@ export default function SignupPage() {
 
       router.push('/dashboard');
     } catch (err: any) {
+      console.log("Error",err)
       const errorMsg = err.response?.data?.error?.message || 
         (language === 'ar' ? 'فشل إنشاء الحساب. يرجى المحاولة مرة أخرى.' : 'Signup failed. Please try again.');
       setError(errorMsg);

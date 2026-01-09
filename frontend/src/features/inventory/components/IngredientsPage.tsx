@@ -327,6 +327,103 @@ export function IngredientsPage() {
     return ingredient.currentStock <= ingredient.minimumThreshold;
   };
 
+  // Helper function to translate category (handles case-insensitive matching)
+  const getTranslatedCategory = useCallback((category: string | undefined | null): string => {
+    if (!category) return '-';
+    
+    // Map of category values to translation keys
+    const categoryMap: { [key: string]: string } = {
+      // Uppercase variations (as stored in DB) - map to translation keys
+      'MEAT': 'MEAT',
+      'BAKERY': 'BAKERY',
+      'VEGETABLES': 'VEGETABLES',
+      'DAIRY': 'DAIRY',
+      'SAUCES': 'SAUCES',
+      // Lowercase variations
+      'meat': 'MEAT',
+      'meats': 'meats',
+      'bakery': 'BAKERY',
+      'vegetables': 'vegetables',
+      'dairy': 'dairy',
+      'sauces': 'SAUCES',
+      'spices': 'spices',
+      'beverages': 'beverages',
+      'other': 'other',
+    };
+    
+    // Get the translation key
+    const translationKey = categoryMap[category] || categoryMap[category.toLowerCase()] || category;
+    
+    // Try to get translation with the mapped key
+    let translated = t(`inventory.${translationKey}` as any, language);
+    
+    // Check if translation was found by checking if result contains non-ASCII characters
+    // (Arabic, Kurdish, etc. will have non-ASCII characters)
+    const hasNonAscii = /[^\x00-\x7F]/.test(translated);
+    
+    if (hasNonAscii) {
+      // Definitely a translation (Arabic, Kurdish, etc.)
+      return translated;
+    }
+    
+    // For English/French, check if it's different from what formatting would produce
+    // The t() function formats keys like "MEAT" -> "Meat" when translation not found
+    const formattedFallback = translationKey
+      .replace(/([A-Z])/g, ' $1')
+      .split(/[\s_]+/)
+      .filter(word => word.length > 0)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ')
+      .trim();
+    
+    // If translated value is different from formatted fallback, it's a real translation
+    if (translated !== formattedFallback && translated !== `inventory.${translationKey}` && translated !== translationKey) {
+      return translated;
+    }
+    
+    // Try lowercase version as fallback
+    const lowerKey = category.toLowerCase();
+    if (lowerKey !== translationKey.toLowerCase()) {
+      const lowerTranslated = t(`inventory.${lowerKey}` as any, language);
+      const lowerHasNonAscii = /[^\x00-\x7F]/.test(lowerTranslated);
+      
+      if (lowerHasNonAscii) {
+        return lowerTranslated;
+      }
+      
+      const lowerFormatted = lowerKey
+        .replace(/([A-Z])/g, ' $1')
+        .split(/[\s_]+/)
+        .filter(word => word.length > 0)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ')
+        .trim();
+      
+      if (lowerTranslated !== lowerFormatted && lowerTranslated !== `inventory.${lowerKey}` && lowerTranslated !== lowerKey) {
+        return lowerTranslated;
+      }
+    }
+    
+    // If no translation found, return original
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return category;
+  }, [language]);
+
+  // Helper function to translate unit of measurement
+  const getTranslatedUnit = useCallback((unit: string | undefined | null): string => {
+    if (!unit) return '';
+    
+    // Normalize to lowercase for matching
+    const normalizedUnit = unit.toLowerCase();
+    const translated = t(`inventory.${normalizedUnit}` as any, language);
+    
+    // If translation found and different from key, return it; otherwise return original
+    if (translated && translated !== `inventory.${normalizedUnit}`) {
+      return translated;
+    }
+    return unit;
+  }, [language]);
+
   return (
     <Stack gap="md">
       <Group justify="flex-end">
@@ -498,8 +595,8 @@ export function IngredientsPage() {
                           </Table.Td>
                           <Table.Td>
                             {ingredient.category ? (
-                              <Badge variant="light" color={getBadgeColorForText(t(`inventory.${ingredient.category}` as any, language) || ingredient.category)}>
-                                {t(`inventory.${ingredient.category}` as any, language) || ingredient.category}
+                              <Badge variant="light" color={getBadgeColorForText(getTranslatedCategory(ingredient.category))}>
+                                {getTranslatedCategory(ingredient.category)}
                               </Badge>
                             ) : (
                               <Text size="sm" c="dimmed">-</Text>
@@ -507,7 +604,7 @@ export function IngredientsPage() {
                           </Table.Td>
                           <Table.Td>
                             <Group gap="xs">
-                              <Text>{ingredient.currentStock} {ingredient.unitOfMeasurement}</Text>
+                              <Text>{ingredient.currentStock} {getTranslatedUnit(ingredient.unitOfMeasurement)}</Text>
                               {isLowStock(ingredient) && (
                                 <Badge variant="light" color={getWarningColor()} size="sm">
                                   {t('inventory.isLowStock', language)}
@@ -516,7 +613,7 @@ export function IngredientsPage() {
                             </Group>
                           </Table.Td>
                           <Table.Td>
-                            <Text>{ingredient.minimumThreshold} {ingredient.unitOfMeasurement}</Text>
+                            <Text>{ingredient.minimumThreshold} {getTranslatedUnit(ingredient.unitOfMeasurement)}</Text>
                           </Table.Td>
                           <Table.Td>
                             <Text>{ingredient.costPerUnit.toFixed(2)}</Text>

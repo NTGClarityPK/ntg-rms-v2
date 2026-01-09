@@ -106,6 +106,11 @@ export default function OrdersPage() {
   const [branchTranslationsCache, setBranchTranslationsCache] = useState<{
     [branchId: string]: { name?: { [languageCode: string]: string } };
   }>({});
+  
+  // Waiter translations cache: { waiterEmail: { name: { languageCode: string } } }
+  const [waiterTranslationsCache, setWaiterTranslationsCache] = useState<{
+    [waiterEmail: string]: { name?: { [languageCode: string]: string } };
+  }>({});
 
   // Ref to store the latest loadOrders function for use in subscriptions
   // This prevents subscription recreation while ensuring we always use the latest function
@@ -245,6 +250,71 @@ export default function OrdersPage() {
             setBranchTranslationsCache(newBranchTranslations);
           } catch (err) {
             console.warn('Failed to load branch translations:', err);
+          }
+        }
+        
+        // Load waiter names with current language
+        const waiterEmails = new Set<string>();
+        backendOrders.forEach(order => {
+          if (order.waiterEmail) {
+            waiterEmails.add(order.waiterEmail);
+          }
+        });
+        
+        // Fetch waiter translations
+        if (waiterEmails.size > 0) {
+          try {
+            const { employeesApi } = await import('@/lib/api/employees');
+            // Fetch all employees to match by email
+            const allEmployees = await employeesApi.getEmployees(undefined, undefined, language);
+            const employeesArray = Array.isArray(allEmployees) ? allEmployees : allEmployees.data || [];
+            
+            // Create email to employee ID map
+            const emailToEmployeeId = new Map<string, string>();
+            employeesArray.forEach((emp: any) => {
+              if (emp.email && waiterEmails.has(emp.email)) {
+                emailToEmployeeId.set(emp.email, emp.id);
+              }
+            });
+            
+            // Fetch translations for each waiter
+            const newWaiterTranslations: typeof waiterTranslationsCache = { ...waiterTranslationsCache };
+            const translationPromises = Array.from(emailToEmployeeId.entries()).map(async ([email, employeeId]) => {
+              try {
+                const translations = await translationsApi.getEntityTranslations('user' as any, employeeId);
+                if (translations?.name) {
+                  newWaiterTranslations[email] = {
+                    name: translations.name,
+                  };
+                } else {
+                  // Fallback to employee name from API (which might already be translated)
+                  const employee = employeesArray.find((emp: any) => emp.id === employeeId);
+                  if (employee?.name) {
+                    newWaiterTranslations[email] = {
+                      name: {
+                        [language]: employee.name,
+                      },
+                    };
+                  }
+                }
+              } catch (err) {
+                console.warn(`Failed to load translations for waiter ${email}:`, err);
+                // Fallback to employee name from API
+                const employee = employeesArray.find((emp: any) => emp.id === employeeId);
+                if (employee?.name) {
+                  newWaiterTranslations[email] = {
+                    name: {
+                      [language]: employee.name,
+                    },
+                  };
+                }
+              }
+            });
+            
+            await Promise.all(translationPromises);
+            setWaiterTranslationsCache(newWaiterTranslations);
+          } catch (err) {
+            console.warn('Failed to load waiter translations:', err);
           }
         }
       } catch (error: any) {
@@ -650,7 +720,15 @@ export default function OrdersPage() {
                           )}
                           {order.waiterName && (
                             <Text size="sm" c="dimmed">
-                               {t('orders.waiterName', language)}: {order.waiterName}
+                               {t('orders.waiterName', language)}: {(() => {
+                                if (order.waiterEmail) {
+                                  const translations = waiterTranslationsCache[order.waiterEmail]?.name;
+                                  return translations && translations[language] 
+                                    ? translations[language] 
+                                    : order.waiterName;
+                                }
+                                return order.waiterName;
+                              })()}
                             </Text>
                           )}
                           {((order as any).tables && (order as any).tables.length > 0) || (order.table && order.table.table_number) ? (

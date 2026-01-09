@@ -81,6 +81,11 @@ export default function KitchenDisplayPage() {
     combo_meal?: { [itemId: string]: { name?: { [languageCode: string]: string } } };
   }>({});
   
+  // Waiter translations cache: { waiterEmail: { name: { languageCode: string } } }
+  const [waiterTranslationsCache, setWaiterTranslationsCache] = useState<{
+    [waiterEmail: string]: { name?: { [languageCode: string]: string } };
+  }>({});
+  
   // Route protection: Redirect waiter and cashier away from kitchen display
   useEffect(() => {
     if (user?.role && ['delivery', 'cashier'].includes(user.role)) {
@@ -377,6 +382,7 @@ export default function KitchenDisplayPage() {
       // Collect unique food item IDs and combo meal IDs from all orders
       const foodItemIds = new Set<string>();
       const comboMealIds = new Set<string>();
+      const waiterEmails = new Set<string>();
 
       orders.forEach(order => {
         order.items?.forEach(item => {
@@ -393,6 +399,10 @@ export default function KitchenDisplayPage() {
             }
           }
         });
+        // Collect waiter emails
+        if (order.waiterEmail) {
+          waiterEmails.add(order.waiterEmail);
+        }
       });
 
       // Load translations for food items
@@ -430,11 +440,71 @@ export default function KitchenDisplayPage() {
       }
 
       setTranslationsCache(newTranslations);
+      
+      // Load waiter translations
+      if (waiterEmails.size > 0) {
+        try {
+          const { employeesApi } = await import('@/lib/api/employees');
+          // Fetch all employees to match by email
+          const allEmployees = await employeesApi.getEmployees(undefined, undefined, language);
+          const employeesArray = Array.isArray(allEmployees) ? allEmployees : allEmployees.data || [];
+          
+          // Create email to employee ID map
+          const emailToEmployeeId = new Map<string, string>();
+          employeesArray.forEach((emp: any) => {
+            if (emp.email && waiterEmails.has(emp.email)) {
+              emailToEmployeeId.set(emp.email, emp.id);
+            }
+          });
+          
+          // Fetch translations for each waiter
+          const newWaiterTranslations: typeof waiterTranslationsCache = { ...waiterTranslationsCache };
+          const translationPromises = Array.from(emailToEmployeeId.entries()).map(async ([email, employeeId]) => {
+            // Skip if already loaded
+            if (newWaiterTranslations[email]) return;
+            
+            try {
+              const translations = await translationsApi.getEntityTranslations('user' as any, employeeId);
+              if (translations?.name) {
+                newWaiterTranslations[email] = {
+                  name: translations.name,
+                };
+              } else {
+                // Fallback to employee name from API (which might already be translated)
+                const employee = employeesArray.find((emp: any) => emp.id === employeeId);
+                if (employee?.name) {
+                  newWaiterTranslations[email] = {
+                    name: {
+                      [language]: employee.name,
+                    },
+                  };
+                }
+              }
+            } catch (err) {
+              console.warn(`Failed to load translations for waiter ${email}:`, err);
+              // Fallback to employee name from API
+              const employee = employeesArray.find((emp: any) => emp.id === employeeId);
+              if (employee?.name) {
+                newWaiterTranslations[email] = {
+                  name: {
+                    [language]: employee.name,
+                  },
+                };
+              }
+            }
+          });
+          
+          await Promise.all(translationPromises);
+          setWaiterTranslationsCache(newWaiterTranslations);
+        } catch (err) {
+          console.warn('Failed to load waiter translations:', err);
+        }
+      }
     };
 
     loadTranslations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orders]); // Only reload when orders change, not on every render
+  }, [orders, language]); // Reload when orders or language change
 
   // Helper function to get translated food item name
   const getTranslatedFoodItemName = useCallback((itemId: string | undefined, fallbackName: string | undefined): string => {
@@ -457,6 +527,17 @@ export default function KitchenDisplayPage() {
     }
     return fallbackName;
   }, [translationsCache, language]);
+
+  // Helper function to get translated waiter name
+  const getTranslatedWaiterName = useCallback((waiterEmail: string | undefined, fallbackName: string | undefined): string => {
+    if (!waiterEmail || !fallbackName) return fallbackName || '';
+    
+    const translations = waiterTranslationsCache[waiterEmail]?.name;
+    if (translations && translations[language]) {
+      return translations[language];
+    }
+    return fallbackName;
+  }, [waiterTranslationsCache, language]);
 
   // Store loadOrders in ref for stable reference
   useEffect(() => {
@@ -1123,6 +1204,7 @@ export default function KitchenDisplayPage() {
                                        user={user}
                                        getTranslatedFoodItemName={getTranslatedFoodItemName}
                                        getTranslatedComboMealName={getTranslatedComboMealName}
+                                       getTranslatedWaiterName={getTranslatedWaiterName}
                                      />
                                    ))
                                  )}
@@ -1171,6 +1253,7 @@ export default function KitchenDisplayPage() {
                                        user={user}
                                        getTranslatedFoodItemName={getTranslatedFoodItemName}
                                        getTranslatedComboMealName={getTranslatedComboMealName}
+                                       getTranslatedWaiterName={getTranslatedWaiterName}
                                      />
                                    ))
                                  )}
@@ -1205,6 +1288,7 @@ interface OrderCardProps {
   user: { role?: string } | null;
   getTranslatedFoodItemName: (itemId: string | undefined, fallbackName: string | undefined) => string;
   getTranslatedComboMealName: (mealId: string | undefined, fallbackName: string | undefined) => string;
+  getTranslatedWaiterName: (waiterEmail: string | undefined, fallbackName: string | undefined) => string;
 }
 
 function OrderCard({
@@ -1221,6 +1305,7 @@ function OrderCard({
   user,
   getTranslatedFoodItemName,
   getTranslatedComboMealName,
+  getTranslatedWaiterName,
 }: OrderCardProps) {
   const { isDark } = useTheme();
   const themeColors = generateThemeColors(primary, isDark);
@@ -1267,7 +1352,7 @@ function OrderCard({
           <Group gap="md" align="center">
             {order.waiterName && (
               <Text size="sm" fw={500} c="dimmed">
-                {order.waiterName}
+                {getTranslatedWaiterName(order.waiterEmail, order.waiterName)}
               </Text>
             )}
             {((order as any).tables && (order as any).tables.length > 0) || (order.table && order.table.table_number) ? (
