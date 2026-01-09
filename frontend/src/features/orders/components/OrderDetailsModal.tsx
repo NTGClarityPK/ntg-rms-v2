@@ -31,6 +31,7 @@ import { restaurantApi } from '@/lib/api/restaurant';
 import { useDateFormat } from '@/lib/hooks/use-date-format';
 import { useSettings } from '@/lib/hooks/use-settings';
 import { menuApi } from '@/lib/api/menu';
+import { translationsApi } from '@/lib/api/translations';
 import type { ThemeConfig } from '@/lib/theme/themeConfig';
 
 interface OrderDetailsModalProps {
@@ -70,6 +71,11 @@ export function OrderDetailsModal({
   const [printing, setPrinting] = useState(false);
   const [tenant, setTenant] = useState<any>(null);
   const [branch, setBranch] = useState<any>(null);
+  // Translations cache for food items and combo meals
+  const [translationsCache, setTranslationsCache] = useState<{
+    food_item?: { [itemId: string]: { name?: { [languageCode: string]: string } } };
+    combo_meal?: { [itemId: string]: { name?: { [languageCode: string]: string } } };
+  }>({});
 
   const handleEditOrder = () => {
     if (orderDetails) {
@@ -127,6 +133,51 @@ export function OrderDetailsModal({
           })
         );
         data.items = itemsWithNames;
+        
+        // Load translations for food items and combo meals
+        const foodItemIds = new Set<string>();
+        const comboMealIds = new Set<string>();
+        
+        itemsWithNames.forEach(item => {
+          if (item.foodItemId && item.foodItem) {
+            foodItemIds.add(item.foodItemId);
+          }
+          if (item.comboMealId && item.comboMeal) {
+            comboMealIds.add(item.comboMealId);
+            if (item.comboMeal.foodItems) {
+              item.comboMeal.foodItems.forEach(fi => {
+                if (fi.id) foodItemIds.add(fi.id);
+              });
+            }
+          }
+        });
+        
+        // Load translations
+        const newTranslations: typeof translationsCache = { ...translationsCache };
+        if (!newTranslations.food_item) newTranslations.food_item = {};
+        if (!newTranslations.combo_meal) newTranslations.combo_meal = {};
+        
+        for (const itemId of foodItemIds) {
+          if (newTranslations.food_item[itemId]) continue;
+          try {
+            const translations = await translationsApi.getEntityTranslations('food_item', itemId);
+            newTranslations.food_item[itemId] = translations;
+          } catch (err) {
+            console.warn(`Failed to load translations for food item ${itemId}:`, err);
+          }
+        }
+        
+        for (const mealId of comboMealIds) {
+          if (newTranslations.combo_meal[mealId]) continue;
+          try {
+            const translations = await translationsApi.getEntityTranslations('combo_meal', mealId);
+            newTranslations.combo_meal[mealId] = translations;
+          } catch (err) {
+            console.warn(`Failed to load translations for combo meal ${mealId}:`, err);
+          }
+        }
+        
+        setTranslationsCache(newTranslations);
       }
       
       setOrderDetails(data);
@@ -140,6 +191,7 @@ export function OrderDetailsModal({
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order, language]);
 
   const loadInvoiceData = useCallback(async () => {
@@ -147,14 +199,14 @@ export function OrderDetailsModal({
       const tenantData = await restaurantApi.getInfo();
       setTenant(tenantData);
       if (orderDetails?.branchId) {
-        const branches = await restaurantApi.getBranches();
+        const branches = await restaurantApi.getBranches(language);
         const branchData = branches.find(b => b.id === orderDetails.branchId);
         setBranch(branchData);
       }
     } catch (error) {
       console.error('Failed to load invoice data:', error);
     }
-  }, [orderDetails?.branchId]);
+  }, [orderDetails?.branchId, language]);
 
   useEffect(() => {
     if (opened && order) {
@@ -528,7 +580,7 @@ export function OrderDetailsModal({
                       {t('restaurant.branch', language)}
                     </Text>
                     <Text>
-                      {orderDetails.branch.name || '-'}
+                      {branch?.name || orderDetails.branch.name || '-'}
                     </Text>
                   </Grid.Col>
                 )}
@@ -592,9 +644,19 @@ export function OrderDetailsModal({
                             {(item.buffetId || item.buffet)
                               ? (item.buffet?.name?.trim() || (item.buffetId ? `Buffet #${item.buffetId.substring(0, 8)}...` : 'Buffet'))
                               : (item.comboMealId || item.comboMeal)
-                              ? (item.comboMeal?.name?.trim() || (item.comboMealId ? `Combo Meal #${item.comboMealId.substring(0, 8)}...` : 'Combo Meal'))
+                              ? (() => {
+                                  const translations = translationsCache.combo_meal?.[item.comboMealId || '']?.name;
+                                  return translations && translations[language] 
+                                    ? translations[language] 
+                                    : (item.comboMeal?.name?.trim() || (item.comboMealId ? `Combo Meal #${item.comboMealId.substring(0, 8)}...` : 'Combo Meal'));
+                                })()
                               : (item.foodItemId || item.foodItem)
-                              ? (item.foodItem?.name || t('pos.item', language))
+                              ? (() => {
+                                  const translations = translationsCache.food_item?.[item.foodItemId || '']?.name;
+                                  return translations && translations[language] 
+                                    ? translations[language] 
+                                    : (item.foodItem?.name || t('pos.item', language));
+                                })()
                               : t('pos.item', language) + ` #${item.foodItemId || item.id}`}
                           </Text>
                           {item.variation && item.variation.variationName && (

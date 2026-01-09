@@ -95,7 +95,7 @@ export function ComboMealPage() {
       setLoading(true);
 
       // Load menus for menu type selection (with branch filter)
-      const menuListResponse = await menuApi.getMenus(undefined, selectedBranchId || undefined);
+      const menuListResponse = await menuApi.getMenus(undefined, selectedBranchId || undefined, language);
       const menuList = Array.isArray(menuListResponse) ? menuListResponse : (menuListResponse?.data || []);
       setMenus(menuList);
 
@@ -109,7 +109,7 @@ export function ComboMealPage() {
         const itemsResponse = await menuApi.getFoodItems(undefined, {
           page: currentPage,
           limit: pageLimit,
-        }, undefined, false, selectedBranchId || undefined); // Pass branchId to filter by branch
+        }, undefined, false, selectedBranchId || undefined, language); // Pass branchId to filter by branch
         
         const items = Array.isArray(itemsResponse) 
           ? itemsResponse 
@@ -133,7 +133,7 @@ export function ComboMealPage() {
       // Load combo meals
       if (navigator.onLine) {
         try {
-          const serverResponse = await menuApi.getComboMeals(pagination.paginationParams, selectedBranchId || undefined);
+          const serverResponse = await menuApi.getComboMeals(pagination.paginationParams, selectedBranchId || undefined, language);
           const serverComboMeals = pagination.extractData(serverResponse);
           pagination.extractPagination(serverResponse);
           setComboMeals(serverComboMeals);
@@ -150,7 +150,7 @@ export function ComboMealPage() {
       setLoading(false);
     }
     //eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.tenantId, pagination]);
+  }, [user?.tenantId, selectedBranchId, language, pagination.page, pagination.limit]);
 
   useEffect(() => {
     loadData();

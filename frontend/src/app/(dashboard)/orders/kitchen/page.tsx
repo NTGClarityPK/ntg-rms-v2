@@ -43,6 +43,7 @@ import { useBranchStore } from '@/lib/store/branch-store';
 import { onOrderUpdate, notifyOrderUpdate } from '@/lib/utils/order-events';
 import { useKitchenSse, OrderUpdateEvent } from '@/lib/hooks/use-kitchen-sse';
 import { menuApi } from '@/lib/api/menu';
+import { translationsApi } from '@/lib/api/translations';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';
@@ -55,7 +56,7 @@ dayjs.extend(relativeTime);
 type KitchenStatus = 'preparing' | 'ready';
 
 export default function KitchenDisplayPage() {
-  const { language } = useLanguageStore();
+  const { language, isRTL } = useLanguageStore();
   const primary = useThemeColor();
   const { user } = useAuthStore();
   const { selectedBranchId } = useBranchStore();
@@ -74,6 +75,11 @@ export default function KitchenDisplayPage() {
   const loadOrdersRef = useRef<typeof loadOrders>();
   const soundEnabledRef = useRef<boolean>(soundEnabled);
   const [variationGroupsMap, setVariationGroupsMap] = useState<Map<string, string>>(new Map());
+  // Translations cache: { entityType: { entityId: { fieldName: { languageCode: string } } } }
+  const [translationsCache, setTranslationsCache] = useState<{
+    food_item?: { [itemId: string]: { name?: { [languageCode: string]: string } } };
+    combo_meal?: { [itemId: string]: { name?: { [languageCode: string]: string } } };
+  }>({});
   
   // Route protection: Redirect waiter and cashier away from kitchen display
   useEffect(() => {
@@ -362,6 +368,95 @@ export default function KitchenDisplayPage() {
   useEffect(() => {
     dayjs.locale(language === 'ar' ? 'ar' : 'en');
   }, [language]);
+
+  // Load translations for food items and combo meals when orders change
+  useEffect(() => {
+    const loadTranslations = async () => {
+      if (orders.length === 0) return;
+
+      // Collect unique food item IDs and combo meal IDs from all orders
+      const foodItemIds = new Set<string>();
+      const comboMealIds = new Set<string>();
+
+      orders.forEach(order => {
+        order.items?.forEach(item => {
+          if (item.foodItemId && item.foodItem) {
+            foodItemIds.add(item.foodItemId);
+          }
+          if (item.comboMealId && item.comboMeal) {
+            comboMealIds.add(item.comboMealId);
+            // Also get food items from combo meals
+            if (item.comboMeal.foodItems) {
+              item.comboMeal.foodItems.forEach(fi => {
+                if (fi.id) foodItemIds.add(fi.id);
+              });
+            }
+          }
+        });
+      });
+
+      // Load translations for food items
+      const newTranslations: typeof translationsCache = { ...translationsCache };
+      
+      if (!newTranslations.food_item) newTranslations.food_item = {};
+      if (!newTranslations.combo_meal) newTranslations.combo_meal = {};
+
+      // Load food item translations
+      for (const itemId of foodItemIds) {
+        // Skip if already loaded
+        if (newTranslations.food_item[itemId]) continue;
+        
+        try {
+          const translations = await translationsApi.getEntityTranslations('food_item', itemId);
+          newTranslations.food_item[itemId] = translations;
+        } catch (err) {
+          // Ignore errors - fallback to original name
+          console.warn(`Failed to load translations for food item ${itemId}:`, err);
+        }
+      }
+
+      // Load combo meal translations
+      for (const mealId of comboMealIds) {
+        // Skip if already loaded
+        if (newTranslations.combo_meal[mealId]) continue;
+        
+        try {
+          const translations = await translationsApi.getEntityTranslations('combo_meal', mealId);
+          newTranslations.combo_meal[mealId] = translations;
+        } catch (err) {
+          // Ignore errors - fallback to original name
+          console.warn(`Failed to load translations for combo meal ${mealId}:`, err);
+        }
+      }
+
+      setTranslationsCache(newTranslations);
+    };
+
+    loadTranslations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders]); // Only reload when orders change, not on every render
+
+  // Helper function to get translated food item name
+  const getTranslatedFoodItemName = useCallback((itemId: string | undefined, fallbackName: string | undefined): string => {
+    if (!itemId || !fallbackName) return fallbackName || t('pos.item', language);
+    
+    const translations = translationsCache.food_item?.[itemId]?.name;
+    if (translations && translations[language]) {
+      return translations[language];
+    }
+    return fallbackName;
+  }, [translationsCache, language]);
+
+  // Helper function to get translated combo meal name
+  const getTranslatedComboMealName = useCallback((mealId: string | undefined, fallbackName: string | undefined): string => {
+    if (!mealId || !fallbackName) return fallbackName || t('pos.comboMeal', language);
+    
+    const translations = translationsCache.combo_meal?.[mealId]?.name;
+    if (translations && translations[language]) {
+      return translations[language];
+    }
+    return fallbackName;
+  }, [translationsCache, language]);
 
   // Store loadOrders in ref for stable reference
   useEffect(() => {
@@ -828,7 +923,12 @@ export default function KitchenDisplayPage() {
       <Container fluid py="md" style={{ minHeight: '100%', width: '100%', paddingLeft: 0, paddingRight: 0, position: 'relative' }}>
         <Stack gap="md" style={{ width: '100%' }}>
           {/* Controls - positioned absolutely */}
-          <Box style={{ position: 'absolute', top: 10, right: 10, zIndex: 1001 }}>
+          <Box style={{ 
+            position: 'absolute', 
+            top: 10, 
+            ...(isRTL() ? { left: 10 } : { right: 10 }),
+            zIndex: 1001 
+          }}>
             <Group gap="xs">
               {/* My Orders Switch */}
               <Switch
@@ -1021,6 +1121,8 @@ export default function KitchenDisplayPage() {
                                        showStatus="preparing"
                                        resolveVariationGroupName={resolveVariationGroupName}
                                        user={user}
+                                       getTranslatedFoodItemName={getTranslatedFoodItemName}
+                                       getTranslatedComboMealName={getTranslatedComboMealName}
                                      />
                                    ))
                                  )}
@@ -1067,6 +1169,8 @@ export default function KitchenDisplayPage() {
                                        showStatus="ready"
                                        resolveVariationGroupName={resolveVariationGroupName}
                                        user={user}
+                                       getTranslatedFoodItemName={getTranslatedFoodItemName}
+                                       getTranslatedComboMealName={getTranslatedComboMealName}
                                      />
                                    ))
                                  )}
@@ -1099,6 +1203,8 @@ interface OrderCardProps {
   showStatus: 'preparing' | 'ready'; // Which status column this card is in
   resolveVariationGroupName: (variationGroup: string | undefined) => string;
   user: { role?: string } | null;
+  getTranslatedFoodItemName: (itemId: string | undefined, fallbackName: string | undefined) => string;
+  getTranslatedComboMealName: (mealId: string | undefined, fallbackName: string | undefined) => string;
 }
 
 function OrderCard({
@@ -1113,6 +1219,8 @@ function OrderCard({
   showStatus,
   resolveVariationGroupName,
   user,
+  getTranslatedFoodItemName,
+  getTranslatedComboMealName,
 }: OrderCardProps) {
   const { isDark } = useTheme();
   const themeColors = generateThemeColors(primary, isDark);
@@ -1251,13 +1359,13 @@ function OrderCard({
                                 display: 'inline-block',
                               }}
                             >
-                              {item.quantity}x {item.comboMeal.name || t('pos.comboMeal', language)}
+                              {item.quantity}x {getTranslatedComboMealName(item.comboMealId, item.comboMeal?.name)}
                             </Text>
                            {item.comboMeal.foodItems && item.comboMeal.foodItems.length > 0 && (
                                                          <Stack gap={2} style={{ paddingLeft: 12, borderLeft: `2px solid ${isDark ? themeColors.primaryDark : themeColors.primaryLight}` }}>
                                {item.comboMeal.foodItems.map((foodItem, idx) => (
                                  <Text key={idx} size="sm" c="dimmed" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
-                                   • {foodItem.name || t('pos.item', language)}
+                                   • {getTranslatedFoodItemName(foodItem.id, foodItem.name)}
                                  </Text>
                                ))}
                              </Stack>
@@ -1303,7 +1411,7 @@ function OrderCard({
                          >
                            {item.quantity}x{' '}
                            {item.foodItem
-                             ? (item.foodItem.name || t('pos.item', language))
+                             ? getTranslatedFoodItemName(item.foodItemId, item.foodItem.name)
                              : t('pos.item', language) + ` #${item.foodItemId || item.id}`}
                          </Text>
                          {item.variation && item.variation.variationName && (

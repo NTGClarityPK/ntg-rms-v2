@@ -70,8 +70,9 @@ export const authApi = {
     return response.data;
   },
 
-  getCurrentUser: async () => {
-    const response = await apiClient.get(API_ENDPOINTS.AUTH.ME);
+  getCurrentUser: async (language?: string) => {
+    const params = language ? `?language=${language}` : '';
+    const response = await apiClient.get(`${API_ENDPOINTS.AUTH.ME}${params}`);
     return response.data;
   },
 
@@ -95,8 +96,9 @@ export const authApi = {
     return response.data;
   },
 
-  getProfile: async (): Promise<UserProfile> => {
-    const response = await apiClient.get<UserProfile>(API_ENDPOINTS.AUTH.PROFILE);
+  getProfile: async (language?: string): Promise<UserProfile> => {
+    const params = language ? `?language=${language}` : '';
+    const response = await apiClient.get<UserProfile>(`${API_ENDPOINTS.AUTH.PROFILE}${params}`);
     return response.data;
   },
 

@@ -236,17 +236,20 @@ export const menuApi = {
   },
 
   // Add-on Groups
-  getAddOnGroups: async (pagination?: PaginationParams, branchId?: string): Promise<AddOnGroup[] | PaginatedResponse<AddOnGroup>> => {
+  getAddOnGroups: async (pagination?: PaginationParams, branchId?: string, language?: string): Promise<AddOnGroup[] | PaginatedResponse<AddOnGroup>> => {
     const params = new URLSearchParams();
     if (pagination?.page) params.append('page', pagination.page.toString());
     if (pagination?.limit) params.append('limit', pagination.limit.toString());
     if (branchId) params.append('branchId', branchId);
+    if (language) params.append('language', language);
     const { data } = await apiClient.get(`/menu/add-on-groups${params.toString() ? `?${params.toString()}` : ''}`);
     return data;
   },
 
-  getAddOnGroupById: async (id: string): Promise<AddOnGroup> => {
-    const { data } = await apiClient.get(`/menu/add-on-groups/${id}`);
+  getAddOnGroupById: async (id: string, language?: string): Promise<AddOnGroup> => {
+    const params = new URLSearchParams();
+    if (language) params.append('language', language);
+    const { data } = await apiClient.get(`/menu/add-on-groups/${id}${params.toString() ? `?${params.toString()}` : ''}`);
     return data;
   },
 
@@ -266,8 +269,10 @@ export const menuApi = {
   },
 
   // Add-ons
-  getAddOns: async (addOnGroupId: string): Promise<AddOn[]> => {
-    const { data } = await apiClient.get(`/menu/add-on-groups/${addOnGroupId}/add-ons`);
+  getAddOns: async (addOnGroupId: string, language?: string): Promise<AddOn[]> => {
+    const params = new URLSearchParams();
+    if (language) params.append('language', language);
+    const { data } = await apiClient.get(`/menu/add-on-groups/${addOnGroupId}/add-ons${params.toString() ? `?${params.toString()}` : ''}`);
     return data;
   },
 
@@ -291,11 +296,12 @@ export const menuApi = {
   },
 
   // Menus
-  getMenus: async (pagination?: PaginationParams, branchId?: string): Promise<any[] | PaginatedResponse<any>> => {
+  getMenus: async (pagination?: PaginationParams, branchId?: string, language?: string): Promise<any[] | PaginatedResponse<any>> => {
     const params = new URLSearchParams();
     if (pagination?.page) params.append('page', pagination.page.toString());
     if (pagination?.limit) params.append('limit', pagination.limit.toString());
     if (branchId) params.append('branchId', branchId);
+    if (language) params.append('language', language);
     const { data } = await apiClient.get(`/menu/menus${params.toString() ? `?${params.toString()}` : ''}`);
     return data;
   },
@@ -332,17 +338,20 @@ export const menuApi = {
   },
 
   // Buffets
-  getBuffets: async (pagination?: PaginationParams, branchId?: string): Promise<Buffet[] | PaginatedResponse<Buffet>> => {
+  getBuffets: async (pagination?: PaginationParams, branchId?: string, language?: string): Promise<Buffet[] | PaginatedResponse<Buffet>> => {
     const params = new URLSearchParams();
     if (pagination?.page) params.append('page', pagination.page.toString());
     if (pagination?.limit) params.append('limit', pagination.limit.toString());
     if (branchId) params.append('branchId', branchId);
+    if (language) params.append('language', language);
     const { data } = await apiClient.get(`/menu/buffets${params.toString() ? `?${params.toString()}` : ''}`);
     return data;
   },
 
-  getBuffetById: async (id: string): Promise<Buffet> => {
-    const { data } = await apiClient.get(`/menu/buffets/${id}`);
+  getBuffetById: async (id: string, language?: string): Promise<Buffet> => {
+    const params = new URLSearchParams();
+    if (language) params.append('language', language);
+    const { data } = await apiClient.get(`/menu/buffets/${id}${params.toString() ? `?${params.toString()}` : ''}`);
     return data;
   },
 
@@ -373,17 +382,20 @@ export const menuApi = {
   },
 
   // Combo Meals
-  getComboMeals: async (pagination?: PaginationParams, branchId?: string): Promise<ComboMeal[] | PaginatedResponse<ComboMeal>> => {
+  getComboMeals: async (pagination?: PaginationParams, branchId?: string, language?: string): Promise<ComboMeal[] | PaginatedResponse<ComboMeal>> => {
     const params = new URLSearchParams();
     if (pagination?.page) params.append('page', pagination.page.toString());
     if (pagination?.limit) params.append('limit', pagination.limit.toString());
     if (branchId) params.append('branchId', branchId);
+    if (language) params.append('language', language);
     const { data } = await apiClient.get(`/menu/combo-meals${params.toString() ? `?${params.toString()}` : ''}`);
     return data;
   },
 
-  getComboMealById: async (id: string): Promise<ComboMeal> => {
-    const { data } = await apiClient.get(`/menu/combo-meals/${id}`);
+  getComboMealById: async (id: string, language?: string): Promise<ComboMeal> => {
+    const params = new URLSearchParams();
+    if (language) params.append('language', language);
+    const { data } = await apiClient.get(`/menu/combo-meals/${id}${params.toString() ? `?${params.toString()}` : ''}`);
     return data;
   },
 
@@ -414,17 +426,20 @@ export const menuApi = {
   },
 
   // Variation Groups
-  getVariationGroups: async (pagination?: PaginationParams, branchId?: string): Promise<VariationGroup[] | PaginatedResponse<VariationGroup>> => {
+  getVariationGroups: async (pagination?: PaginationParams, branchId?: string, language?: string): Promise<VariationGroup[] | PaginatedResponse<VariationGroup>> => {
     const params = new URLSearchParams();
     if (pagination?.page) params.append('page', pagination.page.toString());
     if (pagination?.limit) params.append('limit', pagination.limit.toString());
     if (branchId) params.append('branchId', branchId);
+    if (language) params.append('language', language);
     const { data } = await apiClient.get(`/menu/variation-groups${params.toString() ? `?${params.toString()}` : ''}`);
     return data;
   },
 
-  getVariationGroupById: async (id: string): Promise<VariationGroup> => {
-    const { data } = await apiClient.get(`/menu/variation-groups/${id}`);
+  getVariationGroupById: async (id: string, language?: string): Promise<VariationGroup> => {
+    const params = new URLSearchParams();
+    if (language) params.append('language', language);
+    const { data } = await apiClient.get(`/menu/variation-groups/${id}${params.toString() ? `?${params.toString()}` : ''}`);
     return data;
   },
 
@@ -444,8 +459,10 @@ export const menuApi = {
   },
 
   // Variations
-  getVariations: async (variationGroupId: string): Promise<Variation[]> => {
-    const { data } = await apiClient.get(`/menu/variation-groups/${variationGroupId}/variations`);
+  getVariations: async (variationGroupId: string, language?: string): Promise<Variation[]> => {
+    const params = new URLSearchParams();
+    if (language) params.append('language', language);
+    const { data } = await apiClient.get(`/menu/variation-groups/${variationGroupId}/variations${params.toString() ? `?${params.toString()}` : ''}`);
     return data;
   },
 

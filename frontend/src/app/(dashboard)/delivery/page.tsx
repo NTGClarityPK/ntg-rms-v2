@@ -129,6 +129,7 @@ export default function DeliveryPage() {
         status,
         branchId: selectedBranchId || undefined,
         deliveryPersonId: selectedDeliveryPerson || undefined,
+        language,
         ...pagination.paginationParams,
       });
       
@@ -162,7 +163,7 @@ export default function DeliveryPage() {
   useEffect(() => {
     loadDeliveries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedStatuses, selectedBranchId, selectedDeliveryPerson, pagination.page, pagination.limit]);
+  }, [selectedStatuses, selectedBranchId, selectedDeliveryPerson, pagination.page, pagination.limit, language]);
 
   const handleAssignDelivery = async () => {
     if (!selectedDelivery || !selectedPersonnelId) {

@@ -178,7 +178,7 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       .page-title-bar {
         position: fixed !important;
         top: 60px !important; /* Below header */
-        left: 250px !important; /* To the right of navbar (expanded) */
+        left: 270px !important; /* To the right of navbar (expanded) */
         right: 0 !important;
         height: 60px !important; /* Same height as header */
         background-color: ${config.components.titleBar.backgroundColor} !important;
@@ -197,7 +197,7 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       .page-sub-title-bar {
         position: fixed !important;
         top: 60px !important; /* Same position as title bar */
-        left: 250px !important; /* To the right of navbar (expanded) */
+        left: 270px !important; /* To the right of navbar (expanded) */
         right: 0 !important;
         height: 60px !important; /* Same height as title bar */
         background-color: ${config.components.subTitleBar.backgroundColor} !important;
@@ -228,8 +228,8 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       html[dir="rtl"] .page-title-bar,
       [dir="rtl"] .page-title-bar {
         left: 0 !important;
-        right: 250px !important;
-        width: calc(100% - 250px) !important;
+        right: 270px !important;
+        width: calc(100% - 270px) !important;
         border-top-left-radius: 0 !important;
         border-top-right-radius: 12px !important;
         padding-left: var(--mantine-spacing-md) !important;
@@ -240,8 +240,8 @@ export function DynamicThemeProvider({ children }: { children: React.ReactNode }
       html[dir="rtl"] .page-sub-title-bar,
       [dir="rtl"] .page-sub-title-bar {
         left: 0 !important;
-        right: 250px !important;
-        width: calc(100% - 250px) !important;
+        right: 270px !important;
+        width: calc(100% - 270px) !important;
         transition: right 0.3s ease, width 0.3s ease !important;
       }
       

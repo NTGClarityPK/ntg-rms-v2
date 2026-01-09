@@ -111,7 +111,7 @@ export function VariationGroupsPage() {
       setLoading(true);
       setError(null);
 
-      const serverGroupsResponse = await menuApi.getVariationGroups(pagination.paginationParams, selectedBranchId || undefined);
+      const serverGroupsResponse = await menuApi.getVariationGroups(pagination.paginationParams, selectedBranchId || undefined, language);
       const serverGroups = pagination.extractData(serverGroupsResponse);
       pagination.extractPagination(serverGroupsResponse);
       setVariationGroups(serverGroups);
@@ -132,13 +132,14 @@ export function VariationGroupsPage() {
   const loadVariations = useCallback(async (groupId: string) => {
     try {
       setLoadingVariations(true);
-      const items = await menuApi.getVariations(groupId);
+      const items = await menuApi.getVariations(groupId, language);
       setVariations(items);
     } catch (err: any) {
       console.error('Failed to load variations:', err);
     } finally {
       setLoadingVariations(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadFoodItemsWithGroup = useCallback(async (groupId: string) => {

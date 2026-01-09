@@ -90,14 +90,14 @@ export function RecipesPage() {
     if (!user?.tenantId) return;
 
     try {
-      const serverFoodItemsResponse = await menuApi.getFoodItems(undefined, foodItemsPagination.paginationParams, undefined, false, selectedBranchId || undefined);
+      const serverFoodItemsResponse = await menuApi.getFoodItems(undefined, foodItemsPagination.paginationParams, undefined, false, selectedBranchId || undefined, language);
       const serverFoodItems = foodItemsPagination.extractData(serverFoodItemsResponse);
       foodItemsPagination.extractPagination(serverFoodItemsResponse);
       setFoodItems(serverFoodItems);
     } catch (err: any) {
       console.error('Failed to load food items:', err);
     }
-  }, [user?.tenantId, foodItemsPagination, selectedBranchId]);
+  }, [user?.tenantId, foodItemsPagination, selectedBranchId, language]);
 
   const loadAllFoodItems = useCallback(async () => {
     if (!user?.tenantId) return;
@@ -110,7 +110,7 @@ export function RecipesPage() {
 
       // Fetch all pages sequentially
       while (hasMore) {
-        const response = await menuApi.getFoodItems(undefined, { page, limit }, undefined, false, selectedBranchId || undefined);
+        const response = await menuApi.getFoodItems(undefined, { page, limit }, undefined, false, selectedBranchId || undefined, language);
         
         if (isPaginatedResponse(response)) {
           allFoodItems.push(...response.data);
@@ -127,7 +127,7 @@ export function RecipesPage() {
     } catch (err: any) {
       console.error('Failed to load all food items:', err);
     }
-  }, [user?.tenantId, selectedBranchId]);
+  }, [user?.tenantId, selectedBranchId, language]);
 
   const loadIngredients = useCallback(async () => {
     if (!user?.tenantId) return;
@@ -140,7 +140,6 @@ export function RecipesPage() {
 
       // Fetch all pages sequentially
       while (hasMore) {
-        const language = useLanguageStore.getState().language;
         const response = await inventoryApi.getIngredients({ isActive: true }, { page, limit }, selectedBranchId || undefined, language);
         
         if (isPaginatedResponse(response)) {
@@ -176,7 +175,7 @@ export function RecipesPage() {
     } catch (err: any) {
       console.error('Failed to load ingredients:', err);
     }
-  }, [user?.tenantId, selectedBranchId]);
+  }, [user?.tenantId, selectedBranchId, language]);
 
   const loadRecipes = useCallback(async () => {
     if (!user?.tenantId) return;
@@ -200,7 +199,7 @@ export function RecipesPage() {
     };
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [foodItemsPagination.page, foodItemsPagination.limit, refreshKey, selectedBranchId]);
+  }, [foodItemsPagination.page, foodItemsPagination.limit, refreshKey, selectedBranchId, language]);
 
   useEffect(() => {
     if (foodItems.length > 0) {

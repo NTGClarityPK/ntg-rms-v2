@@ -90,7 +90,7 @@ function AuthCallbackContent() {
         // Step 2: Get user profile
         setProgress(60);
         setMessage(t('auth.fetchingProfile', language));
-        const user = await authApi.getCurrentUser();
+        const user = await authApi.getCurrentUser(language);
         await new Promise(resolve => setTimeout(resolve, 300));
 
         // Step 3: Set user in store

@@ -14,6 +14,8 @@ export enum EntityType {
   MENU = 'menu',
   BRANCH = 'branch',
   CUSTOMER = 'customer',
+  CUSTOMER_ADDRESS = 'customer_address',
+  DELIVERY = 'delivery',
   EMPLOYEE = 'employee',
   TAX = 'tax',
   RESTAURANT = 'restaurant',
@@ -21,6 +23,7 @@ export enum EntityType {
   STOCK_DEDUCT_REASON = 'stock_deduct_reason',
   STOCK_ADJUST_REASON = 'stock_adjust_reason',
   INVOICE = 'invoice',
+  USER = 'user',
 }
 
 export enum FieldName {
@@ -31,6 +34,7 @@ export enum FieldName {
   SHORT_DESCRIPTION = 'short_description',
   LONG_DESCRIPTION = 'long_description',
   CITY = 'city',
+  STATE = 'state',
   ADDRESS = 'address',
   NOTES = 'notes',
   COUNTRY = 'country',

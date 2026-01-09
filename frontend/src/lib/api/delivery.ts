@@ -103,6 +103,7 @@ export const deliveryApi = {
     branchId?: string;
     startDate?: string;
     endDate?: string;
+    language?: string;
   } & PaginationParams): Promise<DeliveryOrder[] | PaginatedResponse<DeliveryOrder>> {
     const params = new URLSearchParams();
     if (filters?.status) params.append('status', filters.status);
@@ -112,6 +113,7 @@ export const deliveryApi = {
     if (filters?.endDate) params.append('endDate', filters.endDate);
     if (filters?.page) params.append('page', filters.page.toString());
     if (filters?.limit) params.append('limit', filters.limit.toString());
+    if (filters?.language) params.append('language', filters.language);
 
     const response = await apiClient.get<DeliveryOrder[] | PaginatedResponse<DeliveryOrder>>(
       `${API_ENDPOINTS.DELIVERY}/orders?${params.toString()}`,
@@ -122,8 +124,11 @@ export const deliveryApi = {
   /**
    * Get delivery by ID
    */
-  async getDeliveryById(id: string): Promise<DeliveryOrder> {
-    const response = await apiClient.get<DeliveryOrder>(`${API_ENDPOINTS.DELIVERY}/orders/${id}`);
+  async getDeliveryById(id: string, language?: string): Promise<DeliveryOrder> {
+    const params = new URLSearchParams();
+    if (language) params.append('language', language);
+    const url = `${API_ENDPOINTS.DELIVERY}/orders/${id}${params.toString() ? `?${params.toString()}` : ''}`;
+    const response = await apiClient.get<DeliveryOrder>(url);
     return response.data;
   },
 

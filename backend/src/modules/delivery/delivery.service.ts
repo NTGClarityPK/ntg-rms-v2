@@ -8,12 +8,17 @@ import { SupabaseService } from '../../database/supabase.service';
 import { AssignDeliveryDto } from './dto/assign-delivery.dto';
 import { UpdateDeliveryStatusDto } from './dto/update-delivery-status.dto';
 import { PaginationParams, PaginatedResponse, getPaginationParams, createPaginatedResponse } from '../../common/dto/pagination.dto';
+import { TranslationService } from '../translations/services/translation.service';
+import { EntityType, FieldName } from '../translations/dto/create-translation.dto';
 
 export type DeliveryStatus = 'pending' | 'assigned' | 'out_for_delivery' | 'delivered' | 'cancelled';
 
 @Injectable()
 export class DeliveryService {
-  constructor(private supabaseService: SupabaseService) {}
+  constructor(
+    private supabaseService: SupabaseService,
+    private translationService: TranslationService,
+  ) {}
 
   /**
    * Get all delivery orders with filters
@@ -29,6 +34,7 @@ export class DeliveryService {
       page?: number;
       limit?: number;
       offset?: number;
+      language?: string;
     },
   ): Promise<PaginatedResponse<any> | any[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
@@ -252,6 +258,187 @@ export class DeliveryService {
           : null,
       }));
 
+    // Translate address fields if language is provided
+    const language = filters?.language || 'en';
+    if (language !== 'en' && transformedDeliveries.length > 0) {
+      // Batch fetch all translations to avoid N+1 query problem
+      const supabase = this.supabaseService.getServiceRoleClient();
+      
+      // Collect all entity IDs that need translation
+      const customerAddressIds: string[] = [];
+      const deliveryIds: string[] = [];
+      
+      for (const delivery of transformedDeliveries) {
+        if (delivery.customerAddress) {
+          customerAddressIds.push(delivery.customerAddress.id);
+        }
+        if (delivery.notes && !delivery.customerAddress) {
+          deliveryIds.push(delivery.id);
+        }
+      }
+
+      // Batch fetch customer address translations
+      const customerAddressTranslations = new Map<string, Map<string, string>>();
+      if (customerAddressIds.length > 0) {
+        const { data: metadataList } = await supabase
+          .from('translation_metadata')
+          .select('id, entity_id')
+          .eq('entity_type', EntityType.CUSTOMER_ADDRESS)
+          .in('entity_id', customerAddressIds);
+
+        if (metadataList && metadataList.length > 0) {
+          const metadataIds = metadataList.map(m => m.id);
+          const metadataMap = new Map(metadataList.map(m => [m.id, m.entity_id]));
+          
+          const { data: translations } = await supabase
+            .from('translations')
+            .select('metadata_id, field_name, translated_text, language_code')
+            .in('metadata_id', metadataIds)
+            .in('language_code', [language, 'en'])
+            .in('field_name', [FieldName.ADDRESS, FieldName.CITY, FieldName.STATE, FieldName.COUNTRY]);
+
+          if (translations) {
+            // Group translations by entity_id, field_name, and language_code
+            const translationMap = new Map<string, Map<string, Map<string, string>>>();
+            for (const trans of translations) {
+              const entityId = metadataMap.get(trans.metadata_id);
+              if (!entityId) continue;
+              
+              if (!translationMap.has(entityId)) {
+                translationMap.set(entityId, new Map());
+              }
+              const entityMap = translationMap.get(entityId)!;
+              
+              if (!entityMap.has(trans.field_name)) {
+                entityMap.set(trans.field_name, new Map());
+              }
+              const fieldMap = entityMap.get(trans.field_name)!;
+              fieldMap.set(trans.language_code, trans.translated_text);
+            }
+            
+            // Flatten to final structure: prefer requested language, fallback to English
+            for (const [entityId, entityMap] of translationMap) {
+              if (!customerAddressTranslations.has(entityId)) {
+                customerAddressTranslations.set(entityId, new Map());
+              }
+              const finalMap = customerAddressTranslations.get(entityId)!;
+              
+              for (const [fieldName, fieldMap] of entityMap) {
+                // Prefer requested language, fallback to English
+                finalMap.set(fieldName, fieldMap.get(language) || fieldMap.get('en') || '');
+              }
+            }
+          }
+        }
+      }
+
+      // Batch fetch delivery address translations (from notes)
+      const deliveryTranslations = new Map<string, Map<string, string>>();
+      if (deliveryIds.length > 0) {
+        const { data: metadataList } = await supabase
+          .from('translation_metadata')
+          .select('id, entity_id')
+          .eq('entity_type', EntityType.DELIVERY)
+          .in('entity_id', deliveryIds);
+
+        if (metadataList && metadataList.length > 0) {
+          const metadataIds = metadataList.map(m => m.id);
+          const metadataMap = new Map(metadataList.map(m => [m.id, m.entity_id]));
+          
+          const { data: translations } = await supabase
+            .from('translations')
+            .select('metadata_id, field_name, translated_text, language_code')
+            .in('metadata_id', metadataIds)
+            .in('language_code', [language, 'en'])
+            .in('field_name', [FieldName.ADDRESS, FieldName.CITY, FieldName.STATE, FieldName.COUNTRY]);
+
+          if (translations) {
+            // Group translations by entity_id, field_name, and language_code
+            const translationMap = new Map<string, Map<string, Map<string, string>>>();
+            for (const trans of translations) {
+              const entityId = metadataMap.get(trans.metadata_id);
+              if (!entityId) continue;
+              
+              if (!translationMap.has(entityId)) {
+                translationMap.set(entityId, new Map());
+              }
+              const entityMap = translationMap.get(entityId)!;
+              
+              if (!entityMap.has(trans.field_name)) {
+                entityMap.set(trans.field_name, new Map());
+              }
+              const fieldMap = entityMap.get(trans.field_name)!;
+              fieldMap.set(trans.language_code, trans.translated_text);
+            }
+            
+            // Flatten to final structure: prefer requested language, fallback to English
+            for (const [entityId, entityMap] of translationMap) {
+              if (!deliveryTranslations.has(entityId)) {
+                deliveryTranslations.set(entityId, new Map());
+              }
+              const finalMap = deliveryTranslations.get(entityId)!;
+              
+              for (const [fieldName, fieldMap] of entityMap) {
+                // Prefer requested language, fallback to English
+                finalMap.set(fieldName, fieldMap.get(language) || fieldMap.get('en') || '');
+              }
+            }
+          }
+        }
+      }
+
+      // Apply translations to deliveries
+      for (const delivery of transformedDeliveries) {
+        // Translate customer address if exists
+        if (delivery.customerAddress) {
+          const translations = customerAddressTranslations.get(delivery.customerAddress.id);
+          if (translations) {
+            const addressTrans = translations.get(FieldName.ADDRESS);
+            if (addressTrans && delivery.customerAddress.address) {
+              delivery.customerAddress.address = addressTrans;
+              delivery.customerAddress.addressLine1 = addressTrans;
+            }
+            
+            const cityTrans = translations.get(FieldName.CITY);
+            if (cityTrans && delivery.customerAddress.city) {
+              delivery.customerAddress.city = cityTrans;
+            }
+            
+            const stateTrans = translations.get(FieldName.STATE);
+            if (stateTrans && delivery.customerAddress.state) {
+              delivery.customerAddress.state = stateTrans;
+            }
+            
+            const countryTrans = translations.get(FieldName.COUNTRY);
+            if (countryTrans && delivery.customerAddress.country) {
+              delivery.customerAddress.country = countryTrans;
+            }
+          }
+        }
+
+        // Translate address from notes field (for walk-in customers)
+        if (delivery.notes && !delivery.customerAddress) {
+          try {
+            const addressData = JSON.parse(delivery.notes);
+            if (addressData && typeof addressData === 'object' && (addressData.address || addressData.city)) {
+              const translations = deliveryTranslations.get(delivery.id);
+              if (translations) {
+                const translatedAddressData: any = {
+                  address: translations.get(FieldName.ADDRESS) || addressData.address,
+                  city: translations.get(FieldName.CITY) || addressData.city,
+                  state: translations.get(FieldName.STATE) || addressData.state,
+                  country: translations.get(FieldName.COUNTRY) || addressData.country,
+                };
+                delivery.notes = JSON.stringify(translatedAddressData);
+              }
+            }
+          } catch (parseError) {
+            // Notes is not JSON, skip translation
+          }
+        }
+      }
+    }
+
     // Return paginated response if pagination params were provided
     if (page !== undefined || filters?.offset !== undefined) {
       return createPaginatedResponse(transformedDeliveries, totalCount || 0, page || 1, limit);
@@ -263,7 +450,7 @@ export class DeliveryService {
   /**
    * Get delivery by ID
    */
-  async getDeliveryById(tenantId: string, deliveryId: string) {
+  async getDeliveryById(tenantId: string, deliveryId: string, language: string = 'en') {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     const { data: delivery, error } = await supabase
@@ -318,7 +505,7 @@ export class DeliveryService {
         : Promise.resolve({ data: null, error: null }),
     ]);
 
-    return {
+    const result = {
       id: delivery.id,
       orderId: delivery.order_id,
       deliveryPersonId: delivery.delivery_person_id || null,
@@ -377,6 +564,151 @@ export class DeliveryService {
           }
         : null,
     };
+
+    // Translate address fields if language is provided and not English
+    if (language !== 'en') {
+      // Translate customer address if exists
+      if (result.customerAddress) {
+        try {
+          const addressId = result.customerAddress.id;
+          
+          // Translate address field
+          if (result.customerAddress.address) {
+            const addressTranslation = await this.translationService.getTranslation({
+              entityType: EntityType.CUSTOMER_ADDRESS,
+              entityId: addressId,
+              languageCode: language,
+              fieldName: FieldName.ADDRESS,
+              fallbackLanguage: 'en',
+            });
+            if (addressTranslation) {
+              result.customerAddress.address = addressTranslation;
+              result.customerAddress.addressLine1 = addressTranslation;
+            }
+          }
+
+          // Translate city field
+          if (result.customerAddress.city) {
+            const cityTranslation = await this.translationService.getTranslation({
+              entityType: EntityType.CUSTOMER_ADDRESS,
+              entityId: addressId,
+              languageCode: language,
+              fieldName: FieldName.CITY,
+              fallbackLanguage: 'en',
+            });
+            if (cityTranslation) {
+              result.customerAddress.city = cityTranslation;
+            }
+          }
+
+          // Translate state field
+          if (result.customerAddress.state) {
+            const stateTranslation = await this.translationService.getTranslation({
+              entityType: EntityType.CUSTOMER_ADDRESS,
+              entityId: addressId,
+              languageCode: language,
+              fieldName: FieldName.STATE,
+              fallbackLanguage: 'en',
+            });
+            if (stateTranslation) {
+              result.customerAddress.state = stateTranslation;
+            }
+          }
+
+          // Translate country field
+          if (result.customerAddress.country) {
+            const countryTranslation = await this.translationService.getTranslation({
+              entityType: EntityType.CUSTOMER_ADDRESS,
+              entityId: addressId,
+              languageCode: language,
+              fieldName: FieldName.COUNTRY,
+              fallbackLanguage: 'en',
+            });
+            if (countryTranslation) {
+              result.customerAddress.country = countryTranslation;
+            }
+          }
+        } catch (translationError) {
+          console.warn(`Failed to get address translations for delivery ${deliveryId}:`, translationError);
+        }
+      }
+
+      // Translate address from notes field (for walk-in customers)
+      if (result.notes && !result.customerAddress) {
+        try {
+          // Try to parse notes as JSON (contains walk-in customer address)
+          const addressData = JSON.parse(result.notes);
+          if (addressData && typeof addressData === 'object' && (addressData.address || addressData.city)) {
+            const deliveryId = result.id;
+            let translatedAddress = addressData.address;
+            let translatedCity = addressData.city;
+            let translatedState = addressData.state;
+            let translatedCountry = addressData.country;
+
+            // Translate address field
+            if (addressData.address) {
+              const addressTranslation = await this.translationService.getTranslation({
+                entityType: EntityType.DELIVERY,
+                entityId: deliveryId,
+                languageCode: language,
+                fieldName: FieldName.ADDRESS,
+                fallbackLanguage: 'en',
+              });
+              if (addressTranslation) translatedAddress = addressTranslation;
+            }
+
+            // Translate city field
+            if (addressData.city) {
+              const cityTranslation = await this.translationService.getTranslation({
+                entityType: EntityType.DELIVERY,
+                entityId: deliveryId,
+                languageCode: language,
+                fieldName: FieldName.CITY,
+                fallbackLanguage: 'en',
+              });
+              if (cityTranslation) translatedCity = cityTranslation;
+            }
+
+            // Translate state field
+            if (addressData.state) {
+              const stateTranslation = await this.translationService.getTranslation({
+                entityType: EntityType.DELIVERY,
+                entityId: deliveryId,
+                languageCode: language,
+                fieldName: FieldName.STATE,
+                fallbackLanguage: 'en',
+              });
+              if (stateTranslation) translatedState = stateTranslation;
+            }
+
+            // Translate country field
+            if (addressData.country) {
+              const countryTranslation = await this.translationService.getTranslation({
+                entityType: EntityType.DELIVERY,
+                entityId: deliveryId,
+                languageCode: language,
+                fieldName: FieldName.COUNTRY,
+                fallbackLanguage: 'en',
+              });
+              if (countryTranslation) translatedCountry = countryTranslation;
+            }
+
+            // Update notes with translated values
+            const translatedAddressData = {
+              address: translatedAddress,
+              city: translatedCity,
+              state: translatedState,
+              country: translatedCountry,
+            };
+            result.notes = JSON.stringify(translatedAddressData);
+          }
+        } catch (parseError) {
+          // Notes is not JSON, skip translation
+        }
+      }
+    }
+
+    return result;
   }
 
   /**
@@ -688,6 +1020,92 @@ export class DeliveryService {
       return null;
     }
 
+    // Create translations for walk-in customer addresses stored in notes
+    // Run translations in background (fire and forget) to not block the response
+    if (notes && !customerAddressId) {
+      // Execute translations asynchronously without awaiting
+      // This allows the API to return immediately while translations are created in background
+      (async () => {
+        try {
+          // Try to parse notes as JSON (contains walk-in customer address)
+          const addressData = JSON.parse(notes);
+          if (addressData && typeof addressData === 'object' && (addressData.address || addressData.city)) {
+            const deliveryId = delivery.id;
+
+            // Create all translations in parallel
+            const translationPromises: Promise<any>[] = [];
+
+            if (addressData.address) {
+              translationPromises.push(
+                this.translationService.createTranslations({
+                  entityType: EntityType.DELIVERY,
+                  entityId: deliveryId,
+                  fieldName: FieldName.ADDRESS,
+                  text: addressData.address,
+                }).catch(err => {
+                  console.warn(`Failed to create address translation for delivery ${deliveryId}:`, err);
+                  return null;
+                })
+              );
+            }
+
+            if (addressData.city) {
+              translationPromises.push(
+                this.translationService.createTranslations({
+                  entityType: EntityType.DELIVERY,
+                  entityId: deliveryId,
+                  fieldName: FieldName.CITY,
+                  text: addressData.city,
+                }).catch(err => {
+                  console.warn(`Failed to create city translation for delivery ${deliveryId}:`, err);
+                  return null;
+                })
+              );
+            }
+
+            if (addressData.state) {
+              translationPromises.push(
+                this.translationService.createTranslations({
+                  entityType: EntityType.DELIVERY,
+                  entityId: deliveryId,
+                  fieldName: FieldName.STATE,
+                  text: addressData.state,
+                }).catch(err => {
+                  console.warn(`Failed to create state translation for delivery ${deliveryId}:`, err);
+                  return null;
+                })
+              );
+            }
+
+            if (addressData.country) {
+              translationPromises.push(
+                this.translationService.createTranslations({
+                  entityType: EntityType.DELIVERY,
+                  entityId: deliveryId,
+                  fieldName: FieldName.COUNTRY,
+                  text: addressData.country,
+                }).catch(err => {
+                  console.warn(`Failed to create country translation for delivery ${deliveryId}:`, err);
+                  return null;
+                })
+              );
+            }
+
+            // Execute all translation calls in parallel (don't await - fire and forget)
+            if (translationPromises.length > 0) {
+              Promise.all(translationPromises).catch(err => {
+                console.error(`Failed to create translations for delivery ${deliveryId}:`, err);
+              });
+            }
+          }
+        } catch (error) {
+          // Notes is not JSON or translation failed, skip translation creation
+          console.warn(`Failed to parse notes for delivery ${delivery.id}:`, error);
+        }
+      })();
+    }
+
+    // Return delivery ID immediately without waiting for translations
     return delivery.id;
   }
 }

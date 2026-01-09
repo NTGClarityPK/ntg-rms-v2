@@ -23,6 +23,7 @@ export class DeliveryController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'offset', required: false, type: Number })
+  @ApiQuery({ name: 'language', required: false, type: String, description: 'Language code for translations' })
   getDeliveryOrders(
     @CurrentUser() user: any,
     @Query('status') status?: string,
@@ -33,6 +34,7 @@ export class DeliveryController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
+    @Query('language') language?: string,
   ) {
     return this.deliveryService.getDeliveryOrders(user.tenantId, {
       status: status as any,
@@ -43,13 +45,15 @@ export class DeliveryController {
       page: page ? parseInt(page, 10) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined,
+      language: language || 'en',
     });
   }
 
   @Get('orders/:id')
   @ApiOperation({ summary: 'Get delivery by ID' })
-  getDeliveryById(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.deliveryService.getDeliveryById(user.tenantId, id);
+  @ApiQuery({ name: 'language', required: false, type: String, description: 'Language code for translations' })
+  getDeliveryById(@CurrentUser() user: any, @Param('id') id: string, @Query('language') language?: string) {
+    return this.deliveryService.getDeliveryById(user.tenantId, id, language || 'en');
   }
 
   @Get('personnel')

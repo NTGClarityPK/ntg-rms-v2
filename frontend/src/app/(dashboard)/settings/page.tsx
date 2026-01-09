@@ -357,7 +357,7 @@ export default function SettingsPage() {
         setTotalTables(5);
       }
 
-      const serverData = await restaurantApi.getInfo();
+      const serverData = await restaurantApi.getInfo(language);
       
       const formValues = {
         name: serverData.name || '',
@@ -592,6 +592,21 @@ export default function SettingsPage() {
     }
   }, [language, user?.role]);
 
+  // Helper function to get translated language name
+  const getTranslatedLanguageName = (langCode: string): string => {
+    const languageNameMap: Record<string, string> = {
+      en: 'common.english',
+      ku: 'common.kurdish',
+      ar: 'common.arabic',
+      fr: 'common.french',
+    };
+    const translationKey = languageNameMap[langCode.toLowerCase()];
+    if (translationKey) {
+      return t(translationKey as any, language) || langCode.toUpperCase();
+    }
+    return langCode.toUpperCase();
+  };
+
   // Load languages when languages tab is active (admin only)
   useEffect(() => {
     if (activeTab === 'languages' && user?.role === 'tenant_owner') {
@@ -641,7 +656,7 @@ export default function SettingsPage() {
         });
         notifications.show({
           title: t('common.success' as any, language),
-          message: 'Language updated successfully',
+          message: t('settings.languageUpdated' as any, language) || 'Language updated successfully',
           color: getSuccessColor(),
           icon: <IconCheck size={16} />,
         });
@@ -656,7 +671,7 @@ export default function SettingsPage() {
         });
         notifications.show({
           title: t('common.success' as any, language),
-          message: 'Language created successfully',
+          message: t('settings.languageCreated' as any, language) || 'Language created successfully',
           color: getSuccessColor(),
           icon: <IconCheck size={16} />,
         });
@@ -690,7 +705,7 @@ export default function SettingsPage() {
       await translationsApi.deleteLanguage(code);
       notifications.show({
         title: t('common.success' as any, language),
-        message: 'Language deleted successfully',
+        message: t('settings.languageDeleted' as any, language) || 'Language deleted successfully',
         color: getSuccessColor(),
         icon: <IconCheck size={16} />,
       });
@@ -1506,11 +1521,11 @@ export default function SettingsPage() {
                                   {lang.code.toUpperCase()}
                                 </Badge>
                               </Table.Td>
-                              <Table.Td>{lang.name}</Table.Td>
+                              <Table.Td>{getTranslatedLanguageName(lang.code)}</Table.Td>
                               <Table.Td>{lang.nativeName}</Table.Td>
                               <Table.Td>
                                 <Badge variant="light" color={lang.rtl ? 'orange' : 'gray'}>
-                                  {lang.rtl ? 'RTL' : 'LTR'}
+                                  {lang.rtl ? (t('settings.rtlLabel' as any, language) || 'RTL') : (t('settings.ltrLabel' as any, language) || 'LTR')}
                                 </Badge>
                               </Table.Td>
                               <Table.Td>
@@ -1574,11 +1589,11 @@ export default function SettingsPage() {
                         placeholder="en"
                         required
                         disabled={!!editingLanguage}
-                        description={editingLanguage ? 'Language code cannot be changed' : '2-letter ISO code (e.g., en, ar, ku)'}
+                        description={editingLanguage ? (t('settings.languageCodeCannotChange' as any, language) || 'Language code cannot be changed') : (t('settings.languageCodeDescription' as any, language) || '2-letter ISO code (e.g., en, ar, ku)')}
                         {...languageFormModal.getInputProps('code')}
                       />
                       <TextInput
-                        label={t('settings.name' as any, language) || 'Name (English)'}
+                        label={t('settings.name' as any, language) || 'Name'}
                         placeholder="English"
                         required
                         {...languageFormModal.getInputProps('name')}
@@ -1591,13 +1606,13 @@ export default function SettingsPage() {
                       />
                       <Switch
                         label={t('settings.rtl' as any, language) || 'Right-to-Left (RTL)'}
-                        description="Enable for languages like Arabic, Hebrew, etc."
+                        description={t('settings.rtlDescription' as any, language) || 'Enable for languages like Arabic, Hebrew, etc.'}
                         {...languageFormModal.getInputProps('rtl', { type: 'checkbox' })}
                       />
                       {!editingLanguage && (
                         <Switch
                           label={t('settings.setAsDefault' as any, language) || 'Set as Default Language'}
-                          description="This will make this language the default for new users"
+                          description={t('settings.setAsDefaultDescription' as any, language) || 'This will make this language the default for new users'}
                           {...languageFormModal.getInputProps('isDefault', { type: 'checkbox' })}
                         />
                       )}
@@ -1609,7 +1624,7 @@ export default function SettingsPage() {
                           />
                           <Switch
                             label={t('settings.setAsDefault' as any, language) || 'Set as Default Language'}
-                            description="This will make this language the default for new users"
+                            description={t('settings.setAsDefaultDescription' as any, language) || 'This will make this language the default for new users'}
                             {...languageFormModal.getInputProps('isDefault', { type: 'checkbox' })}
                           />
                         </>
@@ -1671,7 +1686,7 @@ export default function SettingsPage() {
                   <Grid>
                     <Grid.Col span={{ base: 12, md: 6 }}>
                       <TextInput
-                        label="Restaurant Name"
+                        label={t('restaurant.restaurantName', language) || 'Restaurant Name'}
                         required
                         {...restaurantForm.getInputProps('name')}
                       />

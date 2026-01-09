@@ -21,6 +21,7 @@ export class GeminiTranslationService {
   private readonly logger = new Logger(GeminiTranslationService.name);
   private genAI: GoogleGenerativeAI;
   private model: any;
+  private alternateModel: any; // Add alternate model
   private readonly supportedLanguages = ['en', 'ar', 'ku', 'fr'];
   private readonly defaultModel = 'gemini-pro';
   
@@ -41,10 +42,78 @@ export class GeminiTranslationService {
       this.genAI = new GoogleGenerativeAI(apiKey);
       const modelName = this.configService.get<string>('GEMINI_MODEL') || this.defaultModel;
       this.model = this.genAI.getGenerativeModel({ model: modelName });
-      this.logger.log(`Initialized Gemini AI with model: ${modelName}`);
+      this.logger.log(`Initialized Gemini AI with primary model: ${modelName}`);
+      
+      // Initialize alternate model if configured
+      const alternateModelName = this.configService.get<string>('ALTERNATE_GEMINI_MODEL');
+      if (alternateModelName) {
+        this.alternateModel = this.genAI.getGenerativeModel({ model: alternateModelName });
+        this.logger.log(`Initialized Gemini AI with alternate model: ${alternateModelName}`);
+      }
     } catch (error) {
       this.logger.error(`Failed to initialize Gemini AI: ${error.message}`);
       throw new InternalServerErrorException('Failed to initialize AI translation service');
+    }
+  }
+
+  /**
+   * Check if error is a model overload error
+   */
+  private isModelOverloadError(error: any): boolean {
+    const errorMessage = error?.message?.toLowerCase() || '';
+    const statusCode = error?.response?.status || error?.status;
+    
+    return (
+      statusCode === 503 ||
+      errorMessage.includes('overload') ||
+      errorMessage.includes('service unavailable') ||
+      errorMessage.includes('503') ||
+      errorMessage.includes('model is overloaded')
+    );
+  }
+
+  /**
+   * Execute translation with retry and fallback logic
+   */
+  private async executeTranslationWithRetry(
+    prompt: string,
+    useAlternate: boolean = false,
+    retryCount: number = 0
+  ): Promise<any> {
+    const modelToUse = useAlternate ? this.alternateModel : this.model;
+    const modelName = useAlternate 
+      ? this.configService.get<string>('ALTERNATE_GEMINI_MODEL') || 'alternate'
+      : this.configService.get<string>('GEMINI_MODEL') || this.defaultModel;
+
+    if (!modelToUse) {
+      throw new InternalServerErrorException('No available model for translation');
+    }
+
+    try {
+      return await modelToUse.generateContent(prompt);
+    } catch (error) {
+      if (this.isModelOverloadError(error)) {
+        // If primary model overloaded and we haven't tried alternate yet
+        if (!useAlternate && this.alternateModel && retryCount === 0) {
+          this.logger.warn(`Primary model overloaded, switching to alternate model: ${this.configService.get<string>('ALTERNATE_GEMINI_MODEL')}`);
+          // Wait a bit before trying alternate
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          return this.executeTranslationWithRetry(prompt, true, 0);
+        }
+        
+        // If already using alternate or no alternate available, wait and retry
+        if (retryCount < 2) {
+          const waitTime = (retryCount + 1) * 5000; // 5s, 10s
+          this.logger.warn(`Model overload detected (attempt ${retryCount + 1}/2). Waiting ${waitTime}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          return this.executeTranslationWithRetry(prompt, useAlternate, retryCount + 1);
+        }
+        
+        throw new InternalServerErrorException('Model is overloaded. Please try again later.');
+      }
+      
+      // Re-throw non-overload errors
+      throw error;
     }
   }
 
@@ -65,7 +134,8 @@ Text: "${text}"
 Response format: language_code,confidence
 Example: ar,0.95`;
 
-      const result = await this.model.generateContent(prompt);
+      // Use retry logic with fallback
+      const result = await this.executeTranslationWithRetry(prompt);
       const response = result.response.text().trim();
       
       const [language, confidenceStr] = response.split(',');
@@ -241,7 +311,8 @@ Response format:
 
 Only include the languages requested: ${validTargetLanguages.join(', ')}`;
 
-      const result = await this.model.generateContent(prompt);
+      // Use retry logic with fallback
+      const result = await this.executeTranslationWithRetry(prompt);
       const responseText = result.response.text().trim();
 
       // Parse JSON response

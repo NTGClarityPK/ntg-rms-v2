@@ -5,7 +5,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { CreateCustomerDto, CreateCustomerAddressDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
-import { PaginationDto } from '../../common/dto/pagination.dto';
+import { GetCustomersDto } from './dto/get-customers.dto';
 
 @ApiTags('customers')
 @Controller('customers')
@@ -18,13 +18,9 @@ export class CustomersController {
   @ApiOperation({ summary: 'Get all customers' })
   getCustomers(
     @CurrentUser() user: any,
-    @Query('search') search?: string,
-    @Query('minOrders') minOrders?: number,
-    @Query('minSpent') minSpent?: number,
-    @Query('branchId') branchId?: string,
-    @Query() paginationDto?: PaginationDto,
-    @Query('language') language?: string,
+    @Query() queryDto: GetCustomersDto,
   ) {
+    const { search, minOrders, minSpent, branchId, language, ...paginationDto } = queryDto;
     return this.customersService.getCustomers(
       user.tenantId,
       {

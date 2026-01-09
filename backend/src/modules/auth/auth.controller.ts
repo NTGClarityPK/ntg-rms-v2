@@ -8,8 +8,9 @@ import {
   Get,
   Req,
   Res,
+  Query,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Response, Request } from 'express';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
@@ -88,12 +89,25 @@ export class AuthController {
   @ApiOperation({ summary: 'Get current user profile' })
   @ApiResponse({ status: 200, description: 'User profile retrieved' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async getMe(@CurrentUser() user: any) {
+  async getMe(@CurrentUser() user: any, @Query('language') language?: string) {
+    let userName = user.name || 'User';
+    
+    // Get translated name if language is provided
+    if (language) {
+      try {
+        const translations = await this.authService.getProfile(user.tenantId || user.tenant_id, user.id, language);
+        userName = translations.name;
+      } catch (translationError) {
+        // Fallback to original name
+        console.warn('Failed to get user name translation:', translationError);
+      }
+    }
+    
     // Return user in the correct format
     return {
       id: user.id,
       email: user.email,
-      name: user.name || 'User',
+      name: userName,
       role: user.role,
       tenantId: user.tenantId || user.tenant_id,
     };
@@ -105,8 +119,8 @@ export class AuthController {
   @ApiOperation({ summary: 'Get current user profile' })
   @ApiResponse({ status: 200, description: 'User profile retrieved' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async getProfile(@CurrentUser() user: any) {
-    return this.authService.getProfile(user.tenantId, user.id);
+  async getProfile(@CurrentUser() user: any, @Query('language') language?: string) {
+    return this.authService.getProfile(user.tenantId, user.id, language);
   }
 
   @Put('profile')

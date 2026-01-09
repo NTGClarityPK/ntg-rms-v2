@@ -494,13 +494,6 @@ export function IngredientsPage() {
                               <Text fw={500}>
                                 {ingredient.name}
                               </Text>
-                              {supportedLanguages.length > 0 && ingredientTranslations[ingredient.id] && (
-                                <TranslationStatusBadge
-                                  translations={ingredientTranslations[ingredient.id].name || {}}
-                                  supportedLanguages={supportedLanguages}
-                                  fieldName="name"
-                                />
-                              )}
                             </Group>
                           </Table.Td>
                           <Table.Td>

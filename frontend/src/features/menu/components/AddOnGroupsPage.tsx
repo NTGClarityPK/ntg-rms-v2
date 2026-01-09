@@ -121,7 +121,7 @@ export function AddOnGroupsPage() {
       setLoading(true);
       setError(null);
 
-      const serverGroupsResponse = await menuApi.getAddOnGroups(pagination.paginationParams, selectedBranchId || undefined);
+      const serverGroupsResponse = await menuApi.getAddOnGroups(pagination.paginationParams, selectedBranchId || undefined, language);
       const serverGroups = pagination.extractData(serverGroupsResponse);
       pagination.extractPagination(serverGroupsResponse);
       setAddOnGroups(serverGroups);
@@ -147,19 +147,24 @@ export function AddOnGroupsPage() {
   const loadAddOns = useCallback(async (groupId: string) => {
     try {
       setLoadingAddOns(true);
-      const items = await menuApi.getAddOns(groupId);
+      const items = await menuApi.getAddOns(groupId, language);
       setAddOns(items);
     } catch (err: any) {
       console.error('Failed to load add-ons:', err);
     } finally {
       setLoadingAddOns(false);
     }
-  }, []);
+  }, [language]);
 
   const loadIngredients = useCallback(async () => {
     if (!user?.tenantId) return;
     try {
-      const ingredientsResponse = await inventoryApi.getIngredients({ isActive: true });
+      const ingredientsResponse = await inventoryApi.getIngredients(
+        { isActive: true },
+        undefined,
+        selectedBranchId || undefined,
+        language
+      );
       
       const ingredientsList = Array.isArray(ingredientsResponse) 
         ? ingredientsResponse 
@@ -177,7 +182,7 @@ export function AddOnGroupsPage() {
       console.error('Failed to load ingredients:', err);
       setIngredients([]);
     }
-  }, [user?.tenantId]);
+  }, [user?.tenantId, selectedBranchId, language]);
 
   const loadAddOnRecipe = useCallback(async (addOnId: string) => {
     try {
@@ -236,6 +241,21 @@ export function AddOnGroupsPage() {
         label: ing.name || '',
       }));
   }, [ingredients]);
+
+  // Helper function to translate category values
+  const getTranslatedCategory = useCallback((category: string | null | undefined): string => {
+    if (!category) return '';
+    const categoryMap: Record<string, string> = {
+      'Add': 'menu.categoryAdd',
+      'Remove': 'menu.categoryRemove',
+      'Change': 'menu.categoryChange',
+    };
+    const translationKey = categoryMap[category];
+    if (translationKey) {
+      return t(translationKey as any, language) || category;
+    }
+    return category;
+  }, [language]);
 
   const handleOpenGroupModal = (group?: AddOnGroup) => {
     if (group) {
@@ -629,7 +649,7 @@ export function AddOnGroupsPage() {
                                 <>
                                   <Text size="xs" c="dimmed">•</Text>
                                   <Badge variant="light" color="blue" size="xs">
-                                    {group.category}
+                                    {getTranslatedCategory(group.category)}
                                   </Badge>
                                 </>
                               )}
@@ -862,11 +882,11 @@ export function AddOnGroupsPage() {
               <Grid.Col span={{ base: 12, md: 6 }}>
                 <Select
                   label={t('menu.category' as any, language) || 'Category'}
-                  placeholder="Select category type"
+                  placeholder={t('menu.selectCategory' as any, language) || 'Select category type'}
                   data={[
-                    { value: 'Add', label: 'Add' },
-                    { value: 'Remove', label: 'Remove' },
-                    { value: 'Change', label: 'Change' },
+                    { value: 'Add', label: t('menu.categoryAdd' as any, language) || 'Add' },
+                    { value: 'Remove', label: t('menu.categoryRemove' as any, language) || 'Remove' },
+                    { value: 'Change', label: t('menu.categoryChange' as any, language) || 'Change' },
                   ]}
                   required
                   {...groupForm.getInputProps('category')}

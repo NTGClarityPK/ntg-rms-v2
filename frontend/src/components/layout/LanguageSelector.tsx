@@ -3,6 +3,7 @@
 import { Menu, Button, Group, Text, Stack } from '@mantine/core';
 import { IconLanguage, IconCheck } from '@tabler/icons-react';
 import { useLanguageStore, SUPPORTED_LANGUAGES } from '@/lib/store/language-store';
+import { t } from '@/lib/utils/translations';
 
 interface LanguageSelectorProps {
   variant?: 'button' | 'menu-item';
@@ -22,6 +23,9 @@ export function LanguageSelector({ variant = 'button', size = 'sm' }: LanguageSe
   if (variant === 'menu-item') {
     return (
       <Menu.Item
+        style={{
+          zIndex: 2000,
+        }}
         leftSection={<IconLanguage size={16} />}
         rightSection={
           <Group gap={4}>
@@ -51,7 +55,7 @@ export function LanguageSelector({ variant = 'button', size = 'sm' }: LanguageSe
   }
 
   return (
-    <Menu shadow="md" width={200} position="bottom-end">
+    <Menu zIndex={2000} shadow="md" width={200} position="bottom-end">
       <Menu.Target>
         <Button
           variant="subtle"
@@ -66,7 +70,7 @@ export function LanguageSelector({ variant = 'button', size = 'sm' }: LanguageSe
       </Menu.Target>
 
       <Menu.Dropdown>
-        <Menu.Label>Select Language</Menu.Label>
+        <Menu.Label>{t('common.selectLanguage', language)}</Menu.Label>
         {SUPPORTED_LANGUAGES.map((lang) => (
           <Menu.Item
             key={lang.code}

@@ -5,7 +5,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
-import { PaginationDto } from '../../common/dto/pagination.dto';
+import { GetEmployeesDto } from './dto/get-employees.dto';
 
 @ApiTags('employees')
 @Controller('employees')
@@ -18,12 +18,9 @@ export class EmployeesController {
   @ApiOperation({ summary: 'Get all employees' })
   getEmployees(
     @CurrentUser() user: any,
-    @Query('branchId') branchId?: string,
-    @Query('role') role?: string,
-    @Query('status') status?: string,
-    @Query() paginationDto?: PaginationDto,
-    @Query('language') language?: string,
+    @Query() queryDto: GetEmployeesDto,
   ) {
+    const { branchId, role, status, language, ...paginationDto } = queryDto;
     return this.employeesService.getEmployees(
       user.tenantId,
       { branchId, role, status },

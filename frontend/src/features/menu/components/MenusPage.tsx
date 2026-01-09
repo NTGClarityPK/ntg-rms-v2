@@ -121,12 +121,12 @@ export function MenusPage() {
       setError(null);
 
       // Load menus
-      const menuListResponse = await menuApi.getMenus(undefined, selectedBranchId || undefined);
+      const menuListResponse = await menuApi.getMenus(undefined, selectedBranchId || undefined, language);
       const menuList = Array.isArray(menuListResponse) ? menuListResponse : (menuListResponse?.data || []);
       setMenus(menuList);
 
       // Load food items (all items, not just active, for menu assignment)
-      const itemsResponse = await menuApi.getFoodItems(undefined, undefined, undefined, false, selectedBranchId || undefined);
+      const itemsResponse = await menuApi.getFoodItems(undefined, undefined, undefined, false, selectedBranchId || undefined, language);
       const items = Array.isArray(itemsResponse) ? itemsResponse : (itemsResponse?.data || []);
       // Filter out items without names, but keep all items (active and inactive) for menu assignment
       setFoodItems(items.filter((item) => item.name && item.name.trim()));
@@ -138,7 +138,7 @@ export function MenusPage() {
       }
     }
     //eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.tenantId, selectedBranchId]);
+  }, [user?.tenantId, selectedBranchId, language]);
 
   useEffect(() => {
     loadData();
@@ -211,7 +211,7 @@ export function MenusPage() {
       const limit = 100; // Backend max limit
       
       while (hasMore) {
-        const itemsResponse = await menuApi.getFoodItems(undefined, { page, limit }, undefined, false, selectedBranchId || undefined);
+        const itemsResponse = await menuApi.getFoodItems(undefined, { page, limit }, undefined, false, selectedBranchId || undefined, language);
         const items = Array.isArray(itemsResponse) ? itemsResponse : (itemsResponse?.data || []);
         allItems.push(...items);
         

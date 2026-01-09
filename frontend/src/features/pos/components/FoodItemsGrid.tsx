@@ -120,7 +120,7 @@ export function FoodItemsGrid({
     }
   }, [orderType, itemType]);
 
-  // Reload buffets only when order type changes and we're on buffets tab
+  // Reload buffets only when order type, item type, active menu types, or language changes and we're on buffets tab
   // This prevents full menu reload when switching between dine_in, takeaway, and delivery
   useEffect(() => {
     if (itemType === 'buffets' && orderType === 'dine_in') {
@@ -132,7 +132,7 @@ export function FoodItemsGrid({
       setBuffets([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderType, itemType, activeMenuTypes]);
+  }, [orderType, itemType, activeMenuTypes, language]);
 
   // Notify parent when item type changes
   useEffect(() => {
@@ -141,19 +141,19 @@ export function FoodItemsGrid({
     }
   }, [itemType, onItemTypeChange]);
 
-  // Load categories - reload when branch changes
+  // Load categories - reload when branch or language changes
   const loadCategories = useCallback(async () => {
     if (!selectedBranchId) return;
     
     try {
-      const catsResponse = await menuApi.getCategories(undefined, selectedBranchId);
+      const catsResponse = await menuApi.getCategories(undefined, selectedBranchId, language);
       const cats = Array.isArray(catsResponse) ? catsResponse : (catsResponse?.data || []);
       setCategories(cats.filter((cat: any) => cat.isActive && !cat.deletedAt));
       categoriesLoadedRef.current = true;
     } catch (error) {
       console.error('Failed to load categories:', error);
     }
-  }, [selectedBranchId]);
+  }, [selectedBranchId, language]);
 
   // Load menus - reload when branch changes
   const loadMenus = useCallback(async () => {
@@ -177,8 +177,8 @@ export function FoodItemsGrid({
     // Use debounced search query for API calls to reduce requests
     const effectiveSearchQuery = debouncedSearchQuery;
     
-    // Create a unique key for this request to prevent duplicates
-    const requestKey = `${tenantId}-${selectedCategoryId}-${effectiveSearchQuery}-${itemType}-${foodItemsPagination.page}-${foodItemsPagination.limit}-${buffetsPagination.page}-${buffetsPagination.limit}-${comboMealsPagination.page}-${comboMealsPagination.limit}`;
+    // Create a unique key for this request to prevent duplicates (including language)
+    const requestKey = `${tenantId}-${selectedCategoryId}-${effectiveSearchQuery}-${itemType}-${language}-${foodItemsPagination.page}-${foodItemsPagination.limit}-${buffetsPagination.page}-${buffetsPagination.limit}-${comboMealsPagination.page}-${comboMealsPagination.limit}`;
     
     // Prevent duplicate calls with the same parameters (handles React StrictMode double renders)
     if (lastRequestRef.current === requestKey && loadingRef.current) {
@@ -222,7 +222,8 @@ export function FoodItemsGrid({
           foodItemsPagination.paginationParams,
           requestSearchQuery.trim() || undefined,
           true, // onlyActiveMenus = true - filter by active menus on backend
-          selectedBranchId || undefined // branchId - filter by selected branch
+          selectedBranchId || undefined, // branchId - filter by selected branch
+          language // language - fetch items in selected language
         );
         
         // Check if this response is still relevant (search query hasn't changed)
@@ -251,15 +252,15 @@ export function FoodItemsGrid({
       loadingRef.current = false;
     }
      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, selectedCategoryId, debouncedSearchQuery, itemType, foodItemsPagination.page, foodItemsPagination.limit, buffetsPagination.page, buffetsPagination.limit, comboMealsPagination.page, comboMealsPagination.limit, activeMenuTypes, selectedBranchId]);
+  }, [tenantId, selectedCategoryId, debouncedSearchQuery, itemType, language, foodItemsPagination.page, foodItemsPagination.limit, buffetsPagination.page, buffetsPagination.limit, comboMealsPagination.page, comboMealsPagination.limit, activeMenuTypes, selectedBranchId]);
 
-  // Reload categories when branch changes
+  // Reload categories when branch or language changes
   useEffect(() => {
     if (selectedBranchId) {
       categoriesLoadedRef.current = false; // Reset flag to allow reload
       loadCategories();
     }
-  }, [selectedBranchId, loadCategories]);
+  }, [selectedBranchId, language, loadCategories]);
 
   // Reload menus when branch changes
   useEffect(() => {
@@ -292,7 +293,7 @@ export function FoodItemsGrid({
 
   const loadBuffets = async (activeMenuTypes: string[]) => {
     try {
-      const response = await menuApi.getBuffets(buffetsPagination.paginationParams, selectedBranchId || undefined);
+      const response = await menuApi.getBuffets(buffetsPagination.paginationParams, selectedBranchId || undefined, language);
       const serverBuffets: Buffet[] = buffetsPagination.extractData(response) as Buffet[];
       buffetsPagination.extractPagination(response);
       
@@ -340,7 +341,7 @@ export function FoodItemsGrid({
 
   const loadComboMeals = async (activeMenuTypes: string[]) => {
     try {
-      const response = await menuApi.getComboMeals(comboMealsPagination.paginationParams, selectedBranchId || undefined);
+      const response = await menuApi.getComboMeals(comboMealsPagination.paginationParams, selectedBranchId || undefined, language);
       const serverComboMeals: ComboMeal[] = comboMealsPagination.extractData(response) as ComboMeal[];
       comboMealsPagination.extractPagination(response);
       
@@ -419,7 +420,7 @@ export function FoodItemsGrid({
         const itemsFromAPI = await Promise.all(
           comboMeal.foodItemIds.map(async (id) => {
             try {
-              return await menuApi.getFoodItemById(id);
+              return await menuApi.getFoodItemById(id, language);
             } catch (error) {
               console.error(`Failed to load food item ${id}:`, error);
               return null;
@@ -442,6 +443,7 @@ export function FoodItemsGrid({
     } else {
       setComboMealItems([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modalOpened, selectedItem]);
 
   const handleItemSelected = useCallback(

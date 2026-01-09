@@ -136,7 +136,7 @@ export default function SignupPage() {
             />
 
             <TextInput
-                label="Name"
+                label={t('common.name' as any, language) || 'Name'}
                 placeholder={language === 'ar' ? 'جون دو' : 'John Doe'}
               required
                 leftSection={<IconUser size={18} />}
@@ -236,7 +236,7 @@ export default function SignupPage() {
               </Box>
 
               <Box>
-                <Text size="sm" mb="xs" style={{ color: themeColors.colorTextMedium }}>Name</Text>
+                <Text size="sm" mb="xs" style={{ color: themeColors.colorTextMedium }}>{t('common.name' as any, language) || 'Name'}</Text>
                 <Text fw={500} style={{ color: themeColors.colorTextDark }}>{form.values.name}</Text>
               </Box>
 

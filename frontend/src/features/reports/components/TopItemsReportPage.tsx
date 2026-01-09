@@ -32,9 +32,19 @@ export default function TopItemsReportPage() {
   const loadBranches = useCallback(async () => {
     try {
       const data = await authApi.getAssignedBranches();
+      // Fetch branches with current language to get translated names
+      const { restaurantApi } = await import('@/lib/api/restaurant');
+      const branchesWithLang = await restaurantApi.getBranches(language);
+      
+      // Create a map of branch IDs to translated names
+      const branchNameMap = new Map<string, string>();
+      branchesWithLang.forEach(b => {
+        branchNameMap.set(b.id, b.name);
+      });
+      
       const branchOptions = data.map((b) => ({
         value: b.id,
-        label: `${b.name} (${b.code})`,
+        label: `${branchNameMap.get(b.id) || b.name} (${b.code})`,
       }));
       
       if (user?.role === 'tenant_owner') {

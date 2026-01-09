@@ -10,6 +10,7 @@ import { TranslationService } from '../translations/services/translation.service
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { PaginationParams, PaginatedResponse, getPaginationParams, createPaginatedResponse } from '../../common/dto/pagination.dto';
+import { EntityType, FieldName } from '../translations/dto/create-translation.dto';
 
 @Injectable()
 export class CustomersService {
@@ -695,6 +696,84 @@ export class CustomersService {
     if (error) {
       throw new InternalServerErrorException(`Failed to create address: ${error.message}`);
     }
+
+      // Create translations for address fields using Gemini
+      // Run translations in background (fire and forget) to not block the response
+      (async () => {
+        try {
+          const translationPromises: Promise<any>[] = [];
+
+          // Translate address field
+          if (addressDto.address) {
+            translationPromises.push(
+              this.translationService.createTranslations({
+                entityType: EntityType.CUSTOMER_ADDRESS,
+                entityId: address.id,
+                fieldName: FieldName.ADDRESS,
+                text: addressDto.address,
+              }).catch(err => {
+                console.warn(`Failed to create address translation for address ${address.id}:`, err);
+                return null;
+              })
+            );
+          }
+
+          // Translate city field
+          if (addressDto.city) {
+            translationPromises.push(
+              this.translationService.createTranslations({
+                entityType: EntityType.CUSTOMER_ADDRESS,
+                entityId: address.id,
+                fieldName: FieldName.CITY,
+                text: addressDto.city,
+              }).catch(err => {
+                console.warn(`Failed to create city translation for address ${address.id}:`, err);
+                return null;
+              })
+            );
+          }
+
+          // Translate state field
+          if (addressDto.state) {
+            translationPromises.push(
+              this.translationService.createTranslations({
+                entityType: EntityType.CUSTOMER_ADDRESS,
+                entityId: address.id,
+                fieldName: FieldName.STATE,
+                text: addressDto.state,
+              }).catch(err => {
+                console.warn(`Failed to create state translation for address ${address.id}:`, err);
+                return null;
+              })
+            );
+          }
+
+          // Translate country field
+          if (addressDto.country) {
+            translationPromises.push(
+              this.translationService.createTranslations({
+                entityType: EntityType.CUSTOMER_ADDRESS,
+                entityId: address.id,
+                fieldName: FieldName.COUNTRY,
+                text: addressDto.country,
+              }).catch(err => {
+                console.warn(`Failed to create country translation for address ${address.id}:`, err);
+                return null;
+              })
+            );
+          }
+
+          // Execute all translation calls in parallel (don't await - fire and forget)
+          if (translationPromises.length > 0) {
+            Promise.all(translationPromises).catch(err => {
+              console.error(`Failed to create translations for address ${address.id}:`, err);
+            });
+          }
+        } catch (translationError) {
+          console.warn(`Failed to create address translations for address ${address.id}:`, translationError);
+          // Don't fail the address creation if translation fails
+        }
+      })();
 
     // Transform snake_case to camelCase
     return {

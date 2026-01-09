@@ -210,17 +210,17 @@ export const inventoryApi = {
       endDate?: string;
     },
     pagination?: PaginationParams,
-    language?: string,
+    language?: string, // Parameter kept for consistency but not sent to API (backend doesn't support it)
   ): Promise<StockTransaction[] | PaginatedResponse<StockTransaction>> => {
-    const lang = language || getApiLanguage();
     const params = new URLSearchParams();
-    params.append('language', lang);
     if (filters?.branchId) params.append('branchId', filters.branchId);
     if (filters?.ingredientId) params.append('ingredientId', filters.ingredientId);
     if (filters?.startDate) params.append('startDate', filters.startDate);
     if (filters?.endDate) params.append('endDate', filters.endDate);
     if (pagination?.page) params.append('page', pagination.page.toString());
     if (pagination?.limit) params.append('limit', pagination.limit.toString());
+    // Note: language parameter is not sent as the backend DTO doesn't support it
+    // Translation will be handled on the frontend using translations API
     const response = await apiClient.get<StockTransaction[] | PaginatedResponse<StockTransaction>>(`/inventory/stock/transactions?${params.toString()}`);
     return response.data;
   },
@@ -256,19 +256,21 @@ export const inventoryApi = {
     category?: string;
     lowStockOnly?: boolean;
     branchId?: string;
-  }): Promise<any[]> => {
+  }, language?: string): Promise<any[]> => {
     const params = new URLSearchParams();
     if (filters?.category) params.append('category', filters.category);
     if (filters?.lowStockOnly) params.append('lowStockOnly', 'true');
     if (filters?.branchId) params.append('branchId', filters.branchId);
+    if (language) params.append('language', language);
     
     const response = await apiClient.get(`/inventory/reports/current-stock?${params.toString()}`);
     return response.data;
   },
 
-  getLowStockAlerts: async (branchId?: string): Promise<Ingredient[]> => {
+  getLowStockAlerts: async (branchId?: string, language?: string): Promise<Ingredient[]> => {
     const params = new URLSearchParams();
     if (branchId) params.append('branchId', branchId);
+    if (language) params.append('language', language);
     const response = await apiClient.get(`/inventory/reports/low-stock-alerts${params.toString() ? `?${params.toString()}` : ''}`);
     return response.data;
   },
@@ -278,12 +280,14 @@ export const inventoryApi = {
     ingredientId?: string;
     startDate?: string;
     endDate?: string;
-  }): Promise<StockTransaction[]> => {
+  }, language?: string): Promise<StockTransaction[]> => {
     const params = new URLSearchParams();
     if (filters?.branchId) params.append('branchId', filters.branchId);
     if (filters?.ingredientId) params.append('ingredientId', filters.ingredientId);
     if (filters?.startDate) params.append('startDate', filters.startDate);
     if (filters?.endDate) params.append('endDate', filters.endDate);
+    // Note: language parameter is not sent as the backend DTO doesn't support it
+    // Translation will be handled on the frontend using translations API
     
     const response = await apiClient.get(`/inventory/reports/stock-movement?${params.toString()}`);
     return response.data;

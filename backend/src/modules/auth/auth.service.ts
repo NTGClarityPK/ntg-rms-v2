@@ -153,6 +153,20 @@ export class AuthService {
 
     console.log('User record created successfully:', userData.id);
 
+    // Create translations for user name automatically
+    try {
+      await this.translationService.createTranslations({
+        entityType: 'user',
+        entityId: userData.id,
+        fieldName: 'name',
+        text: signupDto.name,
+      });
+      console.log('Translations created for user name');
+    } catch (translationError) {
+      console.error('Failed to create translations for user name:', translationError);
+      // Don't fail signup if translation creation fails
+    }
+
     // Assign role based on user role field
     try {
       const roles = await this.rolesService.getRoles();
@@ -856,7 +870,7 @@ export class AuthService {
     return newUser;
   }
 
-  async getProfile(tenantId: string, userId: string) {
+  async getProfile(tenantId: string, userId: string, language?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
     const { data: user, error } = await supabase
       .from('users')
@@ -869,10 +883,24 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
+    // Get translated name if language is provided
+    let userName = user.name as string;
+    if (language) {
+      try {
+        const translations = await this.translationService.getEntityTranslations('user' as any, userId);
+        if (translations?.name && translations.name[language]) {
+          userName = translations.name[language];
+        }
+      } catch (translationError) {
+        console.warn('Failed to get user name translation:', translationError);
+        // Fallback to original name
+      }
+    }
+
     return {
       id: user.id as string,
       email: user.email as string,
-      name: user.name as string,
+      name: userName,
       phone: user.phone as string | undefined,
       role: user.role as string,
       tenantId: user.tenant_id as string,
@@ -971,10 +999,31 @@ export class AuthService {
       throw new UnauthorizedException(`Failed to update profile: ${error.message}`);
     }
 
+    // Update translations if name was changed
+    if (updateProfileDto.name !== undefined) {
+      try {
+        await this.translationService.createTranslations({
+          entityType: 'user' as any,
+          entityId: userId,
+          fieldName: 'name',
+          text: updateProfileDto.name,
+        });
+        console.log('Translations updated for user name');
+      } catch (translationError) {
+        console.error('Failed to update translations for user name:', translationError);
+        // Don't fail profile update if translation update fails
+      }
+    }
+
+    // Get translated name for response (use current language if available, otherwise use updated name)
+    let userName = updatedUser.name as string;
+    // Note: We could accept a language parameter here, but for now just return the updated name
+    // The frontend can fetch translations separately if needed
+
     return {
       id: updatedUser.id as string,
       email: updatedUser.email as string,
-      name: updatedUser.name as string,
+      name: userName,
       phone: updatedUser.phone as string | undefined,
       role: updatedUser.role as string,
       tenantId: updatedUser.tenant_id as string,
@@ -1246,7 +1295,7 @@ export class AuthService {
           currentStock: 100,
           minimumThreshold: 20,
           isActive: true,
-        });
+        }, branchId);
 
         const burgerBun = await this.inventoryService.createIngredient(tenantId, {
           name: 'Burger Bun',
@@ -1255,7 +1304,7 @@ export class AuthService {
           currentStock: 150,
           minimumThreshold: 30,
           isActive: true,
-        });
+        }, branchId);
 
         const lettuce = await this.inventoryService.createIngredient(tenantId, {
           name: 'Lettuce',
@@ -1264,7 +1313,7 @@ export class AuthService {
           currentStock: 200,
           minimumThreshold: 50,
           isActive: true,
-        });
+        }, branchId);
 
         const tomato = await this.inventoryService.createIngredient(tenantId, {
           name: 'Tomato',
@@ -1273,7 +1322,7 @@ export class AuthService {
           currentStock: 150,
           minimumThreshold: 30,
           isActive: true,
-        });
+        }, branchId);
 
         // Create ingredients for pizza
         const pizzaDough = await this.inventoryService.createIngredient(tenantId, {
@@ -1283,7 +1332,7 @@ export class AuthService {
           currentStock: 80,
           minimumThreshold: 15,
           isActive: true,
-        });
+        }, branchId);
 
         const pizzaSauce = await this.inventoryService.createIngredient(tenantId, {
           name: 'Pizza Sauce',
@@ -1292,7 +1341,7 @@ export class AuthService {
           currentStock: 50,
           minimumThreshold: 10,
           isActive: true,
-        });
+        }, branchId);
 
         const mozzarellaCheese = await this.inventoryService.createIngredient(tenantId, {
           name: 'Mozzarella Cheese',
@@ -1301,7 +1350,7 @@ export class AuthService {
           currentStock: 60,
           minimumThreshold: 12,
           isActive: true,
-        });
+        }, branchId);
 
         const pepperoni = await this.inventoryService.createIngredient(tenantId, {
           name: 'Pepperoni',
@@ -1310,7 +1359,7 @@ export class AuthService {
           currentStock: 200,
           minimumThreshold: 40,
           isActive: true,
-        });
+        }, branchId);
 
         // Create recipe for burger
         await this.inventoryService.createOrUpdateRecipe(tenantId, {
@@ -1337,7 +1386,7 @@ export class AuthService {
               unit: 'piece',
             },
           ],
-        });
+        }, branchId);
         console.log('Recipe 1 created for burger');
 
         // Create recipe for pizza
@@ -1366,7 +1415,7 @@ export class AuthService {
                 unit: 'slice',
               },
             ],
-          });
+          }, branchId);
           console.log('Recipe 2 created for pizza');
         }
         } catch (error) {

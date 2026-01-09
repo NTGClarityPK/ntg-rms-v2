@@ -2337,6 +2337,9 @@ export class MenuService {
     // Get menus from menu_items junction table AND menus table
     const supabase = this.supabaseService.getServiceRoleClient();
     
+    // Ensure default menus exist (this will create them if they don't, and create translations)
+    await this.createDefaultMenus(tenantId, branchId);
+    
     // First, get all menus from the menus table (this includes menus without food items)
     let menuDataQuery = supabase
       .from('menus')
@@ -2467,8 +2470,9 @@ export class MenuService {
         const menuId = menuIdMap.get(menuType);
         
         // Get translated name if translation exists
+        // Try to get translation if we have a menuId (even if using default name)
         let translatedName = displayName;
-        if (menuId && storedName) {
+        if (menuId) {
           try {
             const nameTranslation = await this.translationService.getTranslation({
               entityType: 'menu',
@@ -3088,15 +3092,77 @@ export class MenuService {
       }));
 
     if (menusToCreate.length > 0) {
-      const { error: insertError } = await supabase
+      const { data: insertedMenus, error: insertError } = await supabase
         .from('menus')
-        .insert(menusToCreate);
+        .insert(menusToCreate)
+        .select('id, menu_type, name');
 
       if (insertError && !insertError.message.includes('relation') && !insertError.message.includes('does not exist')) {
         console.warn('Failed to create default menus:', insertError.message);
         // Don't throw - this is non-critical
       } else {
         console.log(`Created ${menusToCreate.length} default menus for tenant:`, tenantId);
+        
+        // Create translations for default menus
+        if (insertedMenus && insertedMenus.length > 0) {
+          for (const menu of insertedMenus) {
+            try {
+              await this.translationService.createTranslations({
+                entityType: 'menu',
+                entityId: menu.id,
+                fieldName: 'name',
+                text: menu.name,
+              });
+            } catch (translationError) {
+              console.warn(`Failed to create translations for default menu ${menu.menu_type}:`, translationError);
+            }
+          }
+        }
+      }
+    }
+    
+    // Also ensure translations exist for existing default menus that might not have them
+    // Get all existing default menu types
+    const defaultMenuTypes = ['all_day', 'breakfast', 'lunch', 'dinner', 'kids_special'];
+    let existingMenusQuery = supabase
+      .from('menus')
+      .select('id, menu_type, name')
+      .eq('tenant_id', tenantId)
+      .in('menu_type', defaultMenuTypes)
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      existingMenusQuery = existingMenusQuery.eq('branch_id', branchId);
+    } else {
+      existingMenusQuery = existingMenusQuery.is('branch_id', null);
+    }
+    
+    const { data: existingDefaultMenus } = await existingMenusQuery;
+    
+    if (existingDefaultMenus && existingDefaultMenus.length > 0) {
+      for (const menu of existingDefaultMenus) {
+        try {
+          // Check if translation metadata exists for this menu
+          const { data: metadata } = await supabase
+            .from('translation_metadata')
+            .select('id')
+            .eq('entity_type', 'menu')
+            .eq('entity_id', menu.id)
+            .single();
+          
+          // If no translation metadata exists, create translations
+          if (!metadata) {
+            await this.translationService.createTranslations({
+              entityType: 'menu',
+              entityId: menu.id,
+              fieldName: 'name',
+              text: menu.name,
+            });
+          }
+        } catch (translationError) {
+          // Ignore errors - translations might already exist or there might be other issues
+          console.warn(`Failed to ensure translations for existing default menu ${menu.menu_type}:`, translationError);
+        }
       }
     }
   }

@@ -74,6 +74,7 @@ const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const geminiApiKey = process.env.GEMINI_API_KEY;
 const geminiModel = process.env.GEMINI_MODEL || 'gemini-pro';
+const alternateGeminiModel = process.env.ALTERNATE_GEMINI_MODEL || 'gemini-2.5-flash-lite';
 
 if (!supabaseUrl || !supabaseServiceRoleKey) {
   console.error('❌ Missing Supabase configuration. Please check your .env file.');
@@ -124,6 +125,10 @@ class RateLimiter {
     
     // Always wait minimum delay to be safe
     await new Promise(resolve => setTimeout(resolve, this.minDelay));
+  }
+
+  clear(): void {
+    this.requests = [];
   }
 }
 
@@ -376,16 +381,20 @@ async function backfillInvoiceSettings(tenantId?: string): Promise<{ processed: 
   return { processed: stats.processed, skipped: stats.skipped, errors: stats.errors };
 }
 
-// AI Translation helper with rate limiting
-async function translateText(text: string, targetLanguage: string): Promise<string> {
+// AI Translation helper with rate limiting and model overload handling
+async function translateText(text: string, targetLanguage: string, useAlternate: boolean = false, retryCount: number = 0): Promise<string> {
   if (!text || !text.trim()) return text;
   if (!genAI) throw new Error('Gemini AI not initialized');
 
   // Wait for rate limiter before making request
   await rateLimiter.wait();
 
+  // Select model to use
+  const modelToUse = useAlternate ? alternateGeminiModel : geminiModel;
+  const modelName = useAlternate ? alternateGeminiModel : geminiModel;
+
   try {
-    const model = genAI.getGenerativeModel({ model: geminiModel });
+    const model = genAI.getGenerativeModel({ model: modelToUse });
     
     const prompt = `Translate the following text to ${targetLanguage === 'ar' ? 'Arabic' : targetLanguage === 'ku' ? 'Kurdish (Kurmanji)' : targetLanguage === 'fr' ? 'French' : 'English'}. Only return the translation, nothing else.
 
@@ -397,15 +406,46 @@ Text: "${text}"`;
 
     return translation || text;
   } catch (error: any) {
-    // Check if it's a rate limit error
+    // Check if it's a model overload error
+    const isOverloadError = 
+      error?.response?.status === 503 ||
+      error?.message?.toLowerCase().includes('overload') ||
+      error?.message?.toLowerCase().includes('service unavailable') ||
+      error?.message?.toLowerCase().includes('503') ||
+      error?.message?.toLowerCase().includes('model is overloaded');
+
+    if (isOverloadError) {
+      // If primary model overloaded and we haven't tried alternate yet
+      if (!useAlternate && alternateGeminiModel && retryCount === 0) {
+        console.log(`   ⚠️  Primary model (${geminiModel}) overloaded, switching to alternate model (${alternateGeminiModel})...`);
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s before switching
+        rateLimiter.clear(); // Clear rate limiter after wait
+        return translateText(text, targetLanguage, true, 0);
+      }
+      
+      // If already using alternate or no alternate, wait and retry
+      if (retryCount < 2) {
+        const waitTime = (retryCount + 1) * 5000; // 5s, 10s
+        console.log(`   ⚠️  Model overload detected (attempt ${retryCount + 1}/2). Waiting ${waitTime}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        rateLimiter.clear(); // Clear rate limiter after wait
+        return translateText(text, targetLanguage, useAlternate, retryCount + 1);
+      }
+      
+      console.error(`   ❌ Model overload: Max retries reached. Returning original text.`);
+      return text; // Return original text after max retries
+    }
+
+    // Check if it's a rate limit error (429)
     if (error?.message?.includes('429') || error?.message?.includes('quota') || error?.message?.includes('rate limit')) {
       console.error(`   ⚠️  Rate limit hit! Waiting 60 seconds before retry...`);
       await new Promise(resolve => setTimeout(resolve, 60000)); // Wait 1 minute
       // Clear rate limiter to start fresh
-      rateLimiter['requests'] = [];
+      rateLimiter.clear();
       // Retry once
-      return translateText(text, targetLanguage);
+      return translateText(text, targetLanguage, useAlternate, 0);
     }
+    
     console.error(`   ⚠️  Translation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     return text; // Return original text on error
   }

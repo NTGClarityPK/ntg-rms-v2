@@ -49,6 +49,7 @@ import { useDateFormat } from '@/lib/hooks/use-date-format';
 import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
+import { translationsApi } from '@/lib/api/translations';
 
 dayjs.extend(relativeTime);
 
@@ -101,7 +102,10 @@ export default function OrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [detailsModalOpened, { open: openDetailsModal, close: closeDetailsModal }] = useDisclosure(false);
   const [markingAsPaidOrderId, setMarkingAsPaidOrderId] = useState<string | null>(null);
-
+  // Branch translations cache: { branchId: { name: { languageCode: string } } }
+  const [branchTranslationsCache, setBranchTranslationsCache] = useState<{
+    [branchId: string]: { name?: { [languageCode: string]: string } };
+  }>({});
 
   // Ref to store the latest loadOrders function for use in subscriptions
   // This prevents subscription recreation while ensuring we always use the latest function
@@ -211,6 +215,38 @@ export default function OrdersPage() {
         
         // Set orders from backend
         setOrders(backendOrders);
+        
+        // Load branch names with current language
+        // Since branches might not have translations table, we fetch them with language parameter
+        const branchIds = new Set<string>();
+        backendOrders.forEach(order => {
+          if (order.branchId) {
+            branchIds.add(order.branchId);
+          }
+        });
+        
+        // Fetch branches with current language to get translated names
+        if (branchIds.size > 0) {
+          try {
+            const { restaurantApi } = await import('@/lib/api/restaurant');
+            const allBranches = await restaurantApi.getBranches(language);
+            const newBranchTranslations: typeof branchTranslationsCache = { ...branchTranslationsCache };
+            
+            allBranches.forEach(branch => {
+              if (branchIds.has(branch.id)) {
+                newBranchTranslations[branch.id] = {
+                  name: {
+                    [language]: branch.name,
+                  },
+                };
+              }
+            });
+            
+            setBranchTranslationsCache(newBranchTranslations);
+          } catch (err) {
+            console.warn('Failed to load branch translations:', err);
+          }
+        }
       } catch (error: any) {
         // Don't set error state if request was aborted
         if (abortController.signal.aborted) {
@@ -244,6 +280,7 @@ export default function OrdersPage() {
         }
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBranchId, selectedOrderType, selectedPaymentStatus, selectedStatuses, debouncedSearchQuery, showMyOrdersOnly, user?.email, language, pagination]);
 
   // Update ref whenever loadOrders changes
@@ -603,7 +640,12 @@ export default function OrdersPage() {
                         <Group gap="md" align="flex-start">
                           {order.branch && order.branch.name && (
                             <Text size="sm" c="dimmed">
-                              {order.branch.name}
+                              {(() => {
+                                const translations = branchTranslationsCache[order.branchId || '']?.name;
+                                return translations && translations[language] 
+                                  ? translations[language] 
+                                  : order.branch.name;
+                              })()}
                             </Text>
                           )}
                           {order.waiterName && (

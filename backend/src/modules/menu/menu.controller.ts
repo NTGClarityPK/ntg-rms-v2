@@ -56,10 +56,16 @@ export class MenuController {
   @ApiOperation({ summary: 'Get all categories with subcategories' })
   getCategories(
     @CurrentUser() user: any,
-    @Query() paginationDto?: PaginationDto,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
     @Query('branchId') branchId?: string,
     @Query('language') language?: string,
   ) {
+    const paginationDto: PaginationDto = {
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+      branchId: branchId,
+    };
     return this.menuService.getCategories(user.tenantId, paginationDto, branchId, language || 'en');
   }
 
@@ -221,10 +227,16 @@ export class MenuController {
   @ApiOperation({ summary: 'Get all add-on groups' })
   getAddOnGroups(
     @CurrentUser() user: any,
-    @Query() paginationDto?: PaginationDto,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
     @Query('branchId') branchId?: string,
     @Query('language') language?: string,
   ) {
+    const paginationDto: PaginationDto = {
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+      branchId: branchId,
+    };
     return this.menuService.getAddOnGroups(user.tenantId, paginationDto, branchId, language || 'en');
   }
 
@@ -326,10 +338,16 @@ export class MenuController {
   @ApiOperation({ summary: 'Get all menus (grouped by menu type)' })
   getMenus(
     @CurrentUser() user: any,
-    @Query() paginationDto?: PaginationDto,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
     @Query('branchId') branchId?: string,
     @Query('language') language?: string,
   ) {
+    const paginationDto: PaginationDto = {
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+      branchId: branchId,
+    };
     return this.menuService.getMenus(user.tenantId, paginationDto, branchId, language || 'en');
   }
 
@@ -393,10 +411,16 @@ export class MenuController {
   @ApiOperation({ summary: 'Get all buffets' })
   getBuffets(
     @CurrentUser() user: any,
-    @Query() paginationDto?: PaginationDto,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
     @Query('branchId') branchId?: string,
     @Query('language') language?: string,
   ) {
+    const paginationDto: PaginationDto = {
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+      branchId: branchId,
+    };
     return this.menuService.getBuffets(user.tenantId, paginationDto, branchId, language || 'en');
   }
 
@@ -464,10 +488,16 @@ export class MenuController {
   @ApiOperation({ summary: 'Get all combo meals' })
   getComboMeals(
     @CurrentUser() user: any,
-    @Query() paginationDto?: PaginationDto,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
     @Query('branchId') branchId?: string,
     @Query('language') language?: string,
   ) {
+    const paginationDto: PaginationDto = {
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+      branchId: branchId,
+    };
     return this.menuService.getComboMeals(user.tenantId, paginationDto, branchId, language || 'en');
   }
 
@@ -535,10 +565,16 @@ export class MenuController {
   @ApiOperation({ summary: 'Get all variation groups' })
   getVariationGroups(
     @CurrentUser() user: any,
-    @Query() paginationDto?: PaginationDto,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
     @Query('branchId') branchId?: string,
     @Query('language') language?: string,
   ) {
+    const paginationDto: PaginationDto = {
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+      branchId: branchId,
+    };
     return this.menuService.getVariationGroups(user.tenantId, paginationDto, branchId, language || 'en');
   }
 

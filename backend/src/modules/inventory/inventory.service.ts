@@ -1642,7 +1642,7 @@ export class InventoryService {
       addOnId?: string;
     }> = [];
     const transactionDate = new Date().toISOString();
-    const reasonText = `Auto deduction - Token: ${tokenNumber}`;
+    const reasonText = `AUTO_DEDUCTION_TOKEN:${tokenNumber}`;
     const transactionType = 'usage';
 
     // Process deductions and collect them

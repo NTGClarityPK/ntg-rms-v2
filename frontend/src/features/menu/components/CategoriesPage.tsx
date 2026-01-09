@@ -394,13 +394,6 @@ export function CategoriesPage() {
                         <Text fw={500}>
                           {category.name || ''}
                         </Text>
-                        {supportedLanguages.length > 0 && categoryTranslations[category.id] && (
-                          <TranslationStatusBadge
-                            translations={categoryTranslations[category.id].name || {}}
-                            supportedLanguages={supportedLanguages}
-                            fieldName="name"
-                          />
-                        )}
                       </Group>
                       {category.description && (
                         <Text size="sm" c="dimmed">
@@ -442,13 +435,6 @@ export function CategoriesPage() {
                           <Text size="sm" c="dimmed">
                             {sub.name || ''}
                           </Text>
-                          {supportedLanguages.length > 0 && categoryTranslations[sub.id] && (
-                            <TranslationStatusBadge
-                              translations={categoryTranslations[sub.id].name || {}}
-                              supportedLanguages={supportedLanguages}
-                              fieldName="name"
-                            />
-                          )}
                         </Group>
                         <Group gap="xs" align="center">
                           <Badge color={getBadgeColorForText(sub.isActive ? t('menu.active', language) : t('menu.inactive', language))} variant="light">

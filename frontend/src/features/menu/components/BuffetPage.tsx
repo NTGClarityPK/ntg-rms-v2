@@ -101,14 +101,14 @@ export function BuffetPage() {
       setLoading(true);
 
       // Load menus for menu type selection (with branch filter)
-      const menuListResponse = await menuApi.getMenus(undefined, selectedBranchId || undefined);
+      const menuListResponse = await menuApi.getMenus(undefined, selectedBranchId || undefined, language);
       const menuList = Array.isArray(menuListResponse) ? menuListResponse : (menuListResponse?.data || []);
       setMenus(menuList);
 
       // Load buffets
       if (navigator.onLine) {
         try {
-          const serverResponse = await menuApi.getBuffets(pagination.paginationParams, selectedBranchId || undefined);
+          const serverResponse = await menuApi.getBuffets(pagination.paginationParams, selectedBranchId || undefined, language);
           const serverBuffets = pagination.extractData(serverResponse);
           pagination.extractPagination(serverResponse);
           setBuffets(serverBuffets);
@@ -125,7 +125,7 @@ export function BuffetPage() {
       setLoading(false);
     }
     //eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.tenantId, pagination]);
+  }, [user?.tenantId, selectedBranchId, language, pagination.page, pagination.limit]);
 
   useEffect(() => {
     loadData();

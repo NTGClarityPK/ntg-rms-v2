@@ -34,6 +34,7 @@ import { getWarningColor, getBadgeColorForText } from '@/lib/utils/theme';
 import { useCurrency } from '@/lib/hooks/use-currency';
 import { formatCurrency } from '@/lib/utils/currency-formatter';
 import { INGREDIENT_CATEGORIES } from '@/shared/constants/ingredients.constants';
+import { translationsApi } from '@/lib/api/translations';
 
 const CATEGORIES = [
   { value: '', label: 'All Categories' },
@@ -61,19 +62,39 @@ export function InventoryReportsPage() {
   const [activeTab, setActiveTab] = useState<string>('current-stock');
   const [branches, setBranches] = useState<Array<{ value: string; label: string }>>([]);
   const [selectedBranchFilter, setSelectedBranchFilter] = useState<string>('');
+  // Translations cache for ingredients: { ingredientId: { name: { languageCode: string } } }
+  const [ingredientTranslationsCache, setIngredientTranslationsCache] = useState<{
+    [ingredientId: string]: { name?: { [languageCode: string]: string } };
+  }>({});
 
   const loadBranches = useCallback(async () => {
     try {
       const data = await authApi.getAssignedBranches();
-      const branchOptions = data.map((b) => ({
-        value: b.id,
-        label: `${b.name} (${b.code})`,
-      }));
+      // Fetch branches with current language to get translated names
+      const { restaurantApi } = await import('@/lib/api/restaurant');
+      const branchesWithLang = await restaurantApi.getBranches(language);
+      
+      // Create a map of branch IDs to translated names and codes
+      const branchMap = new Map<string, { name: string; code: string }>();
+      branchesWithLang.forEach(b => {
+        branchMap.set(b.id, { name: b.name, code: b.code });
+      });
+      
+      // Use translated names from getBranches, but only include branches from getAssignedBranches
+      const branchOptions = data
+        .filter(b => branchMap.has(b.id)) // Only include branches that exist in translated list
+        .map((b) => {
+          const translatedBranch = branchMap.get(b.id);
+          return {
+            value: b.id,
+            label: `${translatedBranch?.name || b.name} (${translatedBranch?.code || b.code})`,
+          };
+        });
       
       if (user?.role === 'tenant_owner') {
         branchOptions.unshift({
           value: 'all',
-          label: language === 'ar' ? 'جميع الفروع' : 'All Branches',
+          label: language === 'ar' ? 'جميع الفروع' : language === 'ku' ? 'هه موو لقه كان' : 'All Branches',
         });
       }
       
@@ -96,12 +117,12 @@ export function InventoryReportsPage() {
         : (selectedBranchId || undefined);
       if (branchIdToUse) filters.branchId = branchIdToUse;
 
-      const serverData = await inventoryApi.getCurrentStockReport(filters);
+      const serverData = await inventoryApi.getCurrentStockReport(filters, language);
       setCurrentStock(serverData);
     } catch (err: any) {
       console.error('Failed to load current stock:', err);
     }
-  }, [user?.tenantId, categoryFilter, lowStockOnly, selectedBranchId, selectedBranchFilter]);
+  }, [user?.tenantId, categoryFilter, lowStockOnly, selectedBranchId, selectedBranchFilter, language]);
 
   const loadLowStockAlerts = useCallback(async () => {
     if (!user?.tenantId) return;
@@ -111,12 +132,34 @@ export function InventoryReportsPage() {
       const branchIdToUse = selectedBranchFilter && selectedBranchFilter !== 'all' 
         ? selectedBranchFilter 
         : (selectedBranchId || undefined);
-      const serverData = await inventoryApi.getLowStockAlerts(branchIdToUse);
+      const serverData = await inventoryApi.getLowStockAlerts(branchIdToUse, language);
       setLowStockAlerts(serverData);
+      
+      // Load translations for ingredients in low stock alerts
+      const ingredientIds = new Set<string>();
+      serverData.forEach((ingredient: Ingredient) => {
+        if (ingredient.id) {
+          ingredientIds.add(ingredient.id);
+        }
+      });
+      
+      // Load translations
+      const newTranslations: typeof ingredientTranslationsCache = { ...ingredientTranslationsCache };
+      for (const ingredientId of ingredientIds) {
+        if (newTranslations[ingredientId]) continue;
+        try {
+          const translations = await translationsApi.getEntityTranslations('ingredient', ingredientId);
+          newTranslations[ingredientId] = translations;
+        } catch (err) {
+          console.warn(`Failed to load translations for ingredient ${ingredientId}:`, err);
+        }
+      }
+      setIngredientTranslationsCache(newTranslations);
     } catch (err: any) {
       console.error('Failed to load low stock alerts:', err);
     }
-  }, [user?.tenantId, selectedBranchId, selectedBranchFilter]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.tenantId, selectedBranchId, selectedBranchFilter, language]);
 
   const loadStockMovement = useCallback(async () => {
     if (!user?.tenantId) return;
@@ -131,16 +174,38 @@ export function InventoryReportsPage() {
       if (startDate) filters.startDate = startDate.toISOString().split('T')[0];
       if (endDate) filters.endDate = endDate.toISOString().split('T')[0];
 
-      const serverData = await inventoryApi.getStockMovementReport(filters);
+      const serverData = await inventoryApi.getStockMovementReport(filters, language);
       setStockMovement(serverData);
+      
+      // Load translations for ingredients in stock movement
+      const ingredientIds = new Set<string>();
+      serverData.forEach((tx: StockTransaction) => {
+        if (tx.ingredientId) {
+          ingredientIds.add(tx.ingredientId);
+        }
+      });
+      
+      // Load translations
+      const newTranslations: typeof ingredientTranslationsCache = { ...ingredientTranslationsCache };
+      for (const ingredientId of ingredientIds) {
+        if (newTranslations[ingredientId]) continue;
+        try {
+          const translations = await translationsApi.getEntityTranslations('ingredient', ingredientId);
+          newTranslations[ingredientId] = translations;
+        } catch (err) {
+          console.warn(`Failed to load translations for ingredient ${ingredientId}:`, err);
+        }
+      }
+      setIngredientTranslationsCache(newTranslations);
     } catch (err: any) {
       console.error('Failed to load stock movement:', err);
     }
-  }, [user?.tenantId, selectedBranchId, selectedBranchFilter, startDate, endDate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.tenantId, selectedBranchId, selectedBranchFilter, startDate, endDate, language]);
 
   useEffect(() => {
     loadBranches();
-  }, [loadBranches]);
+  }, [loadBranches, language]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -167,6 +232,41 @@ export function InventoryReportsPage() {
     };
     return typeMap[type] || type;
   };
+
+  // Helper function to get translated ingredient name
+  const getTranslatedIngredientName = useCallback((ingredientId: string | undefined, fallbackName: string | undefined): string => {
+    if (!ingredientId || !fallbackName) return fallbackName || '';
+    
+    const translations = ingredientTranslationsCache[ingredientId]?.name;
+    if (translations && translations[language]) {
+      return translations[language];
+    }
+    return fallbackName;
+  }, [ingredientTranslationsCache, language]);
+
+  // Helper function to translate reason text (e.g., auto deduction messages)
+  const getTranslatedReason = useCallback((reason: string | undefined | null): string => {
+    if (!reason) return '-';
+    
+    // Check if it's an auto deduction token message (new format)
+    const autoDeductionMatch = reason.match(/^AUTO_DEDUCTION_TOKEN:(\d+)$/);
+    if (autoDeductionMatch) {
+      const tokenNumber = autoDeductionMatch[1];
+      const translated = t('inventory.autoDeductionToken', language);
+      return translated.replace('{token}', tokenNumber);
+    }
+    
+    // Check if it's an auto deduction token message (old format for backward compatibility)
+    const oldFormatMatch = reason.match(/^Auto deduction - Token: (\d+)$/);
+    if (oldFormatMatch) {
+      const tokenNumber = oldFormatMatch[1];
+      const translated = t('inventory.autoDeductionToken', language);
+      return translated.replace('{token}', tokenNumber);
+    }
+    
+    // Return original reason if no translation needed
+    return reason;
+  }, [language]);
 
   return (
     <Stack gap="md">
@@ -218,7 +318,7 @@ export function InventoryReportsPage() {
               const deficit = ingredient.minimumThreshold - ingredient.currentStock;
               return (
                 <Text key={ingredient.id} size="sm">
-                  • {ingredient.name}: {ingredient.currentStock} {ingredient.unitOfMeasurement} 
+                  • {getTranslatedIngredientName(ingredient.id, ingredient.name)}: {ingredient.currentStock} {ingredient.unitOfMeasurement} 
                   ({t('inventory.stockDeficit', language)}: {deficit} {ingredient.unitOfMeasurement})
                 </Text>
               );
@@ -319,7 +419,7 @@ export function InventoryReportsPage() {
                 <Table.Tr key={item.id}>
                   <Table.Td>
                     <Text fw={500}>
-                      {item.name}
+                      {getTranslatedIngredientName(item.id, item.name)}
                     </Text>
                   </Table.Td>
                   <Table.Td>
@@ -407,7 +507,7 @@ export function InventoryReportsPage() {
                   <Table.Td>
                     {tx.ingredient ? (
                       <Text fw={500}>
-                        {tx.ingredient.name}
+                        {getTranslatedIngredientName(tx.ingredientId, tx.ingredient?.name)}
                       </Text>
                     ) : (
                       <Text size="sm" c="dimmed">-</Text>
@@ -450,7 +550,7 @@ export function InventoryReportsPage() {
                     )}
                   </Table.Td>
                   <Table.Td>
-                    <Text size="sm">{tx.reason || '-'}</Text>
+                    <Text size="sm">{getTranslatedReason(tx.reason)}</Text>
                   </Table.Td>
                 </Table.Tr>
               ))}

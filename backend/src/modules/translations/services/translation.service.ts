@@ -33,18 +33,41 @@ export class TranslationService {
     userId?: string,
   ): Promise<{ sourceLanguage: string; translations: TranslationResult }> {
     try {
-      // Step 1: Detect source language if not provided
+      // Step 1: Get supported languages first (for validation)
+      const supportedLanguages = this.geminiService.getSupportedLanguages();
+      const defaultLanguage = 'en'; // Default fallback language
+
+      // Step 2: Detect source language if not provided
       let sourceLanguage = dto.sourceLanguage;
       if (!sourceLanguage) {
         const detection = await this.geminiService.detectLanguage(dto.text);
-        sourceLanguage = detection.language;
+        const detectedLanguage = detection.language;
+        
+        // Normalize detected language to supported languages
+        // If detected language is not supported, use default (en)
+        if (supportedLanguages.includes(detectedLanguage)) {
+          sourceLanguage = detectedLanguage;
+        } else {
+          sourceLanguage = defaultLanguage;
+          this.logger.warn(
+            `Detected language '${detectedLanguage}' is not supported, using default '${defaultLanguage}' for entity ${dto.entityType}:${dto.entityId}`,
+          );
+        }
+        
         this.logger.log(
-          `Detected language: ${sourceLanguage} (confidence: ${detection.confidence}) for entity ${dto.entityType}:${dto.entityId}`,
+          `Detected language: ${detectedLanguage} (confidence: ${detection.confidence}), using: ${sourceLanguage} for entity ${dto.entityType}:${dto.entityId}`,
         );
+      } else {
+        // Validate provided source language
+        if (!supportedLanguages.includes(sourceLanguage)) {
+          this.logger.warn(
+            `Provided source language '${sourceLanguage}' is not supported, using default '${defaultLanguage}' for entity ${dto.entityType}:${dto.entityId}`,
+          );
+          sourceLanguage = defaultLanguage;
+        }
       }
 
-      // Step 2: Get target languages (default to all supported if not provided)
-      const supportedLanguages = this.geminiService.getSupportedLanguages();
+      // Step 3: Get target languages (default to all supported if not provided)
       const targetLanguages =
         dto.targetLanguages && dto.targetLanguages.length > 0
           ? dto.targetLanguages
@@ -55,7 +78,7 @@ export class TranslationService {
         return { sourceLanguage, translations: {} };
       }
 
-      // Step 3: Generate translations using AI
+      // Step 4: Generate translations using AI
       let translations: TranslationResult = {};
       try {
         translations = await this.geminiService.translateText(
@@ -72,14 +95,15 @@ export class TranslationService {
         translations[sourceLanguage] = dto.text;
       }
 
-      // Step 4: Create or get translation metadata
+      // Step 5: Create or get translation metadata
+      // sourceLanguage is now guaranteed to be a supported language
       const metadata = await this.translationRepository.createOrGetMetadata(
         dto.entityType,
         dto.entityId,
         sourceLanguage,
       );
 
-      // Step 5: Store source text and translations
+      // Step 6: Store source text and translations
       const allTranslations: TranslationResult = {
         [sourceLanguage]: dto.text,
         ...translations,

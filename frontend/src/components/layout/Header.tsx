@@ -15,12 +15,14 @@ import {
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 import { IconToolsKitchen2, IconLanguage, IconLogout, IconUser, IconCircle } from '@tabler/icons-react';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { LanguageSelector } from '@/components/layout/LanguageSelector';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useRestaurantStore } from '@/lib/store/restaurant-store';
 import { authApi } from '@/lib/api/auth';
+import { restaurantApi } from '@/lib/api/restaurant';
 import { UserMenu } from '@/components/layout/UserMenu';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { useSuccessColor, useErrorColor } from '@/lib/hooks/use-theme-colors';
@@ -42,13 +44,33 @@ export function Header({ mobileOpened, toggleMobile }: HeaderProps = {}) {
   const errorColor = useErrorColor();
   const { language, toggleLanguage } = useLanguageStore();
   const { user, logout } = useAuthStore();
-  const { restaurant } = useRestaurantStore();
+  const { restaurant, setRestaurant } = useRestaurantStore();
   const { isOnline } = useSyncStatus();
   
   // Use restaurant name/logo or defaults
   // Show Arabic name if language is Arabic and nameAr exists, otherwise show English
   const restaurantName = restaurant?.name || 'RMS';
   const restaurantLogo = restaurant?.logoUrl;
+
+  // Refresh restaurant info when language changes to get translated name
+  useEffect(() => {
+    if (user?.tenantId) {
+      const refreshRestaurant = async () => {
+        try {
+          const restaurantData = await restaurantApi.getInfo(language);
+          setRestaurant({
+            id: restaurantData.id,
+            name: restaurantData.name || 'RMS',
+            logoUrl: restaurantData.logoUrl,
+            primaryColor: restaurantData.primaryColor,
+          });
+        } catch (error) {
+          console.error('Failed to refresh restaurant on language change:', error);
+        }
+      };
+      refreshRestaurant();
+    }
+  }, [language, user?.tenantId, setRestaurant]);
 
   const handleLogout = () => {
     authApi.logout();
@@ -142,7 +164,7 @@ export function Header({ mobileOpened, toggleMobile }: HeaderProps = {}) {
 
           {/* Online/Offline Status Badge */}
           <Tooltip
-            label={isOnline ? 'Connected to server' : 'No internet connection'}
+            label={isOnline ? t('common.connectedToServer' as any, language) : t('common.noInternetConnection' as any, language)}
             position="bottom"
             withArrow
           >
@@ -166,7 +188,7 @@ export function Header({ mobileOpened, toggleMobile }: HeaderProps = {}) {
                 padding: '0 12px',
               }}
             >
-              {isMobile ? '' : (isOnline ? 'Online' : 'Offline')}
+              {isMobile ? '' : (isOnline ? t('common.online' as any, language) : t('common.offline' as any, language))}
             </Badge>
           </Tooltip>
 

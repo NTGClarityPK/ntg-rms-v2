@@ -16,6 +16,7 @@
   },
   "common": {
     "welcome": "مرحباً",
+    "selectLanguage": "اختر اللغة",
     "login": "تسجيل الدخول",
     "logout": "تسجيل الخروج",
     "signup": "إنشاء حساب",
@@ -47,12 +48,18 @@
     "active": "نشط",
     "inactive": "غير نشط",
     "actions": "الإجراءات",
+    "online": "متصل",
+    "offline": "غير متصل",
+    "connectedToServer": "متصل بالخادم",
+    "noInternetConnection": "لا يوجد اتصال بالإنترنت",
     "english": "الإنجليزية",
+    "kurdish": "الكردية",
+    "arabic": "العربية",
+    "french": "الفرنسية",
     "nameRequired": "الاسم مطلوب",
     "optional": "اختياري",
     "and": "و",
     "more": "المزيد",
-    "arabic": "العربية",
     "selectBranch": "اختر الفرع"
   },
   "auth": {
@@ -262,7 +269,9 @@
       "Hong Kong": "هونغ كونغ",
       "Singapore": "سنغافورة",
       "India": "الهند",
-      "Australia": "أستراليا"
+      "Australia": "أستراليا",
+      "ordersByType": "الطلبات حسب النوع (اليوم)",
+      "noPopularItems": "لا توجد أصناف شائعة اليوم"
     }
   },
   "menu": {
@@ -346,6 +355,9 @@
     "isRequired": "مطلوب",
     "minSelections": "الحد الأدنى للاختيارات",
     "maxSelections": "الحد الأقصى للاختيارات",
+    "categoryAdd": "إضافة",
+    "categoryRemove": "إزالة",
+    "categoryChange": "تغيير",
     "addOnManagement": "إدارة الإضافات",
     "createAddOn": "إنشاء إضافة",
     "editAddOn": "تعديل إضافة",
@@ -550,6 +562,11 @@
     "comboMeal": "وجبة كومبو"
   },
   "orders": {
+    "orderType": {
+      "dine_in": "تناول الطعام في المطعم",
+      "takeaway": "طلب خارجي",
+      "delivery": "توصيل"
+    },
     "title": "إدارة الطلبات",
     "allOrders": "جميع الطلبات",
     "pending": "معلق",
@@ -651,6 +668,7 @@
     "supplierName": "اسم المورد",
     "invoiceNumber": "رقم الفاتورة",
     "reason": "السبب",
+    "autoDeductionToken": "خصم تلقائي - الرقم: {token}",
     "transactionDate": "تاريخ المعاملة",
     "fromBranch": "من الفرع",
     "toBranch": "إلى الفرع",
@@ -815,6 +833,11 @@
     }
   },
   "delivery": {
+    "filterByCustomer": "تصفية حسب العميل",
+    "filterByDate": "تصفية حسب التاريخ",
+    "filterByStatus": "تصفية حسب الحالة",
+    "filterByPaymentMethod": "تصفية حسب طريقة الدفع",
+    "filterByOrderType": "تصفية حسب نوع الطلب",
     "title": "إدارة التوصيل",
     "allDeliveries": "جميع التوصيلات",
     "pending": "قيد الانتظار",
@@ -905,7 +928,13 @@
     "dateRange": "نطاق التاريخ",
     "startDate": "تاريخ البداية",
     "endDate": "تاريخ النهاية",
+    "filterByOrderType": "تصفية حسب نوع الطلب",
+    "filterByCustomer": "تصفية حسب العميل",
+    "filterByDate": "تصفية حسب التاريخ",
+    "filterByStatus": "تصفية حسب الحالة",
     "filterByBranch": "تصفية حسب الفرع",
+    "filterByPersonnel": "تصفية حسب الموظف",
+    "filterByPaymentMethod": "تصفية حسب طريقة الدفع",
     "groupBy": "تجميع حسب",
     "day": "يوم",
     "week": "أسبوع",
@@ -1086,7 +1115,29 @@
     "loadError": "فشل تحميل الإعدادات",
     "addPrinter": "إضافة طابعة",
     "manageTaxes": "إدارة الضرائب",
-    "printerConfigNote": "تكوين الطابعات للإيصالات وتذاكر المطبخ والفواتير."
+    "printerConfigNote": "تكوين الطابعات للإيصالات وتذاكر المطبخ والفواتير.",
+    "languages": "اللغات",
+    "manageLanguages": "إدارة اللغات",
+    "addLanguage": "إضافة لغة",
+    "editLanguage": "تعديل لغة",
+    "deleteLanguage": "حذف لغة",
+    "deleteLanguageConfirm": "هل أنت متأكد من حذف هذه اللغة؟ لا يمكن التراجع عن هذا الإجراء.",
+    "code": "رمز اللغة",
+    "name": "الاسم",
+    "nativeName": "الاسم الأصلي",
+    "rtl": "من اليمين إلى اليسار (RTL)",
+    "default": "افتراضي",
+    "setAsDefault": "تعيين كلغة افتراضية",
+    "setAsDefaultDescription": "سيجعل هذا اللغة الافتراضية للمستخدمين الجدد",
+    "noLanguages": "لا توجد لغات مُكوّنة",
+    "languageCodeDescription": "رمز ISO مكون من حرفين (مثل: en, ar, ku)",
+    "languageCodeCannotChange": "لا يمكن تغيير رمز اللغة",
+    "rtlDescription": "تفعيل للغات مثل العربية والعبرية وغيرها",
+    "rtlLabel": "يمين إلى يسار",
+    "ltrLabel": "يسار إلى يمين",
+    "languageCreated": "تم إنشاء اللغة بنجاح",
+    "languageUpdated": "تم تحديث اللغة بنجاح",
+    "languageDeleted": "تم حذف اللغة بنجاح"
   },
   "pagination": {
     "showing": "عرض",

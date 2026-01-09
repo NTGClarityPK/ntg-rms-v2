@@ -149,17 +149,17 @@ export function FoodItemsPage() {
       setCategories((cats as Category[]).filter((cat: Category) => cat.isActive));
 
       // Load add-on groups (only active ones for selection)
-      const groupsResponse = await menuApi.getAddOnGroups(undefined, selectedBranchId || undefined);
+      const groupsResponse = await menuApi.getAddOnGroups(undefined, selectedBranchId || undefined, language);
       const groups = Array.isArray(groupsResponse) ? groupsResponse : (groupsResponse?.data || []);
       setAddOnGroups((groups as any[]).filter((group: any) => group.isActive));
 
       // Load menus for menu type selection
-      const menuListResponse = await menuApi.getMenus(undefined, selectedBranchId || undefined);
+      const menuListResponse = await menuApi.getMenus(undefined, selectedBranchId || undefined, language);
       const menuList = Array.isArray(menuListResponse) ? menuListResponse : (menuListResponse?.data || []);
       setMenus(menuList);
 
       // Load variation groups with their variations (filtered by branch)
-      const variationGroupsResponse = await menuApi.getVariationGroups(undefined, selectedBranchId || undefined);
+      const variationGroupsResponse = await menuApi.getVariationGroups(undefined, selectedBranchId || undefined, language);
       const variationGroupsList = Array.isArray(variationGroupsResponse) 
         ? variationGroupsResponse 
         : (variationGroupsResponse?.data || []);
@@ -168,7 +168,7 @@ export function FoodItemsPage() {
       const groupsWithVariations = await Promise.all(
         variationGroupsList.map(async (group) => {
           try {
-            const groupWithVariations = await menuApi.getVariationGroupById(group.id);
+            const groupWithVariations = await menuApi.getVariationGroupById(group.id, language);
             return groupWithVariations;
           } catch (err) {
             return group;
@@ -206,7 +206,7 @@ export function FoodItemsPage() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.tenantId, selectedBranchId]);
+  }, [user?.tenantId, selectedBranchId, language]);
 
   // Handle search changes: update ref and reset page if needed
   useEffect(() => {
@@ -308,7 +308,7 @@ export function FoodItemsPage() {
     // Ensure add-on groups are loaded
     if (addOnGroups.length === 0) {
       try {
-        const groupsResponse = await menuApi.getAddOnGroups(undefined, selectedBranchId || undefined);
+        const groupsResponse = await menuApi.getAddOnGroups(undefined, selectedBranchId || undefined, language);
         const groups = Array.isArray(groupsResponse) ? groupsResponse : (groupsResponse?.data || []);
         setAddOnGroups(groups.filter((group) => group.isActive));
       } catch (err) {
@@ -319,7 +319,7 @@ export function FoodItemsPage() {
     // Ensure menus are loaded
     if (menus.length === 0) {
       try {
-        const menuListResponse = await menuApi.getMenus(undefined, selectedBranchId || undefined);
+        const menuListResponse = await menuApi.getMenus(undefined, selectedBranchId || undefined, language);
         const menuList = Array.isArray(menuListResponse) ? menuListResponse : (menuListResponse?.data || []);
         setMenus(menuList);
       } catch (err) {
@@ -945,13 +945,6 @@ export function FoodItemsPage() {
                                     <Text fw={500} truncate>
                                       {item.name || ''}
                                     </Text>
-                                    {supportedLanguages.length > 0 && itemTranslations[item.id] && (
-                                      <TranslationStatusBadge
-                                        translations={itemTranslations[item.id].name || {}}
-                                        supportedLanguages={supportedLanguages}
-                                        fieldName="name"
-                                      />
-                                    )}
                                   </Group>
                                   {item.description && (
                                     <Text size="xs" c="dimmed" lineClamp={1}>
@@ -1165,10 +1158,19 @@ export function FoodItemsPage() {
                   <Grid.Col span={{ base: 12, md: 6 }}>
                     <Select
                       label={t('menu.stockType', language)}
-                      data={STOCK_TYPES.map(type => ({
-                        value: type.value,
-                        label: t(`menu.${type.value}` as any, language) || type.label,
-                      }))}
+                      data={STOCK_TYPES.map(type => {
+                        // Map storage type values to translation keys
+                        const translationKeyMap: Record<string, string> = {
+                          'unlimited': 'menu.unlimited',
+                          'limited': 'menu.limited',
+                          'daily_limited': 'menu.dailyLimited',
+                        };
+                        const translationKey = translationKeyMap[type.value] || `menu.${type.value}`;
+                        return {
+                          value: type.value,
+                          label: t(translationKey as any, language) || type.label,
+                        };
+                      })}
                       {...form.getInputProps('stockType')}
                     />
                   </Grid.Col>

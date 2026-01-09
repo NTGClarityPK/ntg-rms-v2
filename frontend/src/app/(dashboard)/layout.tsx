@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useBranchStore } from '@/lib/store/branch-store';
+import { useLanguageStore } from '@/lib/store/language-store';
 import { authApi } from '@/lib/api/auth';
 import { rolesApi } from '@/lib/api/roles';
 import { tokenStorage } from '@/lib/api/client';
@@ -23,6 +24,7 @@ export default function DashboardLayout({
   const [desktopOpened, { toggle: toggleDesktop }] = useDisclosure(true);
   const { isAuthenticated, user, setUser, setPermissions } = useAuthStore();
   const { selectedBranchId } = useBranchStore();
+  const { language } = useLanguageStore();
   const router = useRouter();
   const [isInitializing, setIsInitializing] = useState(true);
   
@@ -67,7 +69,9 @@ export default function DashboardLayout({
         // If we have tokens, verify they're valid by calling /auth/me
         // The axios interceptor will handle token refresh automatically if needed
         try {
-          const userData = await authApi.getCurrentUser();
+          // Get current language from store
+          const currentLanguage = useLanguageStore.getState().language;
+          const userData = await authApi.getCurrentUser(currentLanguage);
           // If we get here, token is valid (or was refreshed by interceptor)
           setUser(userData);
           
@@ -129,6 +133,22 @@ export default function DashboardLayout({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run once on mount - router and setUser are stable, isAuthenticated/user are checked inside the function
 
+  // Refresh user data when language changes to get translated username
+  useEffect(() => {
+    if (isAuthenticated && user?.id) {
+      const refreshUser = async () => {
+        try {
+          const currentLanguage = useLanguageStore.getState().language;
+          const userData = await authApi.getCurrentUser(currentLanguage);
+          setUser(userData);
+        } catch (error) {
+          console.error('Failed to refresh user on language change:', error);
+        }
+      };
+      refreshUser();
+    }
+  }, [language, isAuthenticated, user?.id, setUser]);
+
   // Show loading state while initializing
   if (isInitializing) {
     return null;
@@ -146,7 +166,7 @@ export default function DashboardLayout({
   }
 
   // Calculate navbar width based on collapsed state
-  const navbarWidth = navbarCollapsed ? 100 : 250;
+  const navbarWidth = navbarCollapsed ? 100 : 270;
 
   return (
     <AppShell

@@ -55,6 +55,7 @@ import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
 import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
+import { translationsApi } from '@/lib/api/translations';
 
 // Transaction types for adding stock
 const ADD_STOCK_REASONS = [
@@ -98,6 +99,10 @@ export function StockManagementPage() {
       }));
   }, [ingredients]);
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
+  // Translations cache for ingredients: { ingredientId: { name: { languageCode: string } } }
+  const [ingredientTranslationsCache, setIngredientTranslationsCache] = useState<{
+    [ingredientId: string]: { name?: { [languageCode: string]: string } };
+  }>({});
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
@@ -176,7 +181,8 @@ export function StockManagementPage() {
         const serverIngredientsResponse = await inventoryApi.getIngredients(
           { isActive: true },
           { page, limit },
-          selectedBranchId || undefined
+          selectedBranchId || undefined,
+          language
         );
 
         if (isPaginatedResponse(serverIngredientsResponse)) {
@@ -195,18 +201,18 @@ export function StockManagementPage() {
     } catch (err: any) {
       console.error('Failed to load ingredients:', err);
     }
-  }, [user?.tenantId, selectedBranchId]);
+  }, [user?.tenantId, selectedBranchId, language]);
 
   const loadBranches = useCallback(async () => {
     if (!user?.tenantId) return;
 
     try {
-      const serverBranches = await restaurantApi.getBranches();
+      const serverBranches = await restaurantApi.getBranches(language);
       setBranches(serverBranches as any);
     } catch (err: any) {
       console.error('Failed to load branches:', err);
     }
-  }, [user?.tenantId]);
+  }, [user?.tenantId, language]);
 
   const loadTransactions = useCallback(async () => {
     if (!user?.tenantId) return;
@@ -220,17 +226,74 @@ export function StockManagementPage() {
       if (startDate) filters.startDate = startDate.toISOString().split('T')[0];
       if (endDate) filters.endDate = endDate.toISOString().split('T')[0];
 
-      const serverTransactionsResponse = await inventoryApi.getStockTransactions(filters, transactionsPagination.paginationParams);
+      const serverTransactionsResponse = await inventoryApi.getStockTransactions(filters, transactionsPagination.paginationParams, language);
       const serverTransactions = transactionsPagination.extractData(serverTransactionsResponse);
       transactionsPagination.extractPagination(serverTransactionsResponse);
       
       setTransactions(serverTransactions);
+      
+      // Load translations for ingredients in transactions
+      const ingredientIds = new Set<string>();
+      serverTransactions.forEach(tx => {
+        if (tx.ingredientId) {
+          ingredientIds.add(tx.ingredientId);
+        }
+      });
+      
+      // Load translations
+      const newTranslations: typeof ingredientTranslationsCache = { ...ingredientTranslationsCache };
+      for (const ingredientId of ingredientIds) {
+        if (newTranslations[ingredientId]) continue;
+        try {
+          const translations = await translationsApi.getEntityTranslations('ingredient', ingredientId);
+          newTranslations[ingredientId] = translations;
+        } catch (err) {
+          console.warn(`Failed to load translations for ingredient ${ingredientId}:`, err);
+        }
+      }
+      setIngredientTranslationsCache(newTranslations);
     } catch (err: any) {
       console.error('Failed to load transactions:', err);
     } finally {
       setTransactionsLoading(false);
     }
-  }, [user?.tenantId, ingredientFilter, selectedBranchId, startDate, endDate, transactionsPagination]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.tenantId, ingredientFilter, selectedBranchId, startDate, endDate, transactionsPagination, language]);
+
+  // Helper function to get translated ingredient name
+  const getTranslatedIngredientName = useCallback((ingredientId: string | undefined, fallbackName: string | undefined): string => {
+    if (!ingredientId || !fallbackName) return fallbackName || '';
+    
+    const translations = ingredientTranslationsCache[ingredientId]?.name;
+    if (translations && translations[language]) {
+      return translations[language];
+    }
+    return fallbackName;
+  }, [ingredientTranslationsCache, language]);
+
+  // Helper function to translate reason text (e.g., auto deduction messages)
+  const getTranslatedReason = useCallback((reason: string | undefined | null): string => {
+    if (!reason) return '-';
+    
+    // Check if it's an auto deduction token message (new format)
+    const autoDeductionMatch = reason.match(/^AUTO_DEDUCTION_TOKEN:(\d+)$/);
+    if (autoDeductionMatch) {
+      const tokenNumber = autoDeductionMatch[1];
+      const translated = t('inventory.autoDeductionToken', language);
+      return translated.replace('{token}', tokenNumber);
+    }
+    
+    // Check if it's an auto deduction token message (old format for backward compatibility)
+    const oldFormatMatch = reason.match(/^Auto deduction - Token: (\d+)$/);
+    if (oldFormatMatch) {
+      const tokenNumber = oldFormatMatch[1];
+      const translated = t('inventory.autoDeductionToken', language);
+      return translated.replace('{token}', tokenNumber);
+    }
+    
+    // Return original reason if no translation needed
+    return reason;
+  }, [language]);
 
   useEffect(() => {
     loadIngredients();
@@ -480,11 +543,9 @@ export function StockManagementPage() {
 
   // Filter transactions
   const filteredTransactions = transactions.filter((tx) => {
-    const matchesSearch = searchQuery === '' || 
-      (tx.ingredient && (
-        tx.ingredient.name?.toLowerCase().includes(searchQuery.toLowerCase())
-      ));
-    return matchesSearch;
+    if (searchQuery === '') return true;
+    const translatedName = getTranslatedIngredientName(tx.ingredientId, tx.ingredient?.name);
+    return translatedName?.toLowerCase().includes(searchQuery.toLowerCase()) || false;
   });
 
   const getTransactionTypeLabel = (type: string) => {
@@ -648,7 +709,7 @@ export function StockManagementPage() {
                     <Table.Td>
                       {tx.ingredient ? (
                         <Text fw={500}>
-                          {tx.ingredient.name}
+                          {getTranslatedIngredientName(tx.ingredientId, tx.ingredient.name)}
                         </Text>
                       ) : (
                         <Text size="sm" c="dimmed">-</Text>
@@ -682,7 +743,7 @@ export function StockManagementPage() {
                       )}
                     </Table.Td>
                     <Table.Td>
-                      <Text size="sm">{tx.reason || '-'}</Text>
+                      <Text size="sm">{getTranslatedReason(tx.reason)}</Text>
                     </Table.Td>
                   </Table.Tr>
                 ))}

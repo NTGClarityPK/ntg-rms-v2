@@ -1036,20 +1036,40 @@ export class RestaurantService {
   async getAvailableTables(tenantId: string, branchId?: string) {
     const supabase = this.supabaseService.getServiceRoleClient();
     
-    // Get all tables for the tenant/branch
-    let query = supabase
+    // Optimize: Build efficient query without branch join - fetch branch data separately if needed
+    // This avoids expensive joins and improves query performance
+    let tableQuery = supabase
       .from('tables')
       .select(`
-        *,
-        branch:branches!tables_branch_id_fkey(id, tenant_id, name, code)
+        id,
+        branch_id,
+        table_number,
+        seating_capacity,
+        table_type,
+        qr_code,
+        status,
+        created_at,
+        updated_at
       `)
-      .eq('branch.tenant_id', tenantId)
       .is('deleted_at', null);
 
     if (branchId) {
-      query = query.eq('branch_id', branchId);
+      // When branchId is provided, validate it belongs to tenant, then filter directly
+      const { data: branch } = await supabase
+        .from('branches')
+        .select('id')
+        .eq('id', branchId)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .single();
+
+      if (!branch) {
+        return [];
+      }
+
+      tableQuery = tableQuery.eq('branch_id', branchId);
     } else {
-      // Get all branches for tenant
+      // When no branchId, get branch IDs first for better query performance
       const { data: branches } = await supabase
         .from('branches')
         .select('id')
@@ -1061,65 +1081,77 @@ export class RestaurantService {
       }
 
       const branchIds = branches.map(b => b.id);
-      query = query.in('branch_id', branchIds);
+      tableQuery = tableQuery.in('branch_id', branchIds);
     }
 
-    const { data: tables, error } = await query;
+    const { data: tables, error: tablesError } = await tableQuery;
 
-    if (error) {
-      throw new BadRequestException('Failed to fetch tables: ' + error.message);
+    if (tablesError) {
+      throw new BadRequestException('Failed to fetch tables: ' + tablesError.message);
     }
 
     if (!tables || tables.length === 0) {
       return [];
     }
 
-    // Get all active orders (not completed or cancelled) for dine-in
     const tableIds = tables.map(t => t.id);
     
-    // Check old table_id field (backward compatibility)
+    if (tableIds.length === 0) {
+      return [];
+    }
+
+    // Get unique branch IDs for parallel fetching
+    const branchIds = [...new Set(tables.map(t => t.branch_id))];
+    
+    // Optimize: Get active order IDs first, then use them for efficient queries
     const { data: activeOrders } = await supabase
       .from('orders')
-      .select('table_id')
+      .select('id, table_id')
       .eq('tenant_id', tenantId)
       .eq('order_type', 'dine_in')
-      .in('table_id', tableIds)
       .not('status', 'in', '(completed,cancelled)')
       .is('deleted_at', null);
 
-    // Check new order_tables junction table
-    const { data: orderTables } = await supabase
-      .from('order_tables')
-      .select(`
-        table_id,
-        orders!inner(id, tenant_id, order_type, status, deleted_at)
-      `)
-      .in('table_id', tableIds);
+    const activeOrderIds = (activeOrders || []).map(o => o.id);
+    const activeOrderTableIds = new Set(
+      (activeOrders || [])
+        .filter(o => o.table_id && tableIds.includes(o.table_id))
+        .map(o => o.table_id)
+    );
 
-    // Get set of occupied table IDs from both sources
+    // Execute remaining queries in parallel
+    const [orderTablesResult, branchesResult] = await Promise.all([
+      // Get order_tables only for active orders and relevant table IDs
+      activeOrderIds.length > 0 && tableIds.length > 0
+        ? supabase
+            .from('order_tables')
+            .select('table_id')
+            .in('order_id', activeOrderIds)
+            .in('table_id', tableIds)
+        : Promise.resolve({ data: [], error: null }),
+      // Fetch branch info in parallel
+      branchIds.length > 0
+        ? supabase
+            .from('branches')
+            .select('id, tenant_id, name, code')
+            .in('id', branchIds)
+            .eq('tenant_id', tenantId)
+        : Promise.resolve({ data: [], error: null })
+    ]);
+
+    // Collect all occupied table IDs
     const occupiedTableIds = new Set<string>();
-    
-    // Add tables from old table_id field
-    (activeOrders || []).forEach(o => {
-      if (o.table_id) {
-        occupiedTableIds.add(o.table_id);
-      }
-    });
-    
-    // Add tables from order_tables junction table
-    (orderTables || []).forEach((ot: any) => {
-      const order = ot.orders;
-      if (
-        order &&
-        order.tenant_id === tenantId &&
-        order.order_type === 'dine_in' &&
-        order.status !== 'completed' &&
-        order.status !== 'cancelled' &&
-        !order.deleted_at &&
-        ot.table_id
-      ) {
+    activeOrderTableIds.forEach(tableId => occupiedTableIds.add(tableId));
+    (orderTablesResult.data || []).forEach((ot: any) => {
+      if (ot.table_id) {
         occupiedTableIds.add(ot.table_id);
       }
+    });
+
+    // Build branch map
+    const branchMap = new Map<string, any>();
+    (branchesResult.data || []).forEach(branch => {
+      branchMap.set(branch.id, branch);
     });
 
     // Filter out occupied tables and map to response format
@@ -1128,7 +1160,7 @@ export class RestaurantService {
       .map(table => ({
         id: table.id,
         branchId: table.branch_id,
-        branch: table.branch,
+        branch: branchMap.get(table.branch_id) || null,
         tableNumber: table.table_number,
         seatingCapacity: table.seating_capacity,
         tableType: table.table_type,
