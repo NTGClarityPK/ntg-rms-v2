@@ -1,5 +1,6 @@
 {
  "common": {
+    "close": "داخستن",
     "selectLanguage": "لاوەکی هەڵبژێرە",
     "welcome": "بەخێربێیت",
     "login": "چوونەژوورەوە",
@@ -1116,6 +1117,11 @@
     "taxByPaymentMethod": "باج بەپێی شێوازی پارەدان"
   },
   "settings": {
+    "noAvailableLanguages": "هیچ زمانێک ڕێکخراو نییە بۆ داواکردن.",
+    "or": "یان",
+    "requestCustomLanguage": "دروستکردنی زمانی پێشنیشتنی",
+    "selectLanguageToAdd": "زمانی پێشنیشتنی داواکردن",
+    "customLanguageDescription": "دڵنیایت لە دروستکردنی زمانی پێشنیشتنی؟ ئەمە بە داواکارییە بە دەست بێت.",
     "title": "ڕێکخستنەکان",
     "general": "ڕێکخستنە گشتییەکان",
     "invoice": "ڕێکخستنەکانی فاکتورە",

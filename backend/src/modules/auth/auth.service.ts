@@ -165,15 +165,8 @@ export class AuthService {
           branchId = branchData.id;
           console.log('✅ Default branch created:', branchId);
 
-          // Create translations for branch name directly (no AI needed for standard data)
-          this.translationService.insertTranslationsDirectly({
-            entityType: 'branch',
-            entityId: branchData.id,
-            fieldName: 'name',
-            text: 'Main Branch',
-          }).catch((translationError) => {
-            console.error('Failed to create translations for branch name:', translationError);
-          });
+          // Don't create translations on signup - only English is enabled initially
+          // Translations will be created when user adds languages
           
           // Create default tables (5 tables) for the branch
           try {
@@ -967,12 +960,16 @@ export class AuthService {
     // Update translations if name was changed
     if (updateProfileDto.name !== undefined) {
       try {
-        await this.translationService.createTranslations({
-          entityType: 'user' as any,
-          entityId: userId,
-          fieldName: 'name',
-          text: updateProfileDto.name,
-        });
+        await this.translationService.createTranslations(
+          {
+            entityType: 'user' as any,
+            entityId: userId,
+            fieldName: 'name',
+            text: updateProfileDto.name,
+          },
+          userId,
+          tenantId, // Pass tenantId to ensure only enabled languages are translated
+        );
         console.log('Translations updated for user name');
       } catch (translationError) {
         console.error('Failed to update translations for user name:', translationError);
@@ -1011,30 +1008,8 @@ export class AuthService {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     try {
-      // 1. Create translations for tenant name (if new tenant) asynchronously
-      // Don't block the response - translations will be processed in the background
-      if (isNewTenant) {
-        const tenantName = signupDto.name + "'s Restaurant";
-        this.translationService.createTranslations({
-          entityType: 'restaurant',
-          entityId: tenantId,
-          fieldName: 'name',
-          text: tenantName,
-        }).catch((translationError) => {
-          console.error('Failed to create translations for tenant name:', translationError);
-        });
-      }
-
-      // 2. Create translations for user name asynchronously
-      // Don't block the response - translations will be processed in the background
-      this.translationService.createTranslations({
-        entityType: 'user',
-        entityId: userId,
-        fieldName: 'name',
-        text: signupDto.name,
-      }).catch((translationError) => {
-        console.error('Failed to create translations for user name:', translationError);
-      });
+      // Don't create translations on signup - only English is enabled initially
+      // Translations will be created when user adds languages
 
       // 3. Assign role based on user role field
       try {
@@ -1084,15 +1059,8 @@ export class AuthService {
               defaultBranchId = branchData.id;
               console.log('✅ Default branch created:', defaultBranchId);
 
-              // Create translations for branch name directly (no AI needed for standard data)
-              this.translationService.insertTranslationsDirectly({
-                entityType: 'branch',
-                entityId: branchData.id,
-                fieldName: 'name',
-                text: 'Main Branch',
-              }).catch((translationError) => {
-                console.error('Failed to create translations for branch name:', translationError);
-              });
+              // Don't create translations on signup - only English is enabled initially
+              // Translations will be created when user adds languages
               
               // Create default tables (5 tables) for the branch
               try {
@@ -1370,333 +1338,512 @@ export class AuthService {
         console.error('Failed to create variation groups:', error);
       }
 
-      // 4. Create sample food items
+      // 4. Bulk create sample food items
+      console.log('🍔 Creating food items (bulk)...');
       const foodItems = [];
       try {
-        // First food item
         const addOnGroupIds = [];
         if (addOnGroup1) addOnGroupIds.push(addOnGroup1.id);
         if (addOnGroup2) addOnGroupIds.push(addOnGroup2.id);
 
-        const foodItem1 = await this.menuService.createFoodItem(tenantId, {
-          name: 'Sample Burger',
-          description: 'A delicious sample burger',
-          categoryId: category1.id,
-          basePrice: 5000,
-          stockType: 'unlimited',
-          menuTypes: ['all_day'],
-          imageUrl: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&h=300&fit=crop',
-          addOnGroupIds: addOnGroupIds,
-          variations: variationGroup1 ? [{
-            variationGroup: variationGroup1.id,
-            variationName: 'Medium',
-            priceAdjustment: 0,
-            displayOrder: 1,
-          }] : [],
-        }, branchId, true); // skipTranslations = true
-        foodItems.push(foodItem1);
-        console.log('Food item 1 created:', foodItem1.id);
-        // Prepare translations for food items (will be bulk inserted later)
-        translationsToInsert.push(
-          { entityType: 'food_item', entityId: foodItem1.id, fieldName: 'name', text: 'Sample Burger' },
-          { entityType: 'food_item', entityId: foodItem1.id, fieldName: 'description', text: 'A delicious sample burger' },
-        );
+        // Get variation IDs for variations
+        let mediumVariationId1 = null;
+        let mediumVariationId2 = null;
+        if (variationGroup1) {
+          const { data: var1 } = await supabase
+            .from('variations')
+            .select('id')
+            .eq('variation_group_id', variationGroup1.id)
+            .eq('name', 'Medium')
+            .is('deleted_at', null)
+            .maybeSingle();
+          mediumVariationId1 = var1?.id || null;
+        }
+        if (variationGroup2) {
+          const { data: var2 } = await supabase
+            .from('variations')
+            .select('id')
+            .eq('variation_group_id', variationGroup2.id)
+            .eq('name', 'Medium')
+            .is('deleted_at', null)
+            .maybeSingle();
+          mediumVariationId2 = var2?.id || null;
+        }
 
-        // Second food item
-        const foodItem2 = await this.menuService.createFoodItem(tenantId, {
-          name: 'Sample Pizza',
-          description: 'A tasty sample pizza',
-          categoryId: category1.id,
-          basePrice: 8000,
-          stockType: 'unlimited',
-          menuTypes: ['all_day'],
-          imageUrl: 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=400&h=300&fit=crop',
-          addOnGroupIds: addOnGroupIds,
-          variations: variationGroup2 ? [{
-            variationGroup: variationGroup2.id,
-            variationName: 'Medium',
-            priceAdjustment: 0,
-            displayOrder: 1,
-          }] : [],
-        }, branchId, true); // skipTranslations = true
-        foodItems.push(foodItem2);
-        console.log('Food item 2 created:', foodItem2.id);
-        translationsToInsert.push(
-          { entityType: 'food_item', entityId: foodItem2.id, fieldName: 'name', text: 'Sample Pizza' },
-          { entityType: 'food_item', entityId: foodItem2.id, fieldName: 'description', text: 'A tasty sample pizza' },
-        );
+        // Bulk insert food items
+        const foodItemsData = [
+          {
+            tenant_id: tenantId,
+            branch_id: branchId || null,
+            category_id: category1.id,
+            name: 'Sample Burger',
+            description: 'A delicious sample burger',
+            image_url: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&h=300&fit=crop',
+            base_price: 5000,
+            stock_type: 'unlimited',
+            stock_quantity: 0,
+            menu_type: 'all_day',
+            display_order: 0,
+            is_active: true,
+          },
+          {
+            tenant_id: tenantId,
+            branch_id: branchId || null,
+            category_id: category1.id,
+            name: 'Sample Pizza',
+            description: 'A tasty sample pizza',
+            image_url: 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=400&h=300&fit=crop',
+            base_price: 8000,
+            stock_type: 'unlimited',
+            stock_quantity: 0,
+            menu_type: 'all_day',
+            display_order: 1,
+            is_active: true,
+          },
+          {
+            tenant_id: tenantId,
+            branch_id: branchId || null,
+            category_id: category2.id,
+            name: 'Sample Fries',
+            description: 'Crispy sample fries',
+            image_url: 'https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=400&h=300&fit=crop',
+            base_price: 2000,
+            stock_type: 'unlimited',
+            stock_quantity: 0,
+            menu_type: 'all_day',
+            display_order: 2,
+            is_active: true,
+          },
+          {
+            tenant_id: tenantId,
+            branch_id: branchId || null,
+            category_id: category2.id,
+            name: 'Garlic Bread',
+            description: 'Freshly baked garlic bread',
+            image_url: 'https://plus.unsplash.com/premium_photo-1711752902734-a36167479983?q=80&w=688&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
+            base_price: 1500,
+            stock_type: 'unlimited',
+            stock_quantity: 0,
+            menu_type: 'all_day',
+            display_order: 3,
+            is_active: true,
+          },
+        ];
 
-        // Third food item for combo
-        const foodItem3 = await this.menuService.createFoodItem(tenantId, {
-          name: 'Sample Fries',
-          description: 'Crispy sample fries',
-          categoryId: category2.id,
-          basePrice: 2000,
-          stockType: 'unlimited',
-          menuTypes: ['all_day'],
-          imageUrl: 'https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=400&h=300&fit=crop',
-        }, branchId, true); // skipTranslations = true
-        foodItems.push(foodItem3);
-        console.log('Food item 3 created:', foodItem3.id);
-        translationsToInsert.push(
-          { entityType: 'food_item', entityId: foodItem3.id, fieldName: 'name', text: 'Sample Fries' },
-          { entityType: 'food_item', entityId: foodItem3.id, fieldName: 'description', text: 'Crispy sample fries' },
-        );
+        const { data: insertedFoodItems, error: foodItemsError } = await supabase
+          .from('food_items')
+          .insert(foodItemsData)
+          .select('id, name');
 
-        // Fourth food item for second combo
-        const foodItem4 = await this.menuService.createFoodItem(tenantId, {
-          name: 'Garlic Bread',
-          description: 'Freshly baked garlic bread',
-          categoryId: category2.id,
-          basePrice: 1500,
-          stockType: 'unlimited',
-          menuTypes: ['all_day'],
-          imageUrl: 'https://plus.unsplash.com/premium_photo-1711752902734-a36167479983?q=80&w=688&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
-        }, branchId, true); // skipTranslations = true
-        foodItems.push(foodItem4);
-        console.log('Food item 4 created:', foodItem4.id);
-        translationsToInsert.push(
-          { entityType: 'food_item', entityId: foodItem4.id, fieldName: 'name', text: 'Garlic Bread' },
-          { entityType: 'food_item', entityId: foodItem4.id, fieldName: 'description', text: 'Freshly baked garlic bread' },
-        );
+        if (foodItemsError) {
+          console.error('Failed to bulk create food items:', foodItemsError);
+          throw foodItemsError;
+        }
+
+        foodItems.push(...insertedFoodItems);
+        console.log('✅ Food items created:', insertedFoodItems.length);
+
+        // Prepare translations
+        for (const item of insertedFoodItems) {
+          const itemData = foodItemsData.find(f => f.name === item.name);
+          if (itemData) {
+            translationsToInsert.push(
+              { entityType: 'food_item', entityId: item.id, fieldName: 'name', text: itemData.name },
+              { entityType: 'food_item', entityId: item.id, fieldName: 'description', text: itemData.description },
+            );
+          }
+        }
+
+        // Bulk insert food item variations
+        const variationsData = [];
+        if (mediumVariationId1 && insertedFoodItems[0]) {
+          variationsData.push({
+            food_item_id: insertedFoodItems[0].id,
+            variation_group: variationGroup1.id,
+            variation_name: 'Medium',
+            variation_id: mediumVariationId1,
+            price_adjustment: 0,
+            display_order: 1,
+          });
+        }
+        if (mediumVariationId2 && insertedFoodItems[1]) {
+          variationsData.push({
+            food_item_id: insertedFoodItems[1].id,
+            variation_group: variationGroup2.id,
+            variation_name: 'Medium',
+            variation_id: mediumVariationId2,
+            price_adjustment: 0,
+            display_order: 1,
+          });
+        }
+        if (variationsData.length > 0) {
+          await supabase.from('food_item_variations').insert(variationsData);
+        }
+
+        // Bulk insert add-on group links (for first two food items)
+        if (addOnGroupIds.length > 0 && insertedFoodItems.length >= 2) {
+          const addOnGroupsData = [];
+          for (let i = 0; i < 2; i++) {
+            for (const groupId of addOnGroupIds) {
+              addOnGroupsData.push({
+                food_item_id: insertedFoodItems[i].id,
+                add_on_group_id: groupId,
+              });
+            }
+          }
+          await supabase.from('food_item_add_on_groups').insert(addOnGroupsData);
+        }
+
+        // Bulk insert menu items
+        const menuItemsData = insertedFoodItems.map((item, index) => ({
+          tenant_id: tenantId,
+          menu_type: 'all_day',
+          food_item_id: item.id,
+          display_order: index,
+        }));
+        await supabase.from('menu_items').insert(menuItemsData);
       } catch (error) {
         console.error('Failed to create food items:', error);
       }
 
-      // 5. Create sample ingredients and recipes for food items
-      if (foodItems.length > 0) {
-        try {
-        // Create ingredients for burger
-        const beefPatty = await this.inventoryService.createIngredient(tenantId, {
-          name: 'Beef Patty',
-          category: 'Meat',
-          unitOfMeasurement: 'piece',
-          currentStock: 100,
-          minimumThreshold: 20,
-          isActive: true,
-        }, branchId);
+      // 5. Bulk create ingredients and buffets in parallel (both are independent)
+      console.log('🥩 Creating ingredients and buffets (bulk, parallel)...');
+      let ingredients: any[] = [];
+      let buffets: any[] = [];
 
-        const burgerBun = await this.inventoryService.createIngredient(tenantId, {
-          name: 'Burger Bun',
-          category: 'Bakery',
-          unitOfMeasurement: 'piece',
-          currentStock: 150,
-          minimumThreshold: 30,
-          isActive: true,
-        }, branchId);
-
-        const lettuce = await this.inventoryService.createIngredient(tenantId, {
-          name: 'Lettuce',
-          category: 'Vegetables',
-          unitOfMeasurement: 'piece',
-          currentStock: 200,
-          minimumThreshold: 50,
-          isActive: true,
-        }, branchId);
-
-        const tomato = await this.inventoryService.createIngredient(tenantId, {
-          name: 'Tomato',
-          category: 'Vegetables',
-          unitOfMeasurement: 'piece',
-          currentStock: 150,
-          minimumThreshold: 30,
-          isActive: true,
-        }, branchId);
-
-        // Create ingredients for pizza
-        const pizzaDough = await this.inventoryService.createIngredient(tenantId, {
-          name: 'Pizza Dough',
-          category: 'Bakery',
-          unitOfMeasurement: 'piece',
-          currentStock: 80,
-          minimumThreshold: 15,
-          isActive: true,
-        }, branchId);
-
-        const pizzaSauce = await this.inventoryService.createIngredient(tenantId, {
-          name: 'Pizza Sauce',
-          category: 'Sauces',
-          unitOfMeasurement: 'cup',
-          currentStock: 50,
-          minimumThreshold: 10,
-          isActive: true,
-        }, branchId);
-
-        const mozzarellaCheese = await this.inventoryService.createIngredient(tenantId, {
-          name: 'Mozzarella Cheese',
-          category: 'Dairy',
-          unitOfMeasurement: 'cup',
-          currentStock: 60,
-          minimumThreshold: 12,
-          isActive: true,
-        }, branchId);
-
-        const pepperoni = await this.inventoryService.createIngredient(tenantId, {
-          name: 'Pepperoni',
-          category: 'Meat',
-          unitOfMeasurement: 'slice',
-          currentStock: 200,
-          minimumThreshold: 40,
-          isActive: true,
-        }, branchId);
-
-        // Create recipe for burger
-        await this.inventoryService.createOrUpdateRecipe(tenantId, {
-          foodItemId: foodItems[0].id,
-          ingredients: [
-            {
-              ingredientId: beefPatty.id,
-              quantity: 1,
-              unit: 'piece',
-            },
-            {
-              ingredientId: burgerBun.id,
-              quantity: 1,
-              unit: 'piece',
-            },
-            {
-              ingredientId: lettuce.id,
-              quantity: 2,
-              unit: 'piece',
-            },
-            {
-              ingredientId: tomato.id,
-              quantity: 2,
-              unit: 'piece',
-            },
-          ],
-        }, branchId);
-        console.log('Recipe 1 created for burger');
-
-        // Create recipe for pizza
-        if (foodItems.length > 1) {
-          await this.inventoryService.createOrUpdateRecipe(tenantId, {
-            foodItemId: foodItems[1].id,
-            ingredients: [
+      await Promise.all([
+        // Bulk create all ingredients
+        (async () => {
+          try {
+            const ingredientsData = [
               {
-                ingredientId: pizzaDough.id,
-                quantity: 1,
-                unit: 'piece',
+                tenant_id: tenantId,
+                branch_id: branchId || null,
+                name: 'Beef Patty',
+                category: 'Meat',
+                unit_of_measurement: 'piece',
+                current_stock: 100,
+                minimum_threshold: 20,
+                is_active: true,
               },
               {
-                ingredientId: pizzaSauce.id,
-                quantity: 1,
-                unit: 'cup',
+                tenant_id: tenantId,
+                branch_id: branchId || null,
+                name: 'Burger Bun',
+                category: 'Bakery',
+                unit_of_measurement: 'piece',
+                current_stock: 150,
+                minimum_threshold: 30,
+                is_active: true,
               },
               {
-                ingredientId: mozzarellaCheese.id,
-                quantity: 1.5,
-                unit: 'cup',
+                tenant_id: tenantId,
+                branch_id: branchId || null,
+                name: 'Lettuce',
+                category: 'Vegetables',
+                unit_of_measurement: 'piece',
+                current_stock: 200,
+                minimum_threshold: 50,
+                is_active: true,
               },
               {
-                ingredientId: pepperoni.id,
-                quantity: 10,
-                unit: 'slice',
+                tenant_id: tenantId,
+                branch_id: branchId || null,
+                name: 'Tomato',
+                category: 'Vegetables',
+                unit_of_measurement: 'piece',
+                current_stock: 150,
+                minimum_threshold: 30,
+                is_active: true,
               },
-            ],
-          }, branchId);
-          console.log('Recipe 2 created for pizza');
-        }
-        } catch (error) {
-          console.error('Failed to create recipes:', error);
-        }
+              {
+                tenant_id: tenantId,
+                branch_id: branchId || null,
+                name: 'Pizza Dough',
+                category: 'Bakery',
+                unit_of_measurement: 'piece',
+                current_stock: 80,
+                minimum_threshold: 15,
+                is_active: true,
+              },
+              {
+                tenant_id: tenantId,
+                branch_id: branchId || null,
+                name: 'Pizza Sauce',
+                category: 'Sauces',
+                unit_of_measurement: 'cup',
+                current_stock: 50,
+                minimum_threshold: 10,
+                is_active: true,
+              },
+              {
+                tenant_id: tenantId,
+                branch_id: branchId || null,
+                name: 'Mozzarella Cheese',
+                category: 'Dairy',
+                unit_of_measurement: 'cup',
+                current_stock: 60,
+                minimum_threshold: 12,
+                is_active: true,
+              },
+              {
+                tenant_id: tenantId,
+                branch_id: branchId || null,
+                name: 'Pepperoni',
+                category: 'Meat',
+                unit_of_measurement: 'slice',
+                current_stock: 200,
+                minimum_threshold: 40,
+                is_active: true,
+              },
+            ];
+
+            const { data: insertedIngredients, error: ingredientsError } = await supabase
+              .from('ingredients')
+              .insert(ingredientsData)
+              .select('id, name');
+
+            if (ingredientsError) {
+              console.error('Failed to bulk create ingredients:', ingredientsError);
+              throw ingredientsError;
+            }
+
+            if (!insertedIngredients || insertedIngredients.length === 0) {
+              console.error('No ingredients were created');
+              throw new Error('No ingredients were created');
+            }
+
+            ingredients = insertedIngredients;
+            console.log('✅ Ingredients created:', insertedIngredients.length);
+            console.log('📋 Ingredient names:', insertedIngredients.map((ing: any) => ing.name).join(', '));
+          } catch (error) {
+            console.error('Failed to create ingredients:', error);
+            throw error; // Re-throw to prevent continuing with empty ingredients array
+          }
+        })(),
+
+        // Create buffets in parallel with ingredients
+        (async () => {
+          try {
+            const buffetsData = [
+              {
+                tenant_id: tenantId,
+                branch_id: branchId || null,
+                name: 'All-Day Family Buffet',
+                description: 'Unlimited access to our full menu selection including burgers, pizza, fries, and more. Perfect for groups and families!',
+                price_per_person: 15000,
+                min_persons: 1,
+                menu_types: ['all_day'],
+                image_url: 'https://images.unsplash.com/photo-1555244162-803834f70033?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8YnVmZmV0fGVufDB8fDB8fHww',
+                display_order: 1,
+                is_active: true,
+              },
+              {
+                tenant_id: tenantId,
+                branch_id: branchId || null,
+                name: 'Weekend Special Buffet',
+                description: 'Premium weekend buffet with all our signature dishes and special items. Available Saturday and Sunday!',
+                price_per_person: 20000,
+                min_persons: 2,
+                menu_types: ['all_day'],
+                image_url: 'https://images.unsplash.com/photo-1583338917496-7ea264c374ce?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8M3x8YnVmZmV0fGVufDB8fDB8fHww',
+                display_order: 2,
+                is_active: true,
+              },
+            ];
+
+            const { data: insertedBuffets, error: buffetsError } = await supabase
+              .from('buffets')
+              .insert(buffetsData)
+              .select('id, name');
+
+            if (buffetsError) {
+              console.error('Failed to bulk create buffets:', buffetsError);
+              throw buffetsError;
+            }
+
+            buffets = insertedBuffets;
+            console.log('✅ Buffets created:', insertedBuffets.length);
+
+            // Prepare translations
+            for (const buffet of insertedBuffets) {
+              const buffetData = buffetsData.find(b => b.name === buffet.name);
+              if (buffetData) {
+                translationsToInsert.push(
+                  { entityType: 'buffet', entityId: buffet.id, fieldName: 'name', text: buffetData.name },
+                  { entityType: 'buffet', entityId: buffet.id, fieldName: 'description', text: buffetData.description },
+                );
+              }
+            }
+          } catch (error) {
+            console.error('Failed to create buffets:', error);
+          }
+        })(),
+      ]);
+
+      // 6. After food items and ingredients are ready, create recipes, combo meals, and menu assignments in parallel
+      if (foodItems.length > 0 && ingredients.length >= 8) {
+        console.log('⚡ Creating recipes, combo meals, and menu assignments (parallel)...');
+        console.log('📋 Available ingredients:', ingredients.map((ing: any) => ing.name).join(', '));
+        console.log('🍔 Available food items:', foodItems.map((item: any) => item.name).join(', '));
+        
+        // Find ingredients by name for robustness
+        const beefPatty = ingredients.find((ing: any) => ing.name === 'Beef Patty');
+        const burgerBun = ingredients.find((ing: any) => ing.name === 'Burger Bun');
+        const lettuce = ingredients.find((ing: any) => ing.name === 'Lettuce');
+        const tomato = ingredients.find((ing: any) => ing.name === 'Tomato');
+        const pizzaDough = ingredients.find((ing: any) => ing.name === 'Pizza Dough');
+        const pizzaSauce = ingredients.find((ing: any) => ing.name === 'Pizza Sauce');
+        const mozzarellaCheese = ingredients.find((ing: any) => ing.name === 'Mozzarella Cheese');
+        const pepperoni = ingredients.find((ing: any) => ing.name === 'Pepperoni');
+
+        console.log('🔍 Found ingredients:', {
+          beefPatty: !!beefPatty,
+          burgerBun: !!burgerBun,
+          lettuce: !!lettuce,
+          tomato: !!tomato,
+          pizzaDough: !!pizzaDough,
+          pizzaSauce: !!pizzaSauce,
+          mozzarellaCheese: !!mozzarellaCheese,
+          pepperoni: !!pepperoni,
+        });
+
+        await Promise.all([
+          // Create recipes
+          (async () => {
+            try {
+              // Validate that we have the required ingredients and food items
+              if (!beefPatty || !burgerBun || !lettuce || !tomato || !pizzaDough || !pizzaSauce || !mozzarellaCheese || !pepperoni) {
+                console.error('Missing ingredients for recipes:', {
+                  beefPatty: !!beefPatty,
+                  burgerBun: !!burgerBun,
+                  lettuce: !!lettuce,
+                  tomato: !!tomato,
+                  pizzaDough: !!pizzaDough,
+                  pizzaSauce: !!pizzaSauce,
+                  mozzarellaCheese: !!mozzarellaCheese,
+                  pepperoni: !!pepperoni,
+                });
+                return;
+              }
+
+              if (!foodItems || foodItems.length < 2) {
+                console.error('Not enough food items for recipes:', foodItems?.length || 0);
+                return;
+              }
+
+              const recipesData = [
+                // Recipe for burger (foodItems[0])
+                { food_item_id: foodItems[0].id, ingredient_id: beefPatty.id, quantity: 1, unit: 'piece' },
+                { food_item_id: foodItems[0].id, ingredient_id: burgerBun.id, quantity: 1, unit: 'piece' },
+                { food_item_id: foodItems[0].id, ingredient_id: lettuce.id, quantity: 2, unit: 'piece' },
+                { food_item_id: foodItems[0].id, ingredient_id: tomato.id, quantity: 2, unit: 'piece' },
+                // Recipe for pizza (foodItems[1])
+                { food_item_id: foodItems[1].id, ingredient_id: pizzaDough.id, quantity: 1, unit: 'piece' },
+                { food_item_id: foodItems[1].id, ingredient_id: pizzaSauce.id, quantity: 1, unit: 'cup' },
+                { food_item_id: foodItems[1].id, ingredient_id: mozzarellaCheese.id, quantity: 1.5, unit: 'cup' },
+                { food_item_id: foodItems[1].id, ingredient_id: pepperoni.id, quantity: 10, unit: 'slice' },
+              ];
+
+              const { data: insertedRecipes, error: recipesError } = await supabase
+                .from('recipes')
+                .insert(recipesData)
+                .select('id, food_item_id, ingredient_id');
+
+              if (recipesError) {
+                console.error('Failed to bulk create recipes:', recipesError);
+                throw recipesError;
+              }
+
+              if (!insertedRecipes || insertedRecipes.length === 0) {
+                console.error('No recipes were created');
+                throw new Error('No recipes were created');
+              }
+
+              console.log('✅ Recipes created:', insertedRecipes.length, 'ingredient entries');
+              console.log('📋 Recipe details:', JSON.stringify(insertedRecipes, null, 2));
+            } catch (error) {
+              console.error('Failed to create recipes:', error);
+              throw error; // Re-throw to ensure we know if recipes failed
+            }
+          })(),
+
+          // Create combo meals
+          (async () => {
+            if (foodItems.length >= 4) {
+              try {
+                const comboMealsData = [
+                  {
+                    tenant_id: tenantId,
+                    branch_id: branchId || null,
+                    name: 'Classic Burger Combo',
+                    description: 'Delicious burger paired with crispy golden fries. A perfect meal combination at a great value!',
+                    base_price: 6000,
+                    food_item_ids: [foodItems[0].id, foodItems[2].id], // Burger and Fries
+                    menu_types: ['all_day'],
+                    image_url: 'https://plus.unsplash.com/premium_photo-1683619761468-b06992704398?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MXx8YnVyZ2VyfGVufDB8fDB8fHww',
+                    display_order: 1,
+                    is_active: true,
+                  },
+                  {
+                    tenant_id: tenantId,
+                    branch_id: branchId || null,
+                    name: 'Pizza & Garlic Bread Combo',
+                    description: 'Tasty pizza served with freshly baked garlic bread. A classic Italian combination!',
+                    base_price: 8500,
+                    food_item_ids: [foodItems[1].id, foodItems[3].id], // Pizza and Garlic Bread
+                    menu_types: ['all_day'],
+                    image_url: 'https://media.istockphoto.com/id/1151446369/photo/tasty-supreme-pizza-with-olives-peppers-onions-and-sausage.webp?a=1&b=1&s=612x612&w=0&k=20&c=LprgiVWgVb5nJ6psO3R2bAYLPBV6V9gLVW9PlTbtGLU=',
+                    display_order: 2,
+                    is_active: true,
+                  },
+                ];
+
+                const { data: insertedComboMeals, error: comboMealsError } = await supabase
+                  .from('combo_meals')
+                  .insert(comboMealsData)
+                  .select('id, name');
+
+                if (comboMealsError) {
+                  console.error('Failed to bulk create combo meals:', comboMealsError);
+                  throw comboMealsError;
+                }
+
+                console.log('✅ Combo meals created:', insertedComboMeals.length);
+
+                // Prepare translations
+                for (const combo of insertedComboMeals) {
+                  const comboData = comboMealsData.find(c => c.name === combo.name);
+                  if (comboData) {
+                    translationsToInsert.push(
+                      { entityType: 'combo_meal', entityId: combo.id, fieldName: 'name', text: comboData.name },
+                      { entityType: 'combo_meal', entityId: combo.id, fieldName: 'description', text: comboData.description },
+                    );
+                  }
+                }
+              } catch (error) {
+                console.error('Failed to create combo meals:', error);
+              }
+            }
+          })(),
+
+          // Assign food items to menu
+          (async () => {
+            try {
+              const foodItemIds = foodItems.map(item => item.id);
+              await this.menuService.assignItemsToMenu(tenantId, 'all_day', foodItemIds);
+              console.log('✅ Food items assigned to menu');
+            } catch (error) {
+              console.error('Failed to assign items to menu:', error);
+            }
+          })(),
+        ]);
       }
 
-      // 6. Create two buffet combo meals
-      try {
-        const buffet1 = await this.menuService.createBuffet(tenantId, {
-          name: 'All-Day Family Buffet',
-          description: 'Unlimited access to our full menu selection including burgers, pizza, fries, and more. Perfect for groups and families!',
-          pricePerPerson: 15000,
-          minPersons: 1,
-          menuTypes: ['all_day'],
-          imageUrl: 'https://images.unsplash.com/photo-1555244162-803834f70033?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8YnVmZmV0fGVufDB8fDB8fHww',
-          displayOrder: 1,
-          isActive: true,
-        }, branchId, true); // skipTranslations = true
-        console.log('Buffet 1 created:', buffet1.id);
-        translationsToInsert.push(
-          { entityType: 'buffet', entityId: buffet1.id, fieldName: 'name', text: 'All-Day Family Buffet' },
-          { entityType: 'buffet', entityId: buffet1.id, fieldName: 'description', text: 'Unlimited access to our full menu selection including burgers, pizza, fries, and more. Perfect for groups and families!' },
-        );
 
-        const buffet2 = await this.menuService.createBuffet(tenantId, {
-          name: 'Weekend Special Buffet',
-          description: 'Premium weekend buffet with all our signature dishes and special items. Available Saturday and Sunday!',
-          pricePerPerson: 20000,
-          minPersons: 2,
-          menuTypes: ['all_day'],
-          imageUrl: 'https://images.unsplash.com/photo-1583338917496-7ea264c374ce?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8M3x8YnVmZmV0fGVufDB8fDB8fHww',
-          displayOrder: 2,
-          isActive: true,
-        }, branchId, true); // skipTranslations = true
-        console.log('Buffet 2 created:', buffet2.id);
-        translationsToInsert.push(
-          { entityType: 'buffet', entityId: buffet2.id, fieldName: 'name', text: 'Weekend Special Buffet' },
-          { entityType: 'buffet', entityId: buffet2.id, fieldName: 'description', text: 'Premium weekend buffet with all our signature dishes and special items. Available Saturday and Sunday!' },
-        );
-      } catch (error) {
-        console.error('Failed to create buffets:', error);
-      }
-
-      // 7. Create two combo meals with food items
-      if (foodItems.length >= 3) {
-        try {
-          // First combo meal
-          const comboMeal1 = await this.menuService.createComboMeal(tenantId, {
-            name: 'Classic Burger Combo',
-            description: 'Delicious burger paired with crispy golden fries. A perfect meal combination at a great value!',
-            basePrice: 6000, // Discounted price
-            foodItemIds: [foodItems[0].id, foodItems[2].id], // Burger and Fries
-            menuTypes: ['all_day'],
-            imageUrl: 'https://plus.unsplash.com/premium_photo-1683619761468-b06992704398?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MXx8YnVyZ2VyfGVufDB8fDB8fHww',
-            displayOrder: 1,
-            isActive: true,
-          }, branchId, true); // skipTranslations = true
-          console.log('Combo meal 1 created:', comboMeal1.id);
-          translationsToInsert.push(
-            { entityType: 'combo_meal', entityId: comboMeal1.id, fieldName: 'name', text: 'Classic Burger Combo' },
-            { entityType: 'combo_meal', entityId: comboMeal1.id, fieldName: 'description', text: 'Delicious burger paired with crispy golden fries. A perfect meal combination at a great value!' },
-          );
-
-          // Second combo meal
-          const comboMeal2 = await this.menuService.createComboMeal(tenantId, {
-            name: 'Pizza & Garlic Bread Combo',
-            description: 'Tasty pizza served with freshly baked garlic bread. A classic Italian combination!',
-            basePrice: 8500, // Discounted price
-            foodItemIds: [foodItems[1].id, foodItems[3].id], // Pizza and Garlic Bread
-            menuTypes: ['all_day'],
-            imageUrl: 'https://media.istockphoto.com/id/1151446369/photo/tasty-supreme-pizza-with-olives-peppers-onions-and-sausage.webp?a=1&b=1&s=612x612&w=0&k=20&c=LprgiVWgVb5nJ6psO3R2bAYLPBV6V9gLVW9PlTbtGLU=',
-            displayOrder: 2,
-            isActive: true,
-          }, branchId, true); // skipTranslations = true
-          console.log('Combo meal 2 created:', comboMeal2.id);
-          translationsToInsert.push(
-            { entityType: 'combo_meal', entityId: comboMeal2.id, fieldName: 'name', text: 'Pizza & Garlic Bread Combo' },
-            { entityType: 'combo_meal', entityId: comboMeal2.id, fieldName: 'description', text: 'Tasty pizza served with freshly baked garlic bread. A classic Italian combination!' },
-          );
-        } catch (error) {
-          console.error('Failed to create combo meals:', error);
-        }
-      }
-
-      // 8. Assign food items to menu
-      if (foodItems.length > 0) {
-        try {
-          const foodItemIds = foodItems.map(item => item.id);
-          await this.menuService.assignItemsToMenu(tenantId, 'all_day', foodItemIds);
-          console.log('Food items assigned to menu');
-        } catch (error) {
-          console.error('Failed to assign items to menu:', error);
-        }
-      }
-
-      // 9. Bulk insert all translations at once (much faster than individual inserts)
-      if (translationsToInsert.length > 0) {
-        console.log(`📝 Bulk inserting ${translationsToInsert.length} translations...`);
-        await this.translationService.bulkInsertTranslationsDirectly(translationsToInsert);
-        console.log('✅ All translations bulk inserted');
-      }
+      // Don't create translations on signup - only English is enabled initially
+      // Translations will be created when user adds languages
+      // Note: Sample data will be created without translations, users can add languages later
 
       console.log('✅ Sample data creation completed successfully for tenant:', tenantId);
     } catch (error) {

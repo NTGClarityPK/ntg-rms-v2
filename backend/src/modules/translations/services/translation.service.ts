@@ -28,12 +28,13 @@ export class TranslationService {
   /**
    * Create translations for an entity field
    * - Detects language of input text
-   * - Generates translations for all supported languages
+   * - Generates translations for tenant-enabled languages only
    * - Stores in database
    */
   async createTranslations(
     dto: CreateTranslationDto,
     userId?: string,
+    tenantId?: string,
   ): Promise<{ sourceLanguage: string; translations: TranslationResult }> {
     try {
       // Step 1: Get supported languages first (for validation)
@@ -70,11 +71,20 @@ export class TranslationService {
         }
       }
 
-      // Step 3: Get target languages (default to all supported if not provided)
-      const targetLanguages =
-        dto.targetLanguages && dto.targetLanguages.length > 0
-          ? dto.targetLanguages
-          : supportedLanguages.filter((lang) => lang !== sourceLanguage);
+      // Step 3: Get target languages - only tenant-enabled languages
+      let targetLanguages: string[] = [];
+      if (tenantId) {
+        // Get tenant-enabled languages
+        const tenantLanguages = await this.translationRepository.getTenantLanguages(tenantId);
+        const enabledCodes = tenantLanguages.map(l => l.code);
+        targetLanguages = enabledCodes.filter((lang) => lang !== sourceLanguage);
+      } else {
+        // Fallback: if no tenantId provided, use all supported languages (for backward compatibility)
+        targetLanguages =
+          dto.targetLanguages && dto.targetLanguages.length > 0
+            ? dto.targetLanguages
+            : supportedLanguages.filter((lang) => lang !== sourceLanguage);
+      }
 
       if (targetLanguages.length === 0) {
         this.logger.warn('No target languages to translate to');
@@ -140,28 +150,35 @@ export class TranslationService {
    * Insert translations directly without AI translation
    * Used for standard data that doesn't need translation (categories, menu items, etc.)
    * Uses pre-translated data from PRE_TRANSLATIONS constant
+   * Only inserts translations for tenant-enabled languages
    */
   async insertTranslationsDirectly(
     dto: CreateTranslationDto,
     userId?: string,
+    tenantId?: string,
   ): Promise<void> {
     try {
       const sourceLanguage = dto.sourceLanguage || 'en';
-      const supportedLanguages = this.geminiService.getSupportedLanguages();
+      
+      // Get tenant-enabled languages (default to English only if no tenantId)
+      let enabledLanguages: string[] = ['en']; // Always include English
+      if (tenantId) {
+        const tenantLanguages = await this.translationRepository.getTenantLanguages(tenantId);
+        enabledLanguages = tenantLanguages.map(l => l.code);
+      }
 
       // Get pre-translated data if available, otherwise use the same text for all languages
       const preTranslation = PRE_TRANSLATIONS[dto.text];
       const translations: TranslationResult = {};
 
       if (preTranslation) {
-        // Use pre-translated data
-        translations.en = preTranslation.en;
-        translations.ar = preTranslation.ar;
-        translations.ku = preTranslation.ku;
-        translations.fr = preTranslation.fr;
+        // Use pre-translated data only for enabled languages
+        for (const lang of enabledLanguages) {
+          translations[lang] = preTranslation[lang as keyof typeof preTranslation] || dto.text;
+        }
       } else {
-        // Fallback: use the same text for all languages if no pre-translation exists
-        for (const lang of supportedLanguages) {
+        // Fallback: use the same text for enabled languages
+        for (const lang of enabledLanguages) {
           translations[lang] = dto.text;
         }
       }
@@ -173,8 +190,8 @@ export class TranslationService {
         sourceLanguage,
       );
 
-      // Insert translations for all supported languages
-      for (const languageCode of supportedLanguages) {
+      // Insert translations only for tenant-enabled languages
+      for (const languageCode of enabledLanguages) {
         const translatedText = translations[languageCode] || dto.text;
         await this.translationRepository.upsertTranslation(
           metadata.id,
@@ -198,6 +215,7 @@ export class TranslationService {
   /**
    * Bulk insert translations directly (optimized for seed data)
    * Inserts multiple translations in a single batch operation
+   * Only inserts for tenant-enabled languages
    */
   async bulkInsertTranslationsDirectly(
     translations: Array<{
@@ -206,11 +224,19 @@ export class TranslationService {
       fieldName: FieldName | string;
       text: string;
     }>,
+    tenantId?: string,
   ): Promise<void> {
     try {
       // Get supabase client directly
       const supabase = this.supabaseService.getServiceRoleClient();
-      const supportedLanguages = this.geminiService.getSupportedLanguages();
+      
+      // Get tenant-enabled languages (default to English only if no tenantId)
+      let enabledLanguages: string[] = ['en']; // Always include English
+      if (tenantId) {
+        const tenantLanguages = await this.translationRepository.getTenantLanguages(tenantId);
+        enabledLanguages = tenantLanguages.map(l => l.code);
+      }
+      
       const sourceLanguage = 'en';
 
       // Prepare all metadata entries (deduplicate by entityType:entityId)
@@ -259,17 +285,19 @@ export class TranslationService {
         const texts: TranslationResult = {};
 
         if (preTranslation) {
-          texts.en = preTranslation.en;
-          texts.ar = preTranslation.ar;
-          texts.ku = preTranslation.ku;
-          texts.fr = preTranslation.fr;
+          // Only use pre-translations for enabled languages
+          for (const lang of enabledLanguages) {
+            texts[lang] = preTranslation[lang as keyof typeof preTranslation] || trans.text;
+          }
         } else {
-          for (const lang of supportedLanguages) {
+          // Use same text for enabled languages
+          for (const lang of enabledLanguages) {
             texts[lang] = trans.text;
           }
         }
 
-        for (const languageCode of supportedLanguages) {
+        // Only insert for tenant-enabled languages
+        for (const languageCode of enabledLanguages) {
           translationEntries.push({
             metadata_id: metadataId,
             language_code: languageCode,
@@ -399,6 +427,20 @@ export class TranslationService {
   }
 
   /**
+   * Get enabled languages for a tenant
+   */
+  async getTenantLanguages(tenantId: string) {
+    return this.translationRepository.getTenantLanguages(tenantId);
+  }
+
+  /**
+   * Get available languages that can be added for a tenant
+   */
+  async getAvailableLanguagesForTenant(tenantId: string) {
+    return this.translationRepository.getAvailableLanguagesForTenant(tenantId);
+  }
+
+  /**
    * Delete all translations for an entity (used when entity is deleted)
    */
   async deleteEntityTranslations(entityType: EntityType | string, entityId: string): Promise<void> {
@@ -480,6 +522,307 @@ export class TranslationService {
       }
       this.logger.error(`Failed to delete language: ${error.message}`, error.stack);
       throw new InternalServerErrorException(`Failed to delete language: ${error.message}`);
+    }
+  }
+
+  /**
+   * Enable a language for a tenant and translate all existing data
+   */
+  async enableLanguageForTenant(
+    tenantId: string,
+    languageCode: string,
+    userId?: string,
+  ): Promise<{ message: string }> {
+    try {
+      // Enable language for tenant
+      await this.translationRepository.enableLanguageForTenant(tenantId, languageCode);
+      this.logger.log(`Enabled language ${languageCode} for tenant ${tenantId}`);
+
+      // Start translation in background (fire and forget)
+      this.translateExistingDataForLanguage(tenantId, languageCode, userId).catch((error) => {
+        this.logger.error(
+          `Background translation failed for ${languageCode} (tenant ${tenantId}): ${error.message}`,
+          error.stack,
+        );
+      });
+
+      return {
+        message: `Language ${languageCode} enabled successfully. Translations are being processed in the background and may take a while to complete.`,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to enable language for tenant: ${error.message}`, error.stack);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(`Failed to enable language for tenant: ${error.message}`);
+    }
+  }
+
+  /**
+   * Private method to translate existing data for a newly enabled language (runs in background)
+   */
+  private async translateExistingDataForLanguage(
+    tenantId: string,
+    languageCode: string,
+    userId?: string,
+  ): Promise<void> {
+    try {
+      // Get all translation metadata for this tenant's entities
+      // We need to translate all existing entities
+      const supabase = this.supabaseService.getServiceRoleClient();
+      
+      // Get all entity types that might have translations
+      const entityTypes = [
+        'category',
+        'food_item',
+        'addon_group',
+        'addon',
+        'variation_group',
+        'variation',
+        'buffet',
+        'combo_meal',
+        'menu',
+        'branch',
+        'ingredient',
+        'restaurant',
+        'user',
+        'employee', // Also handle 'employee' entity type (same as 'user', stored in users table)
+      ];
+
+      let totalEntitiesTranslated = 0;
+
+      this.logger.log(`Starting translation of existing data to ${languageCode} for tenant ${tenantId}`);
+
+      // For each entity type, get all entities for this tenant and translate them
+      for (const entityType of entityTypes) {
+        try {
+          this.logger.debug(`Processing entity type: ${entityType}`);
+          // Get all entities of this type for the tenant
+          let entities: any[] = [];
+          
+          // Map entity types to their table names
+          const tableMap: Record<string, string> = {
+            category: 'categories',
+            food_item: 'food_items',
+            addon_group: 'add_on_groups',
+            addon: 'add_ons',
+            variation_group: 'variation_groups',
+            variation: 'variations',
+            buffet: 'buffets',
+            combo_meal: 'combo_meals',
+            menu: 'menus',
+            branch: 'branches',
+            ingredient: 'ingredients',
+            restaurant: 'tenants',
+            user: 'users',
+            employee: 'users', // Employee entity type also uses 'users' table
+          };
+
+          const tableName = tableMap[entityType];
+          if (!tableName) continue;
+
+          // Query entities for this tenant
+          if (entityType === 'restaurant') {
+            // For restaurant, check if it's the tenant itself
+            const { data } = await supabase
+              .from(tableName)
+              .select('id')
+              .eq('id', tenantId)
+              .maybeSingle();
+            if (data) entities = [data];
+          } else if (entityType === 'addon') {
+            // For addons, join with addon_groups to get tenant_id
+            const { data } = await supabase
+              .from(tableName)
+              .select('id, add_on_group:add_on_groups!inner(tenant_id)')
+              .eq('add_on_group.tenant_id', tenantId);
+            if (data) entities = data.map((e: any) => ({ id: e.id }));
+          } else if (entityType === 'variation') {
+            // For variations, join with variation_groups to get tenant_id
+            const { data } = await supabase
+              .from(tableName)
+              .select('id, variation_group:variation_groups!inner(tenant_id)')
+              .eq('variation_group.tenant_id', tenantId);
+            if (data) entities = data.map((e: any) => ({ id: e.id }));
+          } else {
+            // Standard entities with tenant_id
+            const { data } = await supabase
+              .from(tableName)
+              .select('id')
+              .eq('tenant_id', tenantId);
+            if (data) entities = data;
+          }
+
+          // Translate each entity
+          for (const entity of entities) {
+            try {
+              // Get existing translations for this entity
+              const existingTranslations = await this.translationRepository.getEntityTranslations(
+                entityType as any,
+                entity.id,
+              );
+
+              // Check if translation already exists for this language
+              const existingForLang = existingTranslations.find((t) => t.languageCode === languageCode);
+              if (existingForLang) continue; // Already translated
+
+              let fieldsToTranslate: Map<string, string> = new Map();
+
+              if (existingTranslations.length > 0) {
+                // Use existing translations as source
+                const fieldsByLang = new Map<string, Map<string, string>>();
+                for (const trans of existingTranslations) {
+                  if (!fieldsByLang.has(trans.languageCode)) {
+                    fieldsByLang.set(trans.languageCode, new Map());
+                  }
+                  fieldsByLang.get(trans.languageCode)!.set(trans.fieldName, trans.translatedText);
+                }
+
+                // Get English translations (or first available language)
+                const sourceLang = fieldsByLang.has('en') ? 'en' : Array.from(fieldsByLang.keys())[0];
+                const sourceFields = fieldsByLang.get(sourceLang);
+                if (sourceFields) {
+                  fieldsToTranslate = sourceFields;
+                }
+              } else {
+                // No translation metadata exists - fetch entity from database and use its fields
+                let entityData: any = null;
+                
+                // Fetch full entity data based on type
+                if (entityType === 'category') {
+                  const { data } = await supabase.from('categories').select('name, description').eq('id', entity.id).eq('tenant_id', tenantId).single();
+                  entityData = data;
+                  if (entityData?.name) fieldsToTranslate.set('name', entityData.name);
+                  if (entityData?.description) fieldsToTranslate.set('description', entityData.description);
+                } else if (entityType === 'food_item') {
+                  const { data } = await supabase.from('food_items').select('name, description').eq('id', entity.id).eq('tenant_id', tenantId).single();
+                  entityData = data;
+                  if (entityData?.name) fieldsToTranslate.set('name', entityData.name);
+                  if (entityData?.description) fieldsToTranslate.set('description', entityData.description);
+                } else if (entityType === 'addon_group') {
+                  const { data } = await supabase.from('add_on_groups').select('name').eq('id', entity.id).eq('tenant_id', tenantId).single();
+                  entityData = data;
+                  if (entityData?.name) fieldsToTranslate.set('name', entityData.name);
+                } else if (entityType === 'addon') {
+                  // Addons don't have tenant_id directly, need to join with add_on_groups
+                  const { data } = await supabase
+                    .from('add_ons')
+                    .select('name, add_on_group:add_on_groups!inner(tenant_id)')
+                    .eq('id', entity.id)
+                    .eq('add_on_group.tenant_id', tenantId)
+                    .single();
+                  entityData = data;
+                  if (entityData?.name) fieldsToTranslate.set('name', entityData.name);
+                } else if (entityType === 'variation_group') {
+                  const { data } = await supabase.from('variation_groups').select('name').eq('id', entity.id).eq('tenant_id', tenantId).single();
+                  entityData = data;
+                  if (entityData?.name) fieldsToTranslate.set('name', entityData.name);
+                } else if (entityType === 'variation') {
+                  // Variations don't have tenant_id directly, need to join with variation_groups
+                  const { data } = await supabase
+                    .from('variations')
+                    .select('name, variation_group:variation_groups!inner(tenant_id)')
+                    .eq('id', entity.id)
+                    .eq('variation_group.tenant_id', tenantId)
+                    .single();
+                  entityData = data;
+                  if (entityData?.name) fieldsToTranslate.set('name', entityData.name);
+                } else if (entityType === 'buffet') {
+                  const { data } = await supabase.from('buffets').select('name, description').eq('id', entity.id).eq('tenant_id', tenantId).single();
+                  entityData = data;
+                  if (entityData?.name) fieldsToTranslate.set('name', entityData.name);
+                  if (entityData?.description) fieldsToTranslate.set('description', entityData.description);
+                } else if (entityType === 'combo_meal') {
+                  const { data } = await supabase.from('combo_meals').select('name, description').eq('id', entity.id).eq('tenant_id', tenantId).single();
+                  entityData = data;
+                  if (entityData?.name) fieldsToTranslate.set('name', entityData.name);
+                  if (entityData?.description) fieldsToTranslate.set('description', entityData.description);
+                } else if (entityType === 'menu') {
+                  const { data } = await supabase.from('menus').select('name').eq('id', entity.id).eq('tenant_id', tenantId).single();
+                  entityData = data;
+                  if (entityData?.name) fieldsToTranslate.set('name', entityData.name);
+                } else if (entityType === 'branch') {
+                  const { data } = await supabase.from('branches').select('name, city, address').eq('id', entity.id).eq('tenant_id', tenantId).single();
+                  entityData = data;
+                  if (entityData?.name) fieldsToTranslate.set('name', entityData.name);
+                  if (entityData?.city) fieldsToTranslate.set('city', entityData.city);
+                  if (entityData?.address) fieldsToTranslate.set('address', entityData.address);
+                } else if (entityType === 'ingredient') {
+                  const { data } = await supabase.from('ingredients').select('name, storage_location').eq('id', entity.id).eq('tenant_id', tenantId).single();
+                  entityData = data;
+                  if (entityData?.name) fieldsToTranslate.set('name', entityData.name);
+                  if (entityData?.storage_location) fieldsToTranslate.set('storage_location', entityData.storage_location);
+                } else if (entityType === 'restaurant') {
+                  const { data } = await supabase.from('tenants').select('name').eq('id', entity.id).single();
+                  entityData = data;
+                  if (entityData?.name) fieldsToTranslate.set('name', entityData.name);
+                } else if (entityType === 'user' || entityType === 'employee') {
+                  // Users/employees have a name field (both 'user' and 'employee' entity types use 'users' table)
+                  const { data } = await supabase.from('users').select('name').eq('id', entity.id).eq('tenant_id', tenantId).single();
+                  entityData = data;
+                  if (entityData?.name) fieldsToTranslate.set('name', entityData.name);
+                }
+              }
+
+              if (fieldsToTranslate.size === 0) continue; // No fields to translate
+
+              // Get or create metadata (use 'en' as source language)
+              const metadata = await this.translationRepository.createOrGetMetadata(
+                entityType,
+                entity.id,
+                'en', // Assume English as source
+              );
+
+              // Translate each field
+              for (const [fieldName, sourceText] of fieldsToTranslate.entries()) {
+                if (!sourceText || sourceText.trim() === '') continue;
+                
+                try {
+                  // Generate translation
+                  const translated = await this.geminiService.translateText(
+                    sourceText,
+                    [languageCode],
+                    'en', // Source language
+                  );
+
+                  if (translated[languageCode]) {
+                    // Store translation
+                    await this.translationRepository.upsertTranslation(
+                      metadata.id,
+                      languageCode,
+                      fieldName,
+                      translated[languageCode],
+                      true, // AI-generated
+                      userId,
+                    );
+                  }
+                } catch (fieldError) {
+                  this.logger.warn(
+                    `Failed to translate ${entityType}:${entity.id} field ${fieldName} to ${languageCode}: ${fieldError.message}`,
+                  );
+                }
+              }
+
+              totalEntitiesTranslated++;
+            } catch (entityError) {
+              this.logger.warn(
+                `Failed to translate ${entityType}:${entity.id} to ${languageCode}: ${entityError.message}`,
+              );
+            }
+          }
+          
+          this.logger.debug(`Completed processing ${entityType}, translated ${entities.length} entities`);
+        } catch (typeError) {
+          this.logger.warn(`Failed to process entity type ${entityType}: ${typeError.message}`);
+        }
+      }
+
+      this.logger.log(
+        `Completed translating ${totalEntitiesTranslated} entities to ${languageCode} for tenant ${tenantId}`,
+      );
+    } catch (error) {
+      this.logger.error(`Failed to translate existing data: ${error.message}`, error.stack);
+      throw error;
     }
   }
 

@@ -1,5 +1,6 @@
 {
   "common": {
+    "close": "Fermer",
     "selectLanguage": "Sélectionner la langue",
     "welcome": "Bienvenue",
     "login": "Connexion",
@@ -1091,6 +1092,11 @@
     "manageTaxes": "Gérer les taxes"
   },
   "settings": {
+    "noAvailableLanguages": "Aucune langue supplémentaire disponible à ajouter.",
+    "or": "OU",
+    "requestCustomLanguage": "Demander une langue personnalisée",
+    "customLanguageDescription": "Besoin d'une langue non listée ? Contactez le service client pour demander le support de langues supplémentaires.",
+    "selectLanguageToAdd": "Sélectionner la langue à ajouter",
     "title": "Paramètres",
     "general": "Paramètres généraux",
     "invoice": "Paramètres de facture",

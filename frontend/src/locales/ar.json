@@ -15,6 +15,7 @@
     "updated": "تم تحديث الملف الشخصي بنجاح"
   },
   "common": {
+    "close": "إغلاق",
     "welcome": "مرحباً",
     "selectLanguage": "اختر اللغة",
     "login": "تسجيل الدخول",
@@ -1079,6 +1080,11 @@
     "manageTaxes": "إدارة الضرائب"
   },
   "settings": {
+    "noAvailableLanguages": "لا توجد لغات إضافية متاحة لإضافتها.",
+    "or": "أو",
+    "requestCustomLanguage": "طلب لغة مخصصة",
+    "selectLanguageToAdd": "اختر اللغة التي تريد إضافتها",
+    "customLanguageDescription": "هل تحتاج لغة غير مدعومة؟ يرجى الاتصال بخدمة العملاء لطلب الدعم للغات إضافية.",
     "title": "الإعدادات",
     "general": "الإعدادات العامة",
     "invoice": "إعدادات الفواتير",

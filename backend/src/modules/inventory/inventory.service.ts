@@ -261,12 +261,13 @@ export class InventoryService {
 
     // Generate translations for the name and storage location asynchronously (fire and forget)
     // Don't block the response - translations will be processed in the background
+    // Only translate to tenant-enabled languages (pass tenantId)
     this.translationService.createTranslations({
       entityType: 'ingredient',
       entityId: data.id,
       fieldName: 'name',
       text: createDto.name,
-    }).catch((translationError) => {
+    }, undefined, tenantId).catch((translationError) => {
       console.error('Failed to create translations for ingredient name:', translationError);
     });
 
@@ -276,7 +277,7 @@ export class InventoryService {
         entityId: data.id,
         fieldName: 'storage_location',
         text: createDto.storageLocation,
-      }).catch((translationError) => {
+      }, undefined, tenantId).catch((translationError) => {
         console.error('Failed to create translations for ingredient storage location:', translationError);
       });
     }
@@ -465,13 +466,14 @@ export class InventoryService {
 
     // Create translations for reason and supplier_name (if provided) asynchronously (fire and forget)
     // Don't block the response - translations will be processed in the background
+    // Only translate to tenant-enabled languages (pass tenantId)
     if (addDto.reason) {
       this.translationService.createTranslations({
         entityType: 'stock_operation',
         entityId: transaction.id,
         fieldName: 'reason',
         text: addDto.reason,
-      }).catch((translationError) => {
+      }, undefined, tenantId).catch((translationError) => {
         console.error('Failed to create translations for stock operation reason:', translationError);
       });
     }
@@ -482,7 +484,7 @@ export class InventoryService {
         entityId: transaction.id,
         fieldName: 'supplier_name',
         text: addDto.supplierName,
-      }).catch((translationError) => {
+      }, undefined, tenantId).catch((translationError) => {
         console.error('Failed to create translations for stock operation supplier name:', translationError);
       });
     }
@@ -576,13 +578,14 @@ export class InventoryService {
 
     // Create translations for reason asynchronously (fire and forget)
     // Don't block the response - translations will be processed in the background
+    // Only translate to tenant-enabled languages (pass tenantId)
     if (reasonText) {
       this.translationService.createTranslations({
         entityType: 'stock_operation',
         entityId: transaction.id,
         fieldName: 'reason',
         text: reasonText,
-      }).catch((translationError) => {
+      }, undefined, tenantId).catch((translationError) => {
         console.error('Failed to create translations for stock operation reason:', translationError);
       });
     }
@@ -666,13 +669,14 @@ export class InventoryService {
 
     // Create translations for reason asynchronously (fire and forget)
     // Don't block the response - translations will be processed in the background
+    // Only translate to tenant-enabled languages (pass tenantId)
     if (adjustDto.reason) {
       this.translationService.createTranslations({
         entityType: 'stock_operation',
         entityId: transaction.id,
         fieldName: 'reason',
         text: adjustDto.reason,
-      }).catch((translationError) => {
+      }, undefined, tenantId).catch((translationError) => {
         console.error('Failed to create translations for stock operation reason:', translationError);
       });
     }
@@ -1006,9 +1010,12 @@ export class InventoryService {
       );
 
     if (branchId) {
-      query = query.eq('branch_id', branchId);
-      countQuery = countQuery.eq('branch_id', branchId);
+      // Include recipes for this branch OR recipes with null branch_id (tenant-level recipes)
+      // Recipes with null branch_id are tenant-level and visible to all branches
+      query = query.or(`branch_id.eq.${branchId},branch_id.is.null`);
+      countQuery = countQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
     }
+    // When no branchId is provided, we'll filter by tenant through food_items/add_ons below
 
     query = query.order('created_at', { ascending: false });
 

@@ -40,7 +40,8 @@ export class TranslationsController {
   @ApiResponse({ status: 201, description: 'Translations created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
   async createTranslations(@Body() dto: CreateTranslationDto, @Request() req: any) {
-    return this.translationsService.createTranslations(dto, req.user?.id);
+    const tenantId = req.user?.tenantId || req.user?.tenant_id;
+    return this.translationsService.createTranslations(dto, req.user?.id, tenantId);
   }
 
   @Put()
@@ -171,6 +172,44 @@ export class TranslationsController {
   @ApiResponse({ status: 404, description: 'Entity not found' })
   async retranslate(@Body() dto: RetranslateDto, @Request() req: any) {
     return this.translationsService.retranslate(dto, req.user?.id);
+  }
+
+  // ==================== TENANT LANGUAGE MANAGEMENT ====================
+
+  @Get('tenant/languages')
+  @ApiOperation({ summary: 'Get enabled languages for current tenant' })
+  @ApiResponse({ status: 200, description: 'Tenant languages retrieved successfully' })
+  async getTenantLanguages(@Request() req: any) {
+    const tenantId = req.user?.tenantId || req.user?.tenant_id;
+    if (!tenantId) {
+      throw new Error('Tenant ID not found in user context');
+    }
+    return this.translationsService.getTenantLanguages(tenantId);
+  }
+
+  @Get('tenant/languages/available')
+  @ApiOperation({ summary: 'Get available languages that can be added for current tenant' })
+  @ApiResponse({ status: 200, description: 'Available languages retrieved successfully' })
+  async getAvailableLanguagesForTenant(@Request() req: any) {
+    const tenantId = req.user?.tenantId || req.user?.tenant_id;
+    if (!tenantId) {
+      throw new Error('Tenant ID not found in user context');
+    }
+    return this.translationsService.getAvailableLanguagesForTenant(tenantId);
+  }
+
+  @Post('tenant/languages/:code')
+  @Roles('tenant_owner')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Enable a language for current tenant and translate existing data' })
+  @ApiResponse({ status: 200, description: 'Language enabled and data translated successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request - language already enabled or invalid' })
+  async enableLanguageForTenant(@Param('code') code: string, @Request() req: any) {
+    const tenantId = req.user?.tenantId || req.user?.tenant_id;
+    if (!tenantId) {
+      throw new Error('Tenant ID not found in user context');
+    }
+    return this.translationsService.enableLanguageForTenant(tenantId, code.toLowerCase(), req.user?.id);
   }
 }
 

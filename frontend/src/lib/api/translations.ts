@@ -188,5 +188,33 @@ export const translationsApi = {
     const response = await apiClient.post('/translations/admin/retranslate', data);
     return response.data;
   },
+
+  // ==================== TENANT LANGUAGE MANAGEMENT ====================
+
+  /**
+   * Get enabled languages for current tenant
+   */
+  getTenantLanguages: async (): Promise<SupportedLanguage[]> => {
+    const response = await apiClient.get<SupportedLanguage[]>('/translations/tenant/languages');
+    return response.data;
+  },
+
+  /**
+   * Get available languages that can be added for current tenant
+   */
+  getAvailableLanguagesForTenant: async (): Promise<SupportedLanguage[]> => {
+    const response = await apiClient.get<SupportedLanguage[]>('/translations/tenant/languages/available');
+    return response.data;
+  },
+
+  /**
+   * Enable a language for current tenant and translate existing data
+   */
+  enableLanguageForTenant: async (code: string): Promise<{ message: string }> => {
+    const response = await apiClient.post<{ message: string }>(
+      `/translations/tenant/languages/${code}`,
+    );
+    return response.data;
+  },
 };
 

@@ -455,6 +455,22 @@ export class EmployeesService {
       }
     }
 
+    // Create translations for name (before returning)
+    try {
+      await this.translationService.createTranslations(
+        {
+          entityType: 'employee',
+          entityId: employee.id,
+          fieldName: 'name',
+          text: createDto.name,
+        },
+        userId, // Pass userId
+        tenantId, // Pass tenantId to ensure only enabled languages are translated
+      );
+    } catch (translationError) {
+      console.warn(`Failed to create translations for employee ${employee.id}:`, translationError);
+    }
+
     // Return employee data directly instead of calling getEmployeeById
     return {
       id: employee.id,
@@ -478,18 +494,6 @@ export class EmployeesService {
       updatedAt: employee.updated_at,
       branches: assignedBranches,
     };
-
-    // Create translations for name
-    try {
-      await this.translationService.createTranslations({
-        entityType: 'employee',
-        entityId: employee.id,
-        fieldName: 'name',
-        text: createDto.name,
-      });
-    } catch (translationError) {
-      console.warn(`Failed to create translations for employee ${employee.id}:`, translationError);
-    }
   }
 
   /**

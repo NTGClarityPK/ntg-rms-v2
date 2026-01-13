@@ -1,5 +1,6 @@
 {
   "common": {
+    "close": "Close",
     "welcome": "Welcome",
     "selectLanguage": "Select Language",
     "login": "Login",
@@ -1091,6 +1092,11 @@
     "manageTaxes": "Manage Taxes"
   },
   "settings": {
+    "noAvailableLanguages": "No additional languages available to add.",
+    "or": "OR",
+    "requestCustomLanguage": "Request Custom Language",
+    "customLanguageDescription": "Need a language not listed? Contact customer service to request support for additional languages.",
+    "selectLanguageToAdd": "Select Language To Add",
     "title": "Settings",
     "general": "General Settings",
     "invoice": "Invoice Settings",

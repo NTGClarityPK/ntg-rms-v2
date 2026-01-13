@@ -508,5 +508,168 @@ export class TranslationRepository {
       throw new InternalServerErrorException('Failed to delete translations');
     }
   }
+
+  /**
+   * Get enabled languages for a tenant
+   */
+  async getTenantLanguages(tenantId: string): Promise<SupportedLanguage[]> {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    const { data, error } = await supabase
+      .from('tenant_languages')
+      .select(`
+        language_code,
+        supported_languages:language_code (
+          code,
+          name,
+          native_name,
+          is_active,
+          is_default,
+          rtl
+        )
+      `)
+      .eq('tenant_id', tenantId)
+      .order('language_code', { ascending: true });
+
+    if (error) {
+      this.logger.error(`Failed to fetch tenant languages: ${error.message}`);
+      throw new InternalServerErrorException('Failed to fetch tenant languages');
+    }
+
+    return (data || [])
+      .map((item: any) => {
+        const lang = item.supported_languages;
+        if (!lang) return null;
+        return {
+          code: lang.code,
+          name: lang.name,
+          nativeName: lang.native_name,
+          isActive: lang.is_active,
+          isDefault: lang.is_default,
+          rtl: lang.rtl,
+        };
+      })
+      .filter((lang: any) => lang !== null);
+  }
+
+  /**
+   * Enable a language for a tenant
+   */
+  async enableLanguageForTenant(tenantId: string, languageCode: string): Promise<void> {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Check if language is already enabled
+    const { data: existing } = await supabase
+      .from('tenant_languages')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('language_code', languageCode)
+      .maybeSingle();
+
+    if (existing) {
+      // Already enabled, nothing to do
+      return;
+    }
+
+    // Verify language exists and is active
+    const { data: lang } = await supabase
+      .from('supported_languages')
+      .select('code, is_active')
+      .eq('code', languageCode)
+      .single();
+
+    if (!lang) {
+      throw new BadRequestException(`Language '${languageCode}' does not exist`);
+    }
+
+    if (!lang.is_active) {
+      throw new BadRequestException(`Language '${languageCode}' is not active`);
+    }
+
+    // Enable language for tenant
+    const { error } = await supabase
+      .from('tenant_languages')
+      .insert({
+        tenant_id: tenantId,
+        language_code: languageCode,
+      });
+
+    if (error) {
+      this.logger.error(`Failed to enable language for tenant: ${error.message}`);
+      throw new InternalServerErrorException('Failed to enable language for tenant');
+    }
+  }
+
+  /**
+   * Check if a language is enabled for a tenant
+   */
+  async isLanguageEnabledForTenant(tenantId: string, languageCode: string): Promise<boolean> {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    const { data, error } = await supabase
+      .from('tenant_languages')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('language_code', languageCode)
+      .maybeSingle();
+
+    if (error && error.code !== 'PGRST116') {
+      this.logger.error(`Failed to check tenant language: ${error.message}`);
+      return false;
+    }
+
+    return !!data;
+  }
+
+  /**
+   * Get available languages that can be added (not yet enabled)
+   */
+  async getAvailableLanguagesForTenant(tenantId: string): Promise<SupportedLanguage[]> {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Get all active supported languages
+    const { data: allLanguages, error: allError } = await supabase
+      .from('supported_languages')
+      .select('*')
+      .eq('is_active', true)
+      .order('code', { ascending: true });
+
+    if (allError) {
+      this.logger.error(`Failed to fetch supported languages: ${allError.message}`);
+      throw new InternalServerErrorException('Failed to fetch supported languages');
+    }
+
+    // Get enabled languages for tenant
+    const { data: enabledLanguages, error: enabledError } = await supabase
+      .from('tenant_languages')
+      .select('language_code')
+      .eq('tenant_id', tenantId);
+
+    if (enabledError) {
+      this.logger.error(`Failed to fetch tenant languages: ${enabledError.message}`);
+      throw new InternalServerErrorException('Failed to fetch tenant languages');
+    }
+
+    const enabledCodes = new Set((enabledLanguages || []).map((l: any) => l.language_code?.toLowerCase()));
+
+    this.logger.debug(`Tenant ${tenantId} - All languages: ${JSON.stringify(allLanguages?.map((l: any) => l.code))}`);
+    this.logger.debug(`Tenant ${tenantId} - Enabled languages: ${JSON.stringify(Array.from(enabledCodes))}`);
+
+    // Return only languages that are not yet enabled (case-insensitive comparison)
+    const available = (allLanguages || [])
+      .filter((lang: any) => !enabledCodes.has(lang.code?.toLowerCase()))
+      .map((lang: any) => ({
+        code: lang.code,
+        name: lang.name,
+        nativeName: lang.native_name,
+        isActive: lang.is_active,
+        isDefault: lang.is_default,
+        rtl: lang.rtl,
+      }));
+
+    this.logger.debug(`Tenant ${tenantId} - Available languages: ${JSON.stringify(available.map(l => l.code))}`);
+
+    return available;
+  }
 }
 

@@ -270,34 +270,11 @@ export default function SettingsPage() {
 
   // Language management state
   const [languages, setLanguages] = useState<SupportedLanguage[]>([]);
+  const [availableLanguages, setAvailableLanguages] = useState<SupportedLanguage[]>([]);
   const [languagesLoading, setLanguagesLoading] = useState(false);
   const [languageModalOpened, setLanguageModalOpened] = useState(false);
-  const [editingLanguage, setEditingLanguage] = useState<SupportedLanguage | null>(null);
-  const [deletingLanguage, setDeletingLanguage] = useState<string | null>(null);
+  const [addingLanguageCode, setAddingLanguageCode] = useState<string | null>(null);
   const [submittingLanguage, setSubmittingLanguage] = useState(false);
-  const [deletingLanguageCode, setDeletingLanguageCode] = useState<string | null>(null);
-  const languageFormModal = useForm<{
-    code: string;
-    name: string;
-    nativeName: string;
-    rtl: boolean;
-    isDefault: boolean;
-    isActive?: boolean;
-  }>({
-    initialValues: {
-      code: '',
-      name: '',
-      nativeName: '',
-      rtl: false,
-      isDefault: false,
-      isActive: true,
-    },
-    validate: {
-      code: (value) => (!value ? t('common.required' as any, language) || 'Required' : value.length !== 2 ? 'Language code must be 2 characters' : null),
-      name: (value) => (!value ? t('common.required' as any, language) || 'Required' : null),
-      nativeName: (value) => (!value ? t('common.required' as any, language) || 'Required' : null),
-    },
-  });
   const taxFormModal = useForm<CreateTaxDto>({
     initialValues: {
       name: '',
@@ -575,11 +552,43 @@ export default function SettingsPage() {
   }, [activeTab, loadTaxes, loadCategories, loadFoodItems]);
 
   const loadLanguages = useCallback(async () => {
-    if (user?.role !== 'tenant_owner') return; // Only load for admin
+    if (user?.role !== 'tenant_owner') return; // Only load for tenant owner
     try {
       setLanguagesLoading(true);
-      const data = await translationsApi.getAllLanguagesAdmin(false); // includes inactive
-      setLanguages(data);
+      // Load tenant-enabled languages
+      const enabledData = await translationsApi.getTenantLanguages();
+      setLanguages(enabledData);
+      
+      // Load available languages that can be added
+      const availableData = await translationsApi.getAvailableLanguagesForTenant();
+      
+      // Get enabled language codes to check what's already enabled
+      const enabledCodes = enabledData.map(l => l.code.toLowerCase());
+      
+      // Always show ku, ar, fr if they're not enabled (even if API doesn't return them)
+      const predefinedLanguageData = [
+        { code: 'ku', name: 'Kurdish', nativeName: 'کوردی', rtl: true },
+        { code: 'ar', name: 'Arabic', nativeName: 'العربية', rtl: true },
+        { code: 'fr', name: 'French', nativeName: 'Français', rtl: false },
+      ];
+      
+      // Filter to only show languages that are not yet enabled
+      const predefinedLanguages = predefinedLanguageData
+        .filter(lang => !enabledCodes.includes(lang.code.toLowerCase()))
+        .map(lang => {
+          // Try to find the language in API response for additional data, otherwise use predefined
+          const apiLang = availableData.find(l => l.code.toLowerCase() === lang.code.toLowerCase());
+          return apiLang || {
+            code: lang.code,
+            name: lang.name,
+            nativeName: lang.nativeName,
+            isActive: true,
+            isDefault: false,
+            rtl: lang.rtl,
+          };
+        });
+      
+      setAvailableLanguages(predefinedLanguages);
     } catch (error: any) {
       notifications.show({
         title: t('common.error' as any, language),
@@ -614,113 +623,40 @@ export default function SettingsPage() {
     }
   }, [activeTab, loadLanguages, user?.role]);
 
-  const handleOpenLanguageModal = (lang?: SupportedLanguage) => {
-    if (lang) {
-      setEditingLanguage(lang);
-      languageFormModal.setValues({
-        code: lang.code,
-        name: lang.name,
-        nativeName: lang.nativeName,
-        rtl: lang.rtl,
-        isDefault: lang.isDefault,
-        isActive: lang.isActive,
-      });
-    } else {
-      setEditingLanguage(null);
-      languageFormModal.reset();
-    }
-    setLanguageModalOpened(true);
-  };
-
-  const handleCloseLanguageModal = () => {
-    if (submittingLanguage) return;
-    setLanguageModalOpened(false);
-    setEditingLanguage(null);
-    languageFormModal.reset();
-  };
-
-  const handleSubmitLanguage = async (values: typeof languageFormModal.values) => {
-    flushSync(() => {
-      setSubmittingLanguage(true);
-    });
-
+  const handleAddLanguage = async (langCode: string) => {
+    setAddingLanguageCode(langCode);
+    setSubmittingLanguage(true);
     try {
-      if (editingLanguage) {
-        // Update
-        await translationsApi.updateLanguage(editingLanguage.code, {
-          name: values.name,
-          nativeName: values.nativeName,
-          rtl: values.rtl,
-          isActive: values.isActive,
-          isDefault: values.isDefault,
-        });
-        notifications.show({
-          title: t('common.success' as any, language),
-          message: t('settings.languageUpdated' as any, language) || 'Language updated successfully',
-          color: getSuccessColor(),
-          icon: <IconCheck size={16} />,
-        });
-      } else {
-        // Create
-        await translationsApi.createLanguage({
-          code: values.code.toLowerCase(),
-          name: values.name,
-          nativeName: values.nativeName,
-          rtl: values.rtl,
-          isDefault: values.isDefault,
-        });
-        notifications.show({
-          title: t('common.success' as any, language),
-          message: t('settings.languageCreated' as any, language) || 'Language created successfully',
-          color: getSuccessColor(),
-          icon: <IconCheck size={16} />,
-        });
-      }
-      setLanguageModalOpened(false);
-      setEditingLanguage(null);
-      languageFormModal.reset();
-      loadLanguages();
-    } catch (error: any) {
-      notifications.show({
-        title: t('common.error' as any, language),
-        message: error?.response?.data?.message || error?.message || 'Failed to save language',
-        color: getErrorColor(),
-        icon: <IconX size={16} />,
-      });
-      // Reopen modal on error
-      if (editingLanguage) {
-        setLanguageModalOpened(true);
-        setEditingLanguage(editingLanguage);
-      } else {
-        setLanguageModalOpened(true);
-      }
-    } finally {
-      setSubmittingLanguage(false);
-    }
-  };
-
-  const handleDeleteLanguage = async (code: string) => {
-    setDeletingLanguageCode(code);
-    try {
-      await translationsApi.deleteLanguage(code);
+      const result = await translationsApi.enableLanguageForTenant(langCode);
       notifications.show({
         title: t('common.success' as any, language),
-        message: t('settings.languageDeleted' as any, language) || 'Language deleted successfully',
+        message: result.message || t('settings.languageEnabledMessage' as any, language) || 'Your request has been accepted. Translations are being processed in the background and may take a while to complete.',
         color: getSuccessColor(),
         icon: <IconCheck size={16} />,
+        autoClose: 5000,
       });
-      setDeletingLanguage(null);
+      setLanguageModalOpened(false);
       await loadLanguages();
     } catch (error: any) {
       notifications.show({
         title: t('common.error' as any, language),
-        message: error?.response?.data?.message || error?.message || 'Failed to delete language',
+        message: error?.response?.data?.message || error?.message || 'Failed to enable language',
         color: getErrorColor(),
         icon: <IconX size={16} />,
       });
     } finally {
-      setDeletingLanguageCode(null);
+      setAddingLanguageCode(null);
+      setSubmittingLanguage(false);
     }
+  };
+
+  const handleRequestCustomLanguage = () => {
+    // Open email client with customer service email
+    const subject = encodeURIComponent('Request for Custom Language Support');
+    const body = encodeURIComponent(
+      'Hello,\n\nI would like to request support for a custom language in my restaurant management system.\n\nPlease contact me to discuss this request.\n\nThank you!'
+    );
+    window.location.href = `mailto:support@example.com?subject=${subject}&body=${body}`;
   };
 
   const handleOpenTaxModal = (tax?: Tax) => {
@@ -1485,13 +1421,15 @@ export default function SettingsPage() {
                   <Stack gap="md">
                     <Group justify="space-between">
                       <Title order={4}>{t('settings.manageLanguages' as any, language) || 'Manage Languages'}</Title>
-                      <Button
-                        leftSection={<IconPlus size={16} />}
-                        onClick={() => handleOpenLanguageModal()}
-                        style={{ backgroundColor: themeColor }}
-                      >
-                        {t('settings.addLanguage' as any, language) || 'Add Language'}
-                      </Button>
+                      {availableLanguages.length > 0 && (
+                        <Button
+                          leftSection={<IconPlus size={16} />}
+                          onClick={() => setLanguageModalOpened(true)}
+                          style={{ backgroundColor: themeColor }}
+                        >
+                          {t('settings.addLanguage' as any, language) || 'Add Language'}
+                        </Button>
+                      )}
                     </Group>
 
                     {languagesLoading ? (
@@ -1508,9 +1446,6 @@ export default function SettingsPage() {
                             <Table.Th>{t('settings.name' as any, language) || 'Name'}</Table.Th>
                             <Table.Th>{t('settings.nativeName' as any, language) || 'Native Name'}</Table.Th>
                             <Table.Th>{t('settings.rtl' as any, language) || 'RTL'}</Table.Th>
-                            <Table.Th>{t('common.status' as any, language) || 'Status'}</Table.Th>
-                            <Table.Th>{t('settings.default' as any, language) || 'Default'}</Table.Th>
-                            <Table.Th>{t('common.actions' as any, language) || 'Actions'}</Table.Th>
                           </Table.Tr>
                         </Table.Thead>
                         <Table.Tbody>
@@ -1528,43 +1463,6 @@ export default function SettingsPage() {
                                   {lang.rtl ? (t('settings.rtlLabel' as any, language) || 'RTL') : (t('settings.ltrLabel' as any, language) || 'LTR')}
                                 </Badge>
                               </Table.Td>
-                              <Table.Td>
-                                <Badge variant="light" color={getBadgeColorForText(lang.isActive
-                                  ? (t('common.active' as any, language) || 'Active')
-                                  : (t('common.inactive' as any, language) || 'Inactive'))}>
-                                  {lang.isActive
-                                    ? t('common.active' as any, language) || 'Active'
-                                    : t('common.inactive' as any, language) || 'Inactive'}
-                                </Badge>
-                              </Table.Td>
-                              <Table.Td>
-                                {lang.isDefault && (
-                                  <Badge variant="light" color="green">
-                                    {t('settings.default' as any, language) || 'Default'}
-                                  </Badge>
-                                )}
-                              </Table.Td>
-                              <Table.Td>
-                                <Group gap="xs">
-                                  <ActionIcon
-                                    variant="light"
-                                    color={themeColor}
-                                    onClick={() => handleOpenLanguageModal(lang)}
-                                    disabled={deletingLanguageCode === lang.code}
-                                  >
-                                    <IconEdit size={16} />
-                                  </ActionIcon>
-                                  <ActionIcon
-                                    variant="light"
-                                    color={errorColor}
-                                    onClick={() => setDeletingLanguage(lang.code)}
-                                    disabled={deletingLanguageCode === lang.code || lang.isDefault}
-                                    loading={deletingLanguageCode === lang.code}
-                                  >
-                                    <IconTrash size={16} />
-                                  </ActionIcon>
-                                </Group>
-                              </Table.Td>
                             </Table.Tr>
                           ))}
                         </Table.Tbody>
@@ -1573,88 +1471,88 @@ export default function SettingsPage() {
                   </Stack>
                 </Paper>
 
-                {/* Language Modal */}
+                {/* Add Language Modal */}
                 <Modal
                   opened={languageModalOpened}
-                  onClose={handleCloseLanguageModal}
-                  title={editingLanguage ? t('settings.editLanguage' as any, language) || 'Edit Language' : t('settings.addLanguage' as any, language) || 'Add Language'}
-                  size="lg"
+                  onClose={() => !submittingLanguage && setLanguageModalOpened(false)}
+                  title={t('settings.addLanguage' as any, language) || 'Add Language'}
+                  size="md"
                   closeOnClickOutside={!submittingLanguage}
                   closeOnEscape={!submittingLanguage}
                 >
-                  <form onSubmit={languageFormModal.onSubmit(handleSubmitLanguage)}>
-                    <Stack gap="md">
-                      <TextInput
-                        label={t('settings.code' as any, language) || 'Language Code'}
-                        placeholder="en"
-                        required
-                        disabled={!!editingLanguage}
-                        description={editingLanguage ? (t('settings.languageCodeCannotChange' as any, language) || 'Language code cannot be changed') : (t('settings.languageCodeDescription' as any, language) || '2-letter ISO code (e.g., en, ar, ku)')}
-                        {...languageFormModal.getInputProps('code')}
-                      />
-                      <TextInput
-                        label={t('settings.name' as any, language) || 'Name'}
-                        placeholder="English"
-                        required
-                        {...languageFormModal.getInputProps('name')}
-                      />
-                      <TextInput
-                        label={t('settings.nativeName' as any, language) || 'Native Name'}
-                        placeholder="English"
-                        required
-                        {...languageFormModal.getInputProps('nativeName')}
-                      />
-                      <Switch
-                        label={t('settings.rtl' as any, language) || 'Right-to-Left (RTL)'}
-                        description={t('settings.rtlDescription' as any, language) || 'Enable for languages like Arabic, Hebrew, etc.'}
-                        {...languageFormModal.getInputProps('rtl', { type: 'checkbox' })}
-                      />
-                      {!editingLanguage && (
-                        <Switch
-                          label={t('settings.setAsDefault' as any, language) || 'Set as Default Language'}
-                          description={t('settings.setAsDefaultDescription' as any, language) || 'This will make this language the default for new users'}
-                          {...languageFormModal.getInputProps('isDefault', { type: 'checkbox' })}
-                        />
-                      )}
-                      {editingLanguage && (
-                        <>
-                          <Switch
-                            label={t('common.active' as any, language) || 'Active'}
-                            {...languageFormModal.getInputProps('isActive', { type: 'checkbox' })}
-                          />
-                          <Switch
-                            label={t('settings.setAsDefault' as any, language) || 'Set as Default Language'}
-                            description={t('settings.setAsDefaultDescription' as any, language) || 'This will make this language the default for new users'}
-                            {...languageFormModal.getInputProps('isDefault', { type: 'checkbox' })}
-                          />
-                        </>
-                      )}
-                      <Group justify="flex-end" mt="md">
-                        <Button variant="subtle" onClick={handleCloseLanguageModal} disabled={submittingLanguage}>
-                          {t('common.cancel' as any, language) || 'Cancel'}
-                        </Button>
-                        <Button type="submit" style={{ backgroundColor: themeColor }} loading={submittingLanguage} disabled={submittingLanguage}>
-                          {t('common.save' as any, language) || 'Save'}
-                        </Button>
+                  <Stack gap="lg">
+                    <Text size="sm" c="dimmed" ta="center">
+                      {t('settings.selectLanguageToAdd' as any, language) || 'Select Language To Add'}
+                    </Text>
+                    
+                    {availableLanguages.length > 0 ? (
+                      <Grid gutter="md">
+                        {availableLanguages.map((lang) => (
+                          <Grid.Col key={lang.code} span={{ base: 12, sm: 6 }}>
+                            <Paper
+                              p="md"
+                              withBorder
+                              style={{
+                                cursor: submittingLanguage || addingLanguageCode === lang.code ? 'not-allowed' : 'pointer',
+                                opacity: submittingLanguage && addingLanguageCode !== lang.code ? 0.6 : 1,
+                                transition: 'all 0.2s',
+                                borderColor: addingLanguageCode === lang.code ? themeColor : undefined,
+                                borderWidth: addingLanguageCode === lang.code ? 2 : 1,
+                              }}
+                              onClick={() => !submittingLanguage && handleAddLanguage(lang.code)}
+                            >
+                              <Stack gap="xs" align="center">
+                                {addingLanguageCode === lang.code ? (
+                                  <Loader size="sm" />
+                                ) : (
+                                  <Badge size="lg" variant="light" color="blue" style={{ fontSize: '12px' }}>
+                                    {lang.code.toUpperCase()}
+                                  </Badge>
+                                )}
+                                <Text fw={600} size="lg" ta="center" style={{ direction: lang.rtl ? 'rtl' : 'ltr' }}>
+                                  {lang.nativeName}
+                                </Text>
+                                <Text size="sm" c="dimmed" ta="center">
+                                  {getTranslatedLanguageName(lang.code)}
+                                </Text>
+                              </Stack>
+                            </Paper>
+                          </Grid.Col>
+                        ))}
+                      </Grid>
+                    ) : (
+                      <Text c="dimmed" ta="center" py="xl">
+                        {t('settings.noAvailableLanguages' as any, language) || 'No additional languages available to add.'}
+                      </Text>
+                    )}
+                    
+                    <Divider label={t('settings.or' as any, language) || 'OR'} labelPosition="center" />
+                    
+                    <Paper
+                      p="md"
+                      withBorder
+                      style={{
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                      }}
+                      onClick={handleRequestCustomLanguage}
+                    >
+                      <Group gap="md">
+                        <IconLanguage size={24} color={themeColor} />
+                        <Stack gap={2} style={{ flex: 1 }}>
+                          <Text fw={500} size="sm">
+                            {t('settings.requestCustomLanguage' as any, language) || 'Request Custom Language Support'}
+                          </Text>
+                          <Text size="xs" c="dimmed">
+                            {t('settings.customLanguageDescription' as any, language) || 'Need a language not listed? Contact customer service to request support for additional languages.'}
+                          </Text>
+                        </Stack>
                       </Group>
-                    </Stack>
-                  </form>
-                </Modal>
+                    </Paper>
 
-                {/* Delete Confirmation Modal */}
-                <Modal
-                  opened={!!deletingLanguage}
-                  onClose={() => setDeletingLanguage(null)}
-                  title={t('settings.deleteLanguage' as any, language) || 'Delete Language'}
-                >
-                  <Stack gap="md">
-                    <Text>{t('settings.deleteLanguageConfirm' as any, language) || 'Are you sure you want to delete this language? This action cannot be undone.'}</Text>
-                    <Group justify="flex-end">
-                      <Button variant="subtle" onClick={() => setDeletingLanguage(null)}>
-                        {t('common.cancel' as any, language) || 'Cancel'}
-                      </Button>
-                      <Button color={errorColor} onClick={() => deletingLanguage && handleDeleteLanguage(deletingLanguage)} loading={deletingLanguageCode === deletingLanguage} disabled={deletingLanguageCode === deletingLanguage}>
-                        {t('common.delete' as any, language) || 'Delete'}
+                    <Group justify="flex-end" mt="md">
+                      <Button variant="subtle" onClick={() => setLanguageModalOpened(false)} disabled={submittingLanguage}>
+                        {t('common.close' as any, language) || 'Close'}
                       </Button>
                     </Group>
                   </Stack>
