@@ -561,17 +561,49 @@ export default function OrdersPage() {
               size="md"
             />
             {/* Only show kitchen display button for kitchen staff, manager, waiter and tenant owner */}
-            {user?.role && !['cashier', 'delivery'].includes(user.role) && (
-              <Button
-                leftSection={<IconChefHat size={16} />}
-                variant="light"
-                component="a"
-                href="/orders/kitchen"
-                size="sm"
-              >
-                {t('orders.kitchenDisplay', language)}
-              </Button>
-            )}
+            {(() => {
+              if (!user?.role) return null;
+              
+              // If user has roles array, check if they have any non-restricted role
+              if (user.roles && Array.isArray(user.roles) && user.roles.length > 0) {
+                const hasNonRestrictedRole = user.roles.some(role => {
+                  const roleName = typeof role === 'string' ? role : (role?.name || '');
+                  return roleName && !['cashier', 'delivery'].includes(roleName.toLowerCase());
+                });
+                if (hasNonRestrictedRole) {
+                  return (
+                    <Button
+                      leftSection={<IconChefHat size={16} />}
+                      variant="light"
+                      component="a"
+                      href="/orders/kitchen"
+                      size="sm"
+                    >
+                      {t('orders.kitchenDisplay', language)}
+                    </Button>
+                  );
+                }
+                // If user has roles but all are restricted, don't show button
+                return null;
+              }
+              
+              // Fallback: check single role string (backward compatibility)
+              if (!['cashier', 'delivery'].includes(user.role.toLowerCase())) {
+                return (
+                  <Button
+                    leftSection={<IconChefHat size={16} />}
+                    variant="light"
+                    component="a"
+                    href="/orders/kitchen"
+                    size="sm"
+                  >
+                    {t('orders.kitchenDisplay', language)}
+                  </Button>
+                );
+              }
+              
+              return null;
+            })()}
             <ActionIcon
               variant="light"
               size="lg"

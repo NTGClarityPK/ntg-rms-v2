@@ -203,8 +203,19 @@ export class AuthService {
       try {
         let branches: any[] = [];
         
-        // If tenant owner, check all branches
-        if (userData.role === 'tenant_owner') {
+        // Check if user has manager role via RBAC (in addition to checking users.role field)
+        const { data: userRoles } = await supabase
+          .from('user_roles')
+          .select(`
+            role:roles(name)
+          `)
+          .eq('user_id', userData.id);
+
+        const hasManagerRole = userRoles?.some((ur: any) => ur.role?.name === 'manager') || false;
+        const isTenantOwner = userData.role === 'tenant_owner';
+        
+        // If tenant owner OR has manager role, check all branches
+        if (isTenantOwner || hasManagerRole) {
           const { data: allBranches } = await supabase
             .from('branches')
             .select('id')
@@ -214,6 +225,32 @@ export class AuthService {
             .order('created_at', { ascending: true });
           
           branches = allBranches || [];
+          
+          // If no branches exist and user is tenant owner, create a default branch
+          if (branches.length === 0 && isTenantOwner) {
+            console.log(`No branches found for tenant ${tenantId}. Creating default branch...`);
+            try {
+              const { data: newBranch, error: createError } = await supabase
+                .from('branches')
+                .insert({
+                  tenant_id: tenantId,
+                  name: 'Main Branch',
+                  code: 'MAIN',
+                  is_active: true,
+                })
+                .select('id')
+                .single();
+
+              if (createError) {
+                console.error('Failed to create default branch:', createError);
+              } else {
+                console.log('✅ Created default branch:', newBranch.id);
+                branches = [{ id: newBranch.id }];
+              }
+            } catch (createBranchError) {
+              console.error('Error creating default branch:', createBranchError);
+            }
+          }
         } else {
           // For other users, check only assigned branches
           const { data: userBranches } = await supabase
@@ -451,8 +488,19 @@ export class AuthService {
     try {
       let branches: any[] = [];
       
-      // If tenant owner, check all branches
-      if (user.role === 'tenant_owner') {
+      // Check if user has manager role via RBAC (in addition to checking users.role field)
+      const { data: userRoles } = await serviceSupabase
+        .from('user_roles')
+        .select(`
+          role:roles(name)
+        `)
+        .eq('user_id', user.id);
+
+      const hasManagerRole = userRoles?.some((ur: any) => ur.role?.name === 'manager') || false;
+      const isTenantOwner = user.role === 'tenant_owner';
+      
+      // If tenant owner OR has manager role, check all branches
+      if (isTenantOwner || hasManagerRole) {
         const { data: allBranches } = await serviceSupabase
           .from('branches')
           .select('id')
@@ -462,6 +510,32 @@ export class AuthService {
           .order('created_at', { ascending: true });
         
         branches = allBranches || [];
+        
+        // If no branches exist and user is tenant owner, create a default branch
+        if (branches.length === 0 && isTenantOwner) {
+          console.log(`No branches found for tenant ${user.tenant_id}. Creating default branch...`);
+          try {
+            const { data: newBranch, error: createError } = await serviceSupabase
+              .from('branches')
+              .insert({
+                tenant_id: user.tenant_id,
+                name: 'Main Branch',
+                code: 'MAIN',
+                is_active: true,
+              })
+              .select('id')
+              .single();
+
+            if (createError) {
+              console.error('Failed to create default branch:', createError);
+            } else {
+              console.log('✅ Created default branch:', newBranch.id);
+              branches = [{ id: newBranch.id }];
+            }
+          } catch (createBranchError) {
+            console.error('Error creating default branch:', createBranchError);
+          }
+        }
       } else {
         // For other users, check only assigned branches using the same pattern as getUserAssignedBranches
         const { data: userBranches } = await serviceSupabase
@@ -550,6 +624,22 @@ export class AuthService {
       role: user.role as string,
       tenantId: user.tenant_id as string,
     };
+  }
+
+  async getUserRoles(userId: string) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+    const { data: userRoles, error } = await supabase
+      .from('user_roles')
+      .select(`
+        role:roles(id, name, display_name_en, display_name_ar, description, is_system_role, is_active)
+      `)
+      .eq('user_id', userId);
+
+    if (error || !userRoles) {
+      return [];
+    }
+
+    return userRoles.map((ur: any) => ur.role).filter(Boolean);
   }
 
   async handleGoogleAuth(user: any) {
@@ -882,8 +972,19 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    // If tenant owner, return all branches
-    if (user.role === 'tenant_owner') {
+    // Check if user has manager role via RBAC (in addition to checking users.role field)
+    const { data: userRoles } = await supabase
+      .from('user_roles')
+      .select(`
+        role:roles(name)
+      `)
+      .eq('user_id', userId);
+
+    const hasManagerRole = userRoles?.some((ur: any) => ur.role?.name === 'manager') || false;
+    const isTenantOwner = user.role === 'tenant_owner';
+
+    // If tenant owner OR has manager role, return all branches
+    if (isTenantOwner || hasManagerRole) {
       const { data: allBranches, error } = await supabase
         .from('branches')
         .select('id, name, code')
@@ -894,6 +995,32 @@ export class AuthService {
 
       if (error) {
         throw new BadRequestException('Failed to fetch branches: ' + error.message);
+      }
+
+      // If no branches exist, create a default branch for tenant owners
+      if ((allBranches || []).length === 0 && isTenantOwner) {
+        console.log(`No branches found for tenant ${tenantId}. Creating default branch...`);
+        try {
+          const { data: newBranch, error: createError } = await supabase
+            .from('branches')
+            .insert({
+              tenant_id: tenantId,
+              name: 'Main Branch',
+              code: 'MAIN',
+              is_active: true,
+            })
+            .select('id, name, code')
+            .single();
+
+          if (createError) {
+            console.error('Failed to create default branch:', createError);
+          } else {
+            console.log('✅ Created default branch:', newBranch.id);
+            return [newBranch];
+          }
+        } catch (createBranchError) {
+          console.error('Error creating default branch:', createBranchError);
+        }
       }
 
       return allBranches || [];

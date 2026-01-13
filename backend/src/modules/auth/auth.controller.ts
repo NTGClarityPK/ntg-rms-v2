@@ -103,12 +103,16 @@ export class AuthController {
       }
     }
     
+    // Get user roles
+    const roles = await this.authService.getUserRoles(user.id);
+    
     // Return user in the correct format
     return {
       id: user.id,
       email: user.email,
       name: userName,
       role: user.role,
+      roles: roles,
       tenantId: user.tenantId || user.tenant_id,
     };
   }

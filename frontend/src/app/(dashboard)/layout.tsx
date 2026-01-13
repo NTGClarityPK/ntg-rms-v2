@@ -75,24 +75,37 @@ export default function DashboardLayout({
           // If we get here, token is valid (or was refreshed by interceptor)
           setUser(userData);
           
-          // Load user permissions
+          // Load user permissions (non-blocking - don't fail login if this fails)
           if (userData?.id) {
+            // Use a timeout to prevent hanging on permission loading
+            const permissionsPromise = rolesApi.getUserPermissions(userData.id);
+            const timeoutPromise = new Promise<never>((_, reject) => 
+              setTimeout(() => reject(new Error('Permissions loading timeout')), 5000)
+            );
+            
             try {
-              const permissions = await rolesApi.getUserPermissions(userData.id);
+              const permissions = await Promise.race([permissionsPromise, timeoutPromise]);
               console.log('Loaded user permissions:', permissions);
               setPermissions(permissions);
               
-              // If no permissions and user is tenant_owner or manager, log warning
+              // If no permissions and user is tenant_owner or manager, log warning but don't block
               if (permissions.length === 0 && (userData.role === 'tenant_owner' || userData.role === 'manager')) {
                 console.warn('User has no permissions assigned. Please run migration 014_assign_roles_to_existing_users.sql to assign roles.');
+                // For tenant owners, set empty permissions array but allow login
+                setPermissions([]);
               }
             } catch (permError: any) {
               console.error('Failed to load user permissions:', permError);
-              // If user is tenant_owner or manager, they should have permissions
+              // Always allow tenant owners and managers to proceed even without permissions
               if (userData.role === 'tenant_owner' || userData.role === 'manager') {
-                console.warn('Owner/Manager user has no permissions. This may require running the migration to assign roles.');
+                console.warn('Owner/Manager user permissions failed to load. Continuing with empty permissions - user can still access system.');
+                // Set empty permissions but don't block login
+                setPermissions([]);
+              } else {
+                // For other users, also set empty permissions but log the error
+                setPermissions([]);
               }
-              // Continue without permissions - user will have limited access
+              // Continue without permissions - user will have limited access but can still login
             }
           }
         } catch (error: any) {

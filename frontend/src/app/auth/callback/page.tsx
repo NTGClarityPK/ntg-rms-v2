@@ -102,6 +102,7 @@ function AuthCallbackContent() {
             email: user.email,
             name: user.name || user.nameEn || user.name_en || user.nameAr || user.name_ar || 'User',
             role: user.role,
+            roles: user.roles || [],
             tenantId: user.tenantId || user.tenant_id,
           });
         } else {

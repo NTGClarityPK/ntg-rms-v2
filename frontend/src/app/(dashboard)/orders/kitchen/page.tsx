@@ -89,9 +89,22 @@ export default function KitchenDisplayPage() {
     [waiterEmail: string]: { name?: { [languageCode: string]: string } };
   }>({});
   
-  // Route protection: Redirect waiter and cashier away from kitchen display
+  // Route protection: Redirect users who ONLY have restricted roles (delivery or cashier)
   useEffect(() => {
-    if (user?.role && ['delivery', 'cashier'].includes(user.role)) {
+    if (!user?.role) return;
+    
+    // If user has roles array, check if they have ONLY restricted roles
+    if (user.roles && Array.isArray(user.roles) && user.roles.length > 0) {
+      const hasNonRestrictedRole = user.roles.some(role => {
+        const roleName = typeof role === 'string' ? role : (role?.name || '');
+        return roleName && !['delivery', 'cashier'].includes(roleName.toLowerCase());
+      });
+      // If user has any non-restricted role, allow access
+      if (hasNonRestrictedRole) return;
+    }
+    
+    // Fallback: check single role string (backward compatibility)
+    if (['delivery', 'cashier'].includes(user.role.toLowerCase())) {
       notifications.show({
         title: t('common.error' as any, language),
         message: t('orders.unauthorizedKitchenAccess' as any, language) || 'You do not have permission to access the kitchen display.',
@@ -99,7 +112,7 @@ export default function KitchenDisplayPage() {
       });
       router.push('/orders');
     }
-  }, [user?.role, router, language]);
+  }, [user?.role, user?.roles, router, language]);
 
   // Helper function to resolve variation group name from UUID
   const resolveVariationGroupName = (variationGroup: string | undefined): string => {
@@ -1028,9 +1041,25 @@ export default function KitchenDisplayPage() {
     return hasReadyItems || (hasServedItems && hasPreparingItems);
   });
 
-  // Don't render the page if user is waiter or cashier
-  if (user?.role && ['delivery', 'cashier'].includes(user.role)) {
-    return null;
+  // Don't render the page if user ONLY has restricted roles (delivery or cashier)
+  if (!user?.role) return null;
+  
+  // If user has roles array, check if they have any non-restricted role
+  if (user.roles && Array.isArray(user.roles) && user.roles.length > 0) {
+    const hasNonRestrictedRole = user.roles.some(role => {
+      const roleName = typeof role === 'string' ? role : (role?.name || '');
+      return roleName && !['delivery', 'cashier'].includes(roleName.toLowerCase());
+    });
+    // If user has any non-restricted role, allow access
+    if (!hasNonRestrictedRole) {
+      // User has ONLY restricted roles
+      return null;
+    }
+  } else {
+    // Fallback: check single role string (backward compatibility)
+    if (['delivery', 'cashier'].includes(user.role.toLowerCase())) {
+      return null;
+    }
   }
 
   return (

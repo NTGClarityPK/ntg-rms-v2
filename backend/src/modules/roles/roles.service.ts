@@ -177,12 +177,50 @@ export class RolesService {
   async getUserPermissions(userId: string): Promise<Permission[]> {
     const supabase = this.supabaseService.getServiceRoleClient();
 
+    // First check if user exists and get their role
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', userId)
+      .single();
+
+    if (userError || !user) {
+      throw new InternalServerErrorException(`User not found: ${userError?.message || 'Unknown error'}`);
+    }
+
+    // Check if user has any roles assigned
+    const { data: userRoles, error: rolesCheckError } = await supabase
+      .from('user_roles')
+      .select('role_id')
+      .eq('user_id', userId)
+      .limit(1);
+
+    // If tenant owner has no roles, ensure they get manager role as fallback
+    if ((!userRoles || userRoles.length === 0) && user.role === 'tenant_owner') {
+      console.warn(`Tenant owner ${userId} has no roles assigned. Assigning manager role as fallback.`);
+      try {
+        const managerRole = await this.getRoles().then(roles => roles.find(r => r.name === 'manager'));
+        if (managerRole) {
+          await this.assignRolesToUser(userId, [managerRole.id], userId);
+          console.log(`✅ Assigned manager role (fallback) to tenant owner ${userId}`);
+        }
+      } catch (fallbackError) {
+        console.error(`Failed to assign fallback manager role to tenant owner ${userId}:`, fallbackError);
+        // Continue anyway - return empty permissions but don't block
+      }
+    }
+
     // Use the database function to get user permissions
     const { data, error } = await supabase.rpc('get_user_permissions', {
       user_uuid: userId,
     });
 
     if (error) {
+      // If tenant owner and permissions fail, log but don't throw - return empty array
+      if (user.role === 'tenant_owner') {
+        console.error(`Failed to fetch permissions for tenant owner ${userId}:`, error);
+        return [];
+      }
       throw new InternalServerErrorException(`Failed to fetch user permissions: ${error.message}`);
     }
 
@@ -201,6 +239,11 @@ export class RolesService {
       );
 
     if (permError) {
+      // If tenant owner and permission details fail, log but don't throw - return empty array
+      if (user.role === 'tenant_owner') {
+        console.error(`Failed to fetch permission details for tenant owner ${userId}:`, permError);
+        return [];
+      }
       throw new InternalServerErrorException(`Failed to fetch permission details: ${permError.message}`);
     }
 
@@ -258,6 +301,31 @@ export class RolesService {
       throw new BadRequestException('One or more roles not found or inactive');
     }
 
+    // Check if user is tenant owner - we need to ensure they always have at least manager role
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', userId)
+      .single();
+
+    const isTenantOwner = user && user.role === 'tenant_owner';
+    
+    // Get current roles before deletion (for rollback if needed)
+    const { data: currentRoles } = await supabase
+      .from('user_roles')
+      .select('role_id')
+      .eq('user_id', userId);
+
+    // Ensure tenant owners always have manager role
+    let finalRoleIds = [...roleIds];
+    if (isTenantOwner) {
+      const managerRole = await this.getRoles().then(roles => roles.find(r => r.name === 'manager'));
+      if (managerRole && !roleIds.includes(managerRole.id)) {
+        finalRoleIds.push(managerRole.id);
+        console.log(`Ensuring tenant owner ${userId} has manager role`);
+      }
+    }
+
     // Remove existing roles
     const { error: deleteError } = await supabase.from('user_roles').delete().eq('user_id', userId);
 
@@ -266,7 +334,7 @@ export class RolesService {
     }
 
     // Insert new roles
-    const userRolesToInsert = roleIds.map((roleId) => ({
+    const userRolesToInsert = finalRoleIds.map((roleId) => ({
       user_id: userId,
       role_id: roleId,
       assigned_by: assignedBy,
@@ -283,6 +351,22 @@ export class RolesService {
       );
 
     if (insertError) {
+      // If insert fails and user is tenant owner, try to restore manager role at minimum
+      if (isTenantOwner) {
+        const managerRole = await this.getRoles().then(roles => roles.find(r => r.name === 'manager'));
+        if (managerRole) {
+          try {
+            await supabase.from('user_roles').insert({
+              user_id: userId,
+              role_id: managerRole.id,
+              assigned_by: assignedBy,
+            });
+            console.log(`Restored manager role for tenant owner ${userId} after failed role assignment`);
+          } catch (restoreError) {
+            console.error(`Failed to restore manager role for tenant owner ${userId}:`, restoreError);
+          }
+        }
+      }
       throw new InternalServerErrorException(`Failed to assign roles: ${insertError.message}`);
     }
 
