@@ -1035,57 +1035,24 @@ export class DeliveryService {
             // Create all translations in parallel
             const translationPromises: Promise<any>[] = [];
 
-            if (addressData.address) {
-              translationPromises.push(
-                this.translationService.createTranslations({
-                  entityType: EntityType.DELIVERY,
-                  entityId: deliveryId,
-                  fieldName: FieldName.ADDRESS,
-                  text: addressData.address,
-                }).catch(err => {
-                  console.warn(`Failed to create address translation for delivery ${deliveryId}:`, err);
-                  return null;
-                })
-              );
-            }
+            // Use batch translation for all address fields at once
+            const deliveryAddressFieldsToTranslate = [
+              ...(addressData.address ? [{ fieldName: FieldName.ADDRESS, text: addressData.address }] : []),
+              ...(addressData.city ? [{ fieldName: FieldName.CITY, text: addressData.city }] : []),
+              ...(addressData.state ? [{ fieldName: FieldName.STATE, text: addressData.state }] : []),
+              ...(addressData.country ? [{ fieldName: FieldName.COUNTRY, text: addressData.country }] : []),
+            ];
 
-            if (addressData.city) {
+            if (deliveryAddressFieldsToTranslate.length > 0) {
               translationPromises.push(
-                this.translationService.createTranslations({
-                  entityType: EntityType.DELIVERY,
-                  entityId: deliveryId,
-                  fieldName: FieldName.CITY,
-                  text: addressData.city,
-                }).catch(err => {
-                  console.warn(`Failed to create city translation for delivery ${deliveryId}:`, err);
-                  return null;
-                })
-              );
-            }
-
-            if (addressData.state) {
-              translationPromises.push(
-                this.translationService.createTranslations({
-                  entityType: EntityType.DELIVERY,
-                  entityId: deliveryId,
-                  fieldName: FieldName.STATE,
-                  text: addressData.state,
-                }).catch(err => {
-                  console.warn(`Failed to create state translation for delivery ${deliveryId}:`, err);
-                  return null;
-                })
-              );
-            }
-
-            if (addressData.country) {
-              translationPromises.push(
-                this.translationService.createTranslations({
-                  entityType: EntityType.DELIVERY,
-                  entityId: deliveryId,
-                  fieldName: FieldName.COUNTRY,
-                  text: addressData.country,
-                }).catch(err => {
-                  console.warn(`Failed to create country translation for delivery ${deliveryId}:`, err);
+                this.translationService.createBatchTranslations(
+                  EntityType.DELIVERY,
+                  deliveryId,
+                  deliveryAddressFieldsToTranslate,
+                  undefined,
+                  tenantId,
+                ).catch(err => {
+                  console.warn(`Failed to create batch address translations for delivery ${deliveryId}:`, err);
                   return null;
                 })
               );

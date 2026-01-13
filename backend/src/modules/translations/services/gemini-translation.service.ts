@@ -205,7 +205,7 @@ Example: ar,0.95`;
   /**
    * Store translation in cache
    */
-  private setCachedTranslation(cacheKey: string, translations: TranslationResult): void {
+  private setCachedTranslation(cacheKey: string, translations: TranslationResult, isBatchResult: boolean = false): void {
     // If cache is too large, remove oldest entries
     if (this.translationCache.size >= this.maxCacheSize) {
       const oldestKey = this.translationCache.keys().next().value;
@@ -216,7 +216,11 @@ Example: ar,0.95`;
       translations,
       timestamp: Date.now(),
     });
-    this.logger.debug(`Cached translation: ${cacheKey.substring(0, 50)}...`);
+    
+    // Only log cache operations for individual translations, not batch results (to avoid confusion)
+    if (!isBatchResult) {
+      this.logger.debug(`Cached translation: ${cacheKey.substring(0, 50)}...`);
+    }
   }
 
   /**
@@ -348,7 +352,8 @@ Only include the languages requested: ${validTargetLanguages.join(', ')}`;
   }
 
   /**
-   * Batch translate multiple texts (more efficient)
+   * Batch translate multiple texts in a single API call (more efficient)
+   * Sends all fields together to reduce API calls
    */
   async translateBatch(
     texts: Array<{ text: string; fieldName: string }>,
@@ -359,9 +364,257 @@ Only include the languages requested: ${validTargetLanguages.join(', ')}`;
       throw new BadRequestException('AI translation service is not configured');
     }
 
-    const results: Array<{ fieldName: string; translations: TranslationResult }> = [];
+    if (!texts || texts.length === 0) {
+      return [];
+    }
 
-    // Process in parallel (with rate limiting consideration)
+    // Filter out empty texts
+    const validTexts = texts.filter(({ text }) => text && text.trim().length > 0);
+    if (validTexts.length === 0) {
+      return texts.map(({ fieldName }) => ({ fieldName, translations: {} }));
+    }
+
+    // If only one text, use the single translation method (simpler)
+    if (validTexts.length === 1) {
+      try {
+        const translations = await this.translateText(
+          validTexts[0].text,
+          targetLanguages,
+          sourceLanguage,
+        );
+        return [{ fieldName: validTexts[0].fieldName, translations }];
+      } catch (error) {
+        this.logger.error(`Failed to translate ${validTexts[0].fieldName}: ${error.message}`);
+        return [{ fieldName: validTexts[0].fieldName, translations: {} }];
+      }
+    }
+
+    // Remove languages that match source or are not supported
+    const validTargetLanguages = targetLanguages.filter(
+      lang => lang !== sourceLanguage && this.supportedLanguages.includes(lang),
+    );
+
+    if (validTargetLanguages.length === 0) {
+      return validTexts.map(({ fieldName }) => ({ fieldName, translations: {} }));
+    }
+
+    // Check cache for all texts first
+    const cacheResults: Map<number, TranslationResult> = new Map();
+    const uncachedTexts: Array<{ text: string; fieldName: string; index: number }> = [];
+
+    for (let i = 0; i < validTexts.length; i++) {
+      const { text, fieldName } = validTexts[i];
+      const cacheKey = this.getCacheKey(text, validTargetLanguages, sourceLanguage);
+      const cached = this.getCachedTranslation(cacheKey);
+      if (cached) {
+        cacheResults.set(i, cached);
+      } else {
+        uncachedTexts.push({ text, fieldName, index: i });
+      }
+    }
+
+    // If all texts are cached, return cached results
+    if (uncachedTexts.length === 0) {
+      return validTexts.map(({ fieldName }, i) => ({
+        fieldName,
+        translations: cacheResults.get(i) || {},
+      }));
+    }
+
+    // Build batch translation prompt for uncached texts
+    const languageNames: { [key: string]: string } = {
+      en: 'English',
+      ar: 'Arabic',
+      ku: 'Kurdish',
+      fr: 'French',
+    };
+
+    const targetList = validTargetLanguages.map(lang => languageNames[lang] || lang).join(', ');
+    const sourceLangName = sourceLanguage ? languageNames[sourceLanguage] || sourceLanguage : 'the source language';
+
+    // Create a list of texts to translate (field names are only for reference, not to be translated)
+    const textsList = uncachedTexts
+      .map(({ text, fieldName }, idx) => `${idx + 1}. [${fieldName}] "${text}"`)
+      .join('\n');
+
+    const prompt = `Translate ONLY the text content (the text inside quotes) from ${sourceLangName} to ${targetList}. 
+DO NOT translate field names or labels (the text in square brackets). Only translate the actual content.
+
+Texts to translate:
+${textsList}
+
+IMPORTANT: 
+- Translate ONLY the text content inside the quotes
+- DO NOT include field names, labels, or any text outside the quotes in your translations
+- Return a JSON object where each key is a number (1, 2, 3, etc.) corresponding to the text order
+- Each value should be an object with language codes as keys and ONLY the translated text content as values
+
+Response format:
+{
+  "1": {
+    "${validTargetLanguages[0]}": "translated text content only",
+    "${validTargetLanguages[1] || ''}": "translated text content only"
+  },
+  "2": {
+    "${validTargetLanguages[0]}": "translated text content only",
+    "${validTargetLanguages[1] || ''}": "translated text content only"
+  }
+}
+
+Only include the languages requested: ${validTargetLanguages.join(', ')}
+Only translate the text content, not field names or labels.`;
+
+    this.logger.debug(`Batch translation: calling Gemini API for ${uncachedTexts.length} fields in a SINGLE request...`);
+
+    try {
+      // Use retry logic with fallback
+      const result = await this.executeTranslationWithRetry(prompt);
+      const responseText = result.response.text().trim();
+
+      // Parse JSON response
+      let batchTranslations: { [key: string]: TranslationResult };
+      try {
+        // Extract JSON from response (might have markdown code blocks)
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        const jsonText = jsonMatch ? jsonMatch[0] : responseText;
+        batchTranslations = JSON.parse(jsonText);
+      } catch (parseError) {
+        this.logger.error(`Failed to parse batch translation response: ${responseText}`);
+        // Fallback: try individual translations for uncached texts
+        const fallbackResults = await this.fallbackToIndividualTranslations(uncachedTexts, validTargetLanguages, sourceLanguage);
+        
+        // Map fallback results back to original indices
+        const fallbackResultsMap = new Map<number, TranslationResult>();
+        for (let i = 0; i < uncachedTexts.length; i++) {
+          fallbackResultsMap.set(uncachedTexts[i].index, fallbackResults[i].translations);
+        }
+        
+        // Build final results combining cached and fallback results
+        const results: Array<{ fieldName: string; translations: TranslationResult }> = [];
+        let validTextIndex = 0;
+        for (const { fieldName, text } of texts) {
+          if (!text || text.trim().length === 0) {
+            results.push({ fieldName, translations: {} });
+          } else {
+            const translations = cacheResults.get(validTextIndex) || fallbackResultsMap.get(validTextIndex) || {};
+            results.push({ fieldName, translations });
+            validTextIndex++;
+          }
+        }
+        return results;
+      }
+
+      // Process results and cache them
+      // Create a map of uncached text results
+      const uncachedResultsMap = new Map<number, TranslationResult>();
+      
+      for (let i = 0; i < uncachedTexts.length; i++) {
+        const uncachedText = uncachedTexts[i];
+        // Get translation result using 1-based index (as per prompt)
+        const resultKey = String(i + 1);
+        const fieldTranslations = batchTranslations[resultKey] || {};
+
+        // Validate and filter translations
+        const resultTranslations: TranslationResult = {};
+        for (const lang of validTargetLanguages) {
+          if (fieldTranslations[lang] && typeof fieldTranslations[lang] === 'string') {
+            let translatedText = fieldTranslations[lang].trim();
+            
+            // Remove any field name prefixes that might have been included by the AI
+            // Common patterns: "nom: ", "name: ", "[nom] ", "[name] ", etc.
+            
+            // First, try to match the exact field name with colon/colon-space
+            const escapedFieldName = uncachedText.fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const fieldNamePatterns = [
+              new RegExp(`^\\s*${escapedFieldName}\\s*[:：]\\s*`, 'i'), // "nom: " or "name: "
+              new RegExp(`^\\s*\\[${escapedFieldName}\\]\\s*[:：]?\\s*`, 'i'), // "[nom] " or "[name] "
+            ];
+            
+            // Also check for common field name translations
+            const commonFieldNames = ['name', 'nom', 'description', 'description', 'address', 'adresse', 'city', 'ville', 'state', 'état', 'country', 'pays', 'notes', 'notes', 'title', 'titre'];
+            for (const commonName of commonFieldNames) {
+              fieldNamePatterns.push(
+                new RegExp(`^\\s*${commonName}\\s*[:：]\\s*`, 'i'),
+                new RegExp(`^\\s*\\[${commonName}\\]\\s*[:：]?\\s*`, 'i')
+              );
+            }
+            
+            // Apply all patterns
+            for (const pattern of fieldNamePatterns) {
+              translatedText = translatedText.replace(pattern, '');
+            }
+            
+            resultTranslations[lang] = translatedText.trim();
+          }
+        }
+
+        // Store result mapped to original validTexts index
+        uncachedResultsMap.set(uncachedText.index, resultTranslations);
+
+        // Cache the result (mark as batch result to avoid confusing log messages)
+        if (Object.keys(resultTranslations).length > 0) {
+          const cacheKey = this.getCacheKey(uncachedText.text, validTargetLanguages, sourceLanguage);
+          this.setCachedTranslation(cacheKey, resultTranslations, true); // true = batch result
+        } else {
+          this.logger.warn(`No translations received for field: ${uncachedText.fieldName} in batch response`);
+        }
+      }
+
+      // Build final results array maintaining original order
+      const results: Array<{ fieldName: string; translations: TranslationResult }> = [];
+      
+      // Map original texts array to results
+      let validTextIndex = 0;
+      for (const { fieldName, text } of texts) {
+        if (!text || text.trim().length === 0) {
+          // Empty text
+          results.push({ fieldName, translations: {} });
+        } else {
+          // Check if cached or from batch result
+          const translations = cacheResults.get(validTextIndex) || uncachedResultsMap.get(validTextIndex) || {};
+          results.push({ fieldName, translations });
+          validTextIndex++;
+        }
+      }
+
+      return results;
+    } catch (error) {
+      this.logger.error(`Batch translation failed: ${error.message}`, error.stack);
+      // Fallback to individual translations if batch fails
+      const fallbackResults = await this.fallbackToIndividualTranslations(uncachedTexts, validTargetLanguages, sourceLanguage);
+      
+      // Map fallback results back to original indices
+      const fallbackResultsMap = new Map<number, TranslationResult>();
+      for (let i = 0; i < uncachedTexts.length; i++) {
+        fallbackResultsMap.set(uncachedTexts[i].index, fallbackResults[i].translations);
+      }
+      
+      // Build final results combining cached and fallback results
+      const results: Array<{ fieldName: string; translations: TranslationResult }> = [];
+      let validTextIndex = 0;
+      for (const { fieldName, text } of texts) {
+        if (!text || text.trim().length === 0) {
+          results.push({ fieldName, translations: {} });
+        } else {
+          const translations = cacheResults.get(validTextIndex) || fallbackResultsMap.get(validTextIndex) || {};
+          results.push({ fieldName, translations });
+          validTextIndex++;
+        }
+      }
+      return results;
+    }
+  }
+
+  /**
+   * Fallback method: translate texts individually if batch translation fails
+   */
+  private async fallbackToIndividualTranslations(
+    texts: Array<{ text: string; fieldName: string; index: number }>,
+    targetLanguages: string[],
+    sourceLanguage?: string,
+  ): Promise<Array<{ fieldName: string; translations: TranslationResult }>> {
+    this.logger.warn('Falling back to individual translations due to batch failure');
+    
     const translationPromises = texts.map(async ({ text, fieldName }) => {
       try {
         const translations = await this.translateText(text, targetLanguages, sourceLanguage);
@@ -372,7 +625,9 @@ Only include the languages requested: ${validTargetLanguages.join(', ')}`;
       }
     });
 
-    return Promise.all(translationPromises);
+    const results = await Promise.all(translationPromises);
+    // Return results maintaining order (index is preserved in the array order)
+    return results;
   }
 
   /**

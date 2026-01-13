@@ -147,6 +147,154 @@ export class TranslationService {
   }
 
   /**
+   * Create translations for multiple fields of an entity in a single batch
+   * More efficient than calling createTranslations multiple times
+   * - Detects language once (using first field or combined text)
+   * - Generates translations for all fields in parallel
+   * - Stores in database
+   */
+  async createBatchTranslations(
+    entityType: EntityType | string,
+    entityId: string,
+    fields: Array<{ fieldName: FieldName | string; text: string }>,
+    userId?: string,
+    tenantId?: string,
+    sourceLanguage?: string,
+  ): Promise<{ sourceLanguage: string; translations: { [fieldName: string]: TranslationResult } }> {
+    if (!fields || fields.length === 0) {
+      return { sourceLanguage: sourceLanguage || 'en', translations: {} };
+    }
+
+    try {
+      // Step 1: Get supported languages first (for validation)
+      const supportedLanguages = this.geminiService.getSupportedLanguages();
+      const defaultLanguage = 'en';
+
+      // Step 2: Detect source language if not provided
+      // Use the first non-empty field for detection, or combine all texts
+      let detectedSourceLanguage = sourceLanguage;
+      if (!detectedSourceLanguage) {
+        const textForDetection = fields.find(f => f.text && f.text.trim())?.text || fields[0]?.text || '';
+        if (textForDetection) {
+          const detection = await this.geminiService.detectLanguage(textForDetection);
+          const detectedLanguage = detection.language;
+          
+          if (supportedLanguages.includes(detectedLanguage)) {
+            detectedSourceLanguage = detectedLanguage;
+          } else {
+            detectedSourceLanguage = defaultLanguage;
+            this.logger.warn(
+              `Detected language '${detectedLanguage}' is not supported, using default '${defaultLanguage}' for entity ${entityType}:${entityId}`,
+            );
+          }
+          
+          this.logger.log(
+            `Detected language: ${detectedLanguage} (confidence: ${detection.confidence}), using: ${detectedSourceLanguage} for entity ${entityType}:${entityId}`,
+          );
+        } else {
+          detectedSourceLanguage = defaultLanguage;
+        }
+      } else {
+        // Validate provided source language
+        if (!supportedLanguages.includes(detectedSourceLanguage)) {
+          this.logger.warn(
+            `Provided source language '${detectedSourceLanguage}' is not supported, using default '${defaultLanguage}' for entity ${entityType}:${entityId}`,
+          );
+          detectedSourceLanguage = defaultLanguage;
+        }
+      }
+
+      // Step 3: Get target languages - only tenant-enabled languages
+      let targetLanguages: string[] = [];
+      if (tenantId) {
+        const tenantLanguages = await this.translationRepository.getTenantLanguages(tenantId);
+        const enabledCodes = tenantLanguages.map(l => l.code);
+        targetLanguages = enabledCodes.filter((lang) => lang !== detectedSourceLanguage);
+      } else {
+        targetLanguages = supportedLanguages.filter((lang) => lang !== detectedSourceLanguage);
+      }
+
+      if (targetLanguages.length === 0) {
+        this.logger.warn('No target languages to translate to');
+        return { sourceLanguage: detectedSourceLanguage, translations: {} };
+      }
+
+      // Step 4: Batch translate all fields using the batch translation method
+      const textsToTranslate = fields
+        .filter(f => f.text && f.text.trim())
+        .map(f => ({ text: f.text, fieldName: f.fieldName }));
+
+      const batchResults: Array<{ fieldName: string; translations: TranslationResult }> = [];
+      
+      if (textsToTranslate.length > 0) {
+        try {
+          const batchTranslations = await this.geminiService.translateBatch(
+            textsToTranslate,
+            targetLanguages,
+            detectedSourceLanguage,
+          );
+          batchResults.push(...batchTranslations);
+          
+          this.logger.log(
+            `Generated batch translations for ${batchResults.length} fields of ${entityType}:${entityId}`,
+          );
+        } catch (error) {
+          this.logger.error(`AI batch translation failed: ${error.message}`);
+          // Continue with storing source text even if translation fails
+        }
+      }
+
+      // Step 5: Create or get translation metadata (once for all fields)
+      const metadata = await this.translationRepository.createOrGetMetadata(
+        entityType,
+        entityId,
+        detectedSourceLanguage,
+      );
+
+      // Step 6: Store source text and translations for all fields
+      const allTranslations: { [fieldName: string]: TranslationResult } = {};
+
+      for (const field of fields) {
+        if (!field.text || !field.text.trim()) continue;
+
+        const fieldResult = batchResults.find(r => r.fieldName === field.fieldName);
+        const translations: TranslationResult = fieldResult?.translations || {};
+
+        // Include source language text
+        const allFieldTranslations: TranslationResult = {
+          [detectedSourceLanguage]: field.text,
+          ...translations,
+        };
+
+        allTranslations[field.fieldName] = allFieldTranslations;
+
+        // Store each translation in database
+        for (const [languageCode, translatedText] of Object.entries(allFieldTranslations)) {
+          if (translatedText && translatedText.trim()) {
+            const isAiGenerated = languageCode !== detectedSourceLanguage;
+            await this.translationRepository.upsertTranslation(
+              metadata.id,
+              languageCode,
+              field.fieldName,
+              translatedText,
+              isAiGenerated,
+              languageCode === detectedSourceLanguage ? userId : undefined,
+            );
+          }
+        }
+      }
+
+      return { sourceLanguage: detectedSourceLanguage, translations: allTranslations };
+    } catch (error) {
+      this.logger.error(`Failed to create batch translations: ${error.message}`, error.stack);
+      if (error instanceof BadRequestException || error instanceof InternalServerErrorException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(`Failed to create batch translations: ${error.message}`);
+    }
+  }
+
+  /**
    * Insert translations directly without AI translation
    * Used for standard data that doesn't need translation (categories, menu items, etc.)
    * Uses pre-translated data from PRE_TRANSLATIONS constant

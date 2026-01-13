@@ -311,25 +311,17 @@ export class MenuService {
     // Don't block the response - translations will be processed in the background
     // Skip if skipTranslations is true (e.g., during seed data creation)
     if (!skipTranslations) {
-      this.translationService.createTranslations({
-        entityType: 'category',
-        entityId: category.id,
-        fieldName: 'name',
-        text: createDto.name,
-      }).catch((translationError) => {
-        console.error('Failed to create translations for category name:', translationError);
-      });
+      // Use batch translation to handle multiple fields efficiently
+      const categoryFieldsToTranslate = [
+        { fieldName: 'name', text: createDto.name },
+        ...(createDto.description ? [{ fieldName: 'description', text: createDto.description }] : []),
+      ];
 
-      if (createDto.description) {
-        this.translationService.createTranslations({
-          entityType: 'category',
-          entityId: category.id,
-          fieldName: 'description',
-          text: createDto.description,
-        }).catch((translationError) => {
-          console.error('Failed to create translations for category description:', translationError);
+      this.translationService
+        .createBatchTranslations('category', category.id, categoryFieldsToTranslate, undefined, tenantId)
+        .catch((translationError) => {
+          console.error('Failed to create batch translations for category:', translationError);
         });
-      }
     }
 
     return {
@@ -1143,28 +1135,20 @@ export class MenuService {
     }
 
     // Create translations for name and description asynchronously (fire and forget)
+    // Use batch translation to handle multiple fields in a single request (more efficient)
     // Don't block the response - translations will be processed in the background
     // Skip if skipTranslations is true (e.g., during seed data creation)
     if (!skipTranslations) {
-      this.translationService.createTranslations({
-        entityType: 'food_item',
-        entityId: foodItem.id,
-        fieldName: 'name',
-        text: createDto.name,
-      }).catch((translationError) => {
-        console.error('Failed to create translations for food item name:', translationError);
-      });
+      const fieldsToTranslate = [
+        { fieldName: 'name', text: createDto.name },
+        ...(createDto.description ? [{ fieldName: 'description', text: createDto.description }] : []),
+      ];
 
-      if (createDto.description) {
-        this.translationService.createTranslations({
-          entityType: 'food_item',
-          entityId: foodItem.id,
-          fieldName: 'description',
-          text: createDto.description,
-        }).catch((translationError) => {
-          console.error('Failed to create translations for food item description:', translationError);
+      this.translationService
+        .createBatchTranslations('food_item', foodItem.id, fieldsToTranslate, undefined, tenantId)
+        .catch((translationError) => {
+          console.error('Failed to create batch translations for food item:', translationError);
         });
-      }
     }
 
     const result = await this.getFoodItemById(tenantId, foodItem.id);
@@ -3502,25 +3486,17 @@ export class MenuService {
     // Don't block the response - translations will be processed in the background
     // Skip if skipTranslations is true (e.g., during seed data creation)
     if (!skipTranslations) {
-      this.translationService.createTranslations({
-        entityType: 'buffet',
-        entityId: buffet.id,
-        fieldName: 'name',
-        text: createDto.name,
-      }).catch((translationError) => {
-        console.error('Failed to create translations for buffet name:', translationError);
-      });
+      // Use batch translation to handle multiple fields efficiently
+      const buffetFieldsToTranslate = [
+        { fieldName: 'name', text: createDto.name },
+        ...(createDto.description ? [{ fieldName: 'description', text: createDto.description }] : []),
+      ];
 
-      if (createDto.description) {
-        this.translationService.createTranslations({
-          entityType: 'buffet',
-          entityId: buffet.id,
-          fieldName: 'description',
-          text: createDto.description,
-        }).catch((translationError) => {
-          console.error('Failed to create translations for buffet description:', translationError);
+      this.translationService
+        .createBatchTranslations('buffet', buffet.id, buffetFieldsToTranslate, undefined, tenantId)
+        .catch((translationError) => {
+          console.error('Failed to create batch translations for buffet:', translationError);
         });
-      }
     }
 
     return {
@@ -3985,25 +3961,17 @@ export class MenuService {
     // Don't block the response - translations will be processed in the background
     // Skip if skipTranslations is true (e.g., during seed data creation)
     if (!skipTranslations) {
-      this.translationService.createTranslations({
-        entityType: 'combo_meal',
-        entityId: comboMeal.id,
-        fieldName: 'name',
-        text: createDto.name,
-      }).catch((translationError) => {
-        console.error('Failed to create translations for combo meal name:', translationError);
-      });
+      // Use batch translation to handle multiple fields efficiently
+      const comboMealFieldsToTranslate = [
+        { fieldName: 'name', text: createDto.name },
+        ...(createDto.description ? [{ fieldName: 'description', text: createDto.description }] : []),
+      ];
 
-      if (createDto.description) {
-        this.translationService.createTranslations({
-          entityType: 'combo_meal',
-          entityId: comboMeal.id,
-          fieldName: 'description',
-          text: createDto.description,
-        }).catch((translationError) => {
-          console.error('Failed to create translations for combo meal description:', translationError);
+      this.translationService
+        .createBatchTranslations('combo_meal', comboMeal.id, comboMealFieldsToTranslate, undefined, tenantId)
+        .catch((translationError) => {
+          console.error('Failed to create batch translations for combo meal:', translationError);
         });
-      }
     }
 
     return {

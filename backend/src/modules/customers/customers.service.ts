@@ -493,72 +493,42 @@ export class CustomersService {
     }
 
     // Create translations for name, notes, and address fields asynchronously (fire and forget)
+    // Use batch translation to handle multiple fields efficiently
     // Don't block the response - translations will be processed in the background
-    this.translationService.createTranslations({
-      entityType: 'customer',
-      entityId: customer.id,
-      fieldName: 'name',
-      text: createDto.name,
-    }).catch((translationError) => {
-      console.error('Failed to create translations for customer name:', translationError);
-    });
+    const customerFieldsToTranslate = [
+      { fieldName: 'name', text: createDto.name },
+      ...(createDto.notes ? [{ fieldName: 'notes', text: createDto.notes }] : []),
+    ];
 
-    if (createDto.notes) {
-      this.translationService.createTranslations({
-        entityType: 'customer',
-        entityId: customer.id,
-        fieldName: 'notes',
-        text: createDto.notes,
-      }).catch((translationError) => {
-        console.error('Failed to create translations for customer notes:', translationError);
+    this.translationService
+      .createBatchTranslations('customer', customer.id, customerFieldsToTranslate, undefined, tenantId)
+      .catch((translationError) => {
+        console.error('Failed to create batch translations for customer:', translationError);
       });
-    }
 
     // Create translations for address fields if provided
     // Address translations use CUSTOMER_ADDRESS entity type with the address ID
+    // Use batch translation for all address fields at once
     if (createDto.address && defaultAddressId) {
-      if (createDto.address.address) {
-        this.translationService.createTranslations({
-          entityType: EntityType.CUSTOMER_ADDRESS,
-          entityId: defaultAddressId,
-          fieldName: FieldName.ADDRESS,
-          text: createDto.address.address,
-        }).catch((translationError) => {
-          console.error('Failed to create translations for customer address:', translationError);
-        });
-      }
+      const addressFieldsToTranslate = [
+        ...(createDto.address.address ? [{ fieldName: FieldName.ADDRESS, text: createDto.address.address }] : []),
+        ...(createDto.address.city ? [{ fieldName: FieldName.CITY, text: createDto.address.city }] : []),
+        ...(createDto.address.state ? [{ fieldName: FieldName.STATE, text: createDto.address.state }] : []),
+        ...(createDto.address.country ? [{ fieldName: FieldName.COUNTRY, text: createDto.address.country }] : []),
+      ];
 
-      if (createDto.address.city) {
-        this.translationService.createTranslations({
-          entityType: EntityType.CUSTOMER_ADDRESS,
-          entityId: defaultAddressId,
-          fieldName: FieldName.CITY,
-          text: createDto.address.city,
-        }).catch((translationError) => {
-          console.error('Failed to create translations for customer city:', translationError);
-        });
-      }
-
-      if (createDto.address.state) {
-        this.translationService.createTranslations({
-          entityType: EntityType.CUSTOMER_ADDRESS,
-          entityId: defaultAddressId,
-          fieldName: FieldName.STATE,
-          text: createDto.address.state,
-        }).catch((translationError) => {
-          console.error('Failed to create translations for customer state:', translationError);
-        });
-      }
-
-      if (createDto.address.country) {
-        this.translationService.createTranslations({
-          entityType: EntityType.CUSTOMER_ADDRESS,
-          entityId: defaultAddressId,
-          fieldName: FieldName.COUNTRY,
-          text: createDto.address.country,
-        }).catch((translationError) => {
-          console.error('Failed to create translations for customer country:', translationError);
-        });
+      if (addressFieldsToTranslate.length > 0) {
+        this.translationService
+          .createBatchTranslations(
+            EntityType.CUSTOMER_ADDRESS,
+            defaultAddressId,
+            addressFieldsToTranslate,
+            undefined,
+            tenantId,
+          )
+          .catch((translationError) => {
+            console.error('Failed to create batch translations for customer address:', translationError);
+          });
       }
     }
 
@@ -829,77 +799,25 @@ export class CustomersService {
       throw new InternalServerErrorException(`Failed to create address: ${error.message}`);
     }
 
-      // Create translations for address fields using Gemini
+      // Create translations for address fields using batch translation
       // Run translations in background (fire and forget) to not block the response
       (async () => {
         try {
-          const translationPromises: Promise<any>[] = [];
+          const addressFieldsToTranslate = [
+            ...(addressDto.address ? [{ fieldName: FieldName.ADDRESS, text: addressDto.address }] : []),
+            ...(addressDto.city ? [{ fieldName: FieldName.CITY, text: addressDto.city }] : []),
+            ...(addressDto.state ? [{ fieldName: FieldName.STATE, text: addressDto.state }] : []),
+            ...(addressDto.country ? [{ fieldName: FieldName.COUNTRY, text: addressDto.country }] : []),
+          ];
 
-          // Translate address field
-          if (addressDto.address) {
-            translationPromises.push(
-              this.translationService.createTranslations({
-                entityType: EntityType.CUSTOMER_ADDRESS,
-                entityId: address.id,
-                fieldName: FieldName.ADDRESS,
-                text: addressDto.address,
-              }).catch(err => {
-                console.warn(`Failed to create address translation for address ${address.id}:`, err);
-                return null;
-              })
+          if (addressFieldsToTranslate.length > 0) {
+            await this.translationService.createBatchTranslations(
+              EntityType.CUSTOMER_ADDRESS,
+              address.id,
+              addressFieldsToTranslate,
+              undefined,
+              tenantId,
             );
-          }
-
-          // Translate city field
-          if (addressDto.city) {
-            translationPromises.push(
-              this.translationService.createTranslations({
-                entityType: EntityType.CUSTOMER_ADDRESS,
-                entityId: address.id,
-                fieldName: FieldName.CITY,
-                text: addressDto.city,
-              }).catch(err => {
-                console.warn(`Failed to create city translation for address ${address.id}:`, err);
-                return null;
-              })
-            );
-          }
-
-          // Translate state field
-          if (addressDto.state) {
-            translationPromises.push(
-              this.translationService.createTranslations({
-                entityType: EntityType.CUSTOMER_ADDRESS,
-                entityId: address.id,
-                fieldName: FieldName.STATE,
-                text: addressDto.state,
-              }).catch(err => {
-                console.warn(`Failed to create state translation for address ${address.id}:`, err);
-                return null;
-              })
-            );
-          }
-
-          // Translate country field
-          if (addressDto.country) {
-            translationPromises.push(
-              this.translationService.createTranslations({
-                entityType: EntityType.CUSTOMER_ADDRESS,
-                entityId: address.id,
-                fieldName: FieldName.COUNTRY,
-                text: addressDto.country,
-              }).catch(err => {
-                console.warn(`Failed to create country translation for address ${address.id}:`, err);
-                return null;
-              })
-            );
-          }
-
-          // Execute all translation calls in parallel (don't await - fire and forget)
-          if (translationPromises.length > 0) {
-            Promise.all(translationPromises).catch(err => {
-              console.error(`Failed to create translations for address ${address.id}:`, err);
-            });
           }
         } catch (translationError) {
           console.warn(`Failed to create address translations for address ${address.id}:`, translationError);
