@@ -336,6 +336,11 @@ export class EmployeesService {
   async createEmployee(tenantId: string, userId: string, createDto: CreateEmployeeDto) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
+    // Validate that branchIds is provided and not empty
+    if (!createDto.branchIds || createDto.branchIds.length === 0) {
+      throw new BadRequestException('At least one branch must be assigned to the employee');
+    }
+
     // Check if email already exists
     const { data: existingUser } = await supabase
       .from('users')
@@ -432,28 +437,30 @@ export class EmployeesService {
       }
     }
 
-    // Assign branches if provided
-    let assignedBranches: any[] = [];
-    if (createDto.branchIds && createDto.branchIds.length > 0) {
-      const branchAssignments = createDto.branchIds.map((branchId) => ({
-        user_id: employee.id,
-        branch_id: branchId,
-      }));
+    // Assign branches (required)
+    const branchAssignments = createDto.branchIds.map((branchId) => ({
+      user_id: employee.id,
+      branch_id: branchId,
+    }));
 
-      const { error: branchError } = await supabase.from('user_branches').insert(branchAssignments);
+    const { error: branchError } = await supabase.from('user_branches').insert(branchAssignments);
 
-      if (branchError) {
-        console.error('Failed to assign branches:', branchError);
-        // Don't fail employee creation if branch assignment fails
-      } else {
-        // Fetch branch details
-        const { data: branchesData } = await supabase
-          .from('branches')
-          .select('id, name, code')
-          .in('id', createDto.branchIds);
-        assignedBranches = branchesData || [];
+    if (branchError) {
+      // Clean up employee if branch assignment fails
+      try {
+        await supabase.from('users').delete().eq('id', employee.id);
+      } catch (cleanupError) {
+        console.error('Failed to cleanup employee after branch assignment failure:', cleanupError);
       }
+      throw new InternalServerErrorException(`Failed to assign branches: ${branchError.message}`);
     }
+
+    // Fetch branch details
+    const { data: branchesData } = await supabase
+      .from('branches')
+      .select('id, name, code')
+      .in('id', createDto.branchIds);
+    const assignedBranches = branchesData || [];
 
     // Create translations for name (before returning)
     try {

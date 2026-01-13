@@ -116,6 +116,13 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
       email: (value) => (!value ? (t('common.email' as any, language) || 'Email') + ' is required' : null),
       name: (value) => (!value ? t('employees.name', language) || 'Name is required' : null),
       roleIds: (value) => (!value || value.length === 0 ? t('employees.roleLabel', language) + ' is required' : null),
+      branchIds: (value) => {
+        // Only require branch when creating a new employee, not when editing
+        if (!editingEmployee && (!value || value.length === 0)) {
+          return (t('employees.assignedBranches', language) || 'Branch') + ' is required';
+        }
+        return null;
+      },
       password: (value, values) =>
         values.createAuthAccount && !value ? (t('common.password' as any, language) || 'Password') + ' is required' : null,
     },
@@ -359,7 +366,7 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
           joiningDate: values.joiningDate ? values.joiningDate.toISOString().split('T')[0] : undefined,
           salary: values.salary,
           isActive: values.isActive,
-          branchIds: values.branchIds.length > 0 ? values.branchIds : undefined,
+          branchIds: values.branchIds,
           createAuthAccount: values.createAuthAccount,
           password: values.createAuthAccount ? values.password : undefined,
         };
@@ -846,6 +853,8 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
               <Grid.Col span={12}>
                 <MultiSelect
                   label={t('employees.assignedBranches', language)}
+                  placeholder="Select one or more branches"
+                  required={!editingEmployee}
                   data={branches.map((b) => ({
                     value: b.id,
                     label: b.name,

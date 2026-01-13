@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsEmail, IsOptional, IsBoolean, IsNumber, IsDateString, IsArray, IsUUID } from 'class-validator';
+import { IsString, IsEmail, IsOptional, IsBoolean, IsNumber, IsDateString, IsArray, IsUUID, ArrayMinSize } from 'class-validator';
 
 export class CreateEmployeeDto {
   @ApiProperty()
@@ -60,11 +60,11 @@ export class CreateEmployeeDto {
   @IsOptional()
   isActive?: boolean;
 
-  @ApiProperty({ required: false, type: [String] })
+  @ApiProperty({ type: [String], description: 'Array of branch IDs to assign to the employee (required)' })
   @IsArray()
   @IsUUID('4', { each: true })
-  @IsOptional()
-  branchIds?: string[];
+  @ArrayMinSize(1, { message: 'At least one branch must be assigned' })
+  branchIds: string[];
 
   @ApiProperty({ required: false })
   @IsBoolean()
