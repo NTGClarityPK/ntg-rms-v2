@@ -463,8 +463,11 @@ export class CustomersService {
 
     if (error) {
       // Check for duplicate phone number error
+      // This handles both the old global constraint (customers_phone_key) and new tenant-scoped constraints
       if (error.code === '23505' || 
           error.message?.includes('customers_phone_key') || 
+          error.message?.includes('idx_customers_tenant_phone_unique') ||
+          error.message?.includes('idx_customers_tenant_branch_phone_unique') ||
           error.message?.includes('duplicate key') ||
           error.message?.includes('unique constraint')) {
         throw new ConflictException(
