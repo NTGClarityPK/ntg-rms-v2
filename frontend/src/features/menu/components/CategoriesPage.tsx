@@ -512,21 +512,6 @@ export function CategoriesPage() {
                   {...form.getInputProps('categoryType')}
                 />
               </Grid.Col>
-              <Grid.Col span={{ base: 12, md: 6 }}>
-                <Select
-                  label={t('menu.parentCategory', language)}
-                  data={[
-                    { value: '', label: t('menu.noParent', language) },
-                    ...rootCategories
-                      .filter((cat) => !editingCategory || cat.id !== editingCategory.id)
-                      .map((cat) => ({
-                        value: cat.id,
-                        label: cat.name || '',
-                      })),
-                  ]}
-                  {...form.getInputProps('parentId')}
-                />
-              </Grid.Col>
               <Grid.Col span={12}>
                 <Stack gap="xs">
                   <Text size="sm" fw={500}>
