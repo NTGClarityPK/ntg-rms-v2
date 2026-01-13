@@ -50,6 +50,8 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/ar';
 import 'dayjs/locale/en';
+import 'dayjs/locale/ku';
+import 'dayjs/locale/fr';
 
 dayjs.extend(relativeTime);
 
@@ -79,6 +81,7 @@ export default function KitchenDisplayPage() {
   const [translationsCache, setTranslationsCache] = useState<{
     food_item?: { [itemId: string]: { name?: { [languageCode: string]: string } } };
     combo_meal?: { [itemId: string]: { name?: { [languageCode: string]: string } } };
+    order?: { [orderId: string]: { specialInstructions?: { [languageCode: string]: string } } };
   }>({});
   
   // Waiter translations cache: { waiterEmail: { name: { languageCode: string } } }
@@ -371,20 +374,32 @@ export default function KitchenDisplayPage() {
 
   // Set dayjs locale when language changes
   useEffect(() => {
-    dayjs.locale(language === 'ar' ? 'ar' : 'en');
+    const localeMap: Record<'en' | 'ar' | 'ku' | 'fr', string> = {
+      en: 'en',
+      ar: 'ar',
+      ku: 'ku',
+      fr: 'fr'
+    };
+    dayjs.locale(localeMap[language] || 'en');
   }, [language]);
 
-  // Load translations for food items and combo meals when orders change
+  // Load translations for food items, combo meals, and order special instructions when orders change
   useEffect(() => {
     const loadTranslations = async () => {
       if (orders.length === 0) return;
 
-      // Collect unique food item IDs and combo meal IDs from all orders
+      // Collect unique food item IDs, combo meal IDs, order IDs, and waiter emails from all orders
       const foodItemIds = new Set<string>();
       const comboMealIds = new Set<string>();
+      const orderIds = new Set<string>();
       const waiterEmails = new Set<string>();
 
       orders.forEach(order => {
+        // Collect order IDs for special instructions translation
+        if (order.id && order.specialInstructions) {
+          orderIds.add(order.id);
+        }
+        
         order.items?.forEach(item => {
           if (item.foodItemId && item.foodItem) {
             foodItemIds.add(item.foodItemId);
@@ -405,11 +420,12 @@ export default function KitchenDisplayPage() {
         }
       });
 
-      // Load translations for food items
+      // Load translations for food items, combo meals, and orders
       const newTranslations: typeof translationsCache = { ...translationsCache };
       
       if (!newTranslations.food_item) newTranslations.food_item = {};
       if (!newTranslations.combo_meal) newTranslations.combo_meal = {};
+      if (!newTranslations.order) newTranslations.order = {};
 
       // Load food item translations
       for (const itemId of foodItemIds) {
@@ -436,6 +452,20 @@ export default function KitchenDisplayPage() {
         } catch (err) {
           // Ignore errors - fallback to original name
           console.warn(`Failed to load translations for combo meal ${mealId}:`, err);
+        }
+      }
+
+      // Load order special instructions translations
+      for (const orderId of orderIds) {
+        // Skip if already loaded
+        if (newTranslations.order[orderId]) continue;
+        
+        try {
+          const translations = await translationsApi.getEntityTranslations('order', orderId);
+          newTranslations.order[orderId] = translations;
+        } catch (err) {
+          // Ignore errors - fallback to original text
+          console.warn(`Failed to load translations for order ${orderId}:`, err);
         }
       }
 
@@ -538,6 +568,17 @@ export default function KitchenDisplayPage() {
     }
     return fallbackName;
   }, [waiterTranslationsCache, language]);
+
+  // Helper function to get translated special instructions
+  const getTranslatedSpecialInstructions = useCallback((orderId: string | undefined, fallbackText: string | undefined): string => {
+    if (!orderId || !fallbackText) return fallbackText || '';
+    
+    const translations = translationsCache.order?.[orderId]?.specialInstructions;
+    if (translations && translations[language]) {
+      return translations[language];
+    }
+    return fallbackText;
+  }, [translationsCache, language]);
 
   // Store loadOrders in ref for stable reference
   useEffect(() => {
@@ -886,7 +927,13 @@ export default function KitchenDisplayPage() {
   };
 
   const getOrderAge = (order: Order): string => {
-    const locale = language === 'ar' ? 'ar' : 'en';
+    const localeMap: Record<'en' | 'ar' | 'ku' | 'fr', string> = {
+      en: 'en',
+      ar: 'ar',
+      ku: 'ku',
+      fr: 'fr'
+    };
+    const locale = localeMap[language] || 'en';
     return dayjs(order.orderDate).locale(locale).fromNow();
   };
 
@@ -1102,7 +1149,10 @@ export default function KitchenDisplayPage() {
           </Box>
 
           {/* Search input */}
-          <Box style={{ padding: '0 16px', marginTop: 10 }}>
+          <Box style={{ 
+            padding: isRTL() ? '0 16px 0 280px' : '0 16px', 
+            marginTop: 10
+          }}>
             <Group gap="md" align="center">
               <TextInput
                 placeholder={t('orders.searchByTokenOrItems', language)}
@@ -1205,6 +1255,7 @@ export default function KitchenDisplayPage() {
                                        getTranslatedFoodItemName={getTranslatedFoodItemName}
                                        getTranslatedComboMealName={getTranslatedComboMealName}
                                        getTranslatedWaiterName={getTranslatedWaiterName}
+                                       getTranslatedSpecialInstructions={getTranslatedSpecialInstructions}
                                      />
                                    ))
                                  )}
@@ -1254,6 +1305,7 @@ export default function KitchenDisplayPage() {
                                        getTranslatedFoodItemName={getTranslatedFoodItemName}
                                        getTranslatedComboMealName={getTranslatedComboMealName}
                                        getTranslatedWaiterName={getTranslatedWaiterName}
+                                       getTranslatedSpecialInstructions={getTranslatedSpecialInstructions}
                                      />
                                    ))
                                  )}
@@ -1289,6 +1341,7 @@ interface OrderCardProps {
   getTranslatedFoodItemName: (itemId: string | undefined, fallbackName: string | undefined) => string;
   getTranslatedComboMealName: (mealId: string | undefined, fallbackName: string | undefined) => string;
   getTranslatedWaiterName: (waiterEmail: string | undefined, fallbackName: string | undefined) => string;
+  getTranslatedSpecialInstructions: (orderId: string | undefined, fallbackText: string | undefined) => string;
 }
 
 function OrderCard({
@@ -1306,6 +1359,7 @@ function OrderCard({
   getTranslatedFoodItemName,
   getTranslatedComboMealName,
   getTranslatedWaiterName,
+  getTranslatedSpecialInstructions,
 }: OrderCardProps) {
   const { isDark } = useTheme();
   const themeColors = generateThemeColors(primary, isDark);
@@ -1366,20 +1420,23 @@ function OrderCard({
             ) : null}
           </Group>
           {/* Order Special Instructions */}
-          {order.specialInstructions && (
-            <Tooltip label={order.specialInstructions} multiline position="top" withArrow zIndex={2100}>
-              <Box style={{ display: 'inline-block', width: '100%' }}>
-                <Text 
-                  size="sm" 
-                  c="dimmed" 
-                  fs="italic"
-                  truncate
-                >
-                  {order.specialInstructions}
-                </Text>
-              </Box>
-            </Tooltip>
-          )}
+          {order.specialInstructions && (() => {
+            const translatedInstructions = getTranslatedSpecialInstructions(order.id, order.specialInstructions);
+            return (
+              <Tooltip label={translatedInstructions} multiline position="top" withArrow zIndex={2100}>
+                <Box style={{ display: 'inline-block', width: '100%' }}>
+                  <Text 
+                    size="sm" 
+                    c="dimmed" 
+                    fs="italic"
+                    truncate
+                  >
+                    {translatedInstructions}
+                  </Text>
+                </Box>
+              </Tooltip>
+            );
+          })()}
         </Stack>
 
          {/* Order Items */}

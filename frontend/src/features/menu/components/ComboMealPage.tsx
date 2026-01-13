@@ -512,7 +512,7 @@ export function ComboMealPage() {
                       <Table.Td>
                         {comboMeal.discountPercentage ? (
                           <Badge color={successColor} variant="light" size="sm">
-                            {comboMeal.discountPercentage.toFixed(0)}% off
+                            {comboMeal.discountPercentage.toFixed(0)}% {t('menu.off', language)}
                           </Badge>
                         ) : (
                           <Text c="dimmed" size="sm">
@@ -625,7 +625,7 @@ export function ComboMealPage() {
                       </Text>
                       {savings > 0 && (
                         <Text size="sm" c={successColor} fw={500}>
-                          {t('menu.savings', language)}: {savings.toFixed(2)} ({calculatedDiscount.toFixed(0)}% {t('menu.off', language) || 'off'})
+                          {t('menu.savings', language)}: {savings.toFixed(2)} ({calculatedDiscount.toFixed(0)}% {t('menu.off', language)})
                         </Text>
                       )}
                     </Stack>

@@ -307,25 +307,26 @@ export class MenuService {
       throw new BadRequestException(`Failed to create category: ${error.message}`);
     }
 
-    // Generate translations for name and description
-    try {
-      await this.translationService.createTranslations({
+    // Generate translations for name and description asynchronously (fire and forget)
+    // Don't block the response - translations will be processed in the background
+    this.translationService.createTranslations({
+      entityType: 'category',
+      entityId: category.id,
+      fieldName: 'name',
+      text: createDto.name,
+    }).catch((translationError) => {
+      console.error('Failed to create translations for category name:', translationError);
+    });
+
+    if (createDto.description) {
+      this.translationService.createTranslations({
         entityType: 'category',
         entityId: category.id,
-        fieldName: 'name',
-        text: createDto.name,
+        fieldName: 'description',
+        text: createDto.description,
+      }).catch((translationError) => {
+        console.error('Failed to create translations for category description:', translationError);
       });
-
-      if (createDto.description) {
-        await this.translationService.createTranslations({
-          entityType: 'category',
-          entityId: category.id,
-          fieldName: 'description',
-          text: createDto.description,
-        });
-      }
-    } catch (translationError) {
-      console.error('Failed to create translations for category:', translationError);
     }
 
     return {
@@ -339,6 +340,7 @@ export class MenuService {
       isActive: category.is_active,
       createdAt: category.created_at,
       updatedAt: category.updated_at,
+      message: 'Category created successfully. Translations are being processed in the background and will be available shortly.',
     };
   }
 
@@ -1137,29 +1139,33 @@ export class MenuService {
       await Promise.all(parallelOps);
     }
 
-    // Create translations for name and description
-    try {
-      await this.translationService.createTranslations({
+    // Create translations for name and description asynchronously (fire and forget)
+    // Don't block the response - translations will be processed in the background
+    this.translationService.createTranslations({
+      entityType: 'food_item',
+      entityId: foodItem.id,
+      fieldName: 'name',
+      text: createDto.name,
+    }).catch((translationError) => {
+      console.error('Failed to create translations for food item name:', translationError);
+    });
+
+    if (createDto.description) {
+      this.translationService.createTranslations({
         entityType: 'food_item',
         entityId: foodItem.id,
-        fieldName: 'name',
-        text: createDto.name,
+        fieldName: 'description',
+        text: createDto.description,
+      }).catch((translationError) => {
+        console.error('Failed to create translations for food item description:', translationError);
       });
-
-      if (createDto.description) {
-        await this.translationService.createTranslations({
-          entityType: 'food_item',
-          entityId: foodItem.id,
-          fieldName: 'description',
-          text: createDto.description,
-        });
-      }
-    } catch (translationError) {
-      // Log error but don't fail the creation if translation fails
-      console.warn(`Failed to create translations for food item ${foodItem.id}:`, translationError);
     }
 
-    return this.getFoodItemById(tenantId, foodItem.id);
+    const result = await this.getFoodItemById(tenantId, foodItem.id);
+    return {
+      ...result,
+      message: 'Food item created successfully. Translations are being processed in the background and will be available shortly.',
+    };
   }
 
   async updateFoodItem(tenantId: string, id: string, updateDto: UpdateFoodItemDto, language: string = 'en', userId?: string) {
@@ -1840,17 +1846,16 @@ export class MenuService {
       throw new BadRequestException(`Failed to create add-on group: ${error.message}`);
     }
 
-    // Create translations for name
-    try {
-      await this.translationService.createTranslations({
-        entityType: 'addon_group',
-        entityId: addOnGroup.id,
-        fieldName: 'name',
-        text: createDto.name,
-      });
-    } catch (translationError) {
-      console.warn(`Failed to create translations for add-on group ${addOnGroup.id}:`, translationError);
-    }
+    // Create translations for name asynchronously (fire and forget)
+    // Don't block the response - translations will be processed in the background
+    this.translationService.createTranslations({
+      entityType: 'addon_group',
+      entityId: addOnGroup.id,
+      fieldName: 'name',
+      text: createDto.name,
+    }).catch((translationError) => {
+      console.error('Failed to create translations for add-on group:', translationError);
+    });
 
     return {
       id: addOnGroup.id,
@@ -1865,6 +1870,7 @@ export class MenuService {
       createdAt: addOnGroup.created_at,
       updatedAt: addOnGroup.updated_at,
       addOns: [],
+      message: 'Add-on group created successfully. Translations are being processed in the background and will be available shortly.',
     };
   }
 
@@ -2162,17 +2168,16 @@ export class MenuService {
       throw new BadRequestException(`Failed to create add-on: ${error.message}`);
     }
 
-    // Create translations for name
-    try {
-      await this.translationService.createTranslations({
-        entityType: 'addon',
-        entityId: addOn.id,
-        fieldName: 'name',
-        text: createDto.name,
-      });
-    } catch (translationError) {
-      console.warn(`Failed to create translations for add-on ${addOn.id}:`, translationError);
-    }
+    // Create translations for name asynchronously (fire and forget)
+    // Don't block the response - translations will be processed in the background
+    this.translationService.createTranslations({
+      entityType: 'addon',
+      entityId: addOn.id,
+      fieldName: 'name',
+      text: createDto.name,
+    }).catch((translationError) => {
+      console.error('Failed to create translations for add-on:', translationError);
+    });
 
     return {
       id: addOn.id,
@@ -2183,6 +2188,7 @@ export class MenuService {
       displayOrder: addOn.display_order,
       createdAt: addOn.created_at,
       updatedAt: addOn.updated_at,
+      message: 'Add-on created successfully. Translations are being processed in the background and will be available shortly.',
     };
   }
 
@@ -2792,18 +2798,17 @@ export class MenuService {
         throw new BadRequestException(`Failed to ${isActive ? 'activate' : 'deactivate'} menu: ${error.message}`);
       }
 
-      // Create translations for menu name if menu was created successfully
+      // Create translations for menu name if menu was created successfully (asynchronously)
+      // Don't block the response - translations will be processed in the background
       if (insertedMenu && insertedMenu.id) {
-        try {
-          await this.translationService.createTranslations({
-            entityType: 'menu',
-            entityId: insertedMenu.id,
-            fieldName: 'name',
-            text: displayName,
-          });
-        } catch (translationError) {
-          console.warn(`Failed to create translations for menu ${insertedMenu.id}:`, translationError);
-        }
+        this.translationService.createTranslations({
+          entityType: 'menu',
+          entityId: insertedMenu.id,
+          fieldName: 'name',
+          text: displayName,
+        }).catch((translationError) => {
+          console.error(`Failed to create translations for menu ${insertedMenu.id}:`, translationError);
+        });
       }
     }
 
@@ -2995,18 +3000,17 @@ export class MenuService {
         console.warn('Failed to store menu name:', menuNameError.message);
       }
 
-      // Create translations for menu name if menu was created/updated successfully
+      // Create translations for menu name if menu was created/updated successfully (asynchronously)
+      // Don't block the response - translations will be processed in the background
       if (menuId && createDto.name) {
-        try {
-          await this.translationService.createTranslations({
-            entityType: 'menu',
-            entityId: menuId,
-            fieldName: 'name',
-            text: createDto.name,
-          });
-        } catch (translationError) {
-          console.warn(`Failed to create translations for menu ${menuId}:`, translationError);
-        }
+        this.translationService.createTranslations({
+          entityType: 'menu',
+          entityId: menuId,
+          fieldName: 'name',
+          text: createDto.name,
+        }).catch((translationError) => {
+          console.error(`Failed to create translations for menu ${menuId}:`, translationError);
+        });
       }
     }
 
@@ -3103,19 +3107,18 @@ export class MenuService {
       } else {
         console.log(`Created ${menusToCreate.length} default menus for tenant:`, tenantId);
         
-        // Create translations for default menus
+        // Create translations for default menus (asynchronously)
+        // Don't block the response - translations will be processed in the background
         if (insertedMenus && insertedMenus.length > 0) {
           for (const menu of insertedMenus) {
-            try {
-              await this.translationService.createTranslations({
-                entityType: 'menu',
-                entityId: menu.id,
-                fieldName: 'name',
-                text: menu.name,
-              });
-            } catch (translationError) {
-              console.warn(`Failed to create translations for default menu ${menu.menu_type}:`, translationError);
-            }
+            this.translationService.createTranslations({
+              entityType: 'menu',
+              entityId: menu.id,
+              fieldName: 'name',
+              text: menu.name,
+            }).catch((translationError) => {
+              console.error(`Failed to create translations for default menu ${menu.menu_type}:`, translationError);
+            });
           }
         }
       }
@@ -3150,18 +3153,22 @@ export class MenuService {
             .eq('entity_id', menu.id)
             .single();
           
-          // If no translation metadata exists, create translations
+          // If no translation metadata exists, create translations (asynchronously)
+          // Don't block the response - translations will be processed in the background
           if (!metadata) {
-            await this.translationService.createTranslations({
+            this.translationService.createTranslations({
               entityType: 'menu',
               entityId: menu.id,
               fieldName: 'name',
               text: menu.name,
+            }).catch((translationError) => {
+              // Ignore errors - translations might already exist or there might be other issues
+              console.error(`Failed to ensure translations for existing default menu ${menu.menu_type}:`, translationError);
             });
           }
         } catch (translationError) {
           // Ignore errors - translations might already exist or there might be other issues
-          console.warn(`Failed to ensure translations for existing default menu ${menu.menu_type}:`, translationError);
+          console.warn(`Failed to check translation metadata for existing default menu ${menu.menu_type}:`, translationError);
         }
       }
     }
@@ -3479,25 +3486,26 @@ export class MenuService {
       throw new BadRequestException(`Failed to create buffet: ${error.message}`);
     }
 
-    // Create translations for name and description
-    try {
-      await this.translationService.createTranslations({
+    // Create translations for name and description asynchronously (fire and forget)
+    // Don't block the response - translations will be processed in the background
+    this.translationService.createTranslations({
+      entityType: 'buffet',
+      entityId: buffet.id,
+      fieldName: 'name',
+      text: createDto.name,
+    }).catch((translationError) => {
+      console.error('Failed to create translations for buffet name:', translationError);
+    });
+
+    if (createDto.description) {
+      this.translationService.createTranslations({
         entityType: 'buffet',
         entityId: buffet.id,
-        fieldName: 'name',
-        text: createDto.name,
+        fieldName: 'description',
+        text: createDto.description,
+      }).catch((translationError) => {
+        console.error('Failed to create translations for buffet description:', translationError);
       });
-
-      if (createDto.description) {
-        await this.translationService.createTranslations({
-          entityType: 'buffet',
-          entityId: buffet.id,
-          fieldName: 'description',
-          text: createDto.description,
-        });
-      }
-    } catch (translationError) {
-      console.warn(`Failed to create translations for buffet ${buffet.id}:`, translationError);
     }
 
     return {
@@ -3513,6 +3521,7 @@ export class MenuService {
       isActive: buffet.is_active,
       createdAt: buffet.created_at,
       updatedAt: buffet.updated_at,
+      message: 'Buffet created successfully. Translations are being processed in the background and will be available shortly.',
     };
   }
 
@@ -3957,25 +3966,26 @@ export class MenuService {
       throw new BadRequestException(`Failed to create combo meal: ${error.message}`);
     }
 
-    // Create translations for name and description
-    try {
-      await this.translationService.createTranslations({
+    // Create translations for name and description asynchronously (fire and forget)
+    // Don't block the response - translations will be processed in the background
+    this.translationService.createTranslations({
+      entityType: 'combo_meal',
+      entityId: comboMeal.id,
+      fieldName: 'name',
+      text: createDto.name,
+    }).catch((translationError) => {
+      console.error('Failed to create translations for combo meal name:', translationError);
+    });
+
+    if (createDto.description) {
+      this.translationService.createTranslations({
         entityType: 'combo_meal',
         entityId: comboMeal.id,
-        fieldName: 'name',
-        text: createDto.name,
+        fieldName: 'description',
+        text: createDto.description,
+      }).catch((translationError) => {
+        console.error('Failed to create translations for combo meal description:', translationError);
       });
-
-      if (createDto.description) {
-        await this.translationService.createTranslations({
-          entityType: 'combo_meal',
-          entityId: comboMeal.id,
-          fieldName: 'description',
-          text: createDto.description,
-        });
-      }
-    } catch (translationError) {
-      console.warn(`Failed to create translations for combo meal ${comboMeal.id}:`, translationError);
     }
 
     return {
@@ -3991,6 +4001,7 @@ export class MenuService {
       isActive: comboMeal.is_active,
       createdAt: comboMeal.created_at,
       updatedAt: comboMeal.updated_at,
+      message: 'Combo meal created successfully. Translations are being processed in the background and will be available shortly.',
     };
   }
 
@@ -4412,17 +4423,16 @@ export class MenuService {
       throw new BadRequestException(`Failed to create variation group: ${error.message}`);
     }
 
-    // Create translations for name
-    try {
-      await this.translationService.createTranslations({
-        entityType: 'variation_group',
-        entityId: variationGroup.id,
-        fieldName: 'name',
-        text: createDto.name,
-      });
-    } catch (translationError) {
-      console.warn(`Failed to create translations for variation group ${variationGroup.id}:`, translationError);
-    }
+    // Create translations for name asynchronously (fire and forget)
+    // Don't block the response - translations will be processed in the background
+    this.translationService.createTranslations({
+      entityType: 'variation_group',
+      entityId: variationGroup.id,
+      fieldName: 'name',
+      text: createDto.name,
+    }).catch((translationError) => {
+      console.error('Failed to create translations for variation group:', translationError);
+    });
 
     return {
       id: variationGroup.id,
@@ -4430,6 +4440,7 @@ export class MenuService {
       createdAt: variationGroup.created_at,
       updatedAt: variationGroup.updated_at,
       variations: [],
+      message: 'Variation group created successfully. Translations are being processed in the background and will be available shortly.',
     };
   }
 
@@ -4673,17 +4684,16 @@ export class MenuService {
       throw new BadRequestException(`Failed to create variation: ${error.message}`);
     }
 
-    // Create translations for name
-    try {
-      await this.translationService.createTranslations({
-        entityType: 'variation',
-        entityId: variation.id,
-        fieldName: 'name',
-        text: createDto.name,
-      });
-    } catch (translationError) {
-      console.warn(`Failed to create translations for variation ${variation.id}:`, translationError);
-    }
+    // Create translations for name asynchronously (fire and forget)
+    // Don't block the response - translations will be processed in the background
+    this.translationService.createTranslations({
+      entityType: 'variation',
+      entityId: variation.id,
+      fieldName: 'name',
+      text: createDto.name,
+    }).catch((translationError) => {
+      console.error('Failed to create translations for variation:', translationError);
+    });
 
     return {
       id: variation.id,
@@ -4693,6 +4703,7 @@ export class MenuService {
       displayOrder: variation.display_order,
       createdAt: variation.created_at,
       updatedAt: variation.updated_at,
+      message: 'Variation created successfully. Translations are being processed in the background and will be available shortly.',
     };
   }
 

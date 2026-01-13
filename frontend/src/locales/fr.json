@@ -76,6 +76,9 @@
     "password": "Mot de passe",
     "secureAccount": "Sécurisez votre compte",
     "basicInfo": "Informations de base",
+    "stepOne": "Informations de base",
+    "stepTwo": "Variations et tarification",
+    "stepThree": "Suppléments et remises",
     "personalDetails": "Vos informations personnelles",
     "completingAuthentication": "Finalisation de l'authentification",
     "initializing": "Initialisation...",
@@ -339,6 +342,7 @@
     "recipeMultiplierDescription": "Multiplicateur pour les ingrédients de la recette (par ex. 1,25 pour une grande taille)",
     "pricingAdjustmentDescription": "Ajustement du prix pour cette variation",
     "variationGroups": "Groupes de variations",
+    "variationGroupsDescription": "Toutes les variations des groupes sélectionnés seront appliquées automatiquement",
     "variationGroupManagement": "Gestion des groupes de variations",
     "createVariationGroup": "Créer un groupe de variations",
     "editVariationGroup": "Modifier le groupe de variations",
@@ -346,6 +350,8 @@
     "createVariation": "Créer une variation",
     "editVariation": "Modifier la variation",
     "noVariationGroups": "Aucun groupe de variations trouvé",
+    "noVariationGroupsAvailable": "Aucun groupe de variations disponible",
+    "selectVariationGroups": "Sélectionner les groupes de variations",
     "selectVariationGroup": "Sélectionnez un groupe de variations pour voir ses articles",
     "selectVariationGroupFirst": "Sélectionnez d'abord un groupe de variations",
     "selectVariation": "Sélectionner une variation",
@@ -584,6 +590,7 @@
     "comboMeal": "Menu combo"
   },
   "orders": {
+    "readyToServe": "Prêt à servir",
     "orderType": {
       "dine_in": "Sur place",
       "takeaway": "À emporter",
@@ -721,6 +728,7 @@
     "ingredient": "Ingrédient",
     "selectIngredient": "Sélectionner un ingrédient",
     "noIngredients": "Aucun ingrédient disponible",
+    "toCreateARecipe": "pour créer une recette",
     "createIngredientsFirst": "Veuillez d'abord créer des ingrédients dans la section Inventaire.",
     "recipeCreated": "Recette créée avec succès",
     "recipeUpdated": "Recette mise à jour avec succès",
@@ -907,6 +915,7 @@
     "offlineMessage": "Vous êtes hors ligne. Veuillez vous connecter à Internet pour gérer les coupons."
   },
   "delivery": {
+    "statusLabel": "Statut",
     "title": "Gestion des livraisons",
     "allDeliveries": "Toutes les livraisons",
     "pending": "En attente",

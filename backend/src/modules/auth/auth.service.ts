@@ -97,21 +97,6 @@ export class AuthService {
 
       tenantId = tenantData.id;
       console.log('Tenant created:', tenantId);
-
-      // Create translations for tenant name automatically
-      try {
-        const tenantName = signupDto.name + "'s Restaurant";
-        await this.translationService.createTranslations({
-          entityType: 'restaurant',
-          entityId: tenantId,
-          fieldName: 'name',
-          text: tenantName,
-        });
-        console.log('Translations created for tenant name');
-      } catch (translationError) {
-        console.error('Failed to create translations for tenant name:', translationError);
-        // Don't fail signup if translation creation fails
-      }
     } else {
       console.log('Using existing tenant:', tenantId);
     }
@@ -153,147 +138,21 @@ export class AuthService {
 
     console.log('User record created successfully:', userData.id);
 
-    // Create translations for user name automatically
-    try {
-      await this.translationService.createTranslations({
-        entityType: 'user',
-        entityId: userData.id,
-        fieldName: 'name',
-        text: signupDto.name,
-      });
-      console.log('Translations created for user name');
-    } catch (translationError) {
-      console.error('Failed to create translations for user name:', translationError);
-      // Don't fail signup if translation creation fails
-    }
-
-    // Assign role based on user role field
-    try {
-      const roles = await this.rolesService.getRoles();
-      const userRole = signupDto.role || 'tenant_owner';
-      
-      // Map tenant_owner to manager role for full access
-      const roleToAssign = userRole === 'tenant_owner' ? 'manager' : userRole;
-      const role = roles.find((r) => r.name === roleToAssign);
-      
-      if (role) {
-        await this.rolesService.assignRolesToUser(userData.id, [role.id], userData.id);
-        console.log(`Assigned ${role.name} role to user ${userData.id}`);
-      } else {
-        // Fallback: assign manager role if role not found
-        const managerRole = roles.find((r) => r.name === 'manager');
-        if (managerRole) {
-          await this.rolesService.assignRolesToUser(userData.id, [managerRole.id], userData.id);
-          console.log(`Assigned manager role (fallback) to user ${userData.id}`);
-        }
-      }
-    } catch (roleError) {
-      console.error('Failed to assign role to user:', roleError);
-      // Don't fail signup if role assignment fails, but log it
-    }
-
-    // Create a default branch for the tenant if this is a new tenant
-    let defaultBranchId: string | undefined;
-    if (!signupDto.tenantId) {
-      try {
-        const { data: branchData, error: branchError } = await supabase
-          .from('branches')
-          .insert({
-            tenant_id: tenantId,
-            name: 'Main Branch',
-            code: 'MAIN',
-            is_active: true,
-          })
-          .select()
-          .single();
-
-        if (branchError) {
-          console.error('Failed to create default branch:', branchError);
-          // Don't fail signup if branch creation fails, but log it
-        } else {
-          defaultBranchId = branchData.id;
-          console.log('Default branch created:', defaultBranchId);
-
-          // Create translations for branch name automatically
-          try {
-            await this.translationService.createTranslations({
-              entityType: 'branch',
-              entityId: branchData.id,
-              fieldName: 'name',
-              text: 'Main Branch',
-            });
-            console.log('Translations created for branch name');
-          } catch (translationError) {
-            console.error('Failed to create translations for branch name:', translationError);
-            // Don't fail signup if translation creation fails
-          }
-          
-          // Create default tables (5 tables) for the branch
-          try {
-            const defaultTables = [];
-            for (let i = 1; i <= 5; i++) {
-              defaultTables.push({
-                branch_id: defaultBranchId,
-                table_number: i.toString(),
-                seating_capacity: 4,
-                table_type: 'regular',
-                status: 'available',
-              });
-            }
-            
-            const { data: tablesData, error: tablesError } = await supabase
-              .from('tables')
-              .insert(defaultTables)
-              .select();
-            
-            if (tablesError) {
-              console.error('Failed to create default tables:', tablesError);
-              // Don't fail signup if table creation fails, but log it
-            } else {
-              console.log(`Created ${tablesData?.length || 0} default tables for branch:`, defaultBranchId);
-            }
-          } catch (tablesError) {
-            console.error('Error creating default tables:', tablesError);
-            // Don't fail signup if table creation fails
-          }
-        }
-      } catch (error) {
-        console.error('Error creating default branch:', error);
-        // Don't fail signup if branch creation fails
-      }
-
-      // Create default menus with proper names for new tenant (branch-specific)
-      if (defaultBranchId) {
-        try {
-          await this.menuService.createDefaultMenus(tenantId, defaultBranchId);
-          console.log('Default menus created for branch:', defaultBranchId);
-        } catch (menuError) {
-          console.warn('⚠️  Failed to create default menus (non-critical, signup will continue):', menuError?.message || menuError);
-          // Don't fail signup if menu creation fails - this is non-critical
-        }
-      }
-
-      // Create trial subscription for new tenant
-      try {
-        await this.subscriptionService.createTrialSubscription(tenantId, PlanId.STARTER);
-        console.log('Trial subscription created for tenant:', tenantId);
-      } catch (subscriptionError) {
-        console.warn('⚠️  Failed to create trial subscription (non-critical, signup will continue):', subscriptionError?.message || subscriptionError);
-        // Don't fail signup if subscription creation fails - this is non-critical
-        // The subscriptions table may not exist yet, which is fine for initial setup
-      }
-
-      // Create sample data for new tenant (non-blocking - runs in background)
-      // Don't await this to avoid timeout issues - let it run asynchronously
-      this.seedSampleData(tenantId, defaultBranchId).catch((seedError) => {
-        console.error('❌ Failed to create sample data (background job):', seedError?.message || seedError);
-        console.error('Stack trace:', seedError);
-      });
-      console.log('📦 Sample data creation started in background for tenant:', tenantId, 'branch:', defaultBranchId);
-    }
-
-    // Generate tokens
+    // Generate tokens immediately to return response quickly
     const tokens = await this.generateTokens(userData);
+
+    // Defer all slow operations to run asynchronously in the background
+    // This allows the signup to return quickly without waiting for translations, menus, etc.
+    const isNewTenant = !signupDto.tenantId;
+    this.handlePostSignupAsyncTasks(
+      signupDto,
+      userData.id,
+      tenantId,
+      isNewTenant
+    ).catch((error) => {
+      console.error('❌ Error in post-signup async tasks:', error);
+      // Don't throw - these are non-critical operations
+    });
 
     return {
       user: {
@@ -1029,6 +888,163 @@ export class AuthService {
       tenantId: updatedUser.tenant_id as string,
       updatedAt: updatedUser.updated_at as string,
     };
+  }
+
+  /**
+   * Handle all slow post-signup operations asynchronously
+   * This includes translations, role assignment, branch creation, menus, subscriptions, etc.
+   * These operations run in the background to allow signup to return quickly
+   */
+  private async handlePostSignupAsyncTasks(
+    signupDto: SignupDto,
+    userId: string,
+    tenantId: string,
+    isNewTenant: boolean,
+  ) {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    try {
+      // 1. Create translations for tenant name (if new tenant) asynchronously
+      // Don't block the response - translations will be processed in the background
+      if (isNewTenant) {
+        const tenantName = signupDto.name + "'s Restaurant";
+        this.translationService.createTranslations({
+          entityType: 'restaurant',
+          entityId: tenantId,
+          fieldName: 'name',
+          text: tenantName,
+        }).catch((translationError) => {
+          console.error('Failed to create translations for tenant name:', translationError);
+        });
+      }
+
+      // 2. Create translations for user name asynchronously
+      // Don't block the response - translations will be processed in the background
+      this.translationService.createTranslations({
+        entityType: 'user',
+        entityId: userId,
+        fieldName: 'name',
+        text: signupDto.name,
+      }).catch((translationError) => {
+        console.error('Failed to create translations for user name:', translationError);
+      });
+
+      // 3. Assign role based on user role field
+      try {
+        const roles = await this.rolesService.getRoles();
+        const userRole = signupDto.role || 'tenant_owner';
+        
+        // Map tenant_owner to manager role for full access
+        const roleToAssign = userRole === 'tenant_owner' ? 'manager' : userRole;
+        const role = roles.find((r) => r.name === roleToAssign);
+        
+        if (role) {
+          await this.rolesService.assignRolesToUser(userId, [role.id], userId);
+          console.log(`✅ Assigned ${role.name} role to user ${userId}`);
+        } else {
+          // Fallback: assign manager role if role not found
+          const managerRole = roles.find((r) => r.name === 'manager');
+          if (managerRole) {
+            await this.rolesService.assignRolesToUser(userId, [managerRole.id], userId);
+            console.log(`✅ Assigned manager role (fallback) to user ${userId}`);
+          }
+        }
+      } catch (roleError) {
+        console.error('Failed to assign role to user:', roleError);
+      }
+
+      // 4. Create default branch for new tenant (if needed)
+      if (isNewTenant) {
+        let defaultBranchId: string | undefined;
+        try {
+          const { data: branchData, error: branchError } = await supabase
+            .from('branches')
+            .insert({
+              tenant_id: tenantId,
+              name: 'Main Branch',
+              code: 'MAIN',
+              is_active: true,
+            })
+            .select()
+            .single();
+
+          if (branchError) {
+            console.error('Failed to create default branch:', branchError);
+          } else {
+            defaultBranchId = branchData.id;
+            console.log('✅ Default branch created:', defaultBranchId);
+
+            // Create translations for branch name
+            // Create translations for branch name asynchronously
+            // Don't block the response - translations will be processed in the background
+            this.translationService.createTranslations({
+              entityType: 'branch',
+              entityId: branchData.id,
+              fieldName: 'name',
+              text: 'Main Branch',
+            }).catch((translationError) => {
+              console.error('Failed to create translations for branch name:', translationError);
+            });
+            
+            // Create default tables (5 tables) for the branch
+            try {
+              const defaultTables = [];
+              for (let i = 1; i <= 5; i++) {
+                defaultTables.push({
+                  branch_id: defaultBranchId,
+                  table_number: i.toString(),
+                  seating_capacity: 4,
+                  table_type: 'regular',
+                  status: 'available',
+                });
+              }
+              
+              const { data: tablesData, error: tablesError } = await supabase
+                .from('tables')
+                .insert(defaultTables)
+                .select();
+              
+              if (tablesError) {
+                console.error('Failed to create default tables:', tablesError);
+              } else {
+                console.log(`✅ Created ${tablesData?.length || 0} default tables for branch:`, defaultBranchId);
+              }
+            } catch (tablesError) {
+              console.error('Error creating default tables:', tablesError);
+            }
+
+            // Create default menus with proper names for new tenant (branch-specific)
+            if (defaultBranchId) {
+              try {
+                await this.menuService.createDefaultMenus(tenantId, defaultBranchId);
+                console.log('✅ Default menus created for branch:', defaultBranchId);
+              } catch (menuError) {
+                console.warn('⚠️  Failed to create default menus (non-critical):', menuError?.message || menuError);
+              }
+            }
+
+            // Create trial subscription for new tenant
+            try {
+              await this.subscriptionService.createTrialSubscription(tenantId, PlanId.STARTER);
+              console.log('✅ Trial subscription created for tenant:', tenantId);
+            } catch (subscriptionError) {
+              console.warn('⚠️  Failed to create trial subscription (non-critical):', subscriptionError?.message || subscriptionError);
+            }
+
+            // Create sample data for new tenant (non-blocking - runs in background)
+            this.seedSampleData(tenantId, defaultBranchId).catch((seedError) => {
+              console.error('❌ Failed to create sample data (background job):', seedError?.message || seedError);
+            });
+            console.log('📦 Sample data creation started in background for tenant:', tenantId, 'branch:', defaultBranchId);
+          }
+        } catch (error) {
+          console.error('Error creating default branch:', error);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error in handlePostSignupAsyncTasks:', error);
+      // Don't throw - these are background operations
+    }
   }
 
   private async seedSampleData(tenantId: string, branchId?: string) {

@@ -85,6 +85,49 @@ export function StockManagementPage() {
   });
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
 
+  // Helper function to translate unit of measurement
+  const getTranslatedUnit = useCallback((unit: string | undefined | null): string => {
+    if (!unit) return '';
+    
+    // Try exact match first
+    let translated = t(`inventory.${unit}` as any, language);
+    // Check if translation was found (not the key itself)
+    if (translated && translated !== `inventory.${unit}`) {
+      // Check if it's a non-ASCII translation (Arabic, Kurdish) or different from original
+      const hasNonAscii = /[^\x00-\x7F]/.test(translated);
+      if (hasNonAscii || translated.toLowerCase() !== unit.toLowerCase()) {
+        return translated;
+      }
+    }
+    
+    // Try uppercase version
+    const upperUnit = unit.toUpperCase();
+    if (upperUnit !== unit) {
+      translated = t(`inventory.${upperUnit}` as any, language);
+      if (translated && translated !== `inventory.${upperUnit}`) {
+        const hasNonAscii = /[^\x00-\x7F]/.test(translated);
+        if (hasNonAscii || translated.toLowerCase() !== upperUnit.toLowerCase()) {
+          return translated;
+        }
+      }
+    }
+    
+    // Try lowercase version
+    const lowerUnit = unit.toLowerCase();
+    if (lowerUnit !== unit && lowerUnit !== upperUnit) {
+      translated = t(`inventory.${lowerUnit}` as any, language);
+      if (translated && translated !== `inventory.${lowerUnit}`) {
+        const hasNonAscii = /[^\x00-\x7F]/.test(translated);
+        if (hasNonAscii || translated.toLowerCase() !== lowerUnit.toLowerCase()) {
+          return translated;
+        }
+      }
+    }
+    
+    // If no translation found, return original
+    return unit;
+  }, [language]);
+
   // Helper function to get deduplicated ingredient options for Select dropdowns
   const getIngredientOptions = useCallback(() => {
     // Deduplicate by ID first
@@ -95,9 +138,9 @@ export function StockManagementPage() {
       .filter((ing) => ing.name)
       .map((ing) => ({
         value: ing.id,
-        label: `${ing.name || ''}${ing.unitOfMeasurement ? ` (${ing.unitOfMeasurement})` : ''}`,
+        label: `${ing.name || ''}${ing.unitOfMeasurement ? ` (${getTranslatedUnit(ing.unitOfMeasurement)})` : ''}`,
       }));
-  }, [ingredients]);
+  }, [ingredients, getTranslatedUnit]);
   const [transactions, setTransactions] = useState<StockTransaction[]>([]);
   // Translations cache for ingredients: { ingredientId: { name: { languageCode: string } } }
   const [ingredientTranslationsCache, setIngredientTranslationsCache] = useState<{
@@ -240,18 +283,18 @@ export function StockManagementPage() {
         }
       });
       
-      // Load translations
-      const newTranslations: typeof ingredientTranslationsCache = { ...ingredientTranslationsCache };
+      // Load ingredient translations
+      const newIngredientTranslations: typeof ingredientTranslationsCache = { ...ingredientTranslationsCache };
       for (const ingredientId of ingredientIds) {
-        if (newTranslations[ingredientId]) continue;
+        if (newIngredientTranslations[ingredientId]) continue;
         try {
           const translations = await translationsApi.getEntityTranslations('ingredient', ingredientId);
-          newTranslations[ingredientId] = translations;
+          newIngredientTranslations[ingredientId] = translations;
         } catch (err) {
           console.warn(`Failed to load translations for ingredient ${ingredientId}:`, err);
         }
       }
-      setIngredientTranslationsCache(newTranslations);
+      setIngredientTranslationsCache(newIngredientTranslations);
     } catch (err: any) {
       console.error('Failed to load transactions:', err);
     } finally {
@@ -271,7 +314,8 @@ export function StockManagementPage() {
     return fallbackName;
   }, [ingredientTranslationsCache, language]);
 
-  // Helper function to translate reason text (e.g., auto deduction messages)
+  // Helper function to translate reason text
+  // Note: The backend already returns translated reasons, so we just handle special cases here
   const getTranslatedReason = useCallback((reason: string | undefined | null): string => {
     if (!reason) return '-';
     
@@ -291,7 +335,7 @@ export function StockManagementPage() {
       return translated.replace('{token}', tokenNumber);
     }
     
-    // Return original reason if no translation needed
+    // The backend already returns translated reasons based on the language parameter
     return reason;
   }, [language]);
 
@@ -304,7 +348,7 @@ export function StockManagementPage() {
   useEffect(() => {
     loadTransactions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ingredientFilter, selectedBranchId, startDate, endDate, transactionsPagination.page, transactionsPagination.limit, refreshKey]);
+  }, [ingredientFilter, selectedBranchId, startDate, endDate, transactionsPagination.page, transactionsPagination.limit, refreshKey, language, loadTransactions]);
 
   const handleOpenModal = (type: 'add' | 'deduct' | 'adjust') => {
     setTransactionType(type);
@@ -614,6 +658,7 @@ export function StockManagementPage() {
               placeholder={t('inventory.ingredient', language)}
               data={getIngredientOptions()}
               value={ingredientFilter || ''}
+              key={`ingredient-filter-${language}`}
               onChange={(value) => setIngredientFilter(value || null)}
               clearable
               searchable
@@ -791,6 +836,7 @@ export function StockManagementPage() {
               required
               data={getIngredientOptions()}
               searchable
+              key={`add-stock-ingredient-${language}`}
               {...addStockForm.getInputProps('ingredientId')}
             />
             <Grid>
@@ -873,6 +919,7 @@ export function StockManagementPage() {
               required
               data={getIngredientOptions()}
               searchable
+              key={`deduct-stock-ingredient-${language}`}
               {...deductStockForm.getInputProps('ingredientId')}
             />
             <NumberInput
@@ -938,6 +985,7 @@ export function StockManagementPage() {
               required
               data={getIngredientOptions()}
               searchable
+              key={`adjust-stock-ingredient-${language}`}
               {...adjustStockForm.getInputProps('ingredientId')}
             />
             {adjustStockForm.values.ingredientId && (

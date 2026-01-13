@@ -8,9 +8,10 @@ import { InventoryModule } from '../inventory/inventory.module';
 import { DeliveryModule } from '../delivery/delivery.module';
 import { TaxesModule } from '../taxes/taxes.module';
 import { SettingsModule } from '../settings/settings.module';
+import { TranslationsModule } from '../translations/translations.module';
 
 @Module({
-  imports: [DatabaseModule, CouponsModule, InventoryModule, TaxesModule, SettingsModule, forwardRef(() => DeliveryModule)],
+  imports: [DatabaseModule, CouponsModule, InventoryModule, TaxesModule, SettingsModule, TranslationsModule, forwardRef(() => DeliveryModule)],
   controllers: [OrdersController],
   providers: [OrdersService, OrdersSseService],
   exports: [OrdersService, OrdersSseService],

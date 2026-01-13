@@ -202,30 +202,8 @@ export class SettingsService {
     try {
       if (updateDto.invoice) {
         if (updateDto.invoice.headerText !== undefined && updateDto.invoice.headerText !== current.invoice.headerText) {
-          // Try to create translations first (will update if exists)
-          try {
-            await this.translationService.createTranslations({
-              entityType: 'invoice',
-              entityId: tenantId,
-              fieldName: 'header',
-              text: updateDto.invoice.headerText,
-            });
-            // Then update the specific language if different from source
-            if (language !== 'en') {
-              await this.translationService.updateTranslation(
-                {
-                  entityType: 'invoice',
-                  entityId: tenantId,
-                  languageCode: language,
-                  fieldName: 'header',
-                  translatedText: updateDto.invoice.headerText,
-                  isAiGenerated: false, // Manual edit
-                },
-                userId,
-              );
-            }
-          } catch (createError) {
-            // If create fails, try update (translation might already exist)
+          // Update the specific language translation (synchronous for immediate update)
+          if (language !== 'en') {
             await this.translationService.updateTranslation(
               {
                 entityType: 'invoice',
@@ -238,30 +216,21 @@ export class SettingsService {
               userId,
             );
           }
+          // Create translations for other languages asynchronously (fire and forget)
+          // Don't block the response - translations will be processed in the background
+          this.translationService.createTranslations({
+            entityType: 'invoice',
+            entityId: tenantId,
+            fieldName: 'header',
+            text: updateDto.invoice.headerText,
+          }).catch((translationError) => {
+            console.error('Failed to create translations for invoice header:', translationError);
+          });
         }
 
         if (updateDto.invoice.footerText !== undefined && updateDto.invoice.footerText !== current.invoice.footerText) {
-          try {
-            await this.translationService.createTranslations({
-              entityType: 'invoice',
-              entityId: tenantId,
-              fieldName: 'footer',
-              text: updateDto.invoice.footerText,
-            });
-            if (language !== 'en') {
-              await this.translationService.updateTranslation(
-                {
-                  entityType: 'invoice',
-                  entityId: tenantId,
-                  languageCode: language,
-                  fieldName: 'footer',
-                  translatedText: updateDto.invoice.footerText,
-                  isAiGenerated: false, // Manual edit
-                },
-                userId,
-              );
-            }
-          } catch (createError) {
+          // Update the specific language translation (synchronous for immediate update)
+          if (language !== 'en') {
             await this.translationService.updateTranslation(
               {
                 entityType: 'invoice',
@@ -274,30 +243,21 @@ export class SettingsService {
               userId,
             );
           }
+          // Create translations for other languages asynchronously (fire and forget)
+          // Don't block the response - translations will be processed in the background
+          this.translationService.createTranslations({
+            entityType: 'invoice',
+            entityId: tenantId,
+            fieldName: 'footer',
+            text: updateDto.invoice.footerText,
+          }).catch((translationError) => {
+            console.error('Failed to create translations for invoice footer:', translationError);
+          });
         }
 
         if (updateDto.invoice.termsAndConditions !== undefined && updateDto.invoice.termsAndConditions !== current.invoice.termsAndConditions) {
-          try {
-            await this.translationService.createTranslations({
-              entityType: 'invoice',
-              entityId: tenantId,
-              fieldName: 'terms_and_conditions',
-              text: updateDto.invoice.termsAndConditions,
-            });
-            if (language !== 'en') {
-              await this.translationService.updateTranslation(
-                {
-                  entityType: 'invoice',
-                  entityId: tenantId,
-                  languageCode: language,
-                  fieldName: 'terms_and_conditions',
-                  translatedText: updateDto.invoice.termsAndConditions,
-                  isAiGenerated: false, // Manual edit
-                },
-                userId,
-              );
-            }
-          } catch (createError) {
+          // Update the specific language translation (synchronous for immediate update)
+          if (language !== 'en') {
             await this.translationService.updateTranslation(
               {
                 entityType: 'invoice',
@@ -310,6 +270,16 @@ export class SettingsService {
               userId,
             );
           }
+          // Create translations for other languages asynchronously (fire and forget)
+          // Don't block the response - translations will be processed in the background
+          this.translationService.createTranslations({
+            entityType: 'invoice',
+            entityId: tenantId,
+            fieldName: 'terms_and_conditions',
+            text: updateDto.invoice.termsAndConditions,
+          }).catch((translationError) => {
+            console.error('Failed to create translations for invoice terms and conditions:', translationError);
+          });
         }
       }
     } catch (translationError) {

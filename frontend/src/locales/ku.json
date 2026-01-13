@@ -76,6 +76,9 @@
     "password": "وشەی نهێنی",
     "secureAccount": "هەژمارەکەت پارێزراو بکە",
     "basicInfo": "زانیاری سەرەتایی",
+    "stepOne": "زانیاری سەرەتایی",
+    "stepTwo": "زانیاری تایبەتی تۆ",
+    "stepThree": "زانیاری تایبەتی تۆ",
     "personalDetails": "زانیاری تایبەتی تۆ",
     "completingAuthentication": "تەواوکردنی پشتڕاستکردنەوە",
     "initializing": "دەستپێکردن...",
@@ -308,6 +311,7 @@
     "cuisines": "جۆرەکانی خواردن",
     "labels": "نیشانەکان",
     "menus": "مێنیوەکان",
+    "single": "واحد",
     "multiple": "متعدد",
     "categoryManagement": "بەڕێوەبردنی هاوپۆل",
     "createCategory": "دروستکردنی هاوپۆل",
@@ -347,6 +351,12 @@
     "pricingAdjustmentDescription": "گۆڕینی نرخ بۆ ئەم گۆڕانکاریە",
 
     "variationGroups": "گرووپەکانی گۆڕانکاری",
+    "variationGroupsDescription": "هەموو گۆڕانکاریەکان لە گرووپە هەڵبژێردراوەکان بە شێوەیەکی خۆکار جێبەجێ دەکرێن",
+    "noVariationGroups": "هیچ گرووپێکی گۆڕانکاری نەدۆزرایەوە",
+    "noVariationGroupsAvailable": "هیچ گرووپێکی گۆڕانکاری بەردەست نییە",
+    "selectVariationGroups": "گرووپەکانی گۆڕانکاری هەڵبژێرە",
+    "selectVariationGroup": "گرووپی گۆڕانکاری هەڵبژێرە بۆ بینینی بابەتەکان",
+    "selectVariationGroupFirst": "سەرەتا گرووپی گۆڕانکاری هەڵبژێرە",
     "variationGroupManagement": "بەڕێوەبردنی گرووپی گۆڕانکاری",
     "createVariationGroup": "دروستکردنی گرووپی گۆڕانکاری",
     "editVariationGroup": "دەستکاری گرووپی گۆڕانکاری",
@@ -412,6 +422,9 @@
     "saveSuccess": "بابەت بە سەرکەوتوویی پاشەکەوت کرا",
     "uploadSuccess": "وێنە بە سەرکەوتوویی بار کرا",
     "selectAddOnGroup": "زیادکراوەکان هەڵبژێرە",
+    "selectFoodItemsForMenu": "بابەتە خواردنەکانی دەمەزراوە بۆ مێنیو هەڵبژێرە",
+    "selectAddOnGroups": "زیادکراوەکان هەڵبژێرە",
+    "noAddOnGroupsAvailable": "هیچ زیادکراوەیەک بەردەست نییە. تکایە یەکەم زیادکراو بکە.",
     "buffets": "بووفێتەکان",
     "comboMeals": "کۆمبۆەکان",
     "buffetManagement": "بەڕێوەبردنی بووفێتەکان",
@@ -450,6 +463,8 @@
     "deleteBuffetConfirm": "دڵنیایت لە سڕینەوەی بووفێت؟",
     "deleteComboMealConfirm": "دڵنیایت لە سڕینەوەی کۆمبۆ؟",
     "selectFoodItemsForCombo": "بابەتە خواردنەکانی دەمەزراوە بۆ کۆمبۆ",
+    "selectFoodItems": "بابەتە خواردنەکان هەڵبژێرە",
+    "deleteMenuConfirm": "دڵنیایت لە سڕینەوەی مێنیو؟",
     "discountAutoCalculated": "دەستی دەکرێت لەگەڵ ئەگەر پێویست نەبوو",
     "off": "خەفە",
     "pricePerPersonRequired": "نرخی پێ پارە پێویستە بەردەست بێت",
@@ -571,6 +586,7 @@
   },
 
   "orders": {
+    "readyToServe": "ئامادە لەسەر تێپەڵەکردن",
     "orderType": {
       "dine_in": "خواردن لەناو چێشتخانە",
       "takeaway": "بردنەوە",
@@ -717,6 +733,7 @@
     "ingredient": "پێکهاتە",
     "selectIngredient": "هەڵبژاردنی پێکهاتە",
     "noIngredients": "هیچ پێکهاتەیەک بەردەست نییە",
+    "toCreateARecipe": "بۆ دروستکردنی ڕێسە",
     "createIngredientsFirst": "تکایە سەرەتا پێکهاتەکان لە بەشی کۆگا دروست بکە.",
     "recipeCreated": "ڕێسە بە سەرکەوتوویی دروست کرا",
     "recipeUpdated": "ڕێسە بە سەرکەوتوویی نوێ کرایەوە",
@@ -903,6 +920,7 @@
     "offlineMessage": "تۆ ئۆفلاینیت. تکایە پەیوەندی بە ئینتەرنێت بکە بۆ بەڕێوەبردنی کوپۆنەکان."
   },
   "delivery": {
+    "statusLabel": "دۆخ",
     "filterByCustomer": "پاڵاوتن بەپێی کڕیار",
     "filterByDate": "پاڵاوتن بەپێی بەروار",
     "filterByStatus": "پاڵاوتن بەپێی دۆخ",

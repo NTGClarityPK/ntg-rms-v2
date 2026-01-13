@@ -139,8 +139,7 @@ export function VariationGroupsPage() {
     } finally {
       setLoadingVariations(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [language]);
 
   const loadFoodItemsWithGroup = useCallback(async (groupId: string) => {
     try {

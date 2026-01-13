@@ -820,7 +820,7 @@ export default function DeliveryPage() {
                 )}
                 <Group justify="space-between">
                   <Text size="sm" c="dimmed">
-                    {t('delivery.status' as any, language) || 'Status'}:
+                    {t('delivery.statusLabel' as any, language) || 'Status'}:
                   </Text>
                   <Badge variant="light" color={getStatusColorForBadge(selectedDelivery.status)}>
                     {getStatusLabel(selectedDelivery.status)}

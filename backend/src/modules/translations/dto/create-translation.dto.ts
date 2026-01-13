@@ -24,6 +24,7 @@ export enum EntityType {
   STOCK_ADJUST_REASON = 'stock_adjust_reason',
   INVOICE = 'invoice',
   USER = 'user',
+  ORDER = 'order',
 }
 
 export enum FieldName {
@@ -37,6 +38,7 @@ export enum FieldName {
   STATE = 'state',
   ADDRESS = 'address',
   NOTES = 'notes',
+  SPECIAL_INSTRUCTIONS = 'specialInstructions',
   COUNTRY = 'country',
   STORAGE_LOCATION = 'storage_location',
   HEADER = 'header',

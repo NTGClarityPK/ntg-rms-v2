@@ -142,67 +142,85 @@ export function FoodItemsPage() {
     try {
       setLoading(true);
 
-      // Load categories (only active ones for selection)
-      const language = useLanguageStore.getState().language;
-      const catsResponse = await menuApi.getCategories(undefined, selectedBranchId || undefined, language);
-      const cats = Array.isArray(catsResponse) ? catsResponse : (catsResponse?.data || []);
-      setCategories((cats as Category[]).filter((cat: Category) => cat.isActive));
-
-      // Load add-on groups (only active ones for selection)
-      const groupsResponse = await menuApi.getAddOnGroups(undefined, selectedBranchId || undefined, language);
-      const groups = Array.isArray(groupsResponse) ? groupsResponse : (groupsResponse?.data || []);
-      setAddOnGroups((groups as any[]).filter((group: any) => group.isActive));
-
-      // Load menus for menu type selection
-      const menuListResponse = await menuApi.getMenus(undefined, selectedBranchId || undefined, language);
-      const menuList = Array.isArray(menuListResponse) ? menuListResponse : (menuListResponse?.data || []);
-      setMenus(menuList);
-
-      // Load variation groups with their variations (filtered by branch)
-      const variationGroupsResponse = await menuApi.getVariationGroups(undefined, selectedBranchId || undefined, language);
-      const variationGroupsList = Array.isArray(variationGroupsResponse) 
-        ? variationGroupsResponse 
-        : (variationGroupsResponse?.data || []);
-      
-      // Load variations for each group
-      const groupsWithVariations = await Promise.all(
-        variationGroupsList.map(async (group) => {
-          try {
-            const groupWithVariations = await menuApi.getVariationGroupById(group.id, language);
-            return groupWithVariations;
-          } catch (err) {
-            return group;
-          }
-        })
-      );
-
-      // Create a map of variation group IDs to names for resolving UUIDs
-      const map = new Map<string, string>();
-      groupsWithVariations.forEach((group) => {
-        map.set(group.id, group.name);
-      });
-      setVariationGroupsMap(map);
-      setVariationGroups(groupsWithVariations);
-
-      // Load food items - use server pagination
       // Use refs to get the latest values to avoid stale closures
       const currentSearch = debouncedSearchRef.current;
       const currentPage = paginationPageRef.current;
       const currentLimit = paginationLimitRef.current;
-      
-      const serverItemsResponse = await menuApi.getFoodItems(undefined, {
+
+      // Start all API calls in parallel for faster loading
+      // Food items is the main content, so prioritize it by starting it first
+      const foodItemsPromise = menuApi.getFoodItems(undefined, {
         page: currentPage,
         limit: currentLimit,
       }, currentSearch, false, selectedBranchId || undefined, language);
+
+      const categoriesPromise = menuApi.getCategories(undefined, selectedBranchId || undefined, language);
+      const addOnGroupsPromise = menuApi.getAddOnGroups(undefined, selectedBranchId || undefined, language);
+      const menusPromise = menuApi.getMenus(undefined, selectedBranchId || undefined, language);
+      const variationGroupsPromise = menuApi.getVariationGroups(undefined, selectedBranchId || undefined, language);
+
+      // Wait for food items first (main content) - don't block on other data
+      const serverItemsResponse = await foodItemsPromise;
       const serverItems = pagination.extractData(serverItemsResponse);
-      
-      // Extract pagination info from server response
       pagination.extractPagination(serverItemsResponse);
-      
       setFoodItems(serverItems);
+      
+      // Set loading to false immediately after food items are loaded
+      // This allows the UI to update right away
+      setLoading(false);
+
+      // Load supporting data in the background (non-blocking)
+      // These are needed for the form but don't block the main content display
+      Promise.all([
+        categoriesPromise,
+        addOnGroupsPromise,
+        menusPromise,
+        variationGroupsPromise,
+      ]).then(([catsResponse, groupsResponse, menuListResponse, variationGroupsResponse]) => {
+        // Process categories
+        const cats = Array.isArray(catsResponse) ? catsResponse : (catsResponse?.data || []);
+        setCategories((cats as Category[]).filter((cat: Category) => cat.isActive));
+
+        // Process add-on groups
+        const groups = Array.isArray(groupsResponse) ? groupsResponse : (groupsResponse?.data || []);
+        setAddOnGroups((groups as any[]).filter((group: any) => group.isActive));
+
+        // Process menus
+        const menuList = Array.isArray(menuListResponse) ? menuListResponse : (menuListResponse?.data || []);
+        setMenus(menuList);
+
+        // Process variation groups
+        const variationGroupsList = Array.isArray(variationGroupsResponse) 
+          ? variationGroupsResponse 
+          : (variationGroupsResponse?.data || []);
+        
+        // Load variations for each group (this can take time, but doesn't block UI)
+        Promise.all(
+          variationGroupsList.map(async (group) => {
+            try {
+              const groupWithVariations = await menuApi.getVariationGroupById(group.id, language);
+              return groupWithVariations;
+            } catch (err) {
+              return group;
+            }
+          })
+        ).then((groupsWithVariations) => {
+          // Create a map of variation group IDs to names for resolving UUIDs
+          const map = new Map<string, string>();
+          groupsWithVariations.forEach((group) => {
+            map.set(group.id, group.name);
+          });
+          setVariationGroupsMap(map);
+          setVariationGroups(groupsWithVariations);
+        }).catch((err) => {
+          console.error('Failed to load variation group details:', err);
+        });
+      }).catch((err) => {
+        console.error('Failed to load supporting data:', err);
+        // Don't show error to user for supporting data - main content is already loaded
+      });
     } catch (err: any) {
       setError(err.message || 'Failed to load data');
-    } finally {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -259,9 +277,7 @@ export function FoodItemsPage() {
       unsubscribe2();
       unsubscribe3();
     };
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pagination.page, pagination.limit]);
+  }, [pagination.page, pagination.limit, loadData]);
 
   // Load supported languages and translations
   useEffect(() => {
@@ -666,9 +682,16 @@ export function FoodItemsPage() {
   };
 
   // Use constants for labels
+  // Convert snake_case to camelCase for translation keys
+  const getTranslationKey = (value: string): string => {
+    return value.split('_').map((word, index) => 
+      index === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1)
+    ).join('');
+  };
+
   const labelOptions = FOOD_ITEM_LABELS.map(label => ({
     value: label.value,
-    label: String(t(`menu.${label.value}` as any, language) || label.label),
+    label: String(t(`menu.${getTranslationKey(label.value)}` as any, language) || label.label),
   }));
 
 
@@ -1070,30 +1093,7 @@ export function FoodItemsPage() {
             <Title order={4}>{editingItem ? t('menu.editFoodItem', language) : t('menu.createFoodItem', language)}</Title>
             <Group gap="xs">
               <LanguageIndicator variant="badge" size="sm" />
-              {editingItem && user?.role === 'tenant_owner' && (
-                <RetranslateButton
-                  entityType="food_item"
-                  entityId={editingItem.id}
-                  onSuccess={() => {
-                    loadData();
-                    // Reload translations
-                    const reloadTranslations = async () => {
-                      try {
-                        const translations = await translationsApi.getEntityTranslations('food_item', editingItem.id);
-                        setItemTranslations((prev) => ({
-                          ...prev,
-                          [editingItem.id]: translations,
-                        }));
-                      } catch (err) {
-                        console.warn('Failed to reload translations:', err);
-                      }
-                    };
-                    reloadTranslations();
-                  }}
-                  size="sm"
-                  variant="light"
-                />
-              )}
+              
             </Group>
           </Group>
           <Stepper 
@@ -1107,7 +1107,7 @@ export function FoodItemsPage() {
             allowNextStepsSelect={false}
           >
             <Stepper.Step
-              label={t('menu.step1', language)}
+              label={t('auth.stepOne', language)}
               description={t('auth.basicInfo', language)}
               icon={<IconToolsKitchen2 size={18} />}
             >
@@ -1256,7 +1256,7 @@ export function FoodItemsPage() {
             </Stepper.Step>
 
             <Stepper.Step
-              label={t('menu.step2', language)}
+              label={t('auth.stepTwo', language)}
               description={t('menu.variations', language)}
               icon={<IconCheck size={18} />}
             >
@@ -1265,10 +1265,10 @@ export function FoodItemsPage() {
                   label={t('menu.variationGroups', language) || t('menu.variations', language)}
                   placeholder={
                     variationGroups.length === 0
-                      ? 'No variation groups available'
-                      : 'Select variation groups'
+                        ? t('menu.noVariationGroupsAvailable', language)
+                        : t('menu.selectVariationGroups', language)
                   }
-                  description="All variations from selected groups will be automatically applied"
+                  description={t('menu.variationGroupsDescription', language)}
                   data={variationGroups.map((group) => ({
                     value: group.id,
                     label: group.name || '',
@@ -1357,7 +1357,7 @@ export function FoodItemsPage() {
             </Stepper.Step>
 
             <Stepper.Step
-              label={t('menu.step3', language)}
+              label={t('auth.stepThree', language)}
               description={t('menu.addOnGroups', language)}
               icon={<IconCheck size={18} />}
             >

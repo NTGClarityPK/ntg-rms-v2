@@ -484,30 +484,7 @@ export function CategoriesPage() {
               <Title order={4}>{editingCategory ? t('menu.editCategory', language) : t('menu.createCategory', language)}</Title>
               <Group gap="xs">
                 <LanguageIndicator variant="badge" size="sm" />
-                {editingCategory && user?.role === 'tenant_owner' && (
-                  <RetranslateButton
-                    entityType="category"
-                    entityId={editingCategory.id}
-                    onSuccess={() => {
-                      loadCategories();
-                      // Reload translations
-                      const reloadTranslations = async () => {
-                        try {
-                          const translations = await translationsApi.getEntityTranslations('category', editingCategory.id);
-                          setCategoryTranslations((prev) => ({
-                            ...prev,
-                            [editingCategory.id]: translations,
-                          }));
-                        } catch (err) {
-                          console.warn('Failed to reload translations:', err);
-                        }
-                      };
-                      reloadTranslations();
-                    }}
-                    size="sm"
-                    variant="light"
-                  />
-                )}
+               
               </Group>
             </Group>
             <Grid>

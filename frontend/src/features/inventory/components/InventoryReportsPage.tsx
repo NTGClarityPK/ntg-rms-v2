@@ -244,6 +244,49 @@ export function InventoryReportsPage() {
     return fallbackName;
   }, [ingredientTranslationsCache, language]);
 
+  // Helper function to translate unit of measurement
+  const getTranslatedUnit = useCallback((unit: string | undefined | null): string => {
+    if (!unit) return '';
+    
+    // Try exact match first
+    let translated = t(`inventory.${unit}` as any, language);
+    // Check if translation was found (not the key itself)
+    if (translated && translated !== `inventory.${unit}`) {
+      // Check if it's a non-ASCII translation (Arabic, Kurdish) or different from original
+      const hasNonAscii = /[^\x00-\x7F]/.test(translated);
+      if (hasNonAscii || translated.toLowerCase() !== unit.toLowerCase()) {
+        return translated;
+      }
+    }
+    
+    // Try uppercase version
+    const upperUnit = unit.toUpperCase();
+    if (upperUnit !== unit) {
+      translated = t(`inventory.${upperUnit}` as any, language);
+      if (translated && translated !== `inventory.${upperUnit}`) {
+        const hasNonAscii = /[^\x00-\x7F]/.test(translated);
+        if (hasNonAscii || translated.toLowerCase() !== upperUnit.toLowerCase()) {
+          return translated;
+        }
+      }
+    }
+    
+    // Try lowercase version
+    const lowerUnit = unit.toLowerCase();
+    if (lowerUnit !== unit && lowerUnit !== upperUnit) {
+      translated = t(`inventory.${lowerUnit}` as any, language);
+      if (translated && translated !== `inventory.${lowerUnit}`) {
+        const hasNonAscii = /[^\x00-\x7F]/.test(translated);
+        if (hasNonAscii || translated.toLowerCase() !== lowerUnit.toLowerCase()) {
+          return translated;
+        }
+      }
+    }
+    
+    // If no translation found, return original
+    return unit;
+  }, [language]);
+
   // Helper function to translate reason text (e.g., auto deduction messages)
   const getTranslatedReason = useCallback((reason: string | undefined | null): string => {
     if (!reason) return '-';
@@ -318,8 +361,8 @@ export function InventoryReportsPage() {
               const deficit = ingredient.minimumThreshold - ingredient.currentStock;
               return (
                 <Text key={ingredient.id} size="sm">
-                  • {getTranslatedIngredientName(ingredient.id, ingredient.name)}: {ingredient.currentStock} {ingredient.unitOfMeasurement} 
-                  ({t('inventory.stockDeficit', language)}: {deficit} {ingredient.unitOfMeasurement})
+                  • {getTranslatedIngredientName(ingredient.id, ingredient.name)}: {ingredient.currentStock} {getTranslatedUnit(ingredient.unitOfMeasurement)} 
+                  ({t('inventory.stockDeficit', language)}: {deficit} {getTranslatedUnit(ingredient.unitOfMeasurement)})
                 </Text>
               );
             })}
@@ -433,7 +476,7 @@ export function InventoryReportsPage() {
                   </Table.Td>
                   <Table.Td>
                     <Group gap="xs">
-                      <Text>{item.currentStock} {item.unitOfMeasurement}</Text>
+                      <Text>{item.currentStock} {getTranslatedUnit(item.unitOfMeasurement)}</Text>
                       {item.isLowStock && (
                         <Badge variant="light" color={getBadgeColorForText(t('inventory.isLowStock', language))} size="sm">
                           {t('inventory.isLowStock', language)}
@@ -442,7 +485,7 @@ export function InventoryReportsPage() {
                     </Group>
                   </Table.Td>
                   <Table.Td>
-                    <Text>{item.minimumThreshold} {item.unitOfMeasurement}</Text>
+                    <Text>{item.minimumThreshold} {getTranslatedUnit(item.unitOfMeasurement)}</Text>
                   </Table.Td>
                   <Table.Td>
                     {formatCurrency(item.costPerUnit || 0, currency)}

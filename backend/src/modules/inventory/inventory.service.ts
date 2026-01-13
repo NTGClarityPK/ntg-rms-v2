@@ -259,26 +259,26 @@ export class InventoryService {
       throw new InternalServerErrorException(`Failed to create ingredient: ${error.message}`);
     }
 
-    // Generate translations for the name and storage location
-    try {
-      await this.translationService.createTranslations({
+    // Generate translations for the name and storage location asynchronously (fire and forget)
+    // Don't block the response - translations will be processed in the background
+    this.translationService.createTranslations({
+      entityType: 'ingredient',
+      entityId: data.id,
+      fieldName: 'name',
+      text: createDto.name,
+    }).catch((translationError) => {
+      console.error('Failed to create translations for ingredient name:', translationError);
+    });
+
+    if (createDto.storageLocation) {
+      this.translationService.createTranslations({
         entityType: 'ingredient',
         entityId: data.id,
-        fieldName: 'name',
-        text: createDto.name,
+        fieldName: 'storage_location',
+        text: createDto.storageLocation,
+      }).catch((translationError) => {
+        console.error('Failed to create translations for ingredient storage location:', translationError);
       });
-
-      if (createDto.storageLocation) {
-        await this.translationService.createTranslations({
-          entityType: 'ingredient',
-          entityId: data.id,
-          fieldName: 'storage_location',
-          text: createDto.storageLocation,
-        });
-      }
-    } catch (translationError) {
-      // Log but don't fail - ingredient is created, translations can be added later
-      console.error('Failed to create translations for ingredient:', translationError);
     }
 
     // Transform snake_case to camelCase
@@ -296,6 +296,7 @@ export class InventoryService {
       createdAt: data.created_at,
       updatedAt: data.updated_at,
       deletedAt: data.deleted_at,
+      message: 'Ingredient created successfully. Translations are being processed in the background and will be available shortly.',
     };
   }
 
@@ -462,27 +463,28 @@ export class InventoryService {
       );
     }
 
-    // Create translations for reason and supplier_name (if provided)
-    try {
-      if (addDto.reason) {
-        await this.translationService.createTranslations({
-          entityType: 'stock_operation',
-          entityId: transaction.id,
-          fieldName: 'reason',
-          text: addDto.reason,
-        });
-      }
+    // Create translations for reason and supplier_name (if provided) asynchronously (fire and forget)
+    // Don't block the response - translations will be processed in the background
+    if (addDto.reason) {
+      this.translationService.createTranslations({
+        entityType: 'stock_operation',
+        entityId: transaction.id,
+        fieldName: 'reason',
+        text: addDto.reason,
+      }).catch((translationError) => {
+        console.error('Failed to create translations for stock operation reason:', translationError);
+      });
+    }
 
-      if (addDto.supplierName) {
-        await this.translationService.createTranslations({
-          entityType: 'stock_operation',
-          entityId: transaction.id,
-          fieldName: 'supplier_name',
-          text: addDto.supplierName,
-        });
-      }
-    } catch (translationError) {
-      console.warn(`Failed to create translations for stock transaction ${transaction.id}:`, translationError);
+    if (addDto.supplierName) {
+      this.translationService.createTranslations({
+        entityType: 'stock_operation',
+        entityId: transaction.id,
+        fieldName: 'supplier_name',
+        text: addDto.supplierName,
+      }).catch((translationError) => {
+        console.error('Failed to create translations for stock operation supplier name:', translationError);
+      });
     }
 
     // Update ingredient stock
@@ -572,18 +574,17 @@ export class InventoryService {
       );
     }
 
-    // Create translations for reason
-    try {
-      if (reasonText) {
-        await this.translationService.createTranslations({
-          entityType: 'stock_operation',
-          entityId: transaction.id,
-          fieldName: 'reason',
-          text: reasonText,
-        });
-      }
-    } catch (translationError) {
-      console.warn(`Failed to create translations for stock transaction ${transaction.id}:`, translationError);
+    // Create translations for reason asynchronously (fire and forget)
+    // Don't block the response - translations will be processed in the background
+    if (reasonText) {
+      this.translationService.createTranslations({
+        entityType: 'stock_operation',
+        entityId: transaction.id,
+        fieldName: 'reason',
+        text: reasonText,
+      }).catch((translationError) => {
+        console.error('Failed to create translations for stock operation reason:', translationError);
+      });
     }
 
     // Update ingredient stock
@@ -663,18 +664,17 @@ export class InventoryService {
       );
     }
 
-    // Create translations for reason
-    try {
-      if (adjustDto.reason) {
-        await this.translationService.createTranslations({
-          entityType: 'stock_operation',
-          entityId: transaction.id,
-          fieldName: 'reason',
-          text: adjustDto.reason,
-        });
-      }
-    } catch (translationError) {
-      console.warn(`Failed to create translations for stock transaction ${transaction.id}:`, translationError);
+    // Create translations for reason asynchronously (fire and forget)
+    // Don't block the response - translations will be processed in the background
+    if (adjustDto.reason) {
+      this.translationService.createTranslations({
+        entityType: 'stock_operation',
+        entityId: transaction.id,
+        fieldName: 'reason',
+        text: adjustDto.reason,
+      }).catch((translationError) => {
+        console.error('Failed to create translations for stock operation reason:', translationError);
+      });
     }
 
     // Update ingredient stock
@@ -903,28 +903,26 @@ export class InventoryService {
         let translatedSupplierName = tx.supplier_name;
 
         try {
-          if (tx.reason) {
-            const reasonTranslation = await this.translationService.getTranslation({
-              entityType: 'stock_operation',
-              entityId: tx.id,
-              languageCode: language,
-              fieldName: 'reason',
-              fallbackLanguage: 'en',
-            });
-            if (reasonTranslation) translatedReason = reasonTranslation;
-          }
-
-          if (tx.supplier_name) {
-            const supplierNameTranslation = await this.translationService.getTranslation({
-              entityType: 'stock_operation',
-              entityId: tx.id,
-              languageCode: language,
-              fieldName: 'supplier_name',
-              fallbackLanguage: 'en',
-            });
-            if (supplierNameTranslation) translatedSupplierName = supplierNameTranslation;
+          // Only fetch translations if language is not English (to avoid unnecessary lookups)
+          if (language !== 'en' && (tx.reason || tx.supplier_name)) {
+            // Get all translations for this entity once (more efficient than calling twice)
+            const allTranslations = await this.translationService.getEntityTranslations(
+              'stock_operation' as any,
+              tx.id,
+            );
+            
+            // Check if translation exists for the requested language
+            if (tx.reason && allTranslations?.reason?.[language]) {
+              translatedReason = allTranslations.reason[language];
+            }
+            
+            if (tx.supplier_name && allTranslations?.supplier_name?.[language]) {
+              translatedSupplierName = allTranslations.supplier_name[language];
+            }
           }
         } catch (translationError) {
+          // Silently fail - translation might not exist yet (created asynchronously)
+          // or there might be an error, but we'll use the original value
           console.warn(`Failed to get translations for stock transaction ${tx.id}:`, translationError);
         }
 

@@ -1,5 +1,5 @@
--- Migration: Add delivery and customer_address entity types to translation system
--- This migration adds support for translating delivery addresses and customer addresses
+-- Migration: Add order entity type to translation system
+-- This migration adds support for translating order special instructions
 
 -- ============================================
 -- UPDATE CHECK CONSTRAINTS
@@ -9,30 +9,35 @@
 ALTER TABLE translation_metadata 
 DROP CONSTRAINT IF EXISTS translation_metadata_entity_type_check;
 
--- Recreate check constraint with new entity types
+-- Recreate check constraint with 'order' entity type added
 ALTER TABLE translation_metadata 
 ADD CONSTRAINT translation_metadata_entity_type_check CHECK (
     entity_type IN (
         'ingredient', 'category', 'food_item', 'addon', 
         'variation', 'addon_group', 'variation_group', 
         'buffet', 'combo_meal', 'menu', 'branch', 'customer',
-        'customer_address', 'delivery', 'employee', 'stock_operation', 
+        'customer_address', 'delivery', 'employee', 'user', 'stock_operation', 
         'invoice', 'tax', 'restaurant',
-        'stock_add_reason', 'stock_deduct_reason', 'stock_adjust_reason'
+        'stock_add_reason', 'stock_deduct_reason', 'stock_adjust_reason',
+        'order'
     )
 );
+
+-- ============================================
+-- UPDATE FIELD NAME CHECK CONSTRAINT
+-- ============================================
 
 -- Drop existing check constraint for field_name
 ALTER TABLE translations 
 DROP CONSTRAINT IF EXISTS translations_field_name_check;
 
--- Recreate check constraint with 'state' field added
+-- Recreate check constraint with 'specialInstructions' field added
 ALTER TABLE translations 
 ADD CONSTRAINT translations_field_name_check CHECK (
     field_name IN (
         'name', 'description', 'title', 'label', 'short_description', 'long_description',
         'address', 'city', 'state', 'country', 'notes', 'storage_location', 'header', 'footer',
-        'terms_and_conditions', 'supplier_name', 'reason'
+        'terms_and_conditions', 'supplier_name', 'reason', 'specialInstructions'
     )
 );
 
@@ -40,7 +45,7 @@ ADD CONSTRAINT translations_field_name_check CHECK (
 -- UPDATE RLS FUNCTION
 -- ============================================
 
--- Update the check_translation_metadata_access function to handle new entity types
+-- Update the check_translation_metadata_access function to handle 'order' entity type
 CREATE OR REPLACE FUNCTION check_translation_metadata_access(
     p_entity_type VARCHAR(50),
     p_entity_id UUID
@@ -112,6 +117,14 @@ BEGIN
             -- Use 'users' table instead of 'employees'
             v_table_name := 'users';
             v_query := format('SELECT EXISTS (SELECT 1 FROM %I WHERE id = $1 AND tenant_id = $2)', v_table_name);
+        WHEN 'user' THEN
+            -- Use 'users' table for user entity type
+            v_table_name := 'users';
+            v_query := format('SELECT EXISTS (SELECT 1 FROM %I WHERE id = $1 AND tenant_id = $2)', v_table_name);
+        WHEN 'order' THEN
+            -- Check through orders table
+            v_table_name := 'orders';
+            v_query := format('SELECT EXISTS (SELECT 1 FROM %I WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL)', v_table_name);
         WHEN 'stock_operation' THEN
             v_table_name := 'stock_operations';
             v_query := format('SELECT EXISTS (SELECT 1 FROM %I WHERE id = $1 AND tenant_id = $2)', v_table_name);
@@ -157,7 +170,4 @@ BEGIN
     RETURN v_result;
 END;
 $$ LANGUAGE plpgsql;
-
-
-
 

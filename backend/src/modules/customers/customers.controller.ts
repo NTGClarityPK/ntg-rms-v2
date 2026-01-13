@@ -36,8 +36,12 @@ export class CustomersController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get customer by ID with order history' })
-  getCustomerById(@CurrentUser() user: any, @Param('id') id: string) {
-    return this.customersService.getCustomerById(user.tenantId, id);
+  getCustomerById(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Query('language') language?: string,
+  ) {
+    return this.customersService.getCustomerById(user.tenantId, id, language || 'en');
   }
 
   @Post()

@@ -34,7 +34,7 @@ export function Providers({ children }: ProvidersProps) {
             containerWidth={400}
           />
           <FaviconProvider>
-            <div dir={dir} lang={language}>
+            <div dir={dir} lang={language} suppressHydrationWarning>
               {children}
             </div>
           </FaviconProvider>

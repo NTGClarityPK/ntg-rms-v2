@@ -181,17 +181,16 @@ export class TaxesService {
       throw new InternalServerErrorException(`Failed to create tax: ${taxError?.message}`);
     }
 
-    // Create translations for name
-    try {
-      await this.translationService.createTranslations({
-        entityType: 'tax',
-        entityId: tax.id,
-        fieldName: 'name',
-        text: createDto.name,
-      });
-    } catch (translationError) {
-      console.warn(`Failed to create translations for tax ${tax.id}:`, translationError);
-    }
+    // Create translations for name asynchronously (fire and forget)
+    // Don't block the response - translations will be processed in the background
+    this.translationService.createTranslations({
+      entityType: 'tax',
+      entityId: tax.id,
+      fieldName: 'name',
+      text: createDto.name,
+    }).catch((translationError) => {
+      console.error('Failed to create translations for tax:', translationError);
+    });
 
     // Create tax applications if category/item specific
     if (

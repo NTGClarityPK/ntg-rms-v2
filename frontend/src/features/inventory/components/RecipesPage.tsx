@@ -207,6 +207,49 @@ export function RecipesPage() {
     }
   }, [loadRecipes, foodItems.length, refreshKey, selectedBranchId]);
 
+  // Helper function to translate unit of measurement
+  const getTranslatedUnit = useCallback((unit: string | undefined | null): string => {
+    if (!unit) return '';
+    
+    // Try exact match first
+    let translated = t(`inventory.${unit}` as any, language);
+    // Check if translation was found (not the key itself)
+    if (translated && translated !== `inventory.${unit}`) {
+      // Check if it's a non-ASCII translation (Arabic, Kurdish) or different from original
+      const hasNonAscii = /[^\x00-\x7F]/.test(translated);
+      if (hasNonAscii || translated.toLowerCase() !== unit.toLowerCase()) {
+        return translated;
+      }
+    }
+    
+    // Try uppercase version
+    const upperUnit = unit.toUpperCase();
+    if (upperUnit !== unit) {
+      translated = t(`inventory.${upperUnit}` as any, language);
+      if (translated && translated !== `inventory.${upperUnit}`) {
+        const hasNonAscii = /[^\x00-\x7F]/.test(translated);
+        if (hasNonAscii || translated.toLowerCase() !== upperUnit.toLowerCase()) {
+          return translated;
+        }
+      }
+    }
+    
+    // Try lowercase version
+    const lowerUnit = unit.toLowerCase();
+    if (lowerUnit !== unit && lowerUnit !== upperUnit) {
+      translated = t(`inventory.${lowerUnit}` as any, language);
+      if (translated && translated !== `inventory.${lowerUnit}`) {
+        const hasNonAscii = /[^\x00-\x7F]/.test(translated);
+        if (hasNonAscii || translated.toLowerCase() !== lowerUnit.toLowerCase()) {
+          return translated;
+        }
+      }
+    }
+    
+    // If no translation found, return original
+    return unit;
+  }, [language]);
+
   // Helper function to get deduplicated ingredient options for Select dropdowns
   const getIngredientOptions = useCallback(() => {
     // Deduplicate by ID first
@@ -218,10 +261,10 @@ export function RecipesPage() {
       .map((ing) => ({
         value: ing.id,
         label: ing.unitOfMeasurement 
-          ? `${ing.name || ''} (${ing.unitOfMeasurement})`
+          ? `${ing.name || ''} (${getTranslatedUnit(ing.unitOfMeasurement)})`
           : ing.name || '',
       }));
-  }, [ingredients]);
+  }, [ingredients, getTranslatedUnit]);
 
   const handleOpenModal = (foodItem?: FoodItem) => {
     // Open modal immediately
@@ -385,54 +428,6 @@ export function RecipesPage() {
       return total;
     }, 0);
   };
-
-  // Helper function to translate unit of measurement
-  const getTranslatedUnit = useCallback((unit: string | undefined | null): string => {
-    if (!unit) return '';
-    
-    // Try exact match first (for uppercase units like PIECE, SLICE, CUP)
-    let translated = t(`inventory.${unit}` as any, language);
-    const hasNonAscii = /[^\x00-\x7F]/.test(translated);
-    if (hasNonAscii) {
-      return translated;
-    }
-    
-    // Try uppercase version
-    const upperUnit = unit.toUpperCase();
-    if (upperUnit !== unit) {
-      translated = t(`inventory.${upperUnit}` as any, language);
-      const upperHasNonAscii = /[^\x00-\x7F]/.test(translated);
-      if (upperHasNonAscii) {
-        return translated;
-      }
-    }
-    
-    // Try lowercase version
-    const lowerUnit = unit.toLowerCase();
-    if (lowerUnit !== unit && lowerUnit !== upperUnit) {
-      translated = t(`inventory.${lowerUnit}` as any, language);
-      const lowerHasNonAscii = /[^\x00-\x7F]/.test(translated);
-      if (lowerHasNonAscii) {
-        return translated;
-      }
-    }
-    
-    // Check if different from formatted fallback (for English/French)
-    const formattedFallback = unit
-      .replace(/([A-Z])/g, ' $1')
-      .split(/[\s_]+/)
-      .filter(word => word.length > 0)
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(' ')
-      .trim();
-    
-    if (translated !== formattedFallback && translated !== `inventory.${unit}` && translated !== unit) {
-      return translated;
-    }
-    
-    // If no translation found, return original
-    return unit;
-  }, [language]);
 
   return (
     <Stack gap="md">
@@ -631,7 +626,7 @@ export function RecipesPage() {
             {form.values.ingredients.length === 0 ? (
               <Paper p="md" withBorder>
                 <Text ta="center" c="dimmed" size="sm">
-                  {t('inventory.noIngredients', language)}. {(t('common.add' as any, language) || 'Add')} {t('inventory.ingredients', language).toLowerCase()} to create a recipe.
+                  {t('inventory.noIngredients', language)}. {(t('common.add' as any, language) || 'Add')} {t('inventory.ingredients', language).toLowerCase()} {t('inventory.toCreateARecipe', language)}.
                 </Text>
               </Paper>
             ) : (
@@ -641,6 +636,7 @@ export function RecipesPage() {
                     <Grid>
                       <Grid.Col span={7}>
                         <Select
+                          key={`ingredient-select-${index}-${language}`}
                           label={t('inventory.ingredient', language)}
                           placeholder={t('inventory.selectIngredient', language)}
                           required

@@ -11,9 +11,11 @@ export type EntityType =
   | 'variation_group'
   | 'buffet'
   | 'combo_meal'
-  | 'menu';
+  | 'menu'
+  | 'order'
+  | 'stock_operation';
 
-export type FieldName = 'name' | 'description' | 'title' | 'label' | 'short_description' | 'long_description';
+export type FieldName = 'name' | 'description' | 'title' | 'label' | 'short_description' | 'long_description' | 'specialInstructions';
 
 export interface CreateTranslationRequest {
   entityType: EntityType;

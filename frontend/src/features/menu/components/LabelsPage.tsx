@@ -12,9 +12,16 @@ export function LabelsPage() {
   const { language } = useLanguageStore();
   const primaryColor = useThemeColor();
 
+  // Convert snake_case to camelCase for translation keys
+  const getTranslationKey = (value: string): string => {
+    return value.split('_').map((word, index) => 
+      index === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1)
+    ).join('');
+  };
+
   const labels = FOOD_ITEM_LABELS.map(label => ({
     value: label.value,
-    label: t(`menu.${label.value}` as any, language) || label.label,
+    label: t(`menu.${getTranslationKey(label.value)}` as any, language) || label.label,
   }));
 
   return (

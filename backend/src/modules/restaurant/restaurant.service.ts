@@ -376,34 +376,37 @@ export class RestaurantService {
       throw new BadRequestException('Failed to create branch: ' + error.message);
     }
 
-    // Create translations for name, city, and address
-    try {
-      await this.translationService.createTranslations({
+    // Create translations for name, city, and address asynchronously (fire and forget)
+    // Don't block the response - translations will be processed in the background
+    this.translationService.createTranslations({
+      entityType: 'branch',
+      entityId: branch.id,
+      fieldName: 'name',
+      text: createDto.name,
+    }).catch((translationError) => {
+      console.error('Failed to create translations for branch name:', translationError);
+    });
+
+    if (createDto.city) {
+      this.translationService.createTranslations({
         entityType: 'branch',
         entityId: branch.id,
-        fieldName: 'name',
-        text: createDto.name,
+        fieldName: 'city',
+        text: createDto.city,
+      }).catch((translationError) => {
+        console.error('Failed to create translations for branch city:', translationError);
       });
+    }
 
-      if (createDto.city) {
-        await this.translationService.createTranslations({
-          entityType: 'branch',
-          entityId: branch.id,
-          fieldName: 'city',
-          text: createDto.city,
-        });
-      }
-
-      if (createDto.address) {
-        await this.translationService.createTranslations({
-          entityType: 'branch',
-          entityId: branch.id,
-          fieldName: 'address',
-          text: createDto.address,
-        });
-      }
-    } catch (translationError) {
-      console.warn(`Failed to create translations for branch ${branch.id}:`, translationError);
+    if (createDto.address) {
+      this.translationService.createTranslations({
+        entityType: 'branch',
+        entityId: branch.id,
+        fieldName: 'address',
+        text: createDto.address,
+      }).catch((translationError) => {
+        console.error('Failed to create translations for branch address:', translationError);
+      });
     }
 
     // Create default tables for the branch based on tenant's totalTables setting

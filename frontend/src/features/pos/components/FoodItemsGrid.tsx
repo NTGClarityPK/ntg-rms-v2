@@ -623,7 +623,7 @@ export function FoodItemsGrid({
                           </Text>
                           {isComboMeal && (item as ComboMeal).discountPercentage && (
                             <Badge color={successColor} size="sm" variant="light">
-                              {(item as ComboMeal).discountPercentage?.toFixed(0)}% {t('menu.off', language) || 'off'}
+                              {(item as ComboMeal).discountPercentage?.toFixed(0)}% {t('menu.off', language)}
                             </Badge>
                           )}
                         </Group>

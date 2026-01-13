@@ -18,6 +18,7 @@ import { DeliveryService } from '../delivery/delivery.service';
 import { TaxesService } from '../taxes/taxes.service';
 import { SettingsService } from '../settings/settings.service';
 import { OrdersSseService } from './orders-sse.service';
+import { TranslationService } from '../translations/services/translation.service';
 import { PaginationParams, PaginatedResponse, getPaginationParams, createPaginatedResponse } from '../../common/dto/pagination.dto';
 
 @Injectable()
@@ -29,6 +30,7 @@ export class OrdersService {
     private taxesService: TaxesService,
     private settingsService: SettingsService,
     private ordersSseService: OrdersSseService,
+    private translationService: TranslationService,
     @Inject(forwardRef(() => DeliveryService))
     private deliveryService: DeliveryService,
   ) {}
@@ -1111,6 +1113,21 @@ export class OrdersService {
 
       // Execute all parallel operations
       await Promise.all(parallelOperations);
+
+      // Translate special instructions in parallel (non-blocking - fire and forget)
+      // This runs after order creation but doesn't block the API response
+      if (createDto.specialInstructions && createDto.specialInstructions.trim()) {
+        this.translationService.createTranslations({
+          entityType: 'order',
+          entityId: order.id,
+          fieldName: 'specialInstructions',
+          text: createDto.specialInstructions.trim(),
+        }).catch(error => {
+          // Log error but don't fail the order - translations are optional
+          console.error('Failed to translate order special instructions:', error);
+        });
+        // Note: Not awaiting this - it runs in background
+      }
 
       // Note: Removed redundant updated_at trigger - order was just created so updated_at is already current
       // Supabase Realtime will trigger automatically on the insert

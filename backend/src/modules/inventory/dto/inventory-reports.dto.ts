@@ -32,5 +32,10 @@ export class InventoryReportsQueryDto extends PaginationDto {
   @IsBoolean()
   @IsOptional()
   lowStockOnly?: boolean;
+
+  @ApiProperty({ required: false, description: 'Language code for translations (default: en)' })
+  @IsString()
+  @IsOptional()
+  language?: string;
 }
 

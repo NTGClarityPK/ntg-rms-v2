@@ -89,6 +89,9 @@
     "percentComplete": "{progress}% complete",
     "success": "Success!",
     "authenticationFailed": "Authentication Failed",
+    "stepOne": "Basic Information",
+    "stepTwo": "Variations & Pricing",
+    "stepThree": "Add-ons & Discounts",
     "currency": "Currency",
     "currencyDescription": "Select your default currency. This cannot be changed after registration.",
     "invalidCredentials": "Invalid email or password. Please check your credentials and try again.",
@@ -339,6 +342,7 @@
     "recipeMultiplierDescription": "Multiplier for recipe ingredients (e.g., 1.25 for large size)",
     "pricingAdjustmentDescription": "Price adjustment for this variation",
     "variationGroups": "Variation Groups",
+    "variationGroupsDescription": "All variations from selected groups will be automatically applied",
     "variationGroupManagement": "Variation Group Management",
     "createVariationGroup": "Create Variation Group",
     "editVariationGroup": "Edit Variation Group",
@@ -346,6 +350,8 @@
     "createVariation": "Create Variation",
     "editVariation": "Edit Variation",
     "noVariationGroups": "No variation groups found",
+    "noVariationGroupsAvailable": "No variation groups available",
+    "selectVariationGroups": "Select variation groups",
     "selectVariationGroup": "Select a variation group to view its items",
     "selectVariationGroupFirst": "Select variation group first",
     "selectVariation": "Select Variation",
@@ -584,6 +590,7 @@
     "comboMeal": "Combo Meal"
   },
   "orders": {
+    "readyToServe": "Ready To Serve",
     "orderType": {
       "dine_in": "Dine-in",
       "takeaway": "Takeaway",
@@ -721,6 +728,7 @@
     "ingredient": "Ingredient",
     "selectIngredient": "Select Ingredient",
     "noIngredients": "No ingredients available",
+    "toCreateARecipe": "to create a recipe",
     "createIngredientsFirst": "Please create ingredients in the Inventory section first.",
     "recipeCreated": "Recipe created successfully",
     "recipeUpdated": "Recipe updated successfully",
@@ -907,6 +915,7 @@
     "offlineMessage": "You are offline. Please connect to the internet to manage coupons."
   },
   "delivery": {
+    "statusLabel": "Status",
     "title": "Delivery Management",
     "allDeliveries": "All Deliveries",
     "pending": "Pending",

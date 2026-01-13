@@ -150,7 +150,6 @@ export class InventoryController {
   getStockTransactions(
     @CurrentUser() user: any,
     @Query() query: InventoryReportsQueryDto,
-    @Query('language') language?: string,
   ) {
     // Create filters without pagination fields
     const filters: InventoryReportsQueryDto = {
@@ -171,7 +170,7 @@ export class InventoryController {
           }
         : undefined;
     
-    return this.inventoryService.getStockTransactions(user.tenantId, filters, pagination, language || 'en');
+    return this.inventoryService.getStockTransactions(user.tenantId, filters, pagination, query.language || 'en');
   }
 
   // ============================================

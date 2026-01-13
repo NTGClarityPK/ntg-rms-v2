@@ -704,30 +704,7 @@ export function IngredientsPage() {
               <Title order={4}>{editingIngredient ? t('inventory.editIngredient', language) : t('inventory.addIngredient', language)}</Title>
               <Group gap="xs">
                 <LanguageIndicator variant="badge" size="sm" />
-                {editingIngredient && user?.role === 'tenant_owner' && (
-                  <RetranslateButton
-                    entityType="ingredient"
-                    entityId={editingIngredient.id}
-                    onSuccess={() => {
-                      loadIngredients();
-                      // Reload translations
-                      const reloadTranslations = async () => {
-                        try {
-                          const translations = await translationsApi.getEntityTranslations('ingredient', editingIngredient.id);
-                          setIngredientTranslations((prev) => ({
-                            ...prev,
-                            [editingIngredient.id]: translations,
-                          }));
-                        } catch (err) {
-                          console.warn('Failed to reload translations:', err);
-                        }
-                      };
-                      reloadTranslations();
-                    }}
-                    size="sm"
-                    variant="light"
-                  />
-                )}
+               
               </Group>
             </Group>
             <TextInput

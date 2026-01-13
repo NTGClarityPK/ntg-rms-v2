@@ -78,6 +78,9 @@
     "password": "كلمة المرور",
     "secureAccount": "أمّن حسابك",
     "basicInfo": "المعلومات الأساسية",
+    "stepOne": "المعلومات الأساسية",
+    "stepTwo": "التباينات والأسعار",
+    "stepThree": "الإضافات والخصم",
     "personalDetails": "تفاصيلك الشخصية",
     "completingAuthentication": "إكمال المصادقة",
     "initializing": "جاري التهيئة...",
@@ -315,6 +318,7 @@
     "recipeMultiplierDescription": "مضاعف مكونات الوصفة (مثل 1.25 للحجم الكبير)",
     "pricingAdjustmentDescription": "تعديل السعر لهذا التباين",
     "variationGroups": "مجموعات التباينات",
+    "variationGroupsDescription": "سيتم تطبيق جميع التباينات من المجموعات المحددة تلقائياً",
     "variationGroupManagement": "إدارة مجموعات التباينات",
     "createVariationGroup": "إنشاء مجموعة تباين",
     "editVariationGroup": "تعديل مجموعة تباين",
@@ -322,6 +326,8 @@
     "createVariation": "إنشاء تباين",
     "editVariation": "تعديل تباين",
     "noVariationGroups": "لا توجد مجموعات تباينات",
+    "noVariationGroupsAvailable": "لا توجد مجموعات تباينات متاحة",
+    "selectVariationGroups": "اختر مجموعات التباينات",
     "selectVariationGroup": "اختر مجموعة تباين لعرض عناصرها",
     "selectVariationGroupFirst": "اختر مجموعة التباين أولاً",
     "selectVariation": "اختر التباين",
@@ -562,6 +568,7 @@
     "comboMeal": "وجبة كومبو"
   },
   "orders": {
+    "readyToServe": "جاهز للتقديم",
     "orderType": {
       "dine_in": "تناول الطعام في المطعم",
       "takeaway": "طلب خارجي",
@@ -699,6 +706,7 @@
     "ingredient": "المكون",
     "selectIngredient": "اختر المكون",
     "noIngredients": "لا توجد مكونات متاحة",
+    "toCreateARecipe": "لإنشاء وصفة",
     "createIngredientsFirst": "يرجى إنشاء المكونات في قسم المخزون أولاً.",
     "recipeCreated": "تم إنشاء الوصفة بنجاح",
     "recipeUpdated": "تم تحديث الوصفة بنجاح",
@@ -844,6 +852,7 @@
     }
   },
   "delivery": {
+    "statusLabel": "الحالة",
     "filterByCustomer": "تصفية حسب العميل",
     "filterByDate": "تصفية حسب التاريخ",
     "filterByStatus": "تصفية حسب الحالة",
