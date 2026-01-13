@@ -1,5 +1,6 @@
 import apiClient from './client';
 import { API_ENDPOINTS } from '../constants/api';
+import { getApiLanguage } from '../hooks/use-api-language';
 
 export interface Tax {
   id: string;
@@ -35,17 +36,21 @@ export const taxesApi = {
   /**
    * Get all taxes (optionally filtered by branch)
    */
-  getTaxes: async (branchId?: string): Promise<Tax[]> => {
-    const params = branchId ? `?branchId=${branchId}` : '';
-    const response = await apiClient.get(`${API_ENDPOINTS.TAXES.BASE}${params}`);
+  getTaxes: async (branchId?: string, language?: string): Promise<Tax[]> => {
+    const lang = language || getApiLanguage();
+    const params = new URLSearchParams();
+    if (branchId) params.append('branchId', branchId);
+    params.append('language', lang);
+    const response = await apiClient.get(`${API_ENDPOINTS.TAXES.BASE}?${params.toString()}`);
     return response.data;
   },
 
   /**
    * Get a tax by ID
    */
-  getTaxById: async (id: string): Promise<Tax> => {
-    const response = await apiClient.get(`${API_ENDPOINTS.TAXES.BASE}/${id}`);
+  getTaxById: async (id: string, language?: string): Promise<Tax> => {
+    const lang = language || getApiLanguage();
+    const response = await apiClient.get(`${API_ENDPOINTS.TAXES.BASE}/${id}?language=${lang}`);
     return response.data;
   },
 
@@ -61,8 +66,9 @@ export const taxesApi = {
   /**
    * Update a tax
    */
-  updateTax: async (id: string, data: UpdateTaxDto): Promise<Tax> => {
-    const response = await apiClient.put(`${API_ENDPOINTS.TAXES.BASE}/${id}`, data);
+  updateTax: async (id: string, data: UpdateTaxDto, language?: string): Promise<Tax> => {
+    const lang = language || getApiLanguage();
+    const response = await apiClient.put(`${API_ENDPOINTS.TAXES.BASE}/${id}?language=${lang}`, data);
     return response.data;
   },
 

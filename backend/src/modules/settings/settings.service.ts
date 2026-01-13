@@ -201,82 +201,44 @@ export class SettingsService {
     // Create/Update translations for invoice header, footer, and terms if they were updated
     try {
       if (updateDto.invoice) {
+        // Normalize language code (default to 'en' if not provided or invalid)
+        const sourceLanguage = language || 'en';
+        
         if (updateDto.invoice.headerText !== undefined && updateDto.invoice.headerText !== current.invoice.headerText) {
-          // Update the specific language translation (synchronous for immediate update)
-          if (language !== 'en') {
-            await this.translationService.updateTranslation(
-              {
-                entityType: 'invoice',
-                entityId: tenantId,
-                languageCode: language,
-                fieldName: 'header',
-                translatedText: updateDto.invoice.headerText,
-                isAiGenerated: false, // Manual edit
-              },
-              userId,
-            );
-          }
-          // Create translations for other languages asynchronously (fire and forget)
-          // Don't block the response - translations will be processed in the background
+          // Always create/update translations for all languages when saving
+          // This ensures translations are created regardless of the language being saved
           this.translationService.createTranslations({
             entityType: 'invoice',
             entityId: tenantId,
             fieldName: 'header',
             text: updateDto.invoice.headerText,
+            sourceLanguage: sourceLanguage, // Explicitly set source language
           }).catch((translationError) => {
             console.error('Failed to create translations for invoice header:', translationError);
           });
         }
 
         if (updateDto.invoice.footerText !== undefined && updateDto.invoice.footerText !== current.invoice.footerText) {
-          // Update the specific language translation (synchronous for immediate update)
-          if (language !== 'en') {
-            await this.translationService.updateTranslation(
-              {
-                entityType: 'invoice',
-                entityId: tenantId,
-                languageCode: language,
-                fieldName: 'footer',
-                translatedText: updateDto.invoice.footerText,
-                isAiGenerated: false, // Manual edit
-              },
-              userId,
-            );
-          }
-          // Create translations for other languages asynchronously (fire and forget)
-          // Don't block the response - translations will be processed in the background
+          // Always create/update translations for all languages when saving
           this.translationService.createTranslations({
             entityType: 'invoice',
             entityId: tenantId,
             fieldName: 'footer',
             text: updateDto.invoice.footerText,
+            sourceLanguage: sourceLanguage, // Explicitly set source language
           }).catch((translationError) => {
             console.error('Failed to create translations for invoice footer:', translationError);
           });
         }
 
         if (updateDto.invoice.termsAndConditions !== undefined && updateDto.invoice.termsAndConditions !== current.invoice.termsAndConditions) {
-          // Update the specific language translation (synchronous for immediate update)
-          if (language !== 'en') {
-            await this.translationService.updateTranslation(
-              {
-                entityType: 'invoice',
-                entityId: tenantId,
-                languageCode: language,
-                fieldName: 'terms_and_conditions',
-                translatedText: updateDto.invoice.termsAndConditions,
-                isAiGenerated: false, // Manual edit
-              },
-              userId,
-            );
-          }
-          // Create translations for other languages asynchronously (fire and forget)
-          // Don't block the response - translations will be processed in the background
+          // Always create/update translations for all languages when saving
           this.translationService.createTranslations({
             entityType: 'invoice',
             entityId: tenantId,
             fieldName: 'terms_and_conditions',
             text: updateDto.invoice.termsAndConditions,
+            sourceLanguage: sourceLanguage, // Explicitly set source language
           }).catch((translationError) => {
             console.error('Failed to create translations for invoice terms and conditions:', translationError);
           });

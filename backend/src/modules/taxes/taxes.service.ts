@@ -183,11 +183,13 @@ export class TaxesService {
 
     // Create translations for name asynchronously (fire and forget)
     // Don't block the response - translations will be processed in the background
+    // Default to 'en' as source language for new taxes
     this.translationService.createTranslations({
       entityType: 'tax',
       entityId: tax.id,
       fieldName: 'name',
       text: createDto.name,
+      sourceLanguage: 'en', // Explicitly set source language to English for new taxes
     }).catch((translationError) => {
       console.error('Failed to create translations for tax:', translationError);
     });
@@ -310,13 +312,14 @@ export class TaxesService {
     }
 
     // Update translations if name changed
+    // Only update the translation for the current language (manual edit)
     try {
       if (updateDto.name !== undefined && updateDto.name !== existingTax.name) {
         await this.translationService.updateTranslation(
           {
             entityType: 'tax',
             entityId: taxId,
-            languageCode: language,
+            languageCode: language || 'en',
             fieldName: 'name',
             translatedText: updateDto.name,
             isAiGenerated: false, // Manual edit

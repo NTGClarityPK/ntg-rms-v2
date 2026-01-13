@@ -307,7 +307,38 @@ export function InventoryReportsPage() {
       return translated.replace('{token}', tokenNumber);
     }
     
-    // Return original reason if no translation needed
+    // Normalize reason for case-insensitive matching
+    const normalizedReason = reason.trim();
+    const lowerReason = normalizedReason.toLowerCase();
+    
+    // Map common reason values to translation keys
+    const reasonMap: Record<string, string> = {
+      'damaged': 'inventory.damaged',
+      'adding stock': 'inventory.addingStock',
+      'low stock': 'inventory.lowStock',
+      'new day': 'inventory.newDay',
+      'purchase': 'inventory.purchase',
+      'usage': 'inventory.usage',
+      'adjustment': 'inventory.adjustment',
+    };
+    
+    // Check if we have a translation for this reason
+    const translationKey = reasonMap[lowerReason];
+    if (translationKey) {
+      const translated = t(translationKey as any, language);
+      // Return translation if it exists and is different from the key
+      if (translated && translated !== translationKey) {
+        return translated;
+      }
+    }
+    
+    // Try direct translation with inventory prefix
+    const directTranslation = t(`inventory.${normalizedReason}` as any, language);
+    if (directTranslation && directTranslation !== `inventory.${normalizedReason}`) {
+      return directTranslation;
+    }
+    
+    // Return original reason if no translation found
     return reason;
   }, [language]);
 
