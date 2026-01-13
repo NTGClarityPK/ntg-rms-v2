@@ -307,6 +307,26 @@ export class TranslationRepository {
       .single();
 
     if (error) {
+      // Handle duplicate key error (race condition) - try to fetch existing metadata
+      if (error.code === '23505' || error.message.includes('duplicate key')) {
+        const { data: existingData, error: fetchError } = await supabase
+          .from('translation_metadata')
+          .select('*')
+          .eq('entity_type', entityType)
+          .eq('entity_id', entityId)
+          .single();
+
+        if (existingData && !fetchError) {
+          return {
+            id: existingData.id,
+            entityType: existingData.entity_type,
+            entityId: existingData.entity_id,
+            sourceLanguage: existingData.source_language,
+            createdAt: new Date(existingData.created_at),
+            updatedAt: new Date(existingData.updated_at),
+          };
+        }
+      }
       this.logger.error(`Failed to create translation metadata: ${error.message}`);
       throw new InternalServerErrorException('Failed to create translation metadata');
     }

@@ -141,14 +141,119 @@ export class AuthService {
     // Generate tokens immediately to return response quickly
     const tokens = await this.generateTokens(userData);
 
+    // For new tenants, create default branch synchronously so we can return branchId
+    // This ensures the frontend has branchId immediately after signup
+    const isNewTenant = !signupDto.tenantId;
+    let branchId: string | undefined;
+    
+    if (isNewTenant) {
+      try {
+        const { data: branchData, error: branchError } = await supabase
+          .from('branches')
+          .insert({
+            tenant_id: tenantId,
+            name: 'Main Branch',
+            code: 'MAIN',
+            is_active: true,
+          })
+          .select()
+          .single();
+
+        if (branchError) {
+          console.error('Failed to create default branch:', branchError);
+        } else {
+          branchId = branchData.id;
+          console.log('✅ Default branch created:', branchId);
+
+          // Create translations for branch name directly (no AI needed for standard data)
+          this.translationService.insertTranslationsDirectly({
+            entityType: 'branch',
+            entityId: branchData.id,
+            fieldName: 'name',
+            text: 'Main Branch',
+          }).catch((translationError) => {
+            console.error('Failed to create translations for branch name:', translationError);
+          });
+          
+          // Create default tables (5 tables) for the branch
+          try {
+            const defaultTables = [];
+            for (let i = 1; i <= 5; i++) {
+              defaultTables.push({
+                branch_id: branchId,
+                table_number: i.toString(),
+                seating_capacity: 4,
+                table_type: 'regular',
+                status: 'available',
+              });
+            }
+            
+            const { data: tablesData, error: tablesError } = await supabase
+              .from('tables')
+              .insert(defaultTables)
+              .select();
+            
+            if (tablesError) {
+              console.error('Failed to create default tables:', tablesError);
+            } else {
+              console.log(`✅ Created ${tablesData?.length || 0} default tables for branch:`, branchId);
+            }
+          } catch (tablesError) {
+            console.error('Error creating default tables:', tablesError);
+          }
+        }
+      } catch (error) {
+        console.error('Error creating default branch:', error);
+      }
+    } else {
+      // For existing tenants, check if there's exactly one branch (like login does)
+      try {
+        let branches: any[] = [];
+        
+        // If tenant owner, check all branches
+        if (userData.role === 'tenant_owner') {
+          const { data: allBranches } = await supabase
+            .from('branches')
+            .select('id')
+            .eq('tenant_id', tenantId)
+            .is('deleted_at', null)
+            .eq('is_active', true)
+            .order('created_at', { ascending: true });
+          
+          branches = allBranches || [];
+        } else {
+          // For other users, check only assigned branches
+          const { data: userBranches } = await supabase
+            .from('user_branches')
+            .select(`
+              branch:branches!inner(id)
+            `)
+            .eq('user_id', userData.id);
+          
+          if (userBranches) {
+            branches = userBranches.map((ub: any) => ({ id: ub.branch?.id }));
+          }
+        }
+
+        // If there's exactly one branch, include it in the response
+        if (branches.length === 1 && branches[0].id) {
+          branchId = branches[0].id;
+        }
+      } catch (branchError) {
+        // Don't fail signup if branch check fails, just log it
+        console.warn('Failed to check branches for auto-selection:', branchError);
+      }
+    }
+
     // Defer all slow operations to run asynchronously in the background
     // This allows the signup to return quickly without waiting for translations, menus, etc.
-    const isNewTenant = !signupDto.tenantId;
+    // Pass branchId to avoid creating duplicate branch
     this.handlePostSignupAsyncTasks(
       signupDto,
       userData.id,
       tenantId,
-      isNewTenant
+      isNewTenant,
+      branchId // Pass branchId so it doesn't create duplicate branch
     ).catch((error) => {
       console.error('❌ Error in post-signup async tasks:', error);
       // Don't throw - these are non-critical operations
@@ -163,6 +268,7 @@ export class AuthService {
         tenantId: userData.tenant_id as string,
       },
       ...tokens,
+      ...(branchId && { branchId }), // Include branchId if available
     };
   }
 
@@ -900,6 +1006,7 @@ export class AuthService {
     userId: string,
     tenantId: string,
     isNewTenant: boolean,
+    existingBranchId?: string, // If branch already created, use this instead of creating new one
   ) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
@@ -953,92 +1060,97 @@ export class AuthService {
         console.error('Failed to assign role to user:', roleError);
       }
 
-      // 4. Create default branch for new tenant (if needed)
+      // 4. Use existing branch or create default branch for new tenant (if needed)
       if (isNewTenant) {
-        let defaultBranchId: string | undefined;
-        try {
-          const { data: branchData, error: branchError } = await supabase
-            .from('branches')
-            .insert({
-              tenant_id: tenantId,
-              name: 'Main Branch',
-              code: 'MAIN',
-              is_active: true,
-            })
-            .select()
-            .single();
+        let defaultBranchId: string | undefined = existingBranchId; // Use existing branch if provided
+        
+        // Only create branch if it wasn't already created synchronously
+        if (!defaultBranchId) {
+          try {
+            const { data: branchData, error: branchError } = await supabase
+              .from('branches')
+              .insert({
+                tenant_id: tenantId,
+                name: 'Main Branch',
+                code: 'MAIN',
+                is_active: true,
+              })
+              .select()
+              .single();
 
-          if (branchError) {
-            console.error('Failed to create default branch:', branchError);
-          } else {
-            defaultBranchId = branchData.id;
-            console.log('✅ Default branch created:', defaultBranchId);
+            if (branchError) {
+              console.error('Failed to create default branch:', branchError);
+            } else {
+              defaultBranchId = branchData.id;
+              console.log('✅ Default branch created:', defaultBranchId);
 
-            // Create translations for branch name
-            // Create translations for branch name asynchronously
-            // Don't block the response - translations will be processed in the background
-            this.translationService.createTranslations({
-              entityType: 'branch',
-              entityId: branchData.id,
-              fieldName: 'name',
-              text: 'Main Branch',
-            }).catch((translationError) => {
-              console.error('Failed to create translations for branch name:', translationError);
-            });
-            
-            // Create default tables (5 tables) for the branch
-            try {
-              const defaultTables = [];
-              for (let i = 1; i <= 5; i++) {
-                defaultTables.push({
-                  branch_id: defaultBranchId,
-                  table_number: i.toString(),
-                  seating_capacity: 4,
-                  table_type: 'regular',
-                  status: 'available',
-                });
-              }
+              // Create translations for branch name directly (no AI needed for standard data)
+              this.translationService.insertTranslationsDirectly({
+                entityType: 'branch',
+                entityId: branchData.id,
+                fieldName: 'name',
+                text: 'Main Branch',
+              }).catch((translationError) => {
+                console.error('Failed to create translations for branch name:', translationError);
+              });
               
-              const { data: tablesData, error: tablesError } = await supabase
-                .from('tables')
-                .insert(defaultTables)
-                .select();
-              
-              if (tablesError) {
-                console.error('Failed to create default tables:', tablesError);
-              } else {
-                console.log(`✅ Created ${tablesData?.length || 0} default tables for branch:`, defaultBranchId);
-              }
-            } catch (tablesError) {
-              console.error('Error creating default tables:', tablesError);
-            }
-
-            // Create default menus with proper names for new tenant (branch-specific)
-            if (defaultBranchId) {
+              // Create default tables (5 tables) for the branch
               try {
-                await this.menuService.createDefaultMenus(tenantId, defaultBranchId);
-                console.log('✅ Default menus created for branch:', defaultBranchId);
-              } catch (menuError) {
-                console.warn('⚠️  Failed to create default menus (non-critical):', menuError?.message || menuError);
+                const defaultTables = [];
+                for (let i = 1; i <= 5; i++) {
+                  defaultTables.push({
+                    branch_id: defaultBranchId,
+                    table_number: i.toString(),
+                    seating_capacity: 4,
+                    table_type: 'regular',
+                    status: 'available',
+                  });
+                }
+                
+                const { data: tablesData, error: tablesError } = await supabase
+                  .from('tables')
+                  .insert(defaultTables)
+                  .select();
+                
+                if (tablesError) {
+                  console.error('Failed to create default tables:', tablesError);
+                } else {
+                  console.log(`✅ Created ${tablesData?.length || 0} default tables for branch:`, defaultBranchId);
+                }
+              } catch (tablesError) {
+                console.error('Error creating default tables:', tablesError);
               }
             }
-
-            // Create trial subscription for new tenant
-            try {
-              await this.subscriptionService.createTrialSubscription(tenantId, PlanId.STARTER);
-              console.log('✅ Trial subscription created for tenant:', tenantId);
-            } catch (subscriptionError) {
-              console.warn('⚠️  Failed to create trial subscription (non-critical):', subscriptionError?.message || subscriptionError);
-            }
-
-            // Create sample data for new tenant (non-blocking - runs in background)
-            this.seedSampleData(tenantId, defaultBranchId).catch((seedError) => {
-              console.error('❌ Failed to create sample data (background job):', seedError?.message || seedError);
-            });
-            console.log('📦 Sample data creation started in background for tenant:', tenantId, 'branch:', defaultBranchId);
+          } catch (error) {
+            console.error('Error creating default branch:', error);
           }
-        } catch (error) {
-          console.error('Error creating default branch:', error);
+        } else {
+          console.log('✅ Using existing branch:', defaultBranchId);
+        }
+        
+        // Continue with other async tasks using the branchId
+        if (defaultBranchId) {
+          // Create default menus with proper names for new tenant (branch-specific)
+          try {
+            await this.menuService.createDefaultMenus(tenantId, defaultBranchId);
+            console.log('✅ Default menus created for branch:', defaultBranchId);
+          } catch (menuError) {
+            console.warn('⚠️  Failed to create default menus (non-critical):', menuError?.message || menuError);
+          }
+
+          // Create trial subscription for new tenant
+          try {
+            await this.subscriptionService.createTrialSubscription(tenantId, PlanId.STARTER);
+            console.log('✅ Trial subscription created for tenant:', tenantId);
+          } catch (subscriptionError) {
+            console.warn('⚠️  Failed to create trial subscription (non-critical):', subscriptionError?.message || subscriptionError);
+          }
+
+          // Create sample data for new tenant (non-blocking - runs in background)
+          this.seedSampleData(tenantId, defaultBranchId).catch((seedError) => {
+            console.error('❌ Failed to create sample data (background job):', seedError?.message || seedError);
+          });
+          console.log('📦 Sample data creation started in background for tenant:', tenantId, 'branch:', defaultBranchId);
         }
       }
     } catch (error) {
@@ -1048,178 +1160,212 @@ export class AuthService {
   }
 
   private async seedSampleData(tenantId: string, branchId?: string) {
-    console.log('🚀 Starting sample data creation for tenant:', tenantId, 'branch:', branchId);
+    console.log('🚀 Starting optimized sample data creation for tenant:', tenantId, 'branch:', branchId);
     try {
       const supabase = this.supabaseService.getServiceRoleClient();
+      const translationsToInsert: Array<{
+        entityType: string;
+        entityId: string;
+        fieldName: string;
+        text: string;
+      }> = [];
 
-      // 1. Create two sample categories for food items
-      console.log('📁 Creating categories...');
+      // 1. Bulk create categories using direct DB insert
+      console.log('📁 Creating categories (bulk)...');
       let category1, category2;
       try {
-        category1 = await this.menuService.createCategory(tenantId, {
-          name: 'Main Dishes',
-          description: 'Delicious main course options',
-          categoryType: 'food',
-          isActive: true,
-        }, branchId);
-        console.log('Category 1 created:', category1.id);
+        const categoriesData = [
+          {
+            tenant_id: tenantId,
+            branch_id: branchId || null,
+            name: 'Main Dishes',
+            description: 'Delicious main course options',
+            category_type: 'food',
+            is_active: true,
+            display_order: 0,
+          },
+          {
+            tenant_id: tenantId,
+            branch_id: branchId || null,
+            name: 'Sides & Appetizers',
+            description: 'Perfect sides and appetizers to complement your meal',
+            category_type: 'food',
+            is_active: true,
+            display_order: 1,
+          },
+        ];
 
-        category2 = await this.menuService.createCategory(tenantId, {
-          name: 'Sides & Appetizers',
-          description: 'Perfect sides and appetizers to complement your meal',
-          categoryType: 'food',
-          isActive: true,
-        }, branchId);
-        console.log('Category 2 created:', category2.id);
+        const { data: insertedCategories, error: catError } = await supabase
+          .from('categories')
+          .insert(categoriesData)
+          .select('id, name, description');
+
+        if (catError) {
+          console.error('Failed to bulk create categories:', catError);
+          // Try to get existing categories
+          const categories = await this.menuService.getCategories(tenantId);
+          if (Array.isArray(categories) && categories.length > 0) {
+            category1 = categories[0];
+            category2 = categories.length > 1 ? categories[1] : categories[0];
+          } else {
+            throw new Error('Could not create or find categories');
+          }
+        } else {
+          category1 = insertedCategories[0];
+          category2 = insertedCategories[1];
+          console.log('✅ Categories created:', category1.id, category2.id);
+
+          // Prepare translations for bulk insert
+          translationsToInsert.push(
+            { entityType: 'category', entityId: category1.id, fieldName: 'name', text: 'Main Dishes' },
+            { entityType: 'category', entityId: category1.id, fieldName: 'description', text: 'Delicious main course options' },
+            { entityType: 'category', entityId: category2.id, fieldName: 'name', text: 'Sides & Appetizers' },
+            { entityType: 'category', entityId: category2.id, fieldName: 'description', text: 'Perfect sides and appetizers to complement your meal' },
+          );
+        }
       } catch (error) {
         console.error('Failed to create sample categories:', error);
-        // Try to get existing categories
-        const categories = await this.menuService.getCategories(tenantId);
-        if (Array.isArray(categories) && categories.length > 0) {
-          category1 = categories[0];
-          category2 = categories.length > 1 ? categories[1] : categories[0];
-        } else {
-          throw new Error('Could not create or find categories');
-        }
+        throw error;
       }
 
-      // 2. Create two add-on groups with appropriate items
+      // 2. Bulk create add-on groups and add-ons using direct DB inserts
+      console.log('📦 Creating add-on groups and add-ons (bulk)...');
       let addOnGroup1, addOnGroup2;
       try {
-        // First add-on group: Extra Toppings (Add category)
-        addOnGroup1 = await this.menuService.createAddOnGroup(tenantId, {
-          name: 'Extra Toppings (Sample)',
-          selectionType: 'multiple',
-          isRequired: false,
-          minSelections: 0,
-          category: 'Add',
-        }, branchId);
-        console.log('Add-on group 1 created:', addOnGroup1.id);
+        // Bulk insert add-on groups
+        const addOnGroupsData = [
+          {
+            tenant_id: tenantId,
+            branch_id: branchId || null,
+            name: 'Extra Toppings (Sample)',
+            selection_type: 'multiple',
+            is_required: false,
+            min_selections: 0,
+            max_selections: null,
+            category: 'Add',
+            display_order: 0,
+            is_active: true,
+          },
+          {
+            tenant_id: tenantId,
+            branch_id: branchId || null,
+            name: 'Customization Options (Sample)',
+            selection_type: 'multiple',
+            is_required: false,
+            min_selections: 0,
+            max_selections: null,
+            category: 'Change',
+            display_order: 1,
+            is_active: true,
+          },
+        ];
 
-        // Create add-ons for first group
-        await this.menuService.createAddOn(tenantId, {
-          addOnGroupId: addOnGroup1.id,
-          name: 'Extra Cheese',
-          price: 0,
-          displayOrder: 1,
-          isActive: true,
-        });
+        const { data: insertedGroups, error: groupsError } = await supabase
+          .from('add_on_groups')
+          .insert(addOnGroupsData)
+          .select('id, name');
 
-        await this.menuService.createAddOn(tenantId, {
-          addOnGroupId: addOnGroup1.id,
-          name: 'Extra Sauce',
-          price: 0,
-          displayOrder: 2,
-          isActive: true,
-        });
-        console.log('Add-ons for group 1 created');
+        if (groupsError) {
+          console.error('Failed to bulk create add-on groups:', groupsError);
+          throw groupsError;
+        }
 
-        // Second add-on group: Customization Options (Change category)
-        addOnGroup2 = await this.menuService.createAddOnGroup(tenantId, {
-          name: 'Customization Options (Sample)',
-          selectionType: 'multiple',
-          isRequired: false,
-          minSelections: 0,
-          category: 'Change',
-        }, branchId);
-        console.log('Add-on group 2 created:', addOnGroup2.id);
+        addOnGroup1 = insertedGroups[0];
+        addOnGroup2 = insertedGroups[1];
+        console.log('✅ Add-on groups created:', addOnGroup1.id, addOnGroup2.id);
 
-        // Create add-ons for second group
-        await this.menuService.createAddOn(tenantId, {
-          addOnGroupId: addOnGroup2.id,
-          name: 'Extra Spicy',
-          price: 0,
-          displayOrder: 1,
-          isActive: true,
-        });
+        // Prepare translations for add-on groups
+        translationsToInsert.push(
+          { entityType: 'addon_group', entityId: addOnGroup1.id, fieldName: 'name', text: 'Extra Toppings (Sample)' },
+          { entityType: 'addon_group', entityId: addOnGroup2.id, fieldName: 'name', text: 'Customization Options (Sample)' },
+        );
 
-        await this.menuService.createAddOn(tenantId, {
-          addOnGroupId: addOnGroup2.id,
-          name: 'No Onions',
-          price: 0,
-          displayOrder: 2,
-          isActive: true,
-        });
+        // Bulk insert add-ons
+        const addOnsData = [
+          { add_on_group_id: addOnGroup1.id, name: 'Extra Cheese', price: 0, display_order: 1, is_active: true },
+          { add_on_group_id: addOnGroup1.id, name: 'Extra Sauce', price: 0, display_order: 2, is_active: true },
+          { add_on_group_id: addOnGroup2.id, name: 'Extra Spicy', price: 0, display_order: 1, is_active: true },
+          { add_on_group_id: addOnGroup2.id, name: 'No Onions', price: 0, display_order: 2, is_active: true },
+          { add_on_group_id: addOnGroup2.id, name: 'Well Done', price: 0, display_order: 3, is_active: true },
+        ];
 
-        await this.menuService.createAddOn(tenantId, {
-          addOnGroupId: addOnGroup2.id,
-          name: 'Well Done',
-          price: 0,
-          displayOrder: 3,
-          isActive: true,
-        });
-        console.log('Add-ons for group 2 created');
+        const { data: insertedAddOns, error: addOnsError } = await supabase
+          .from('add_ons')
+          .insert(addOnsData)
+          .select('id, name');
+
+        if (addOnsError) {
+          console.error('Failed to bulk create add-ons:', addOnsError);
+        } else {
+          console.log('✅ Add-ons created:', insertedAddOns.length);
+          // Prepare translations for add-ons
+          for (const addon of insertedAddOns) {
+            translationsToInsert.push(
+              { entityType: 'addon', entityId: addon.id, fieldName: 'name', text: addon.name },
+            );
+          }
+        }
       } catch (error) {
         console.error('Failed to create add-on groups or add-ons:', error);
       }
 
-      // 3. Create two variation groups
+      // 3. Bulk create variation groups and variations using direct DB inserts
+      console.log('🔄 Creating variation groups and variations (bulk)...');
       let variationGroup1, variationGroup2;
       try {
-        // First variation group: Size
-        variationGroup1 = await this.menuService.createVariationGroup(tenantId, {
-          name: 'Size',
-        }, branchId);
-        console.log('Variation group 1 created:', variationGroup1.id);
+        // Bulk insert variation groups
+        const variationGroupsData = [
+          { tenant_id: tenantId, branch_id: branchId || null, name: 'Size' },
+          { tenant_id: tenantId, branch_id: branchId || null, name: 'Spice Level' },
+        ];
 
-        // Create variations for Size group
-        await this.menuService.createVariation(tenantId, variationGroup1.id, {
-          name: 'Small',
-          pricingAdjustment: 0,
-          recipeMultiplier: 0.8,
-          displayOrder: 1,
-        });
+        const { data: insertedVarGroups, error: varGroupsError } = await supabase
+          .from('variation_groups')
+          .insert(variationGroupsData)
+          .select('id, name');
 
-        await this.menuService.createVariation(tenantId, variationGroup1.id, {
-          name: 'Medium',
-          pricingAdjustment: 500,
-          recipeMultiplier: 1.0,
-          displayOrder: 2,
-        });
+        if (varGroupsError) {
+          console.error('Failed to bulk create variation groups:', varGroupsError);
+          throw varGroupsError;
+        }
 
-        await this.menuService.createVariation(tenantId, variationGroup1.id, {
-          name: 'Large',
-          pricingAdjustment: 1000,
-          recipeMultiplier: 1.2,
-          displayOrder: 3,
-        });
-        console.log('Variations for group 1 created');
+        variationGroup1 = insertedVarGroups[0];
+        variationGroup2 = insertedVarGroups[1];
+        console.log('✅ Variation groups created:', variationGroup1.id, variationGroup2.id);
 
-        // Second variation group: Spice Level
-        variationGroup2 = await this.menuService.createVariationGroup(tenantId, {
-          name: 'Spice Level',
-        }, branchId);
-        console.log('Variation group 2 created:', variationGroup2.id);
+        // Prepare translations for variation groups
+        translationsToInsert.push(
+          { entityType: 'variation_group', entityId: variationGroup1.id, fieldName: 'name', text: 'Size' },
+          { entityType: 'variation_group', entityId: variationGroup2.id, fieldName: 'name', text: 'Spice Level' },
+        );
 
-        // Create variations for Spice Level group
-        await this.menuService.createVariation(tenantId, variationGroup2.id, {
-          name: 'Mild',
-          pricingAdjustment: 0,
-          recipeMultiplier: 1.0,
-          displayOrder: 1,
-        });
+        // Bulk insert variations
+        const variationsData = [
+          { variation_group_id: variationGroup1.id, name: 'Small', pricing_adjustment: 0, recipe_multiplier: 0.8, display_order: 1 },
+          { variation_group_id: variationGroup1.id, name: 'Medium', pricing_adjustment: 500, recipe_multiplier: 1.0, display_order: 2 },
+          { variation_group_id: variationGroup1.id, name: 'Large', pricing_adjustment: 1000, recipe_multiplier: 1.2, display_order: 3 },
+          { variation_group_id: variationGroup2.id, name: 'Mild', pricing_adjustment: 0, recipe_multiplier: 1.0, display_order: 1 },
+          { variation_group_id: variationGroup2.id, name: 'Medium', pricing_adjustment: 0, recipe_multiplier: 1.0, display_order: 2 },
+          { variation_group_id: variationGroup2.id, name: 'Hot', pricing_adjustment: 200, recipe_multiplier: 1.0, display_order: 3 },
+          { variation_group_id: variationGroup2.id, name: 'Extra Hot', pricing_adjustment: 400, recipe_multiplier: 1.0, display_order: 4 },
+        ];
 
-        await this.menuService.createVariation(tenantId, variationGroup2.id, {
-          name: 'Medium',
-          pricingAdjustment: 0,
-          recipeMultiplier: 1.0,
-          displayOrder: 2,
-        });
+        const { data: insertedVariations, error: variationsError } = await supabase
+          .from('variations')
+          .insert(variationsData)
+          .select('id, name');
 
-        await this.menuService.createVariation(tenantId, variationGroup2.id, {
-          name: 'Hot',
-          pricingAdjustment: 200,
-          recipeMultiplier: 1.0,
-          displayOrder: 3,
-        });
-
-        await this.menuService.createVariation(tenantId, variationGroup2.id, {
-          name: 'Extra Hot',
-          pricingAdjustment: 400,
-          recipeMultiplier: 1.0,
-          displayOrder: 4,
-        });
-        console.log('Variations for group 2 created');
+        if (variationsError) {
+          console.error('Failed to bulk create variations:', variationsError);
+        } else {
+          console.log('✅ Variations created:', insertedVariations.length);
+          // Prepare translations for variations
+          for (const variation of insertedVariations) {
+            translationsToInsert.push(
+              { entityType: 'variation', entityId: variation.id, fieldName: 'name', text: variation.name },
+            );
+          }
+        }
       } catch (error) {
         console.error('Failed to create variation groups:', error);
       }
@@ -1247,9 +1393,14 @@ export class AuthService {
             priceAdjustment: 0,
             displayOrder: 1,
           }] : [],
-        }, branchId);
+        }, branchId, true); // skipTranslations = true
         foodItems.push(foodItem1);
         console.log('Food item 1 created:', foodItem1.id);
+        // Prepare translations for food items (will be bulk inserted later)
+        translationsToInsert.push(
+          { entityType: 'food_item', entityId: foodItem1.id, fieldName: 'name', text: 'Sample Burger' },
+          { entityType: 'food_item', entityId: foodItem1.id, fieldName: 'description', text: 'A delicious sample burger' },
+        );
 
         // Second food item
         const foodItem2 = await this.menuService.createFoodItem(tenantId, {
@@ -1267,9 +1418,13 @@ export class AuthService {
             priceAdjustment: 0,
             displayOrder: 1,
           }] : [],
-        }, branchId);
+        }, branchId, true); // skipTranslations = true
         foodItems.push(foodItem2);
         console.log('Food item 2 created:', foodItem2.id);
+        translationsToInsert.push(
+          { entityType: 'food_item', entityId: foodItem2.id, fieldName: 'name', text: 'Sample Pizza' },
+          { entityType: 'food_item', entityId: foodItem2.id, fieldName: 'description', text: 'A tasty sample pizza' },
+        );
 
         // Third food item for combo
         const foodItem3 = await this.menuService.createFoodItem(tenantId, {
@@ -1280,9 +1435,13 @@ export class AuthService {
           stockType: 'unlimited',
           menuTypes: ['all_day'],
           imageUrl: 'https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=400&h=300&fit=crop',
-        }, branchId);
+        }, branchId, true); // skipTranslations = true
         foodItems.push(foodItem3);
         console.log('Food item 3 created:', foodItem3.id);
+        translationsToInsert.push(
+          { entityType: 'food_item', entityId: foodItem3.id, fieldName: 'name', text: 'Sample Fries' },
+          { entityType: 'food_item', entityId: foodItem3.id, fieldName: 'description', text: 'Crispy sample fries' },
+        );
 
         // Fourth food item for second combo
         const foodItem4 = await this.menuService.createFoodItem(tenantId, {
@@ -1293,9 +1452,13 @@ export class AuthService {
           stockType: 'unlimited',
           menuTypes: ['all_day'],
           imageUrl: 'https://plus.unsplash.com/premium_photo-1711752902734-a36167479983?q=80&w=688&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
-        }, branchId);
+        }, branchId, true); // skipTranslations = true
         foodItems.push(foodItem4);
         console.log('Food item 4 created:', foodItem4.id);
+        translationsToInsert.push(
+          { entityType: 'food_item', entityId: foodItem4.id, fieldName: 'name', text: 'Garlic Bread' },
+          { entityType: 'food_item', entityId: foodItem4.id, fieldName: 'description', text: 'Freshly baked garlic bread' },
+        );
       } catch (error) {
         console.error('Failed to create food items:', error);
       }
@@ -1450,8 +1613,12 @@ export class AuthService {
           imageUrl: 'https://images.unsplash.com/photo-1555244162-803834f70033?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8YnVmZmV0fGVufDB8fDB8fHww',
           displayOrder: 1,
           isActive: true,
-        }, branchId);
+        }, branchId, true); // skipTranslations = true
         console.log('Buffet 1 created:', buffet1.id);
+        translationsToInsert.push(
+          { entityType: 'buffet', entityId: buffet1.id, fieldName: 'name', text: 'All-Day Family Buffet' },
+          { entityType: 'buffet', entityId: buffet1.id, fieldName: 'description', text: 'Unlimited access to our full menu selection including burgers, pizza, fries, and more. Perfect for groups and families!' },
+        );
 
         const buffet2 = await this.menuService.createBuffet(tenantId, {
           name: 'Weekend Special Buffet',
@@ -1462,8 +1629,12 @@ export class AuthService {
           imageUrl: 'https://images.unsplash.com/photo-1583338917496-7ea264c374ce?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8M3x8YnVmZmV0fGVufDB8fDB8fHww',
           displayOrder: 2,
           isActive: true,
-        }, branchId);
+        }, branchId, true); // skipTranslations = true
         console.log('Buffet 2 created:', buffet2.id);
+        translationsToInsert.push(
+          { entityType: 'buffet', entityId: buffet2.id, fieldName: 'name', text: 'Weekend Special Buffet' },
+          { entityType: 'buffet', entityId: buffet2.id, fieldName: 'description', text: 'Premium weekend buffet with all our signature dishes and special items. Available Saturday and Sunday!' },
+        );
       } catch (error) {
         console.error('Failed to create buffets:', error);
       }
@@ -1481,8 +1652,12 @@ export class AuthService {
             imageUrl: 'https://plus.unsplash.com/premium_photo-1683619761468-b06992704398?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MXx8YnVyZ2VyfGVufDB8fDB8fHww',
             displayOrder: 1,
             isActive: true,
-          }, branchId);
+          }, branchId, true); // skipTranslations = true
           console.log('Combo meal 1 created:', comboMeal1.id);
+          translationsToInsert.push(
+            { entityType: 'combo_meal', entityId: comboMeal1.id, fieldName: 'name', text: 'Classic Burger Combo' },
+            { entityType: 'combo_meal', entityId: comboMeal1.id, fieldName: 'description', text: 'Delicious burger paired with crispy golden fries. A perfect meal combination at a great value!' },
+          );
 
           // Second combo meal
           const comboMeal2 = await this.menuService.createComboMeal(tenantId, {
@@ -1494,8 +1669,12 @@ export class AuthService {
             imageUrl: 'https://media.istockphoto.com/id/1151446369/photo/tasty-supreme-pizza-with-olives-peppers-onions-and-sausage.webp?a=1&b=1&s=612x612&w=0&k=20&c=LprgiVWgVb5nJ6psO3R2bAYLPBV6V9gLVW9PlTbtGLU=',
             displayOrder: 2,
             isActive: true,
-          }, branchId);
+          }, branchId, true); // skipTranslations = true
           console.log('Combo meal 2 created:', comboMeal2.id);
+          translationsToInsert.push(
+            { entityType: 'combo_meal', entityId: comboMeal2.id, fieldName: 'name', text: 'Pizza & Garlic Bread Combo' },
+            { entityType: 'combo_meal', entityId: comboMeal2.id, fieldName: 'description', text: 'Tasty pizza served with freshly baked garlic bread. A classic Italian combination!' },
+          );
         } catch (error) {
           console.error('Failed to create combo meals:', error);
         }
@@ -1510,6 +1689,13 @@ export class AuthService {
         } catch (error) {
           console.error('Failed to assign items to menu:', error);
         }
+      }
+
+      // 9. Bulk insert all translations at once (much faster than individual inserts)
+      if (translationsToInsert.length > 0) {
+        console.log(`📝 Bulk inserting ${translationsToInsert.length} translations...`);
+        await this.translationService.bulkInsertTranslationsDirectly(translationsToInsert);
+        console.log('✅ All translations bulk inserted');
       }
 
       console.log('✅ Sample data creation completed successfully for tenant:', tenantId);

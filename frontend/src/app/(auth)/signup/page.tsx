@@ -20,6 +20,7 @@ import { useForm } from '@mantine/form';
 import { IconAlertCircle, IconMail, IconLock, IconUser, IconPhone, IconCheck } from '@tabler/icons-react';
 import { authApi } from '@/lib/api/auth';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { useBranchStore } from '@/lib/store/branch-store';
 import { useLanguageStore } from '@/lib/store/language-store';
 import { t } from '@/lib/utils/translations';
 import { useErrorColor, useInfoColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
@@ -32,6 +33,7 @@ export default function SignupPage() {
   const router = useRouter();
   const { language } = useLanguageStore();
   const { setUser } = useAuthStore();
+  const { setSelectedBranchId: setBranchStoreId } = useBranchStore();
   const errorColor = useErrorColor();
   const infoColor = useInfoColor();
   const successColor = useSuccessColor();
@@ -94,6 +96,11 @@ export default function SignupPage() {
         name: response.user.name || (response.user as any).nameEn || (response.user as any).nameAr || 'User',
       };
       setUser(user);
+      
+      // If branchId is in the response (meaning there's exactly one branch), set it
+      if (response.branchId) {
+        setBranchStoreId(response.branchId);
+      }
 
       router.push('/dashboard');
     } catch (err: any) {

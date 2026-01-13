@@ -12,6 +12,8 @@ import { UpdateTranslationDto } from '../dto/update-translation.dto';
 import { GetTranslationDto } from '../dto/get-translation.dto';
 import { CreateLanguageDto, UpdateLanguageDto, RetranslateDto } from '../dto/manage-language.dto';
 import { TranslationResult } from './gemini-translation.service';
+import { PRE_TRANSLATIONS } from '../constants/pre-translations';
+import { SupabaseService } from '../../../database/supabase.service';
 
 @Injectable()
 export class TranslationService {
@@ -20,6 +22,7 @@ export class TranslationService {
   constructor(
     private translationRepository: TranslationRepository,
     private geminiService: GeminiTranslationService,
+    private supabaseService: SupabaseService,
   ) {}
 
   /**
@@ -130,6 +133,172 @@ export class TranslationService {
         throw error;
       }
       throw new InternalServerErrorException(`Failed to create translations: ${error.message}`);
+    }
+  }
+
+  /**
+   * Insert translations directly without AI translation
+   * Used for standard data that doesn't need translation (categories, menu items, etc.)
+   * Uses pre-translated data from PRE_TRANSLATIONS constant
+   */
+  async insertTranslationsDirectly(
+    dto: CreateTranslationDto,
+    userId?: string,
+  ): Promise<void> {
+    try {
+      const sourceLanguage = dto.sourceLanguage || 'en';
+      const supportedLanguages = this.geminiService.getSupportedLanguages();
+
+      // Get pre-translated data if available, otherwise use the same text for all languages
+      const preTranslation = PRE_TRANSLATIONS[dto.text];
+      const translations: TranslationResult = {};
+
+      if (preTranslation) {
+        // Use pre-translated data
+        translations.en = preTranslation.en;
+        translations.ar = preTranslation.ar;
+        translations.ku = preTranslation.ku;
+        translations.fr = preTranslation.fr;
+      } else {
+        // Fallback: use the same text for all languages if no pre-translation exists
+        for (const lang of supportedLanguages) {
+          translations[lang] = dto.text;
+        }
+      }
+
+      // Create or get translation metadata
+      const metadata = await this.translationRepository.createOrGetMetadata(
+        dto.entityType,
+        dto.entityId,
+        sourceLanguage,
+      );
+
+      // Insert translations for all supported languages
+      for (const languageCode of supportedLanguages) {
+        const translatedText = translations[languageCode] || dto.text;
+        await this.translationRepository.upsertTranslation(
+          metadata.id,
+          languageCode,
+          dto.fieldName,
+          translatedText,
+          false, // Not AI-generated (pre-translated)
+          languageCode === sourceLanguage ? userId : undefined,
+        );
+      }
+
+      this.logger.log(
+        `Inserted direct translations for ${dto.entityType}:${dto.entityId} (${dto.fieldName})`,
+      );
+    } catch (error) {
+      this.logger.error(`Failed to insert direct translations: ${error.message}`, error.stack);
+      // Don't throw - this is for non-critical standard data
+    }
+  }
+
+  /**
+   * Bulk insert translations directly (optimized for seed data)
+   * Inserts multiple translations in a single batch operation
+   */
+  async bulkInsertTranslationsDirectly(
+    translations: Array<{
+      entityType: EntityType | string;
+      entityId: string;
+      fieldName: FieldName | string;
+      text: string;
+    }>,
+  ): Promise<void> {
+    try {
+      // Get supabase client directly
+      const supabase = this.supabaseService.getServiceRoleClient();
+      const supportedLanguages = this.geminiService.getSupportedLanguages();
+      const sourceLanguage = 'en';
+
+      // Prepare all metadata entries (deduplicate by entityType:entityId)
+      const metadataMap = new Map<string, { entity_type: string; entity_id: string; source_language: string }>();
+      for (const trans of translations) {
+        const key = `${trans.entityType}:${trans.entityId}`;
+        if (!metadataMap.has(key)) {
+          metadataMap.set(key, {
+            entity_type: trans.entityType,
+            entity_id: trans.entityId,
+            source_language: sourceLanguage,
+          });
+        }
+      }
+      const metadataEntries = Array.from(metadataMap.values());
+
+      // Bulk insert metadata (with conflict handling)
+      const { data: metadataResults, error: metadataError } = await supabase
+        .from('translation_metadata')
+        .upsert(metadataEntries, {
+          onConflict: 'entity_type,entity_id',
+          ignoreDuplicates: false,
+        })
+        .select('id, entity_type, entity_id');
+
+      if (metadataError) {
+        this.logger.error(`Failed to bulk insert translation metadata: ${metadataError.message}`);
+        return;
+      }
+
+      // Create a map of entity to metadata ID
+      const entityToMetadataMap = new Map<string, string>();
+      for (const meta of metadataResults || []) {
+        const key = `${meta.entity_type}:${meta.entity_id}`;
+        entityToMetadataMap.set(key, meta.id);
+      }
+
+      // Prepare all translation entries
+      const translationEntries: any[] = [];
+      for (const trans of translations) {
+        const key = `${trans.entityType}:${trans.entityId}`;
+        const metadataId = entityToMetadataMap.get(key);
+        if (!metadataId) continue;
+
+        const preTranslation = PRE_TRANSLATIONS[trans.text];
+        const texts: TranslationResult = {};
+
+        if (preTranslation) {
+          texts.en = preTranslation.en;
+          texts.ar = preTranslation.ar;
+          texts.ku = preTranslation.ku;
+          texts.fr = preTranslation.fr;
+        } else {
+          for (const lang of supportedLanguages) {
+            texts[lang] = trans.text;
+          }
+        }
+
+        for (const languageCode of supportedLanguages) {
+          translationEntries.push({
+            metadata_id: metadataId,
+            language_code: languageCode,
+            field_name: trans.fieldName,
+            translated_text: texts[languageCode] || trans.text,
+            is_ai_generated: false,
+          });
+        }
+      }
+
+      // Bulk insert translations in batches (Supabase has limits)
+      const batchSize = 1000;
+      for (let i = 0; i < translationEntries.length; i += batchSize) {
+        const batch = translationEntries.slice(i, i + batchSize);
+        const { error: translationError } = await supabase
+          .from('translations')
+          .upsert(batch, {
+            onConflict: 'metadata_id,language_code,field_name',
+          });
+
+        if (translationError) {
+          this.logger.error(`Failed to bulk insert translations batch ${i / batchSize + 1}: ${translationError.message}`);
+        }
+      }
+
+      this.logger.log(`Bulk inserted ${translationEntries.length} translations for ${translations.length} entities`);
+    } catch (error) {
+      this.logger.error(`Failed to bulk insert translations: ${error.message}`, error.stack);
+      // Don't throw - this is for non-critical standard data
     }
   }
 

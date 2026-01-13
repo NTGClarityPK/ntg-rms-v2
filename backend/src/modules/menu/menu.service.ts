@@ -264,7 +264,7 @@ export class MenuService {
     };
   }
 
-  async createCategory(tenantId: string, createDto: CreateCategoryDto, branchId?: string) {
+  async createCategory(tenantId: string, createDto: CreateCategoryDto, branchId?: string, skipTranslations = false) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Validate parent category if provided
@@ -309,24 +309,27 @@ export class MenuService {
 
     // Generate translations for name and description asynchronously (fire and forget)
     // Don't block the response - translations will be processed in the background
-    this.translationService.createTranslations({
-      entityType: 'category',
-      entityId: category.id,
-      fieldName: 'name',
-      text: createDto.name,
-    }).catch((translationError) => {
-      console.error('Failed to create translations for category name:', translationError);
-    });
-
-    if (createDto.description) {
+    // Skip if skipTranslations is true (e.g., during seed data creation)
+    if (!skipTranslations) {
       this.translationService.createTranslations({
         entityType: 'category',
         entityId: category.id,
-        fieldName: 'description',
-        text: createDto.description,
+        fieldName: 'name',
+        text: createDto.name,
       }).catch((translationError) => {
-        console.error('Failed to create translations for category description:', translationError);
+        console.error('Failed to create translations for category name:', translationError);
       });
+
+      if (createDto.description) {
+        this.translationService.createTranslations({
+          entityType: 'category',
+          entityId: category.id,
+          fieldName: 'description',
+          text: createDto.description,
+        }).catch((translationError) => {
+          console.error('Failed to create translations for category description:', translationError);
+        });
+      }
     }
 
     return {
@@ -957,7 +960,7 @@ export class MenuService {
     };
   }
 
-  async createFoodItem(tenantId: string, createDto: CreateFoodItemDto, branchId?: string) {
+  async createFoodItem(tenantId: string, createDto: CreateFoodItemDto, branchId?: string, skipTranslations = false) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Validate category
@@ -1141,24 +1144,27 @@ export class MenuService {
 
     // Create translations for name and description asynchronously (fire and forget)
     // Don't block the response - translations will be processed in the background
-    this.translationService.createTranslations({
-      entityType: 'food_item',
-      entityId: foodItem.id,
-      fieldName: 'name',
-      text: createDto.name,
-    }).catch((translationError) => {
-      console.error('Failed to create translations for food item name:', translationError);
-    });
-
-    if (createDto.description) {
+    // Skip if skipTranslations is true (e.g., during seed data creation)
+    if (!skipTranslations) {
       this.translationService.createTranslations({
         entityType: 'food_item',
         entityId: foodItem.id,
-        fieldName: 'description',
-        text: createDto.description,
+        fieldName: 'name',
+        text: createDto.name,
       }).catch((translationError) => {
-        console.error('Failed to create translations for food item description:', translationError);
+        console.error('Failed to create translations for food item name:', translationError);
       });
+
+      if (createDto.description) {
+        this.translationService.createTranslations({
+          entityType: 'food_item',
+          entityId: foodItem.id,
+          fieldName: 'description',
+          text: createDto.description,
+        }).catch((translationError) => {
+          console.error('Failed to create translations for food item description:', translationError);
+        });
+      }
     }
 
     const result = await this.getFoodItemById(tenantId, foodItem.id);
@@ -1807,7 +1813,7 @@ export class MenuService {
     };
   }
 
-  async createAddOnGroup(tenantId: string, createDto: CreateAddOnGroupDto, branchId?: string) {
+  async createAddOnGroup(tenantId: string, createDto: CreateAddOnGroupDto, branchId?: string, skipTranslations = false) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Auto-set maxSelections to 1 if selectionType is single
@@ -1848,14 +1854,17 @@ export class MenuService {
 
     // Create translations for name asynchronously (fire and forget)
     // Don't block the response - translations will be processed in the background
-    this.translationService.createTranslations({
-      entityType: 'addon_group',
-      entityId: addOnGroup.id,
-      fieldName: 'name',
-      text: createDto.name,
-    }).catch((translationError) => {
-      console.error('Failed to create translations for add-on group:', translationError);
-    });
+    // Skip if skipTranslations is true (e.g., during seed data creation)
+    if (!skipTranslations) {
+      this.translationService.createTranslations({
+        entityType: 'addon_group',
+        entityId: addOnGroup.id,
+        fieldName: 'name',
+        text: createDto.name,
+      }).catch((translationError) => {
+        console.error('Failed to create translations for add-on group:', translationError);
+      });
+    }
 
     return {
       id: addOnGroup.id,
@@ -2136,7 +2145,7 @@ export class MenuService {
     };
   }
 
-  async createAddOn(tenantId: string, createDto: CreateAddOnDto) {
+  async createAddOn(tenantId: string, createDto: CreateAddOnDto, skipTranslations = false) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Verify add-on group belongs to tenant
@@ -2170,14 +2179,17 @@ export class MenuService {
 
     // Create translations for name asynchronously (fire and forget)
     // Don't block the response - translations will be processed in the background
-    this.translationService.createTranslations({
-      entityType: 'addon',
-      entityId: addOn.id,
-      fieldName: 'name',
-      text: createDto.name,
-    }).catch((translationError) => {
-      console.error('Failed to create translations for add-on:', translationError);
-    });
+    // Skip if skipTranslations is true (e.g., during seed data creation)
+    if (!skipTranslations) {
+      this.translationService.createTranslations({
+        entityType: 'addon',
+        entityId: addOn.id,
+        fieldName: 'name',
+        text: createDto.name,
+      }).catch((translationError) => {
+        console.error('Failed to create translations for add-on:', translationError);
+      });
+    }
 
     return {
       id: addOn.id,
@@ -3107,11 +3119,11 @@ export class MenuService {
       } else {
         console.log(`Created ${menusToCreate.length} default menus for tenant:`, tenantId);
         
-        // Create translations for default menus (asynchronously)
+        // Create translations for default menus directly (no AI needed for standard data)
         // Don't block the response - translations will be processed in the background
         if (insertedMenus && insertedMenus.length > 0) {
           for (const menu of insertedMenus) {
-            this.translationService.createTranslations({
+            this.translationService.insertTranslationsDirectly({
               entityType: 'menu',
               entityId: menu.id,
               fieldName: 'name',
@@ -3153,10 +3165,10 @@ export class MenuService {
             .eq('entity_id', menu.id)
             .single();
           
-          // If no translation metadata exists, create translations (asynchronously)
+          // If no translation metadata exists, create translations directly (no AI needed for standard data)
           // Don't block the response - translations will be processed in the background
           if (!metadata) {
-            this.translationService.createTranslations({
+            this.translationService.insertTranslationsDirectly({
               entityType: 'menu',
               entityId: menu.id,
               fieldName: 'name',
@@ -3425,7 +3437,7 @@ export class MenuService {
     };
   }
 
-  async createBuffet(tenantId: string, createDto: CreateBuffetDto, branchId?: string) {
+  async createBuffet(tenantId: string, createDto: CreateBuffetDto, branchId?: string, skipTranslations = false) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Check if buffet with same name already exists for this branch
@@ -3488,24 +3500,27 @@ export class MenuService {
 
     // Create translations for name and description asynchronously (fire and forget)
     // Don't block the response - translations will be processed in the background
-    this.translationService.createTranslations({
-      entityType: 'buffet',
-      entityId: buffet.id,
-      fieldName: 'name',
-      text: createDto.name,
-    }).catch((translationError) => {
-      console.error('Failed to create translations for buffet name:', translationError);
-    });
-
-    if (createDto.description) {
+    // Skip if skipTranslations is true (e.g., during seed data creation)
+    if (!skipTranslations) {
       this.translationService.createTranslations({
         entityType: 'buffet',
         entityId: buffet.id,
-        fieldName: 'description',
-        text: createDto.description,
+        fieldName: 'name',
+        text: createDto.name,
       }).catch((translationError) => {
-        console.error('Failed to create translations for buffet description:', translationError);
+        console.error('Failed to create translations for buffet name:', translationError);
       });
+
+      if (createDto.description) {
+        this.translationService.createTranslations({
+          entityType: 'buffet',
+          entityId: buffet.id,
+          fieldName: 'description',
+          text: createDto.description,
+        }).catch((translationError) => {
+          console.error('Failed to create translations for buffet description:', translationError);
+        });
+      }
     }
 
     return {
@@ -3891,7 +3906,7 @@ export class MenuService {
     };
   }
 
-  async createComboMeal(tenantId: string, createDto: CreateComboMealDto, branchId?: string) {
+  async createComboMeal(tenantId: string, createDto: CreateComboMealDto, branchId?: string, skipTranslations = false) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Check if combo meal with same name already exists for this branch
@@ -3968,24 +3983,27 @@ export class MenuService {
 
     // Create translations for name and description asynchronously (fire and forget)
     // Don't block the response - translations will be processed in the background
-    this.translationService.createTranslations({
-      entityType: 'combo_meal',
-      entityId: comboMeal.id,
-      fieldName: 'name',
-      text: createDto.name,
-    }).catch((translationError) => {
-      console.error('Failed to create translations for combo meal name:', translationError);
-    });
-
-    if (createDto.description) {
+    // Skip if skipTranslations is true (e.g., during seed data creation)
+    if (!skipTranslations) {
       this.translationService.createTranslations({
         entityType: 'combo_meal',
         entityId: comboMeal.id,
-        fieldName: 'description',
-        text: createDto.description,
+        fieldName: 'name',
+        text: createDto.name,
       }).catch((translationError) => {
-        console.error('Failed to create translations for combo meal description:', translationError);
+        console.error('Failed to create translations for combo meal name:', translationError);
       });
+
+      if (createDto.description) {
+        this.translationService.createTranslations({
+          entityType: 'combo_meal',
+          entityId: comboMeal.id,
+          fieldName: 'description',
+          text: createDto.description,
+        }).catch((translationError) => {
+          console.error('Failed to create translations for combo meal description:', translationError);
+        });
+      }
     }
 
     return {
@@ -4401,7 +4419,7 @@ export class MenuService {
     };
   }
 
-  async createVariationGroup(tenantId: string, createDto: CreateVariationGroupDto, branchId?: string) {
+  async createVariationGroup(tenantId: string, createDto: CreateVariationGroupDto, branchId?: string, skipTranslations = false) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     const variationGroupData: any = {
@@ -4425,14 +4443,17 @@ export class MenuService {
 
     // Create translations for name asynchronously (fire and forget)
     // Don't block the response - translations will be processed in the background
-    this.translationService.createTranslations({
-      entityType: 'variation_group',
-      entityId: variationGroup.id,
-      fieldName: 'name',
-      text: createDto.name,
-    }).catch((translationError) => {
-      console.error('Failed to create translations for variation group:', translationError);
-    });
+    // Skip if skipTranslations is true (e.g., during seed data creation)
+    if (!skipTranslations) {
+      this.translationService.createTranslations({
+        entityType: 'variation_group',
+        entityId: variationGroup.id,
+        fieldName: 'name',
+        text: createDto.name,
+      }).catch((translationError) => {
+        console.error('Failed to create translations for variation group:', translationError);
+      });
+    }
 
     return {
       id: variationGroup.id,
@@ -4652,7 +4673,7 @@ export class MenuService {
     };
   }
 
-  async createVariation(tenantId: string, variationGroupId: string, createDto: CreateVariationDto) {
+  async createVariation(tenantId: string, variationGroupId: string, createDto: CreateVariationDto, skipTranslations = false) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Verify variation group belongs to tenant
@@ -4686,14 +4707,17 @@ export class MenuService {
 
     // Create translations for name asynchronously (fire and forget)
     // Don't block the response - translations will be processed in the background
-    this.translationService.createTranslations({
-      entityType: 'variation',
-      entityId: variation.id,
-      fieldName: 'name',
-      text: createDto.name,
-    }).catch((translationError) => {
-      console.error('Failed to create translations for variation:', translationError);
-    });
+    // Skip if skipTranslations is true (e.g., during seed data creation)
+    if (!skipTranslations) {
+      this.translationService.createTranslations({
+        entityType: 'variation',
+        entityId: variation.id,
+        fieldName: 'name',
+        text: createDto.name,
+      }).catch((translationError) => {
+        console.error('Failed to create translations for variation:', translationError);
+      });
+    }
 
     return {
       id: variation.id,
