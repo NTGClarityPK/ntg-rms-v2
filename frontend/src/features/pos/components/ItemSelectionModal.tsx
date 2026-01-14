@@ -555,27 +555,31 @@ export function ItemSelectionModal({
                     </Group>
 
                     {isSingle ? (
-                      <Chip.Group
-                        value={selected[0] || ''}
-                        onChange={(value) => handleSingleAddOnChange(group.id, value)}
-                      >
-                        <Group gap="xs" wrap="wrap">
-                          {group.addOns?.map((addOn: any) => {
-                            const label = addOn.name || '';
-                            const priceText = addOn.price > 0 ? ` +${formatCurrency(addOn.price, currency)}` : '';
-                            
-                            return (
-                              <Chip
-                                key={addOn.id}
-                                value={addOn.id}
-                                variant="filled"
-                              >
-                                {label}{priceText}
-                              </Chip>
-                            );
-                          })}
-                        </Group>
-                      </Chip.Group>
+                      <Group gap="xs" wrap="wrap">
+                        {group.addOns?.map((addOn: any) => {
+                          const label = addOn.name || '';
+                          const priceText = addOn.price > 0 ? ` +${formatCurrency(addOn.price, currency)}` : '';
+                          const isSelected = selected[0] === addOn.id;
+                          
+                          return (
+                            <Chip
+                              key={addOn.id}
+                              checked={isSelected}
+                              onChange={(checked) => {
+                                if (checked) {
+                                  handleSingleAddOnChange(group.id, addOn.id);
+                                } else if (!isRequired) {
+                                  // Allow deselection for optional groups
+                                  handleSingleAddOnChange(group.id, '');
+                                }
+                              }}
+                              variant="filled"
+                            >
+                              {label}{priceText}
+                            </Chip>
+                          );
+                        })}
+                      </Group>
                     ) : (
                       <Stack gap="xs">
                         {group.addOns?.map((addOn: any) => (
