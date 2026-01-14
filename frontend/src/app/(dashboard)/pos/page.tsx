@@ -36,6 +36,66 @@ function POSPageContent() {
   const { selectedBranchId } = useBranchStore();
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [currentItemType, setCurrentItemType] = useState<'food-items' | 'buffets' | 'combo-meals'>('food-items');
+  
+  // Cache for variation groups and addon groups (loaded upfront)
+  const [variationGroupsCache, setVariationGroupsCache] = useState<any[]>([]);
+  const [addOnGroupsCache, setAddOnGroupsCache] = useState<Map<string, any>>(new Map());
+  const [cacheLoaded, setCacheLoaded] = useState(false);
+
+  // Load variation groups and addon groups upfront when POS loads
+  useEffect(() => {
+    const loadCache = async () => {
+      if (!selectedBranchId) return;
+      
+      try {
+        // Reset cache loaded flag when branch or language changes
+        setCacheLoaded(false);
+        
+        // Fetch variation groups and addon groups in parallel
+        const [variationGroupsResponse, addOnGroupsResponse] = await Promise.all([
+          menuApi.getVariationGroups(undefined, selectedBranchId, language),
+          menuApi.getAddOnGroups(undefined, selectedBranchId, language),
+        ]);
+        
+        const variationGroups = Array.isArray(variationGroupsResponse) 
+          ? variationGroupsResponse 
+          : variationGroupsResponse.data || [];
+        setVariationGroupsCache(variationGroups);
+        
+        // Fetch addons for each addon group
+        const addOnGroups = Array.isArray(addOnGroupsResponse) 
+          ? addOnGroupsResponse 
+          : addOnGroupsResponse.data || [];
+        
+        const addOnGroupsWithAddOns = await Promise.all(
+          addOnGroups.map(async (group: any) => {
+            try {
+              const addOns = await menuApi.getAddOns(group.id, language);
+              return { ...group, addOns: addOns.filter((a: any) => a.isActive) };
+            } catch (error) {
+              console.error(`Failed to load addons for group ${group.id}:`, error);
+              return { ...group, addOns: [] };
+            }
+          })
+        );
+        
+        // Create a map for quick lookup
+        const addOnGroupsMap = new Map<string, any>();
+        addOnGroupsWithAddOns.forEach((group) => {
+          if (group.isActive) {
+            addOnGroupsMap.set(group.id, group);
+          }
+        });
+        setAddOnGroupsCache(addOnGroupsMap);
+        setCacheLoaded(true);
+      } catch (error) {
+        console.error('Failed to load cache:', error);
+        setCacheLoaded(false);
+      }
+    };
+    
+    loadCache();
+  }, [selectedBranchId, language]);
 
   // Update order type when settings change or branch changes (only on initial load, not when editing)
   useEffect(() => {
@@ -370,6 +430,8 @@ function POSPageContent() {
               onAddToCart={handleAddToCart}
               orderType={orderType}
               onItemTypeChange={handleItemTypeChange}
+              variationGroupsCache={variationGroupsCache}
+              addOnGroupsCache={addOnGroupsCache}
             />
           </Grid.Col>
 

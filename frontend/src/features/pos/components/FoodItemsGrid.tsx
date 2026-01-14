@@ -45,6 +45,8 @@ interface FoodItemsGridProps {
   onAddToCart: (item: any) => void;
   orderType?: 'dine_in' | 'takeaway' | 'delivery';
   onItemTypeChange?: (itemType: 'food-items' | 'buffets' | 'combo-meals') => void;
+  variationGroupsCache?: any[];
+  addOnGroupsCache?: Map<string, any>;
 }
 
 export function FoodItemsGrid({
@@ -56,6 +58,8 @@ export function FoodItemsGrid({
   onAddToCart,
   orderType = 'dine_in',
   onItemTypeChange,
+  variationGroupsCache = [],
+  addOnGroupsCache = new Map(),
 }: FoodItemsGridProps) {
   const { language } = useLanguageStore();
   const { selectedBranchId } = useBranchStore();
@@ -720,6 +724,8 @@ export function FoodItemsGrid({
           }}
           foodItem={selectedItem as FoodItem}
           onItemSelected={handleItemSelected}
+          variationGroupsCache={variationGroupsCache}
+          addOnGroupsCache={addOnGroupsCache}
         />
       )}
       

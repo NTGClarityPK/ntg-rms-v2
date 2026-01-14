@@ -37,6 +37,8 @@ interface ItemSelectionModalProps {
   foodItem: FoodItem | ComboMeal;
   onItemSelected: (item: any) => void;
   existingCartItem?: CartItem; // For editing existing cart items
+  variationGroupsCache?: any[]; // Cached variation groups
+  addOnGroupsCache?: Map<string, any>; // Cached addon groups with addons
 }
 
 export function ItemSelectionModal({
@@ -45,6 +47,8 @@ export function ItemSelectionModal({
   foodItem,
   onItemSelected,
   existingCartItem,
+  variationGroupsCache = [],
+  addOnGroupsCache = new Map(),
 }: ItemSelectionModalProps) {
   const { language } = useLanguageStore();
   const primaryColor = useThemeColor();
@@ -71,11 +75,14 @@ export function ItemSelectionModal({
       if (isComboMeal) {
         loadComboMealItems();
       } else {
-        loadItemData();
+        // Load variations and addons instantly from foodItem prop (synchronous)
+        loadVariationsAndAddOnsInstantly();
+        // Load discounts in background if needed (async, non-blocking)
+        loadDiscountsIfNeeded();
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opened, foodItem, isComboMeal]);
+  }, [opened, foodItem, isComboMeal, variationGroupsCache, addOnGroupsCache]);
 
   const loadComboMealItems = async () => {
     if (!comboMeal) return;
@@ -121,128 +128,121 @@ export function ItemSelectionModal({
     }
   };
 
-  const loadItemData = async () => {
+  // Load variations and addons instantly from foodItem prop (synchronous, no API calls)
+  const loadVariationsAndAddOnsInstantly = () => {
     if (!actualFoodItem) return;
 
-    try {
-      setLoading(true);
-
-      // Load full food item from API to get variations, add-ons, and discounts
-      const fullFoodItem = await menuApi.getFoodItemById(actualFoodItem.id);
-
-      // Load variations from food item
-      const itemVariations = fullFoodItem.variations || [];
-      
-      // Load all variation groups to resolve names
-      const allVariationGroupsResponse = await menuApi.getVariationGroups();
-      const allVariationGroups = Array.isArray(allVariationGroupsResponse) 
-        ? allVariationGroupsResponse 
-        : allVariationGroupsResponse.data || [];
-      
-      // Resolve variation group names
-      const variationsWithResolvedNames = itemVariations.map((variation) => {
-        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(variation.variationGroup || '');
-        if (isUUID && variation.variationGroup) {
-          const group = allVariationGroups.find((g) => g.id === variation.variationGroup);
-          if (group) {
-            return { ...variation, variationGroup: group.name };
-          }
+    // Use variations from foodItem prop directly (already fetched with the item) - INSTANT!
+    const itemVariations = actualFoodItem.variations || [];
+    
+    // Use cached variation groups to resolve names (no API call needed!)
+    const variationsWithResolvedNames = itemVariations.map((variation) => {
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(variation.variationGroup || '');
+      if (isUUID && variation.variationGroup) {
+        const group = variationGroupsCache.find((g) => g.id === variation.variationGroup);
+        if (group) {
+          return { ...variation, variationGroup: group.name };
         }
-        return variation;
-      });
-      
-      setVariations(variationsWithResolvedNames);
+      }
+      return variation;
+    });
+    
+    // Set variations immediately - no waiting!
+    setVariations(variationsWithResolvedNames);
 
-      // Load add-on groups for this food item
-      const groupIds = fullFoodItem.addOnGroupIds || [];
-      
-      if (groupIds.length > 0) {
-        // Load each add-on group from API
-        const groupsWithAddOns = await Promise.all(
-          groupIds.map(async (groupId) => {
-            try {
-              const group = await menuApi.getAddOnGroupById(groupId);
-              const addOns = await menuApi.getAddOns(groupId);
-              return { ...group, addOns: addOns.filter(a => a.isActive) };
-            } catch (error) {
-              console.error(`Failed to load add-on group ${groupId}:`, error);
-              return null;
-            }
-          })
-        );
-        
-        const validGroups = groupsWithAddOns.filter((g): g is any => g !== null && g.isActive);
-        setAddOnGroups(validGroups);
-      } else {
-        setAddOnGroups([]);
+    // Use addOnGroupIds from foodItem prop directly (already fetched with the item) - INSTANT!
+    const groupIds = actualFoodItem.addOnGroupIds || [];
+    
+    // Get addon groups from cache (no API calls needed!)
+    const groupsWithAddOns = groupIds.length > 0
+      ? groupIds
+          .map((groupId) => addOnGroupsCache.get(groupId))
+          .filter((g): g is any => g !== undefined && g !== null && g.isActive)
+      : [];
+    
+    // Set addon groups immediately - no waiting!
+    setAddOnGroups(groupsWithAddOns);
+
+    // Load existing cart item data if editing
+    if (existingCartItem) {
+      setQuantity(existingCartItem.quantity);
+
+      // Load selected variation
+      if (existingCartItem.variationId) {
+        const variation = variationsWithResolvedNames.find((v) => v.id === existingCartItem.variationId);
+        if (variation) {
+          setSelectedVariation(variation);
+        }
       }
 
-      // Load active discounts from food item
-      const allDiscounts = fullFoodItem.discounts || [];
-      const now = new Date();
-      
-      // Find all active discounts (within date range)
-      const activeDiscounts = allDiscounts.filter((d) => {
-        if (!d.isActive) return false;
-        const startDate = d.startDate ? new Date(d.startDate) : null;
-        const endDate = d.endDate ? new Date(d.endDate) : null;
-        
-        if (startDate && endDate) {
-          return now >= startDate && now <= endDate;
-        } else if (startDate) {
-          return now >= startDate;
-        } else if (endDate) {
-          return now <= endDate;
-        }
-        return true; // No date restrictions
-      });
-      
-      // Store all active discounts to find the best one
-      setAllActiveDiscounts(activeDiscounts);
-      
-      // We'll determine the best discount in calculatePrice based on actual price
-      // For now, set to null and calculate best discount dynamically
-      setActiveDiscount(null);
-
-      // Load existing cart item data if editing
-      if (existingCartItem) {
-        setQuantity(existingCartItem.quantity);
-
-        // Load selected variation
-        if (existingCartItem.variationId) {
-          const variation = itemVariations.find((v) => v.id === existingCartItem.variationId);
-          if (variation) {
-            setSelectedVariation(variation);
-          }
-        }
-
-        // Load selected add-ons
-        if (existingCartItem.addOns && existingCartItem.addOns.length > 0) {
-          const addOnsByGroup: Record<string, string[]> = {};
-          existingCartItem.addOns.forEach((addOn) => {
-            // Find which group this add-on belongs to
-            addOnGroups.forEach((group) => {
-              if (group.addOns?.some((a: any) => a.id === addOn.addOnId)) {
-                if (!addOnsByGroup[group.id]) {
-                  addOnsByGroup[group.id] = [];
-                }
-                addOnsByGroup[group.id].push(addOn.addOnId);
+      // Load selected add-ons
+      if (existingCartItem.addOns && existingCartItem.addOns.length > 0) {
+        const addOnsByGroup: Record<string, string[]> = {};
+        existingCartItem.addOns.forEach((addOn) => {
+          // Find which group this add-on belongs to
+          groupsWithAddOns.forEach((group) => {
+            if (group.addOns?.some((a: any) => a.id === addOn.addOnId)) {
+              if (!addOnsByGroup[group.id]) {
+                addOnsByGroup[group.id] = [];
               }
-            });
+              addOnsByGroup[group.id].push(addOn.addOnId);
+            }
           });
-          setSelectedAddOns(addOnsByGroup);
-        }
-      } else {
-        // Reset selections for new item
-        setQuantity(1);
-        setSelectedVariation(null);
-        setSelectedAddOns({});
+        });
+        setSelectedAddOns(addOnsByGroup);
       }
-    } catch (error) {
-      console.error('Failed to load item data:', error);
-    } finally {
-      setLoading(false);
+    } else {
+      // Reset selections for new item
+      setQuantity(1);
+      setSelectedVariation(null);
+      setSelectedAddOns({});
     }
+  };
+
+  // Load discounts in background if needed (async, non-blocking)
+  const loadDiscountsIfNeeded = async () => {
+    if (!actualFoodItem) return;
+
+    // Use discounts from foodItem prop if available
+    let allDiscounts = actualFoodItem.discounts || actualFoodItem.activeDiscounts || [];
+    
+    // If no discounts in prop, fetch them in background (don't block UI)
+    if (allDiscounts.length === 0) {
+      setLoading(true);
+      try {
+        const fullFoodItem = await menuApi.getFoodItemById(actualFoodItem.id);
+        allDiscounts = fullFoodItem.discounts || fullFoodItem.activeDiscounts || [];
+      } catch (error) {
+        console.warn('Failed to fetch discounts, using empty array:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    const now = new Date();
+    
+    // Find all active discounts (within date range)
+    const activeDiscounts = allDiscounts.filter((d) => {
+      if (!d.isActive) return false;
+      const startDate = d.startDate ? new Date(d.startDate) : null;
+      const endDate = d.endDate ? new Date(d.endDate) : null;
+      
+      if (startDate && endDate) {
+        return now >= startDate && now <= endDate;
+      } else if (startDate) {
+        return now >= startDate;
+      } else if (endDate) {
+        return now <= endDate;
+      }
+      return true; // No date restrictions
+    });
+    
+    // Store all active discounts to find the best one
+    setAllActiveDiscounts(activeDiscounts);
+    
+    // We'll determine the best discount in calculatePrice based on actual price
+    // For now, set to null and calculate best discount dynamically
+    setActiveDiscount(null);
   };
 
   const handleAddOnChange = (groupId: string, addOnId: string, checked: boolean) => {
