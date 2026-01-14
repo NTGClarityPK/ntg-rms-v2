@@ -956,13 +956,19 @@ export class MenuService {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Validate category
-    const { data: category } = await supabase
+    let categoryQuery = supabase
       .from('categories')
       .select('id')
       .eq('id', createDto.categoryId)
       .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .single();
+      .is('deleted_at', null);
+
+    // If branchId is provided, check that category belongs to this branch or is global (branch_id is null)
+    if (branchId) {
+      categoryQuery = categoryQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+
+    const { data: category } = await categoryQuery.single();
 
     if (!category) {
       throw new NotFoundException('Category not found');
@@ -1164,7 +1170,7 @@ export class MenuService {
     // Check if food item exists
     const { data: existing } = await supabase
       .from('food_items')
-      .select('id')
+      .select('id, branch_id')
       .eq('id', id)
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
@@ -1176,13 +1182,19 @@ export class MenuService {
 
     // Validate category if provided
     if (updateDto.categoryId) {
-      const { data: category } = await supabase
+      let categoryQuery = supabase
         .from('categories')
         .select('id')
         .eq('id', updateDto.categoryId)
         .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .single();
+        .is('deleted_at', null);
+
+      // If food item has a branch_id, check that category belongs to this branch or is global (branch_id is null)
+      if (existing.branch_id) {
+        categoryQuery = categoryQuery.or(`branch_id.eq.${existing.branch_id},branch_id.is.null`);
+      }
+
+      const { data: category } = await categoryQuery.single();
 
       if (!category) {
         throw new NotFoundException('Category not found');
