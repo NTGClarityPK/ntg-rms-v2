@@ -75,7 +75,9 @@ export default function ProfilePage() {
   const handleSubmit = async (values: typeof form.values) => {
     try {
       setSaving(true);
-      const updated = await authApi.updateProfile(values);
+      // Email cannot be updated - exclude it from the update request
+      const { email, ...updateData } = values;
+      const updated = await authApi.updateProfile(updateData);
       setProfile(updated);
       notifications.show({
         title: t('common.success' as any, language),
@@ -132,6 +134,7 @@ export default function ProfilePage() {
                   label={t('profile.email' as any, language) || 'Email'}
                   placeholder={t('profile.emailPlaceholder' as any, language) || 'Enter your email'}
                   leftSection={<IconMail size={16} />}
+                  disabled
                   {...form.getInputProps('email')}
                 />
 

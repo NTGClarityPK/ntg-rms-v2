@@ -1056,21 +1056,7 @@ export class AuthService {
     if (updateProfileDto.phone !== undefined) {
       updateData.phone = updateProfileDto.phone;
     }
-    if (updateProfileDto.email !== undefined) {
-      updateData.email = updateProfileDto.email;
-      // Also update email in Supabase Auth
-      const { data: user } = await supabase
-        .from('users')
-        .select('supabase_auth_id')
-        .eq('id', userId)
-        .single();
-      
-      if (user?.supabase_auth_id) {
-        await supabase.auth.admin.updateUserById(user.supabase_auth_id, {
-          email: updateProfileDto.email,
-        });
-      }
-    }
+    // Email updates are disabled - email cannot be changed after creation
 
     const { data: updatedUser, error } = await supabase
       .from('users')

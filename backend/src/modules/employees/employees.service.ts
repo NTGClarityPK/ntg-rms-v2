@@ -512,28 +512,7 @@ export class EmployeesService {
     // Check if employee exists and get current values for translation comparison
     const currentEmployee = await this.getEmployeeById(tenantId, employeeId, 'en');
 
-    // Check if email is being changed and if new email already exists
-    const { data: existingEmployee } = await supabase
-      .from('users')
-      .select('email')
-      .eq('id', employeeId)
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .single();
-
-    if (updateDto.email && existingEmployee && updateDto.email !== existingEmployee.email) {
-      const { data: emailExists } = await supabase
-        .from('users')
-        .select('id')
-        .eq('email', updateDto.email)
-        .neq('id', employeeId)
-        .is('deleted_at', null)
-        .maybeSingle();
-
-      if (emailExists) {
-        throw new BadRequestException('Email already exists');
-      }
-    }
+    // Email updates are disabled - email cannot be changed after creation
 
     // Build update object
     const updateData: any = {
@@ -566,7 +545,7 @@ export class EmployeesService {
     }
 
     if (updateDto.name !== undefined) updateData.name = updateDto.name;
-    if (updateDto.email !== undefined) updateData.email = updateDto.email;
+    // Email updates are disabled - email cannot be changed after creation
     if (updateDto.phone !== undefined) updateData.phone = updateDto.phone;
     if (updateDto.employeeId !== undefined) updateData.employee_id = updateDto.employeeId;
     if (updateDto.photoUrl !== undefined) updateData.photo_url = updateDto.photoUrl;

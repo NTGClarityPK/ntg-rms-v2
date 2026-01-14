@@ -331,7 +331,7 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
         // Update
         const updateDto: UpdateEmployeeDto = {
           name: values.name,
-          email: values.email,
+          // Email cannot be updated - disabled in UI
           phone: values.phone || undefined,
           roleIds: values.roleIds,
           employeeId: values.employeeId || undefined,
@@ -782,7 +782,12 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
                 />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 6 }}>
-                <TextInput label={t('common.email' as any, language)} required {...form.getInputProps('email')} />
+                <TextInput 
+                  label={t('common.email' as any, language)} 
+                  required 
+                  disabled={!!editingEmployee}
+                  {...form.getInputProps('email')} 
+                />
               </Grid.Col>
               <Grid.Col span={{ base: 12, md: 6 }}>
                 <TextInput label={t('common.phone' as any, language)} {...form.getInputProps('phone')} />

@@ -427,6 +427,9 @@ export default function SettingsPage() {
       // Prepare update data
       const updateData: UpdateRestaurantInfoDto = { ...values };
       
+      // Email cannot be updated - exclude it from the update request
+      delete updateData.email;
+      
       // Logo should already be uploaded to Supabase Storage and URL stored in form
       // Only include logoUrl if it's a URL (not base64)
       if (updateData.logoUrl && updateData.logoUrl.startsWith('data:')) {
@@ -1594,6 +1597,7 @@ export default function SettingsPage() {
                         label={t('restaurant.email', language)}
                         type="email"
                         required
+                        disabled
                         {...restaurantForm.getInputProps('email')}
                       />
                     </Grid.Col>

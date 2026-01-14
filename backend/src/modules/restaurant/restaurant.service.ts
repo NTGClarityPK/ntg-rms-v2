@@ -80,7 +80,7 @@ export class RestaurantService {
     const updateData: any = {};
     
     if (updateDto.name !== undefined) updateData.name = updateDto.name;
-    if (updateDto.email !== undefined) updateData.email = updateDto.email;
+    // Email updates are disabled - email cannot be changed after creation
     if (updateDto.phone !== undefined) updateData.phone = updateDto.phone;
     if (updateDto.logoUrl !== undefined) updateData.logo_url = updateDto.logoUrl;
     if (updateDto.primaryColor !== undefined) updateData.primary_color = updateDto.primaryColor;
