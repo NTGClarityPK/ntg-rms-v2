@@ -13,7 +13,7 @@ export default registerAs('app', () => ({
   servers: {
     production: process.env.PRODUCTION_URL || 'http://192.168.50.50:5001',
     staging: process.env.STAGING_URL || 'http://192.168.50.50:8001',
-    development: process.env.DEVELOPMENT_URL || 'http://localhost:8001',
+    development: process.env.DEVELOPMENT_URL || 'http://localhost:3001',
   },
   cors: {
     origin: process.env.FRONTEND_URL || 'http://localhost:8000',
