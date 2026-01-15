@@ -3,6 +3,7 @@ import { API_ENDPOINTS } from '../constants/api';
 import { PaginationParams, PaginatedResponse } from '../types/pagination.types';
 import { createCrudApi, extendCrudApi } from '@/shared/services/api/factory';
 import { getApiLanguage } from '../hooks/use-api-language';
+import { API_TIMEOUT_CONFIG } from '@/shared/constants/app.constants';
 
 export interface Customer {
   id: string;
@@ -154,6 +155,7 @@ export const customersApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: API_TIMEOUT_CONFIG.BULK_IMPORT,
     });
     return data;
   },

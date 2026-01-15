@@ -1,6 +1,7 @@
 import apiClient from './client';
 import { createCrudApi, extendCrudApi } from '@/shared/services/api/factory';
 import { PaginationParams, PaginatedResponse } from '../types/pagination.types';
+import { API_TIMEOUT_CONFIG } from '@/shared/constants/app.constants';
 
 export interface Category {
   id: string;
@@ -507,6 +508,7 @@ export const menuApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: API_TIMEOUT_CONFIG.BULK_IMPORT,
     });
     return data;
   },
@@ -519,6 +521,7 @@ export const menuApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: API_TIMEOUT_CONFIG.BULK_IMPORT,
     });
     return data;
   },
@@ -531,6 +534,7 @@ export const menuApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: API_TIMEOUT_CONFIG.BULK_IMPORT,
     });
     return data;
   },
@@ -542,6 +546,7 @@ export const menuApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: API_TIMEOUT_CONFIG.BULK_IMPORT,
     });
     return data;
   },
@@ -554,6 +559,7 @@ export const menuApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: API_TIMEOUT_CONFIG.BULK_IMPORT,
     });
     return data;
   },
@@ -565,6 +571,7 @@ export const menuApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: API_TIMEOUT_CONFIG.BULK_IMPORT,
     });
     return data;
   },
@@ -577,6 +584,7 @@ export const menuApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: API_TIMEOUT_CONFIG.BULK_IMPORT,
     });
     return data;
   },
@@ -589,6 +597,7 @@ export const menuApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: API_TIMEOUT_CONFIG.BULK_IMPORT,
     });
     return data;
   },
@@ -601,6 +610,7 @@ export const menuApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: API_TIMEOUT_CONFIG.BULK_IMPORT,
     });
     return data;
   },
@@ -613,6 +623,7 @@ export const menuApi = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: API_TIMEOUT_CONFIG.BULK_IMPORT,
     });
     return data;
   },

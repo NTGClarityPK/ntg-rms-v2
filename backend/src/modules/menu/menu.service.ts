@@ -2159,21 +2159,22 @@ export class MenuService {
       throw new NotFoundException('Add-on group not found');
     }
 
-    const { data: addOn, error } = await supabase
-      .from('add_ons')
-      .insert({
-        add_on_group_id: createDto.addOnGroupId,
-        name: createDto.name,
-        price: createDto.price || 0,
-        is_active: createDto.isActive !== undefined ? createDto.isActive : true,
-        display_order: createDto.displayOrder || 0,
-      })
-      .select()
-      .single();
+    // Use PostgreSQL function to insert add-on, bypassing PostgREST schema validation
+    // This fixes the "Could not find the 'tenant_id' column" schema cache error
+    const { data: insertedAddOn, error: insertError } = await supabase.rpc('insert_addon', {
+      p_add_on_group_id: createDto.addOnGroupId,
+      p_name: createDto.name,
+      p_price: createDto.price || 0,
+      p_is_active: createDto.isActive !== undefined ? createDto.isActive : true,
+      p_display_order: createDto.displayOrder || 0,
+    });
 
-    if (error) {
-      throw new BadRequestException(`Failed to create add-on: ${error.message}`);
+    if (insertError || !insertedAddOn || insertedAddOn.length === 0) {
+      const errorMsg = insertError?.message || String(insertError) || 'Unknown error';
+      throw new BadRequestException(`Failed to create add-on: ${errorMsg}`);
     }
+
+    const addOn = insertedAddOn[0];
 
     // Create translations for name asynchronously (fire and forget)
     // Don't block the response - translations will be processed in the background
@@ -2193,7 +2194,7 @@ export class MenuService {
       id: addOn.id,
       addOnGroupId: addOn.add_on_group_id,
       name: addOn.name,
-      price: parseFloat(addOn.price),
+      price: parseFloat(String(addOn.price)),
       isActive: addOn.is_active,
       displayOrder: addOn.display_order,
       createdAt: addOn.created_at,
@@ -5142,32 +5143,125 @@ export class MenuService {
       }
     }
 
-    // Process categories in parallel batches (10 at a time)
-    const BATCH_SIZE = 10;
+    // Separate categories into updates and creates for batch processing
+    const categoriesToUpdate: Array<{ index: number; row: any; parentId?: string; categoryId: string }> = [];
+    const categoriesToCreate: Array<{ index: number; row: any; parentId?: string }> = [];
+
+    for (const { index, row, parentId, isUpdate, categoryId } of categoryData) {
+      if (isUpdate && categoryId) {
+        categoriesToUpdate.push({ index, row, parentId, categoryId });
+      } else {
+        categoriesToCreate.push({ index, row, parentId });
+      }
+    }
+
     const processedCategories: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
 
-    for (let batchStart = 0; batchStart < categoryData.length; batchStart += BATCH_SIZE) {
-      const batch = categoryData.slice(batchStart, batchStart + BATCH_SIZE);
-      
-      const batchResults = await Promise.allSettled(
-        batch.map(async ({ index, row, parentId, isUpdate, categoryId }) => {
-          try {
-            if (isUpdate && categoryId) {
-              // Update existing category
-              const updateDto: UpdateCategoryDto = {
-                name: row.name,
-                description: row.description || undefined,
-                categoryType: row.categoryType || undefined,
-                parentId: parentId || undefined,
-                isActive: row.isActive !== undefined ? row.isActive : undefined,
-              };
+    // For small batches (< 20), use simpler direct processing
+    const SMALL_BATCH_THRESHOLD = 20;
+    const totalCategories = categoriesToUpdate.length + categoriesToCreate.length;
+    const useSimpleProcessing = totalCategories < SMALL_BATCH_THRESHOLD;
 
-              const category = await this.updateCategory(tenantId, categoryId, updateDto, 'en');
-              return { success: true, index, categoryId: category.id, name: row.name, isUpdate: true };
-            } else {
-              // Create new category
+    // Validate all parent IDs upfront in batch (if any)
+    const parentIdsToValidate = new Set<string>();
+    [...categoriesToUpdate, ...categoriesToCreate].forEach(cat => {
+      if (cat.parentId) parentIdsToValidate.add(cat.parentId);
+    });
+    
+    const validParentIds = new Set<string>();
+    if (parentIdsToValidate.size > 0) {
+      const { data: validParents } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .in('id', Array.from(parentIdsToValidate))
+        .is('deleted_at', null);
+      (validParents || []).forEach(p => validParentIds.add(p.id));
+    }
+
+    // Process updates and creates in parallel
+    const [updateResults, createResults] = await (useSimpleProcessing ? Promise.all([
+      // Simple processing for updates
+      (async () => {
+        if (categoriesToUpdate.length === 0) {
+          return { success: 0, failed: 0, errors: [] as string[], processed: [] as Array<{ id: string; name: string; index: number; isUpdate: boolean }> };
+        }
+
+        let updateSuccess = 0;
+        let updateFailed = 0;
+        const updateErrors: string[] = [];
+        const updateProcessed: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+
+        // Process updates directly with batch operations
+        const updatePromises = categoriesToUpdate.map(async ({ index, row, parentId, categoryId }) => {
+          try {
+            // Validate parent if provided
+            if (parentId && !validParentIds.has(parentId)) {
+              throw new Error(`Parent category not found: ${parentId}`);
+            }
+
+            // Build update data
+            const updateData: any = {
+              updated_at: new Date().toISOString(),
+            };
+
+            if (row.name !== undefined) updateData.name = row.name.trim();
+            if (row.description !== undefined) updateData.description = row.description;
+            if (row.categoryType !== undefined) updateData.category_type = row.categoryType.trim().toLowerCase();
+            if (parentId !== undefined) updateData.parent_id = parentId;
+            if (row.isActive !== undefined) updateData.is_active = row.isActive;
+
+            // Update category
+            const { data: category, error } = await supabase
+              .from('categories')
+              .update(updateData)
+              .eq('id', categoryId)
+              .eq('tenant_id', tenantId)
+              .select('id, name')
+              .single();
+
+            if (error || !category) {
+              throw new Error(error?.message || 'Failed to update category');
+            }
+
+            updateProcessed.push({ id: category.id, name: row.name, index, isUpdate: true });
+            return { success: true };
+          } catch (error: any) {
+            updateErrors.push(`Row ${index + 2}: ${error.message}`);
+            return { success: false };
+          }
+        });
+
+        const results = await Promise.all(updatePromises);
+        updateSuccess = results.filter(r => r.success).length;
+        updateFailed = results.filter(r => !r.success).length;
+
+        return { success: updateSuccess, failed: updateFailed, errors: updateErrors, processed: updateProcessed };
+      })(),
+      // Simple processing for creates - use batch operations
+      (async () => {
+        if (categoriesToCreate.length === 0) {
+          return { success: 0, failed: 0, errors: [] as string[], processed: [] as Array<{ id: string; name: string; index: number; isUpdate: boolean }> };
+        }
+
+        let createSuccess = 0;
+        let createFailed = 0;
+        const createErrors: string[] = [];
+        const createProcessed: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+
+        // Prepare batch insert data
+        const categoriesToInsert: any[] = [];
+        const categoryIndexMap: Array<{ index: number; row: any }> = [];
+
+        for (const { index, row, parentId } of categoriesToCreate) {
+          // Validate parent if provided
+          if (parentId && !validParentIds.has(parentId)) {
+            createErrors.push(`Row ${index + 2}: Parent category not found`);
+            continue;
+          }
+
               // Normalize boolean values
-              let isActiveValue = true; // default
+          let isActiveValue = true;
               if (row.isActive !== undefined && row.isActive !== null) {
                 if (typeof row.isActive === 'boolean') {
                   isActiveValue = row.isActive;
@@ -5177,44 +5271,321 @@ export class MenuService {
                 }
               }
 
-              const createDto: CreateCategoryDto = {
+          const categoryData: any = {
+            tenant_id: tenantId,
                 name: row.name,
-                description: row.description || undefined,
-                categoryType: row.categoryType ? row.categoryType.trim().toLowerCase() : 'food',
-                parentId: parentId || undefined,
-                isActive: isActiveValue,
+            description: row.description || null,
+            category_type: row.categoryType ? row.categoryType.trim().toLowerCase() : 'food',
+            parent_id: parentId || null,
+            display_order: 0,
+            is_active: isActiveValue,
+          };
+
+          if (branchId) {
+            categoryData.branch_id = branchId;
+          }
+
+          categoriesToInsert.push(categoryData);
+          categoryIndexMap.push({ index, row });
+        }
+
+        if (categoriesToInsert.length === 0) {
+          return { success: 0, failed: createErrors.length, errors: createErrors, processed: [] };
+        }
+
+        // Batch insert categories
+        const { data: insertedCategories, error: insertError } = await supabase
+          .from('categories')
+          .insert(categoriesToInsert)
+          .select('id, name');
+
+        if (insertError) {
+          // Fall back to individual inserts
+          for (const { index, row, parentId } of categoriesToCreate) {
+            try {
+              let isActiveValue = true;
+              if (row.isActive !== undefined && row.isActive !== null) {
+                if (typeof row.isActive === 'boolean') {
+                  isActiveValue = row.isActive;
+                } else {
+                  const isActiveStr = String(row.isActive).toLowerCase().trim();
+                  isActiveValue = isActiveStr === 'true' || isActiveStr === '1';
+                }
+              }
+
+              const categoryData: any = {
+                tenant_id: tenantId,
+                name: row.name,
+                description: row.description || null,
+                category_type: row.categoryType ? row.categoryType.trim().toLowerCase() : 'food',
+                parent_id: parentId || null,
+                display_order: 0,
+                is_active: isActiveValue,
               };
 
-              const category = await this.createCategory(tenantId, createDto, branchId);
-              return { success: true, index, categoryId: category.id, name: row.name, isUpdate: false };
-            }
-          } catch (error: any) {
-            return { success: false, index, error: error.message };
-          }
-        })
-      );
+              if (branchId) {
+                categoryData.branch_id = branchId;
+              }
 
-      // Process batch results
-      for (const result of batchResults) {
-        if (result.status === 'fulfilled') {
-          if (result.value.success) {
-            success++;
-            processedCategories.push({
-              id: result.value.categoryId,
-              name: result.value.name,
-              index: result.value.index,
-              isUpdate: result.value.isUpdate || false,
-            });
-          } else {
-            failed++;
-            errors.push(`Row ${result.value.index + 2}: ${result.value.error}`);
+              const { data: category, error: singleError } = await supabase
+                .from('categories')
+                .insert(categoryData)
+                .select('id, name')
+                .single();
+
+              if (singleError) {
+                throw new Error(singleError.message);
+              }
+
+              createProcessed.push({ id: category.id, name: row.name, index, isUpdate: false });
+          } catch (error: any) {
+              createErrors.push(`Row ${index + 2}: ${error.message}`);
+            }
           }
         } else {
-          failed++;
-          errors.push(`Row ${batch[0].index + 2}: ${result.reason?.message || 'Unknown error'}`);
+          // Batch insert succeeded - map inserted categories to their original indices
+          insertedCategories.forEach((category, idx) => {
+            const { index, row } = categoryIndexMap[idx];
+            createProcessed.push({ id: category.id, name: row.name, index, isUpdate: false });
+          });
         }
-      }
-    }
+
+        createSuccess = createProcessed.length;
+        createFailed = createErrors.length;
+
+        return { success: createSuccess, failed: createFailed, errors: createErrors, processed: createProcessed };
+      })(),
+    ]) : Promise.all([
+      // Process updates with batching for large batches
+      (async () => {
+        if (categoriesToUpdate.length === 0) {
+          return { success: 0, failed: 0, errors: [] as string[], processed: [] as Array<{ id: string; name: string; index: number; isUpdate: boolean }> };
+        }
+
+        let updateSuccess = 0;
+        let updateFailed = 0;
+        const updateErrors: string[] = [];
+        const updateProcessed: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+
+        const UPDATE_BATCH_SIZE = 20;
+        const updateBatches: Array<Array<{ index: number; row: any; parentId?: string; categoryId: string }>> = [];
+        for (let i = 0; i < categoriesToUpdate.length; i += UPDATE_BATCH_SIZE) {
+          updateBatches.push(categoriesToUpdate.slice(i, i + UPDATE_BATCH_SIZE));
+        }
+
+        // Process all batches in parallel
+        const batchResults = await Promise.allSettled(
+          updateBatches.map(async (batch) => {
+            const batchErrors: string[] = [];
+            const batchProcessed: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+
+            const batchPromises = batch.map(async ({ index, row, parentId, categoryId }) => {
+              try {
+                // Validate parent if provided
+                if (parentId && !validParentIds.has(parentId)) {
+                  throw new Error(`Parent category not found: ${parentId}`);
+                }
+
+                // Build update data
+                const updateData: any = {
+                  updated_at: new Date().toISOString(),
+                };
+
+                if (row.name !== undefined) updateData.name = row.name.trim();
+                if (row.description !== undefined) updateData.description = row.description;
+                if (row.categoryType !== undefined) updateData.category_type = row.categoryType.trim().toLowerCase();
+                if (parentId !== undefined) updateData.parent_id = parentId;
+                if (row.isActive !== undefined) updateData.is_active = row.isActive;
+
+                // Update category
+                const { data: category, error } = await supabase
+                  .from('categories')
+                  .update(updateData)
+                  .eq('id', categoryId)
+                  .eq('tenant_id', tenantId)
+                  .select('id, name')
+                  .single();
+
+                if (error || !category) {
+                  throw new Error(error?.message || 'Failed to update category');
+                }
+
+                batchProcessed.push({ id: category.id, name: row.name, index, isUpdate: true });
+                return { success: true };
+              } catch (error: any) {
+                batchErrors.push(`Row ${index + 2}: ${error.message}`);
+                return { success: false };
+              }
+            });
+
+            await Promise.all(batchPromises);
+            return { success: batchProcessed.length, failed: batchErrors.length, errors: batchErrors, processed: batchProcessed };
+          })
+        );
+
+      for (const result of batchResults) {
+        if (result.status === 'fulfilled') {
+            updateSuccess += result.value.success;
+            updateFailed += result.value.failed;
+            updateErrors.push(...result.value.errors);
+            updateProcessed.push(...result.value.processed);
+          } else {
+            updateFailed++;
+            updateErrors.push(`Batch processing failed: ${result.reason?.message || 'Unknown error'}`);
+          }
+        }
+
+        return { success: updateSuccess, failed: updateFailed, errors: updateErrors, processed: updateProcessed };
+      })(),
+      // Process creates with batching for large batches
+      (async () => {
+        if (categoriesToCreate.length === 0) {
+          return { success: 0, failed: 0, errors: [] as string[], processed: [] as Array<{ id: string; name: string; index: number; isUpdate: boolean }> };
+        }
+
+        let createSuccess = 0;
+        let createFailed = 0;
+        const createErrors: string[] = [];
+        const createProcessed: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+
+        const CREATE_BATCH_SIZE = 20;
+        const createBatches: Array<Array<{ index: number; row: any; parentId?: string }>> = [];
+        for (let i = 0; i < categoriesToCreate.length; i += CREATE_BATCH_SIZE) {
+          createBatches.push(categoriesToCreate.slice(i, i + CREATE_BATCH_SIZE));
+        }
+
+        // Process all batches in parallel
+        const batchResults = await Promise.allSettled(
+          createBatches.map(async (batch) => {
+            const batchErrors: string[] = [];
+            const batchProcessed: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+
+            // Prepare batch insert data
+            const categoriesToInsert: any[] = [];
+            const batchCategoryMap: Array<{ index: number; row: any }> = [];
+
+            for (const { index, row, parentId } of batch) {
+              // Validate parent if provided
+              if (parentId && !validParentIds.has(parentId)) {
+                batchErrors.push(`Row ${index + 2}: Parent category not found`);
+                continue;
+              }
+
+              // Normalize boolean values
+              let isActiveValue = true;
+              if (row.isActive !== undefined && row.isActive !== null) {
+                if (typeof row.isActive === 'boolean') {
+                  isActiveValue = row.isActive;
+        } else {
+                  const isActiveStr = String(row.isActive).toLowerCase().trim();
+                  isActiveValue = isActiveStr === 'true' || isActiveStr === '1';
+                }
+              }
+
+              const categoryData: any = {
+                tenant_id: tenantId,
+                name: row.name,
+                description: row.description || null,
+                category_type: row.categoryType ? row.categoryType.trim().toLowerCase() : 'food',
+                parent_id: parentId || null,
+                display_order: 0,
+                is_active: isActiveValue,
+              };
+
+              if (branchId) {
+                categoryData.branch_id = branchId;
+              }
+
+              categoriesToInsert.push(categoryData);
+              batchCategoryMap.push({ index, row });
+            }
+
+            if (categoriesToInsert.length === 0) {
+              return { success: 0, failed: batchErrors.length, errors: batchErrors, processed: batchProcessed };
+            }
+
+            // Batch insert categories
+            const { data: insertedCategories, error: insertError } = await supabase
+              .from('categories')
+              .insert(categoriesToInsert)
+              .select('id, name');
+
+            if (insertError) {
+              // Fall back to individual inserts
+              for (const { index, row, parentId } of batch) {
+                try {
+                  let isActiveValue = true;
+                  if (row.isActive !== undefined && row.isActive !== null) {
+                    if (typeof row.isActive === 'boolean') {
+                      isActiveValue = row.isActive;
+                    } else {
+                      const isActiveStr = String(row.isActive).toLowerCase().trim();
+                      isActiveValue = isActiveStr === 'true' || isActiveStr === '1';
+                    }
+                  }
+
+                  const categoryData: any = {
+                    tenant_id: tenantId,
+                    name: row.name,
+                    description: row.description || null,
+                    category_type: row.categoryType ? row.categoryType.trim().toLowerCase() : 'food',
+                    parent_id: parentId || null,
+                    display_order: 0,
+                    is_active: isActiveValue,
+                  };
+
+                  if (branchId) {
+                    categoryData.branch_id = branchId;
+                  }
+
+                  const { data: category, error: singleError } = await supabase
+                    .from('categories')
+                    .insert(categoryData)
+                    .select('id, name')
+                    .single();
+
+                  if (singleError) {
+                    throw new Error(singleError.message);
+                  }
+
+                  batchProcessed.push({ id: category.id, name: row.name, index, isUpdate: false });
+                } catch (error: any) {
+                  batchErrors.push(`Row ${index + 2}: ${error.message}`);
+                }
+              }
+            } else {
+              // Batch insert succeeded - map inserted categories to their original indices
+              insertedCategories.forEach((category, idx) => {
+                const { index, row } = batchCategoryMap[idx];
+                batchProcessed.push({ id: category.id, name: row.name, index, isUpdate: false });
+              });
+            }
+
+            return { success: batchProcessed.length, failed: batchErrors.length, errors: batchErrors, processed: batchProcessed };
+          })
+        );
+
+        for (const result of batchResults) {
+          if (result.status === 'fulfilled') {
+            createSuccess += result.value.success;
+            createFailed += result.value.failed;
+            createErrors.push(...result.value.errors);
+            createProcessed.push(...result.value.processed);
+          } else {
+            createFailed++;
+            createErrors.push(`Batch processing failed: ${result.reason?.message || 'Unknown error'}`);
+          }
+        }
+
+        return { success: createSuccess, failed: createFailed, errors: createErrors, processed: createProcessed };
+      })(),
+    ]));
+
+    // Aggregate results
+    success = updateResults.success + createResults.success;
+    failed = updateResults.failed + createResults.failed;
+    errors.push(...updateResults.errors, ...createResults.errors);
+    processedCategories.push(...updateResults.processed, ...createResults.processed);
 
     // Fire-and-forget: Do translations asynchronously after returning response
     if (processedCategories.length > 0) {
@@ -5285,8 +5656,10 @@ export class MenuService {
       .is('deleted_at', null);
     
     const groupNameToIdMap = new Map<string, string>();
+    const validGroupIds = new Set<string>();
     (allGroups || []).forEach(group => {
       groupNameToIdMap.set(group.name.toLowerCase(), group.id);
+      validGroupIds.add(group.id);
     });
 
     // Batch translate all names
@@ -5297,10 +5670,21 @@ export class MenuService {
       tenantId,
     );
 
+    // Prepare add-on data for processing
+    const addOnData: Array<{
+      index: number;
+      row: any;
+      groupId: string;
+      price: number;
+      isActive: boolean;
+      displayOrder: number;
+    }> = [];
+
     let success = 0;
     let failed = 0;
     const errors: string[] = [];
 
+    // Validate all rows first
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       try {
@@ -5324,6 +5708,11 @@ export class MenuService {
           throw new Error(`Add-on group not found: ${row.addOnGroupName}`);
         }
 
+        // Verify group belongs to tenant
+        if (!validGroupIds.has(groupId)) {
+          throw new Error(`Add-on group not found or does not belong to tenant: ${row.addOnGroupName}`);
+        }
+
         // Validate isActive is boolean if provided
         let isActiveValue = true; // default
         if (row.isActive !== undefined && row.isActive !== null) {
@@ -5338,43 +5727,111 @@ export class MenuService {
           }
         }
 
-        const addOnData: any = {
-          add_on_group_id: groupId,
-          name: row.name,
-          price: row.price || 0,
-          is_active: isActiveValue,
-          display_order: row.displayOrder || 0,
-        };
-
-        const { data: addOn, error } = await supabase
-          .from('add_ons')
-          .insert(addOnData)
-          .select()
-          .single();
-
-        if (error) {
-          throw new Error(error.message);
+        // Validate price
+        const price = row.price !== undefined && row.price !== null ? parseFloat(row.price) : 0;
+        if (isNaN(price) || price < 0) {
+          throw new Error(`Price must be a valid non-negative number. Found: ${row.price}`);
         }
 
-        // Store pre-translated translations (already translated in batch)
-        const nameTranslations = translations.get('name')?.get(i);
+        addOnData.push({
+          index: i,
+          row,
+          groupId,
+          price,
+          isActive: isActiveValue,
+          displayOrder: row.displayOrder ? parseInt(row.displayOrder) : 0,
+        });
+      } catch (error: any) {
+        failed++;
+        errors.push(`Row ${i + 2}: ${error.message}`);
+      }
+    }
+
+    // Process add-ons in parallel batches
+    const BATCH_SIZE = 10;
+    const processedAddOns: Array<{ id: string; name: string; index: number }> = [];
+
+    for (let batchStart = 0; batchStart < addOnData.length; batchStart += BATCH_SIZE) {
+      const batch = addOnData.slice(batchStart, batchStart + BATCH_SIZE);
+      
+      const batchResults = await Promise.allSettled(
+        batch.map(async ({ index, row, groupId, price, isActive, displayOrder }) => {
+          try {
+            // Use createAddOn method directly to avoid schema cache issues with direct inserts
+            // This method properly handles tenant validation and works reliably
+            const createdAddOn = await this.createAddOn(tenantId, {
+              addOnGroupId: groupId,
+              name: row.name.trim(),
+              price: price,
+              isActive: isActive,
+              displayOrder: displayOrder,
+            }, true); // Skip translations since we'll handle them below
+            
+            return { success: true, index, addOn: { id: createdAddOn.id, name: createdAddOn.name } };
+          } catch (createError: any) {
+            const errorMsg = createError?.message || String(createError) || 'Unknown error';
+            return { success: false, index, error: `Failed to create add-on: ${errorMsg}` };
+          }
+        })
+      );
+
+      // Process batch results
+      for (const result of batchResults) {
+        if (result.status === 'fulfilled') {
+          if (result.value.success) {
+            success++;
+            processedAddOns.push({
+              id: result.value.addOn.id,
+              name: result.value.addOn.name,
+              index: result.value.index,
+            });
+          } else {
+            failed++;
+            errors.push(`Row ${result.value.index + 2}: ${result.value.error}`);
+          }
+        } else {
+          failed++;
+          errors.push(`Row ${batch[0].index + 2}: ${result.reason?.message || 'Unknown error'}`);
+        }
+      }
+    }
+
+    // Store translations for all successfully created add-ons
+    // Use fire-and-forget to avoid blocking the response
+    if (processedAddOns.length > 0) {
+      // Process translations asynchronously without blocking the response
+      (async () => {
+        const translationPromises = processedAddOns.map(async ({ id, name, index }) => {
+          const nameTranslations = translations.get('name')?.get(index);
         if (nameTranslations) {
+            try {
           await this.translationService.storePreTranslatedBatch(
             'addon',
-            addOn.id,
-            [{ fieldName: 'name', text: row.name }],
+                id,
+                [{ fieldName: 'name', text: name }],
             { name: nameTranslations },
             undefined,
             tenantId,
             'en',
           );
-        }
+            } catch (translationError: any) {
+              // Log error but don't fail the import
+              const errorMsg = translationError?.message || String(translationError) || 'Unknown error';
+              console.warn(`Failed to store translations for add-on ${id}:`, errorMsg);
+              // If it's a constraint error, it might be a database migration issue
+              if (errorMsg.includes('constraint') || errorMsg.includes('entity_type') || errorMsg.includes('entity_type_check')) {
+                console.warn(`Translation constraint error for add-on ${id}. This may indicate a database migration issue. Entity type 'addon' should be valid according to migration 041_add_order_to_translations.sql`);
+              }
+            }
+          }
+        });
 
-        success++;
-      } catch (error) {
-        failed++;
-        errors.push(`Row ${i + 1}: ${error.message}`);
-      }
+        // Use allSettled to ensure all promises complete even if some fail
+        await Promise.allSettled(translationPromises);
+      })().catch(err => {
+        // Catch any unexpected errors in the async block
+        console.error('Unexpected error processing add-on translations:', err);
+      });
     }
 
     return { success, failed, errors };
@@ -5572,7 +6029,7 @@ export class MenuService {
       
       this.bulkImportService.batchTranslateEntities(
         groupsToTranslate,
-        'add_on_group',
+        'addon_group',
         ['name'],
         tenantId,
       ).then((translations) => {
@@ -5580,7 +6037,7 @@ export class MenuService {
           const nameTranslations = translations.get('name')?.get(arrayIndex);
           if (nameTranslations) {
             this.translationService.storePreTranslatedBatch(
-              'add_on_group',
+              'addon_group',
               id,
               [{ fieldName: 'name', text: name }],
               { name: nameTranslations },
@@ -5783,8 +6240,56 @@ export class MenuService {
     let addOnsUpdated = 0;
     const errors: string[] = [];
 
-    // Batch translate all names
-    const translations = await this.bulkImportService.batchTranslateEntities(
+    // Collect translation data to process after response
+    const translationTasks: Array<{
+      entityType: string;
+      entityId: string;
+      fields: Array<{ fieldName: string; text: string }>;
+      translations: Record<string, any>;
+    }> = [];
+
+    // Collect operations for batching
+    const groupsToCreate: Array<{
+      rowIndex: number;
+      name: string;
+      nameLower: string;
+      selectionType: string;
+      isRequired: boolean;
+      minSelections: number;
+      maxSelections?: number;
+      category?: string;
+    }> = [];
+    const groupsToUpdate: Array<{
+      id: string;
+      rowIndex: number;
+      name: string;
+      selectionType?: string;
+      isRequired?: boolean;
+      minSelections?: number;
+      maxSelections?: number;
+      category?: string;
+    }> = [];
+    const addOnsToCreate: Array<{
+      rowIndex: number;
+      groupId: string;
+      groupNameLower?: string; // For resolving pending groupIds
+      name: string;
+      nameLower: string;
+      price: number;
+      isActive: boolean;
+      displayOrder: number;
+    }> = [];
+    const addOnsToUpdate: Array<{
+      id: string;
+      rowIndex: number;
+      name: string;
+      price: number;
+      isActive: boolean;
+      displayOrder: number;
+    }> = [];
+
+    // Start batch translation asynchronously (don't await - process after response)
+    const translationPromise = this.bulkImportService.batchTranslateEntities(
       rows,
       'addOnGroupAndAddOn',
       ['addOnGroupName', 'addOnName'],
@@ -5813,6 +6318,9 @@ export class MenuService {
         // Process add-on group (create or update)
         let groupId = groupNameToIdMap.get(groupNameLower);
         const isGroupUpdate = !!groupId;
+        
+        // Track if group is being created in this batch (to avoid duplicates)
+        const groupBeingCreated = groupsToCreate.find(g => g.nameLower === groupNameLower);
 
         // Validate group fields if provided
         if (row.addOnGroupSelectionType && row.addOnGroupSelectionType.trim()) {
@@ -5845,31 +6353,35 @@ export class MenuService {
           }
         }
 
-        // Create or update add-on group
+        // Queue add-on group operations for batch processing
         if (isGroupUpdate && groupId) {
-          const updateDto: UpdateAddOnGroupDto = {
+          groupsToUpdate.push({
+            id: groupId,
+            rowIndex: i,
             name: groupName,
             selectionType: row.addOnGroupSelectionType ? row.addOnGroupSelectionType.trim().toLowerCase() : undefined,
             isRequired: isRequiredValue,
             minSelections: row.addOnGroupMinSelections !== undefined ? row.addOnGroupMinSelections : undefined,
             maxSelections: row.addOnGroupMaxSelections !== undefined ? row.addOnGroupMaxSelections : undefined,
             category: row.addOnGroupCategory ? row.addOnGroupCategory.trim() : undefined,
-          };
-          await this.updateAddOnGroup(tenantId, groupId, updateDto, 'en');
-          groupsUpdated++;
-        } else {
-          const createDto: CreateAddOnGroupDto = {
+          });
+        } else if (!groupBeingCreated) {
+          // Only queue if not already being created
+          groupsToCreate.push({
+            rowIndex: i,
             name: groupName,
+            nameLower: groupNameLower,
             selectionType: row.addOnGroupSelectionType ? row.addOnGroupSelectionType.trim().toLowerCase() : 'multiple',
             isRequired: isRequiredValue !== undefined ? isRequiredValue : false,
             minSelections: row.addOnGroupMinSelections !== undefined ? row.addOnGroupMinSelections : 0,
             maxSelections: row.addOnGroupMaxSelections !== undefined ? row.addOnGroupMaxSelections : undefined,
             category: row.addOnGroupCategory ? row.addOnGroupCategory.trim() : undefined,
-          };
-          const group = await this.createAddOnGroup(tenantId, createDto, branchId);
-          groupId = group.id;
-          groupNameToIdMap.set(groupNameLower, groupId); // Update map for subsequent rows
-          groupsCreated++;
+          });
+        }
+        
+        // Use existing groupId or mark as pending if being created
+        if (!groupId && groupBeingCreated) {
+          groupId = 'pending';
         }
 
         // Process add-on if name is provided
@@ -5891,92 +6403,46 @@ export class MenuService {
             }
           }
 
-          // Check if add-on exists
-          const addOnKey = `${groupId}|||${addOnNameLower}`;
+          // Resolve groupId if pending (group being created in this batch)
+          let resolvedGroupId = groupId;
+          if (groupId === 'pending' || !groupId) {
+            const groupBeingCreated = groupsToCreate.find(g => g.nameLower === groupNameLower);
+            if (groupBeingCreated) {
+              resolvedGroupId = 'pending'; // Will be resolved after batch create
+            } else {
+              // Group should exist, try to find it
+              resolvedGroupId = groupNameToIdMap.get(groupNameLower) || 'pending';
+            }
+          }
+
+          // Check if add-on exists (will resolve groupId after batch create)
+          const addOnKey = resolvedGroupId !== 'pending' ? `${resolvedGroupId}|||${addOnNameLower}` : `pending|||${addOnNameLower}`;
           const existingAddOnId = addOnKeyToIdMap.get(addOnKey);
           const isAddOnUpdate = !!existingAddOnId;
 
           if (isAddOnUpdate && existingAddOnId) {
-            // Update existing add-on
-            const { error: updateError } = await supabase
-              .from('add_ons')
-              .update({
-                name: addOnName,
-                price: row.addOnPrice || 0,
-                is_active: isActiveValue,
-                display_order: row.addOnDisplayOrder || 0,
-              })
-              .eq('id', existingAddOnId);
-
-            if (updateError) {
-              throw new Error(`Failed to update add-on: ${updateError.message}`);
-            }
-
-            // Store translations
-            const nameTranslations = translations.get('addOnName')?.get(i);
-            if (nameTranslations) {
-              await this.translationService.storePreTranslatedBatch(
-                'addon',
-                existingAddOnId,
-                [{ fieldName: 'name', text: addOnName }],
-                { name: nameTranslations },
-                undefined,
-                tenantId,
-                'en',
-              );
-            }
-
-            addOnsUpdated++;
+            // Queue add-on update for batch processing
+            addOnsToUpdate.push({
+              id: existingAddOnId,
+              rowIndex: i,
+              name: addOnName,
+              price: row.addOnPrice || 0,
+              isActive: isActiveValue,
+              displayOrder: row.addOnDisplayOrder || 0,
+            });
           } else {
-            // Create new add-on
-            const { data: addOn, error: insertError } = await supabase
-              .from('add_ons')
-              .insert({
-                tenant_id: tenantId,
-                add_on_group_id: groupId,
-                name: addOnName,
-                price: row.addOnPrice || 0,
-                is_active: isActiveValue,
-                display_order: row.addOnDisplayOrder || 0,
-              })
-              .select()
-              .single();
-
-            if (insertError) {
-              throw new Error(`Failed to create add-on: ${insertError.message}`);
-            }
-
-            // Store translations
-            const nameTranslations = translations.get('addOnName')?.get(i);
-            if (nameTranslations && addOn) {
-              await this.translationService.storePreTranslatedBatch(
-                'addon',
-                addOn.id,
-                [{ fieldName: 'name', text: addOnName }],
-                { name: nameTranslations },
-                undefined,
-                tenantId,
-                'en',
-              );
-            }
-
-            addOnKeyToIdMap.set(addOnKey, addOn.id); // Update map
-            addOnsCreated++;
+            // Queue add-on create for batch processing (groupId will be resolved after groups are created)
+            addOnsToCreate.push({
+              rowIndex: i,
+              groupId: resolvedGroupId, // Will be resolved after groups are created
+              groupNameLower: groupNameLower, // Store for resolution
+              name: addOnName,
+              nameLower: addOnNameLower,
+              price: row.addOnPrice || 0,
+              isActive: isActiveValue,
+              displayOrder: row.addOnDisplayOrder || 0,
+            });
           }
-        }
-
-        // Store group name translations
-        const groupNameTranslations = translations.get('addOnGroupName')?.get(i);
-        if (groupNameTranslations && groupId) {
-          await this.translationService.storePreTranslatedBatch(
-            'add_on_group',
-            groupId,
-            [{ fieldName: 'name', text: groupName }],
-            { name: groupNameTranslations },
-            undefined,
-            tenantId,
-            'en',
-          );
         }
 
         success++;
@@ -5985,6 +6451,276 @@ export class MenuService {
         errors.push(`Row ${i + 2}: ${error.message}`);
       }
     }
+
+    // Batch process all operations
+    try {
+      // 1. Batch create groups
+      if (groupsToCreate.length > 0) {
+        const groupCreateData = groupsToCreate.map(g => {
+          const maxSelections = g.selectionType === 'single' ? 1 : (g.maxSelections ?? null);
+          const minSelections = g.selectionType === 'single' && g.isRequired ? 1 : (g.minSelections ?? 0);
+          
+          const data: any = {
+            tenant_id: tenantId,
+            name: g.name,
+            selection_type: g.selectionType,
+            is_required: g.isRequired,
+            min_selections: minSelections,
+            max_selections: maxSelections,
+            display_order: 0,
+            is_active: true,
+            category: g.category || null,
+          };
+          
+          if (branchId) {
+            data.branch_id = branchId;
+          }
+          
+          return data;
+        });
+
+        const { data: createdGroups, error: createError } = await supabase
+          .from('add_on_groups')
+          .insert(groupCreateData)
+          .select('id, name');
+
+        if (createError) {
+          throw new Error(`Failed to batch create groups: ${createError.message}`);
+        }
+
+        // Map created groups back to row indices
+        createdGroups?.forEach((group, idx) => {
+          const groupCreate = groupsToCreate[idx];
+          const groupNameLower = groupCreate.nameLower;
+          groupNameToIdMap.set(groupNameLower, group.id);
+          
+          // Update pending add-ons with resolved groupId
+          addOnsToCreate.forEach(addOn => {
+            if (addOn.groupId === 'pending' && addOn.rowIndex === groupCreate.rowIndex) {
+              addOn.groupId = group.id;
+            }
+          });
+
+          // Queue translation task
+          translationTasks.push({
+            entityType: 'addon_group',
+            entityId: group.id,
+            fields: [{ fieldName: 'name', text: group.name }],
+            translations: { rowIndex: groupCreate.rowIndex, fieldName: 'addOnGroupName' },
+          });
+        });
+
+        groupsCreated = createdGroups?.length || 0;
+      }
+
+      // 2. Batch update groups
+      if (groupsToUpdate.length > 0) {
+        // Fetch current values for all groups to update in one query
+        const groupIdsToUpdate = groupsToUpdate.map(g => g.id);
+        const { data: currentGroups } = await supabase
+          .from('add_on_groups')
+          .select('id, selection_type, is_required')
+          .in('id', groupIdsToUpdate)
+          .eq('tenant_id', tenantId);
+
+        const currentGroupsMap = new Map(
+          (currentGroups || []).map(g => [g.id, g])
+        );
+
+        // Process updates in parallel batches
+        const updatePromises = groupsToUpdate.map(async (g) => {
+          const current = currentGroupsMap.get(g.id);
+          const updateData: any = {};
+          
+          if (g.name !== undefined) updateData.name = g.name.trim();
+          if (g.selectionType !== undefined) updateData.selection_type = g.selectionType;
+          if (g.isRequired !== undefined) updateData.is_required = g.isRequired;
+          if (g.category !== undefined) updateData.category = g.category || null;
+
+          const selectionType = g.selectionType !== undefined ? g.selectionType : current?.selection_type;
+          const isRequired = g.isRequired !== undefined ? g.isRequired : current?.is_required;
+
+          // Handle min/max selections based on selectionType
+          if (g.selectionType !== undefined) {
+            if (g.selectionType === 'single') {
+              updateData.max_selections = 1;
+              updateData.min_selections = isRequired ? 1 : 0;
+            } else {
+              if (g.minSelections !== undefined) updateData.min_selections = g.minSelections;
+              if (g.maxSelections !== undefined) updateData.max_selections = g.maxSelections;
+            }
+          } else {
+            // If selectionType not changing, use provided values or current logic
+            if (selectionType === 'single') {
+              if (g.minSelections !== undefined) {
+                updateData.min_selections = g.minSelections;
+              } else if (g.isRequired !== undefined) {
+                updateData.min_selections = isRequired ? 1 : 0;
+              }
+              if (g.maxSelections !== undefined) {
+                updateData.max_selections = g.maxSelections;
+              } else {
+                updateData.max_selections = 1;
+              }
+            } else {
+              if (g.minSelections !== undefined) updateData.min_selections = g.minSelections;
+              if (g.maxSelections !== undefined) updateData.max_selections = g.maxSelections;
+            }
+          }
+
+          const { error } = await supabase
+            .from('add_on_groups')
+            .update(updateData)
+            .eq('id', g.id)
+            .eq('tenant_id', tenantId);
+
+          if (error) {
+            throw new Error(`Failed to update group ${g.id}: ${error.message}`);
+          }
+
+          // Queue translation task
+          translationTasks.push({
+            entityType: 'addon_group',
+            entityId: g.id,
+            fields: [{ fieldName: 'name', text: g.name }],
+            translations: { rowIndex: g.rowIndex, fieldName: 'addOnGroupName' },
+          });
+        });
+
+        await Promise.all(updatePromises);
+        groupsUpdated = groupsToUpdate.length;
+      }
+
+      // 3. Resolve pending groupIds for add-ons
+      addOnsToCreate.forEach(addOn => {
+        if (addOn.groupId === 'pending' && addOn.groupNameLower) {
+          const resolvedGroupId = groupNameToIdMap.get(addOn.groupNameLower);
+          if (resolvedGroupId) {
+            addOn.groupId = resolvedGroupId;
+          }
+        }
+      });
+
+      // 4. Batch create add-ons
+      if (addOnsToCreate.length > 0) {
+        const validAddOnsToCreate = addOnsToCreate.filter(a => a.groupId !== 'pending');
+        const invalidAddOns = addOnsToCreate.filter(a => a.groupId === 'pending');
+        
+        if (invalidAddOns.length > 0) {
+          invalidAddOns.forEach(addOn => {
+            errors.push(`Row ${addOn.rowIndex + 2}: Failed to create add-on - group not found`);
+            failed++;
+            success--;
+          });
+        }
+
+        if (validAddOnsToCreate.length > 0) {
+          const addOnCreateData = validAddOnsToCreate.map(a => ({
+            tenant_id: tenantId,
+            add_on_group_id: a.groupId,
+            name: a.name,
+            price: a.price,
+            is_active: a.isActive,
+            display_order: a.displayOrder,
+          }));
+
+          const { data: createdAddOns, error: createError } = await supabase
+            .from('add_ons')
+            .insert(addOnCreateData)
+            .select('id, name');
+
+          if (createError) {
+            throw new Error(`Failed to batch create add-ons: ${createError.message}`);
+          }
+
+          // Map created add-ons back and queue translation tasks
+          createdAddOns?.forEach((addOn, idx) => {
+            const addOnCreate = validAddOnsToCreate[idx];
+            const addOnKey = `${addOnCreate.groupId}|||${addOnCreate.nameLower}`;
+            addOnKeyToIdMap.set(addOnKey, addOn.id);
+
+            translationTasks.push({
+              entityType: 'addon',
+              entityId: addOn.id,
+              fields: [{ fieldName: 'name', text: addOn.name }],
+              translations: { rowIndex: addOnCreate.rowIndex, fieldName: 'addOnName' },
+            });
+          });
+
+          addOnsCreated = createdAddOns?.length || 0;
+        }
+      }
+
+      // 5. Batch update add-ons
+      if (addOnsToUpdate.length > 0) {
+        // Process updates in parallel batches
+        const updatePromises = addOnsToUpdate.map(async (a) => {
+          const { error } = await supabase
+            .from('add_ons')
+            .update({
+              name: a.name,
+              price: a.price,
+              is_active: a.isActive,
+              display_order: a.displayOrder,
+            })
+            .eq('id', a.id)
+            .eq('tenant_id', tenantId);
+
+          if (error) {
+            throw new Error(`Failed to update add-on ${a.id}: ${error.message}`);
+          }
+
+          // Queue translation task
+          translationTasks.push({
+            entityType: 'addon',
+            entityId: a.id,
+            fields: [{ fieldName: 'name', text: a.name }],
+            translations: { rowIndex: a.rowIndex, fieldName: 'addOnName' },
+          });
+        });
+
+        await Promise.all(updatePromises);
+        addOnsUpdated = addOnsToUpdate.length;
+      }
+    } catch (batchError: any) {
+      errors.push(`Batch operation failed: ${batchError.message}`);
+      failed += groupsToCreate.length + groupsToUpdate.length + addOnsToCreate.length + addOnsToUpdate.length;
+      success -= groupsToCreate.length + groupsToUpdate.length + addOnsToCreate.length + addOnsToUpdate.length;
+    }
+
+    // Process translations in background after returning response
+    setImmediate(async () => {
+      try {
+        const translations = await translationPromise;
+        
+        for (const task of translationTasks) {
+          const { entityType, entityId, fields, translations: translationRef } = task;
+          const { rowIndex, fieldName } = translationRef;
+          
+          const nameTranslations = translations.get(fieldName)?.get(rowIndex);
+          if (nameTranslations) {
+            const translationsMap: Record<string, any> = {};
+            if (fieldName === 'addOnName' || fieldName === 'addOnGroupName') {
+              translationsMap['name'] = nameTranslations;
+            }
+            
+            this.translationService.storePreTranslatedBatch(
+              entityType,
+              entityId,
+              fields,
+              translationsMap,
+              undefined,
+              tenantId,
+              'en',
+            ).catch((translationError) => {
+              console.warn(`Failed to store translations for ${entityType} ${entityId}:`, translationError?.message || translationError);
+            });
+          }
+        }
+      } catch (error: any) {
+        console.error(`Failed to process background translations: ${error?.message || error}`);
+      }
+    });
 
     return { success, failed, errors, groupsCreated, groupsUpdated, addOnsCreated, addOnsUpdated };
   }

@@ -16,6 +16,12 @@ async function bootstrap() {
       logger: ['error', 'warn', 'log', 'debug', 'verbose'],
     });
 
+    // Increase server timeout for long-running operations (e.g., bulk imports)
+    // Default is 120 seconds, increase to 10 minutes (600000ms)
+    app.getHttpServer().timeout = 600000;
+    app.getHttpServer().keepAliveTimeout = 650000; // Slightly higher than timeout
+    app.getHttpServer().headersTimeout = 660000; // Higher than keepAliveTimeout
+
     const configService = app.get(ConfigService);
     const appConfig = configService.get('app');
     const port = appConfig.port;

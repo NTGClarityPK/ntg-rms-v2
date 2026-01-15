@@ -777,8 +777,16 @@ export class EmployeesService {
     const rows = await this.bulkImportService.parseExcelFile(fileBuffer, config);
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Fetch all roles and branches upfront for name-to-ID mapping
-    const roles = await this.rolesService.getRoles();
+    // Fetch all roles and branches upfront for name-to-ID mapping (parallel fetch)
+    const [roles, branchesResult] = await Promise.all([
+      this.rolesService.getRoles(),
+      supabase
+        .from('branches')
+        .select('id, name')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null),
+    ]);
+
     const roleNameToIdMap = new Map<string, string>();
     roles.forEach(role => {
       roleNameToIdMap.set(role.name.toLowerCase(), role.id);
@@ -787,13 +795,8 @@ export class EmployeesService {
       }
     });
 
-    const { data: branches } = await supabase
-      .from('branches')
-      .select('id, name')
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null);
     const branchNameToIdMap = new Map<string, string>();
-    (branches || []).forEach(branch => {
+    (branchesResult.data || []).forEach(branch => {
       branchNameToIdMap.set(branch.name.toLowerCase(), branch.id);
     });
 
@@ -842,6 +845,17 @@ export class EmployeesService {
         // Validate name
         if (!row.name || row.name.trim() === '') {
           throw new Error('Name is required');
+        }
+
+        // Validate employment type if provided
+        if (row.employmentType) {
+          const validEmploymentTypes = ['full_time', 'part_time', 'contract'];
+          const normalizedType = String(row.employmentType).trim().toLowerCase();
+          if (!validEmploymentTypes.includes(normalizedType)) {
+            throw new Error(`Invalid employment type. Must be one of: ${validEmploymentTypes.join(', ')}`);
+          }
+          // Normalize the value
+          row.employmentType = normalizedType;
         }
 
         // Map role names to IDs
@@ -931,6 +945,17 @@ export class EmployeesService {
             }
           }
 
+          // Validate and normalize employment type
+          let employmentTypeValue: string | undefined = undefined;
+          if (row.employmentType) {
+            const normalizedType = String(row.employmentType).trim().toLowerCase();
+            const validEmploymentTypes = ['full_time', 'part_time', 'contract'];
+            if (!validEmploymentTypes.includes(normalizedType)) {
+              throw new Error(`Invalid employment type. Must be one of: ${validEmploymentTypes.join(', ')}`);
+            }
+            employmentTypeValue = normalizedType;
+          }
+
           const createDto: CreateEmployeeDto = {
             email: row.email.trim(),
             name: row.name,
@@ -940,7 +965,7 @@ export class EmployeesService {
             employeeId: row.employeeId || undefined,
             nationalId: row.nationalId || undefined,
             dateOfBirth: row.dateOfBirth || undefined,
-            employmentType: row.employmentType ? row.employmentType.trim().toLowerCase() : undefined,
+            employmentType: employmentTypeValue,
             joiningDate: row.joiningDate || undefined,
             salary: row.salary || undefined,
             isActive: isActiveValue,
@@ -961,52 +986,629 @@ export class EmployeesService {
       }
     }
 
-    // Process employees in parallel batches (10 at a time)
-    const BATCH_SIZE = 10;
-    const processedEmployees: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+    // Separate employees into updates and creates for batch processing
+    const employeesToUpdate: Array<{ index: number; updateDto: UpdateEmployeeDto; employeeId: string; rowName: string }> = [];
+    const employeesToCreate: Array<{ index: number; createDto: CreateEmployeeDto; rowName: string }> = [];
 
-    for (let batchStart = 0; batchStart < employeeData.length; batchStart += BATCH_SIZE) {
-      const batch = employeeData.slice(batchStart, batchStart + BATCH_SIZE);
-      
-      const batchResults = await Promise.allSettled(
-        batch.map(async ({ index, createDto, updateDto, isUpdate, employeeId, rowName }) => {
-          try {
-            if (isUpdate && updateDto && employeeId) {
-              // Update existing employee
-              const employee = await this.updateEmployee(tenantId, employeeId, updateDto, userId, 'en');
-              return { success: true, index, employeeId: employee.id, name: rowName, isUpdate: true };
-            } else {
-              // Create new employee
-              const employee = await this.createEmployee(tenantId, userId, createDto, true);
-              return { success: true, index, employeeId: employee.id, name: rowName, isUpdate: false };
-            }
-          } catch (error: any) {
-            return { success: false, index, error: error.message };
-          }
-        })
-      );
-
-      // Process batch results
-      for (const result of batchResults) {
-        if (result.status === 'fulfilled') {
-          if (result.value.success) {
-            success++;
-            processedEmployees.push({
-              id: result.value.employeeId,
-              name: result.value.name,
-              index: result.value.index,
-              isUpdate: result.value.isUpdate || false,
-            });
-          } else {
-            failed++;
-            errors.push(`Row ${result.value.index + 2}: ${result.value.error}`);
-          }
-        } else {
-          failed++;
-          errors.push(`Row ${batch[0].index + 2}: ${result.reason?.message || 'Unknown error'}`);
-        }
+    for (const { index, createDto, updateDto, isUpdate, employeeId, rowName } of employeeData) {
+      if (isUpdate && updateDto && employeeId) {
+        employeesToUpdate.push({ index, updateDto, employeeId, rowName });
+      } else {
+        employeesToCreate.push({ index, createDto, rowName });
       }
     }
+
+    const processedEmployees: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+
+    // Create roleIdToNameMap from roles already fetched above
+    const roleIdToNameMap = new Map<string, string>();
+    roles.forEach(role => {
+      roleIdToNameMap.set(role.id, role.name);
+    });
+
+    // For small batches (< 20), use simpler direct processing to avoid overhead
+    const SMALL_BATCH_THRESHOLD = 20;
+    const totalEmployees = employeesToUpdate.length + employeesToCreate.length;
+    const useSimpleProcessing = totalEmployees < SMALL_BATCH_THRESHOLD;
+
+    // Process updates and creates in parallel (or sequentially for small batches)
+    const [updateResults, createResults] = await (useSimpleProcessing ? Promise.all([
+      // Simple processing for updates
+      (async () => {
+        if (employeesToUpdate.length === 0) {
+          return { success: 0, failed: 0, errors: [] as string[], processed: [] as Array<{ id: string; name: string; index: number; isUpdate: boolean }> };
+        }
+
+        let updateSuccess = 0;
+        let updateFailed = 0;
+        const updateErrors: string[] = [];
+        const updateProcessed: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+
+        // Batch update employees - collect all updates first
+        const employeeUpdates: Array<{ employeeId: string; updateData: any }> = [];
+        const employeesNeedingRoleUpdate: Array<{ employeeId: string; roleIds: string[] }> = [];
+        const employeesNeedingBranchUpdate: Array<{ employeeId: string; branchIds: string[] }> = [];
+        const employeeIndexMap = new Map<string, { index: number; rowName: string }>();
+
+        for (const { index, updateDto, employeeId, rowName } of employeesToUpdate) {
+          employeeIndexMap.set(employeeId, { index, rowName });
+
+          // Build update data
+          const updateData: any = {
+            updated_at: new Date().toISOString(),
+          };
+
+          if (updateDto.name !== undefined) updateData.name = updateDto.name;
+          if (updateDto.phone !== undefined) updateData.phone = updateDto.phone;
+          if (updateDto.employeeId !== undefined) updateData.employee_id = updateDto.employeeId;
+          if (updateDto.nationalId !== undefined) updateData.national_id = updateDto.nationalId;
+          if (updateDto.dateOfBirth !== undefined) updateData.date_of_birth = updateDto.dateOfBirth;
+          if (updateDto.employmentType !== undefined) updateData.employment_type = updateDto.employmentType;
+          if (updateDto.joiningDate !== undefined) updateData.joining_date = updateDto.joiningDate;
+          if (updateDto.salary !== undefined) updateData.salary = updateDto.salary;
+          if (updateDto.isActive !== undefined) updateData.is_active = updateDto.isActive;
+
+          // Update role field if roleIds provided
+          if (updateDto.roleIds && updateDto.roleIds.length > 0) {
+            const firstRoleName = roleIdToNameMap.get(updateDto.roleIds[0]) || '';
+            if (firstRoleName) updateData.role = firstRoleName;
+          }
+
+          employeeUpdates.push({ employeeId, updateData });
+
+          if (updateDto.roleIds !== undefined) {
+            employeesNeedingRoleUpdate.push({ employeeId, roleIds: updateDto.roleIds });
+          }
+          if (updateDto.branchIds !== undefined) {
+            employeesNeedingBranchUpdate.push({ employeeId, branchIds: updateDto.branchIds });
+          }
+        }
+
+        // Batch update all employees in parallel
+        const updatePromises = employeeUpdates.map(async ({ employeeId, updateData }) => {
+          const { data: employee, error } = await supabase
+            .from('users')
+            .update(updateData)
+            .eq('id', employeeId)
+            .eq('tenant_id', tenantId)
+            .select('id')
+            .single();
+
+          if (error || !employee) {
+            const { index } = employeeIndexMap.get(employeeId)!;
+            updateErrors.push(`Row ${index + 2}: ${error?.message || 'Failed to update employee'}`);
+            return { success: false, employeeId };
+          }
+          return { success: true, employeeId };
+        });
+
+        const updateResults = await Promise.all(updatePromises);
+        const successfulEmployeeIds = updateResults.filter(r => r.success).map(r => r.employeeId!);
+
+        // Batch delete all old role assignments for employees needing role updates
+        if (employeesNeedingRoleUpdate.length > 0) {
+          const employeeIdsToUpdateRoles = employeesNeedingRoleUpdate.map(e => e.employeeId);
+          await supabase.from('user_roles').delete().in('user_id', employeeIdsToUpdateRoles);
+        }
+
+        // Batch delete all old branch assignments for employees needing branch updates
+        if (employeesNeedingBranchUpdate.length > 0) {
+          const employeeIdsToUpdateBranches = employeesNeedingBranchUpdate.map(e => e.employeeId);
+          await supabase.from('user_branches').delete().in('user_id', employeeIdsToUpdateBranches);
+        }
+
+        // Batch insert all new role assignments
+        const allRoleAssignments: any[] = [];
+        employeesNeedingRoleUpdate.forEach(({ employeeId, roleIds }) => {
+          roleIds.forEach(roleId => {
+            allRoleAssignments.push({
+              user_id: employeeId,
+              role_id: roleId,
+              assigned_by: userId,
+            });
+          });
+        });
+        if (allRoleAssignments.length > 0) {
+          const { error: roleError } = await supabase.from('user_roles').insert(allRoleAssignments);
+          if (roleError) {
+            console.error('Failed to batch assign roles:', roleError);
+          }
+        }
+
+        // Batch insert all new branch assignments
+        const allBranchAssignments: any[] = [];
+        employeesNeedingBranchUpdate.forEach(({ employeeId, branchIds }) => {
+          branchIds.forEach(branchId => {
+            allBranchAssignments.push({
+              user_id: employeeId,
+              branch_id: branchId,
+            });
+          });
+        });
+        if (allBranchAssignments.length > 0) {
+          const { error: branchError } = await supabase.from('user_branches').insert(allBranchAssignments);
+          if (branchError) {
+            console.error('Failed to batch assign branches:', branchError);
+          }
+        }
+
+        // Track successful updates
+        successfulEmployeeIds.forEach(employeeId => {
+          const { index, rowName } = employeeIndexMap.get(employeeId)!;
+          updateProcessed.push({ id: employeeId, name: rowName, index, isUpdate: true });
+        });
+
+        updateSuccess = updateProcessed.length;
+        updateFailed = updateErrors.length;
+
+        return { success: updateSuccess, failed: updateFailed, errors: updateErrors, processed: updateProcessed };
+      })(),
+      // Simple processing for creates - use batch operations
+      (async () => {
+        if (employeesToCreate.length === 0) {
+          return { success: 0, failed: 0, errors: [] as string[], processed: [] as Array<{ id: string; name: string; index: number; isUpdate: boolean }> };
+        }
+
+        let createSuccess = 0;
+        let createFailed = 0;
+        const createErrors: string[] = [];
+        const createProcessed: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+
+        // Batch check all emails upfront (roles already fetched above)
+        const allEmails = employeesToCreate.map(e => e.createDto.email.toLowerCase());
+        const { data: existingEmails } = await supabase
+          .from('users')
+          .select('email')
+          .eq('tenant_id', tenantId)
+          .in('email', allEmails)
+          .is('deleted_at', null);
+        
+        const existingEmailSet = new Set((existingEmails || []).map(e => e.email.toLowerCase()));
+
+        // Prepare batch insert data
+        const employeesToInsert: any[] = [];
+        const employeeIndexMap = new Map<number, { createDto: CreateEmployeeDto; rowName: string }>();
+        
+        for (let i = 0; i < employeesToCreate.length; i++) {
+          const { index, createDto, rowName } = employeesToCreate[i];
+          
+          // Check email existence
+          if (existingEmailSet.has(createDto.email.toLowerCase())) {
+            createErrors.push(`Row ${index + 2}: Email already exists`);
+            continue;
+          }
+
+          // Get first role name
+          const firstRoleName = createDto.roleIds && createDto.roleIds.length > 0
+            ? roleIdToNameMap.get(createDto.roleIds[0]) || ''
+            : '';
+
+          const employeeData: any = {
+            tenant_id: tenantId,
+            email: createDto.email,
+            name: createDto.name,
+            phone: createDto.phone || null,
+            role: firstRoleName,
+            employee_id: createDto.employeeId || `EMP-${Date.now()}-${i}`,
+            photo_url: createDto.photoUrl || null,
+            national_id: createDto.nationalId || null,
+            date_of_birth: createDto.dateOfBirth || null,
+            employment_type: createDto.employmentType || null,
+            joining_date: createDto.joiningDate || new Date().toISOString().split('T')[0],
+            salary: createDto.salary || null,
+            is_active: createDto.isActive !== undefined ? createDto.isActive : true,
+          };
+
+          employeesToInsert.push(employeeData);
+          employeeIndexMap.set(employeesToInsert.length - 1, { createDto, rowName });
+        }
+
+        if (employeesToInsert.length === 0) {
+          return { success: 0, failed: createErrors.length, errors: createErrors, processed: [] };
+        }
+
+        // Batch insert employees
+        const { data: insertedEmployees, error: insertError } = await supabase
+          .from('users')
+          .insert(employeesToInsert)
+          .select('id, email, name');
+
+        if (insertError) {
+          // If batch insert fails, fall back to individual inserts
+          for (const { index, createDto, rowName } of employeesToCreate) {
+            try {
+              const employee = await this.createEmployee(tenantId, userId, createDto, true);
+              createProcessed.push({ id: employee.id, name: rowName, index, isUpdate: false });
+            } catch (error: any) {
+              createErrors.push(`Row ${index + 2}: ${error.message}`);
+            }
+          }
+        } else {
+          // Batch insert succeeded - now batch assign roles and branches
+          const roleAssignments: any[] = [];
+          const branchAssignments: any[] = [];
+          const employeeRoleMap = new Map<string, string[]>(); // employeeId -> roleIds
+          const employeeBranchMap = new Map<string, string[]>(); // employeeId -> branchIds
+
+          insertedEmployees.forEach((employee, idx) => {
+            const mapIndex = Array.from(employeeIndexMap.keys())[idx];
+            const { createDto } = employeeIndexMap.get(mapIndex)!;
+            
+            createProcessed.push({ 
+              id: employee.id, 
+              name: employeeIndexMap.get(mapIndex)!.rowName, 
+              index: employeesToCreate.find(e => e.createDto.email === createDto.email)?.index || 0, 
+              isUpdate: false 
+            });
+
+            // Collect role assignments
+            if (createDto.roleIds && createDto.roleIds.length > 0) {
+              employeeRoleMap.set(employee.id, createDto.roleIds);
+              createDto.roleIds.forEach(roleId => {
+                roleAssignments.push({
+                  user_id: employee.id,
+                  role_id: roleId,
+                  assigned_by: userId,
+                });
+              });
+            }
+
+            // Collect branch assignments
+            if (createDto.branchIds && createDto.branchIds.length > 0) {
+              employeeBranchMap.set(employee.id, createDto.branchIds);
+              createDto.branchIds.forEach(branchId => {
+                branchAssignments.push({
+                  user_id: employee.id,
+                  branch_id: branchId,
+                });
+              });
+            }
+          });
+
+          // Batch insert role assignments
+          if (roleAssignments.length > 0) {
+            const { error: roleError } = await supabase.from('user_roles').insert(roleAssignments);
+            if (roleError) {
+              console.error('Failed to batch assign roles:', roleError);
+            }
+          }
+
+          // Batch insert branch assignments
+          if (branchAssignments.length > 0) {
+            const { error: branchError } = await supabase.from('user_branches').insert(branchAssignments);
+            if (branchError) {
+              console.error('Failed to batch assign branches:', branchError);
+            }
+          }
+        }
+
+        createSuccess = createProcessed.length;
+        createFailed = createErrors.length;
+
+        return { success: createSuccess, failed: createFailed, errors: createErrors, processed: createProcessed };
+      })(),
+    ]) : Promise.all([
+      // Process updates with batching for large batches
+      (async () => {
+        if (employeesToUpdate.length === 0) {
+          return { success: 0, failed: 0, errors: [] as string[], processed: [] as Array<{ id: string; name: string; index: number; isUpdate: boolean }> };
+        }
+
+        let updateSuccess = 0;
+        let updateFailed = 0;
+        const updateErrors: string[] = [];
+        const updateProcessed: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+
+        const UPDATE_BATCH_SIZE = 20;
+        const updateBatches: Array<Array<{ index: number; updateDto: UpdateEmployeeDto; employeeId: string; rowName: string }>> = [];
+        for (let i = 0; i < employeesToUpdate.length; i += UPDATE_BATCH_SIZE) {
+          updateBatches.push(employeesToUpdate.slice(i, i + UPDATE_BATCH_SIZE));
+        }
+
+        // Process all batches in parallel with batch operations (roles already fetched above)
+        const batchResults = await Promise.allSettled(
+          updateBatches.map(async (batch) => {
+            const batchErrors: string[] = [];
+            const batchProcessed: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+            const batchEmployeeIndexMap = new Map<string, { index: number; rowName: string }>();
+
+            // Collect all updates for this batch
+            const employeeUpdates: Array<{ employeeId: string; updateData: any }> = [];
+            const employeesNeedingRoleUpdate: Array<{ employeeId: string; roleIds: string[] }> = [];
+            const employeesNeedingBranchUpdate: Array<{ employeeId: string; branchIds: string[] }> = [];
+
+            for (const { index, updateDto, employeeId, rowName } of batch) {
+              batchEmployeeIndexMap.set(employeeId, { index, rowName });
+
+              // Build update data
+              const updateData: any = {
+                updated_at: new Date().toISOString(),
+              };
+
+              if (updateDto.name !== undefined) updateData.name = updateDto.name;
+              if (updateDto.phone !== undefined) updateData.phone = updateDto.phone;
+              if (updateDto.employeeId !== undefined) updateData.employee_id = updateDto.employeeId;
+              if (updateDto.nationalId !== undefined) updateData.national_id = updateDto.nationalId;
+              if (updateDto.dateOfBirth !== undefined) updateData.date_of_birth = updateDto.dateOfBirth;
+              if (updateDto.employmentType !== undefined) updateData.employment_type = updateDto.employmentType;
+              if (updateDto.joiningDate !== undefined) updateData.joining_date = updateDto.joiningDate;
+              if (updateDto.salary !== undefined) updateData.salary = updateDto.salary;
+              if (updateDto.isActive !== undefined) updateData.is_active = updateDto.isActive;
+
+              // Update role field if roleIds provided
+              if (updateDto.roleIds && updateDto.roleIds.length > 0) {
+                const firstRoleName = roleIdToNameMap.get(updateDto.roleIds[0]) || '';
+                if (firstRoleName) updateData.role = firstRoleName;
+              }
+
+              employeeUpdates.push({ employeeId, updateData });
+
+              if (updateDto.roleIds !== undefined) {
+                employeesNeedingRoleUpdate.push({ employeeId, roleIds: updateDto.roleIds });
+              }
+              if (updateDto.branchIds !== undefined) {
+                employeesNeedingBranchUpdate.push({ employeeId, branchIds: updateDto.branchIds });
+              }
+            }
+
+            // Batch update all employees in this batch
+            const updatePromises = employeeUpdates.map(async ({ employeeId, updateData }) => {
+              const { data: employee, error } = await supabase
+                .from('users')
+                .update(updateData)
+                .eq('id', employeeId)
+                .eq('tenant_id', tenantId)
+                .select('id')
+                .single();
+
+              if (error || !employee) {
+                const { index } = batchEmployeeIndexMap.get(employeeId)!;
+                batchErrors.push(`Row ${index + 2}: ${error?.message || 'Failed to update employee'}`);
+                return { success: false, employeeId };
+              }
+              return { success: true, employeeId };
+            });
+
+            const updateResults = await Promise.all(updatePromises);
+            const successfulEmployeeIds = updateResults.filter(r => r.success).map(r => r.employeeId!);
+
+            // Batch delete old role assignments for this batch
+            if (employeesNeedingRoleUpdate.length > 0) {
+              const employeeIdsToUpdateRoles = employeesNeedingRoleUpdate.map(e => e.employeeId);
+              await supabase.from('user_roles').delete().in('user_id', employeeIdsToUpdateRoles);
+            }
+
+            // Batch delete old branch assignments for this batch
+            if (employeesNeedingBranchUpdate.length > 0) {
+              const employeeIdsToUpdateBranches = employeesNeedingBranchUpdate.map(e => e.employeeId);
+              await supabase.from('user_branches').delete().in('user_id', employeeIdsToUpdateBranches);
+            }
+
+            // Batch insert new role assignments for this batch
+            const batchRoleAssignments: any[] = [];
+            employeesNeedingRoleUpdate.forEach(({ employeeId, roleIds }) => {
+              roleIds.forEach(roleId => {
+                batchRoleAssignments.push({
+                  user_id: employeeId,
+                  role_id: roleId,
+                  assigned_by: userId,
+                });
+              });
+            });
+            if (batchRoleAssignments.length > 0) {
+              const { error: roleError } = await supabase.from('user_roles').insert(batchRoleAssignments);
+              if (roleError) {
+                console.error('Failed to batch assign roles:', roleError);
+              }
+            }
+
+            // Batch insert new branch assignments for this batch
+            const batchBranchAssignments: any[] = [];
+            employeesNeedingBranchUpdate.forEach(({ employeeId, branchIds }) => {
+              branchIds.forEach(branchId => {
+                batchBranchAssignments.push({
+                  user_id: employeeId,
+                  branch_id: branchId,
+                });
+              });
+            });
+            if (batchBranchAssignments.length > 0) {
+              const { error: branchError } = await supabase.from('user_branches').insert(batchBranchAssignments);
+              if (branchError) {
+                console.error('Failed to batch assign branches:', branchError);
+              }
+            }
+
+            // Track successful updates
+            successfulEmployeeIds.forEach(employeeId => {
+              const { index, rowName } = batchEmployeeIndexMap.get(employeeId)!;
+              batchProcessed.push({ id: employeeId, name: rowName, index, isUpdate: true });
+            });
+
+            return { success: batchProcessed.length, failed: batchErrors.length, errors: batchErrors, processed: batchProcessed };
+          })
+        );
+
+        for (const result of batchResults) {
+          if (result.status === 'fulfilled') {
+            updateSuccess += result.value.success;
+            updateFailed += result.value.failed;
+            updateErrors.push(...result.value.errors);
+            updateProcessed.push(...result.value.processed);
+          } else {
+            updateFailed++;
+            updateErrors.push(`Batch processing failed: ${result.reason?.message || 'Unknown error'}`);
+          }
+        }
+
+        return { success: updateSuccess, failed: updateFailed, errors: updateErrors, processed: updateProcessed };
+      })(),
+      // Process creates with batching for large batches
+      (async () => {
+        if (employeesToCreate.length === 0) {
+          return { success: 0, failed: 0, errors: [] as string[], processed: [] as Array<{ id: string; name: string; index: number; isUpdate: boolean }> };
+        }
+
+        let createSuccess = 0;
+        let createFailed = 0;
+        const createErrors: string[] = [];
+        const createProcessed: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+
+        const CREATE_BATCH_SIZE = 20;
+        const createBatches: Array<Array<{ index: number; createDto: CreateEmployeeDto; rowName: string }>> = [];
+        for (let i = 0; i < employeesToCreate.length; i += CREATE_BATCH_SIZE) {
+          createBatches.push(employeesToCreate.slice(i, i + CREATE_BATCH_SIZE));
+        }
+
+        // Batch check all emails upfront (roles already fetched above)
+        const allEmails = employeesToCreate.map(e => e.createDto.email.toLowerCase());
+        const { data: existingEmails } = await supabase
+          .from('users')
+          .select('email')
+          .eq('tenant_id', tenantId)
+          .in('email', allEmails)
+          .is('deleted_at', null);
+        
+        const existingEmailSet = new Set((existingEmails || []).map(e => e.email.toLowerCase()));
+
+        // Process all batches in parallel with batch operations
+        const batchResults = await Promise.allSettled(
+          createBatches.map(async (batch) => {
+            const batchErrors: string[] = [];
+            const batchProcessed: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+
+            // Prepare batch insert data for this batch
+            const employeesToInsert: any[] = [];
+            const batchEmployeeMap = new Map<number, { createDto: CreateEmployeeDto; rowName: string }>();
+            
+            for (const { index, createDto, rowName } of batch) {
+              // Check email existence
+              if (existingEmailSet.has(createDto.email.toLowerCase())) {
+                batchErrors.push(`Row ${index + 2}: Email already exists`);
+                continue;
+              }
+
+              // Get first role name
+              const firstRoleName = createDto.roleIds && createDto.roleIds.length > 0
+                ? roleIdToNameMap.get(createDto.roleIds[0]) || ''
+                : '';
+
+              const employeeData: any = {
+                tenant_id: tenantId,
+                email: createDto.email,
+                name: createDto.name,
+                phone: createDto.phone || null,
+                role: firstRoleName,
+                employee_id: createDto.employeeId || `EMP-${Date.now()}-${index}`,
+                photo_url: createDto.photoUrl || null,
+                national_id: createDto.nationalId || null,
+                date_of_birth: createDto.dateOfBirth || null,
+                employment_type: createDto.employmentType || null,
+                joining_date: createDto.joiningDate || new Date().toISOString().split('T')[0],
+                salary: createDto.salary || null,
+                is_active: createDto.isActive !== undefined ? createDto.isActive : true,
+              };
+
+              employeesToInsert.push(employeeData);
+              batchEmployeeMap.set(employeesToInsert.length - 1, { createDto, rowName });
+            }
+
+            if (employeesToInsert.length === 0) {
+              return { success: 0, failed: batchErrors.length, errors: batchErrors, processed: batchProcessed };
+            }
+
+            // Batch insert employees
+            const { data: insertedEmployees, error: insertError } = await supabase
+              .from('users')
+              .insert(employeesToInsert)
+              .select('id, email, name');
+
+            if (insertError) {
+              // Fall back to individual inserts
+              for (const { index, createDto, rowName } of batch) {
+                try {
+                  const employee = await this.createEmployee(tenantId, userId, createDto, true);
+                  batchProcessed.push({ id: employee.id, name: rowName, index, isUpdate: false });
+                } catch (error: any) {
+                  batchErrors.push(`Row ${index + 2}: ${error.message}`);
+                }
+              }
+            } else {
+              // Batch insert succeeded - batch assign roles and branches
+              const roleAssignments: any[] = [];
+              const branchAssignments: any[] = [];
+
+              insertedEmployees.forEach((employee, idx) => {
+                const mapIndex = Array.from(batchEmployeeMap.keys())[idx];
+                const { createDto, rowName } = batchEmployeeMap.get(mapIndex)!;
+                const originalIndex = batch.find(e => e.createDto.email === createDto.email)?.index || 0;
+                
+                batchProcessed.push({ id: employee.id, name: rowName, index: originalIndex, isUpdate: false });
+
+                // Collect role assignments
+                if (createDto.roleIds && createDto.roleIds.length > 0) {
+                  createDto.roleIds.forEach(roleId => {
+                    roleAssignments.push({
+                      user_id: employee.id,
+                      role_id: roleId,
+                      assigned_by: userId,
+                    });
+                  });
+                }
+
+                // Collect branch assignments
+                if (createDto.branchIds && createDto.branchIds.length > 0) {
+                  createDto.branchIds.forEach(branchId => {
+                    branchAssignments.push({
+                      user_id: employee.id,
+                      branch_id: branchId,
+                    });
+                  });
+                }
+              });
+
+              // Batch insert role assignments
+              if (roleAssignments.length > 0) {
+                const { error: roleError } = await supabase.from('user_roles').insert(roleAssignments);
+                if (roleError) {
+                  console.error('Failed to batch assign roles:', roleError);
+                }
+              }
+
+              // Batch insert branch assignments
+              if (branchAssignments.length > 0) {
+                const { error: branchError } = await supabase.from('user_branches').insert(branchAssignments);
+                if (branchError) {
+                  console.error('Failed to batch assign branches:', branchError);
+                }
+              }
+            }
+
+            return { success: batchProcessed.length, failed: batchErrors.length, errors: batchErrors, processed: batchProcessed };
+          })
+        );
+
+        for (const result of batchResults) {
+          if (result.status === 'fulfilled') {
+            createSuccess += result.value.success;
+            createFailed += result.value.failed;
+            createErrors.push(...result.value.errors);
+            createProcessed.push(...result.value.processed);
+          } else {
+            createFailed++;
+            createErrors.push(`Batch processing failed: ${result.reason?.message || 'Unknown error'}`);
+          }
+        }
+
+        return { success: createSuccess, failed: createFailed, errors: createErrors, processed: createProcessed };
+      })(),
+    ]));
+
+    // Aggregate results
+    success = updateResults.success + createResults.success;
+    failed = updateResults.failed + createResults.failed;
+    errors.push(...updateResults.errors, ...createResults.errors);
+    processedEmployees.push(...updateResults.processed, ...createResults.processed);
 
     // Fire-and-forget: Do translations asynchronously after returning response
     if (processedEmployees.length > 0) {

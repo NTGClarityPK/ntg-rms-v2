@@ -8,6 +8,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { CreateCustomerDto, CreateCustomerAddressDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { GetCustomersDto } from './dto/get-customers.dto';
+import { TimeoutInterceptor } from '../../common/interceptors/timeout.interceptor';
 
 @ApiTags('customers')
 @Controller('customers')
@@ -109,7 +110,7 @@ export class CustomersController {
       },
     },
   })
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file'), new TimeoutInterceptor(600000)) // 10 minutes timeout
   async bulkImportCustomers(
     @CurrentUser() user: any,
     @UploadedFile() file: any,

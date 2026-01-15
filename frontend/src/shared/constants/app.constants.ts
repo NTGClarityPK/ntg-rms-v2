@@ -14,6 +14,7 @@ export const API_TIMEOUT = 30000; // 30 seconds
 export const API_TIMEOUT_CONFIG = {
   DEFAULT: 30000, // 30 seconds
   REFRESH_TOKEN: 60000, // 60 seconds for slow connections
+  BULK_IMPORT: 600000, // 10 minutes for bulk import operations
 } as const;
 
 export const STORAGE_KEYS = {

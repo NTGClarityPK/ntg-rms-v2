@@ -8,6 +8,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { GetEmployeesDto } from './dto/get-employees.dto';
+import { TimeoutInterceptor } from '../../common/interceptors/timeout.interceptor';
 
 @ApiTags('employees')
 @Controller('employees')
@@ -96,7 +97,7 @@ export class EmployeesController {
       },
     },
   })
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file'), new TimeoutInterceptor(600000)) // 10 minutes timeout
   async bulkImportEmployees(
     @CurrentUser() user: any,
     @UploadedFile() file: any,

@@ -11,7 +11,6 @@ import {
   Progress,
   List,
   Group,
-  Title,
   Divider,
 } from '@mantine/core';
 import { IconUpload, IconDownload, IconCheck, IconX, IconAlertCircle, IconInfoCircle } from '@tabler/icons-react';
@@ -144,11 +143,7 @@ export function BulkImportModal({
     <Modal
       opened={opened}
       onClose={handleClose}
-      title={
-        <Title order={4}>
-          {t('bulkImport.title', language, { entity: entityName }) || `Bulk Import ${entityName}`}
-        </Title>
-      }
+      title={t('bulkImport.title', language, { entity: entityName }) || `Bulk Import ${entityName}`}
       size="lg"
     >
       <Stack gap="md">

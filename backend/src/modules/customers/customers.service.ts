@@ -1019,109 +1019,115 @@ export class CustomersService {
 
     const processedCustomers: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
 
-    // Batch update existing customers
-    if (customersToUpdate.length > 0) {
-      // Fetch all existing addresses for customers being updated (batch query)
-      const customerIdsToUpdate = customersToUpdate.map(c => c.customerId);
-      const { data: existingAddresses } = await supabase
-        .from('customer_addresses')
-        .select('id, customer_id')
-        .in('customer_id', customerIdsToUpdate)
-        .eq('is_default', true);
+    // For small batches (< 20), use simpler direct processing to avoid overhead
+    const SMALL_BATCH_THRESHOLD = 20;
+    const totalCustomers = customersToUpdate.length + customersToCreate.length;
+    const useSimpleProcessing = totalCustomers < SMALL_BATCH_THRESHOLD;
 
-      const customerIdToAddressIdMap = new Map<string, string>();
-      (existingAddresses || []).forEach(addr => {
-        customerIdToAddressIdMap.set(addr.customer_id, addr.id);
-      });
+    // Process updates and creates in parallel for maximum performance (or sequentially for small batches)
+    const [updateResults, createResults] = await (useSimpleProcessing ? Promise.all([
+      // Simple processing for small batches
+      (async () => {
+        if (customersToUpdate.length === 0) {
+          return { success: 0, failed: 0, errors: [] as string[], processed: [] as Array<{ id: string; name: string; index: number; isUpdate: boolean }> };
+        }
 
-      // Process updates in parallel (all at once, not in batches)
-      const updatePromises = customersToUpdate.map(async ({ index, row, customerId }) => {
-        try {
-          // Update customer
-          const customerUpdateData: any = {
-            name: row.name,
-            phone: row.phone || null,
-            email: row.email || null,
-            date_of_birth: row.dateOfBirth || null,
-            preferred_language: row.preferredLanguage || 'en',
-            notes: row.notes || null,
-          };
+        // Fetch existing addresses in one query
+        const customerIdsToUpdate = customersToUpdate.map(c => c.customerId);
+        const { data: existingAddresses } = await supabase
+          .from('customer_addresses')
+          .select('id, customer_id')
+          .in('customer_id', customerIdsToUpdate)
+          .eq('is_default', true);
 
-          const { error: updateError } = await supabase
-            .from('customers')
-            .update(customerUpdateData)
-            .eq('id', customerId)
-            .eq('tenant_id', tenantId);
+        const customerIdToAddressIdMap = new Map<string, string>();
+        (existingAddresses || []).forEach(addr => {
+          customerIdToAddressIdMap.set(addr.customer_id, addr.id);
+        });
 
-          if (updateError) {
-            throw new Error(updateError.message);
-          }
+        let updateSuccess = 0;
+        let updateFailed = 0;
+        const updateErrors: string[] = [];
+        const updateProcessed: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
 
-          // Update or create address if provided
-          if (row.address || row.city || row.state || row.country) {
-            const addressData: any = {
-              customer_id: customerId,
-              address: row.address || null,
-              city: row.city || null,
-              state: row.state || null,
-              country: row.country || null,
-              latitude: row.latitude || null,
-              longitude: row.longitude || null,
-              is_default: true,
+        // Process updates directly without batching overhead
+        const updatePromises = customersToUpdate.map(async ({ index, row, customerId }) => {
+          try {
+            // Update customer
+            const customerUpdateData: any = {
+              name: row.name,
+              phone: row.phone || null,
+              email: row.email || null,
+              date_of_birth: row.dateOfBirth || null,
+              preferred_language: row.preferredLanguage || 'en',
+              notes: row.notes || null,
             };
 
-            const existingAddressId = customerIdToAddressIdMap.get(customerId);
-            if (existingAddressId) {
-              const { error: addrError } = await supabase
-                .from('customer_addresses')
-                .update(addressData)
-                .eq('id', existingAddressId);
-              if (addrError) throw new Error(`Address update failed: ${addrError.message}`);
-            } else {
-              const { error: addrError } = await supabase
-                .from('customer_addresses')
-                .insert(addressData);
-              if (addrError) throw new Error(`Address insert failed: ${addrError.message}`);
+            const { error: updateError } = await supabase
+              .from('customers')
+              .update(customerUpdateData)
+              .eq('id', customerId)
+              .eq('tenant_id', tenantId);
+
+            if (updateError) {
+              throw new Error(updateError.message);
             }
+
+            // Handle address if provided
+            if (row.address || row.city || row.state || row.country) {
+              const addressData: any = {
+                customer_id: customerId,
+                address: row.address || null,
+                city: row.city || null,
+                state: row.state || null,
+                country: row.country || null,
+                latitude: row.latitude || null,
+                longitude: row.longitude || null,
+                is_default: true,
+              };
+
+              const existingAddressId = customerIdToAddressIdMap.get(customerId);
+              if (existingAddressId) {
+                const { error: addrError } = await supabase
+                  .from('customer_addresses')
+                  .update(addressData)
+                  .eq('id', existingAddressId);
+                if (addrError) throw new Error(`Address update failed: ${addrError.message}`);
+              } else {
+                const { error: addrError } = await supabase
+                  .from('customer_addresses')
+                  .insert(addressData);
+                if (addrError) throw new Error(`Address insert failed: ${addrError.message}`);
+              }
+            }
+
+            updateProcessed.push({ id: customerId, name: row.name, index, isUpdate: true });
+            return { success: true };
+          } catch (error: any) {
+            updateErrors.push(`Row ${index + 2}: ${error.message}`);
+            return { success: false };
           }
+        });
 
-          return { success: true, index, customerId, name: row.name, isUpdate: true };
-        } catch (error: any) {
-          return { success: false, index, error: error.message };
+        const results = await Promise.all(updatePromises);
+        updateSuccess = results.filter(r => r.success).length;
+        updateFailed = results.filter(r => !r.success).length;
+
+        return { success: updateSuccess, failed: updateFailed, errors: updateErrors, processed: updateProcessed };
+      })(),
+      // Simple processing for creates
+      (async () => {
+        if (customersToCreate.length === 0) {
+          return { success: 0, failed: 0, errors: [] as string[], processed: [] as Array<{ id: string; name: string; index: number; isUpdate: boolean }> };
         }
-      });
 
-      const updateResults = await Promise.allSettled(updatePromises);
-      for (const result of updateResults) {
-        if (result.status === 'fulfilled' && result.value.success) {
-          success++;
-          processedCustomers.push({
-            id: result.value.customerId,
-            name: result.value.name,
-            index: result.value.index,
-            isUpdate: true,
-          });
-        } else {
-          failed++;
-          const errorMsg = result.status === 'fulfilled' 
-            ? result.value.error 
-            : result.reason?.message || 'Unknown error';
-          const index = result.status === 'fulfilled' 
-            ? result.value.index 
-            : customersToUpdate[0].index;
-          errors.push(`Row ${index + 2}: ${errorMsg}`);
-        }
-      }
-    }
+        let createSuccess = 0;
+        let createFailed = 0;
+        const createErrors: string[] = [];
+        const createProcessed: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
 
-    // Batch create new customers
-    if (customersToCreate.length > 0) {
-      const CREATE_BATCH_SIZE = 50;
-      for (let i = 0; i < customersToCreate.length; i += CREATE_BATCH_SIZE) {
-        const batch = customersToCreate.slice(i, i + CREATE_BATCH_SIZE);
-        
         // Prepare batch insert data
-        const customersToInsert = batch.map(({ row }) => {
+        const customersToInsert = customersToCreate.map(({ row }) => {
           const customerData: any = {
             tenant_id: tenantId,
             name: row.name,
@@ -1147,7 +1153,7 @@ export class CustomersService {
 
         if (insertError) {
           // If batch insert fails, try individual inserts
-          for (const { index, row } of batch) {
+          for (const { index, row } of customersToCreate) {
             try {
               const customerData: any = {
                 tenant_id: tenantId,
@@ -1189,26 +1195,18 @@ export class CustomersService {
                 await supabase.from('customer_addresses').insert(addressData);
               }
 
-              success++;
-              processedCustomers.push({
-                id: customer.id,
-                name: customer.name,
-                index,
-                isUpdate: false,
-              });
+              createProcessed.push({ id: customer.id, name: customer.name, index, isUpdate: false });
             } catch (error: any) {
-              failed++;
-              errors.push(`Row ${index + 2}: ${error.message}`);
+              createErrors.push(`Row ${index + 2}: ${error.message}`);
             }
           }
         } else {
           // Batch insert succeeded, now insert addresses
           const addressesToInsert: any[] = [];
-          const customerMap = new Map<string, { id: string; name: string; index: number }>();
           
           insertedCustomers.forEach((customer, idx) => {
-            const { index, row } = batch[idx];
-            customerMap.set(customer.id, { id: customer.id, name: customer.name, index });
+            const { index, row } = customersToCreate[idx];
+            createProcessed.push({ id: customer.id, name: customer.name, index, isUpdate: false });
             
             if (row.address || row.city || row.state || row.country) {
               addressesToInsert.push({
@@ -1228,15 +1226,508 @@ export class CustomersService {
           if (addressesToInsert.length > 0) {
             await supabase.from('customer_addresses').insert(addressesToInsert);
           }
-
-          // Track successful creations
-          customerMap.forEach(({ id, name, index }) => {
-            success++;
-            processedCustomers.push({ id, name, index, isUpdate: false });
-          });
         }
-      }
-    }
+
+        createSuccess = createProcessed.length;
+        createFailed = createErrors.length;
+
+        return { success: createSuccess, failed: createFailed, errors: createErrors, processed: createProcessed };
+      })(),
+    ]) : Promise.all([
+      // Process updates
+      (async () => {
+        if (customersToUpdate.length === 0) {
+          return { success: 0, failed: 0, errors: [] as string[], processed: [] as Array<{ id: string; name: string; index: number; isUpdate: boolean }> };
+        }
+
+        // Fetch all existing addresses for customers being updated (batch query)
+        const customerIdsToUpdate = customersToUpdate.map(c => c.customerId);
+        const { data: existingAddresses } = await supabase
+          .from('customer_addresses')
+          .select('id, customer_id')
+          .in('customer_id', customerIdsToUpdate)
+          .eq('is_default', true);
+
+        const customerIdToAddressIdMap = new Map<string, string>();
+        (existingAddresses || []).forEach(addr => {
+          customerIdToAddressIdMap.set(addr.customer_id, addr.id);
+        });
+
+        let updateSuccess = 0;
+        let updateFailed = 0;
+        const updateErrors: string[] = [];
+        const updateProcessed: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+
+        // Prepare batch update data - process batches in parallel
+        const UPDATE_BATCH_SIZE = 50; // Smaller batches for better parallelization
+        const updateBatches: Array<Array<{ index: number; row: any; customerId: string }>> = [];
+        for (let i = 0; i < customersToUpdate.length; i += UPDATE_BATCH_SIZE) {
+          updateBatches.push(customersToUpdate.slice(i, i + UPDATE_BATCH_SIZE));
+        }
+
+        // Process all batches in parallel
+        const batchResults = await Promise.allSettled(
+          updateBatches.map(async (batch) => {
+            const batchErrors: string[] = [];
+            const batchProcessed: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+            
+            // Separate customers with and without addresses
+            const customersWithAddresses: Array<{ index: number; row: any; customerId: string }> = [];
+            const customersWithoutAddresses: Array<{ index: number; row: any; customerId: string }> = [];
+            
+            batch.forEach(({ index, row, customerId }) => {
+              if (row.address || row.city || row.state || row.country) {
+                customersWithAddresses.push({ index, row, customerId });
+              } else {
+                customersWithoutAddresses.push({ index, row, customerId });
+              }
+            });
+
+            // Batch update customers without addresses
+            if (customersWithoutAddresses.length > 0) {
+              // Note: Supabase doesn't support batch updates with different values per row
+              // So we still need to do individual updates, but we can parallelize them
+              const updatePromises = customersWithoutAddresses.map(async ({ index, row, customerId }) => {
+                try {
+                  const customerUpdateData: any = {
+                    name: row.name,
+                    phone: row.phone || null,
+                    email: row.email || null,
+                    date_of_birth: row.dateOfBirth || null,
+                    preferred_language: row.preferredLanguage || 'en',
+                    notes: row.notes || null,
+                  };
+
+                  const { error: updateError } = await supabase
+                    .from('customers')
+                    .update(customerUpdateData)
+                    .eq('id', customerId)
+                    .eq('tenant_id', tenantId);
+
+                  if (updateError) {
+                    throw new Error(updateError.message);
+                  }
+
+                  return { success: true, index, customerId, name: row.name, isUpdate: true };
+                } catch (error: any) {
+                  return { success: false, index, error: error.message };
+                }
+              });
+
+              const updateResults = await Promise.allSettled(updatePromises);
+              for (const result of updateResults) {
+                if (result.status === 'fulfilled' && result.value.success) {
+                  batchProcessed.push({
+                    id: result.value.customerId,
+                    name: result.value.name,
+                    index: result.value.index,
+                    isUpdate: true,
+                  });
+                } else {
+                  const errorMsg = result.status === 'fulfilled' 
+                    ? result.value.error 
+                    : result.reason?.message || 'Unknown error';
+                  const index = result.status === 'fulfilled' 
+                    ? result.value.index 
+                    : customersWithoutAddresses[0].index;
+                  batchErrors.push(`Row ${index + 2}: ${errorMsg}`);
+                }
+              }
+            }
+
+            // Process customers with addresses (update customer + address)
+            if (customersWithAddresses.length > 0) {
+              // Update customers in parallel
+              const customerUpdatePromises = customersWithAddresses.map(async ({ index, row, customerId }) => {
+                try {
+                  const customerUpdateData: any = {
+                    name: row.name,
+                    phone: row.phone || null,
+                    email: row.email || null,
+                    date_of_birth: row.dateOfBirth || null,
+                    preferred_language: row.preferredLanguage || 'en',
+                    notes: row.notes || null,
+                  };
+
+                  const { error: updateError } = await supabase
+                    .from('customers')
+                    .update(customerUpdateData)
+                    .eq('id', customerId)
+                    .eq('tenant_id', tenantId);
+
+                  if (updateError) {
+                    throw new Error(updateError.message);
+                  }
+
+                  return { success: true, index, customerId, name: row.name, row };
+                } catch (error: any) {
+                  return { success: false, index, error: error.message };
+                }
+              });
+
+              const customerUpdateResults = await Promise.allSettled(customerUpdatePromises);
+              
+              // Separate successful and failed updates
+              const successfulUpdates: Array<{ index: number; customerId: string; name: string; row: any }> = [];
+
+              for (const result of customerUpdateResults) {
+                if (result.status === 'fulfilled' && result.value.success) {
+                  successfulUpdates.push({
+                    index: result.value.index,
+                    customerId: result.value.customerId,
+                    name: result.value.name,
+                    row: result.value.row,
+                  });
+                } else {
+                  const errorMsg = result.status === 'fulfilled' 
+                    ? result.value.error 
+                    : result.reason?.message || 'Unknown error';
+                  const index = result.status === 'fulfilled' 
+                    ? result.value.index 
+                    : customersWithAddresses[0].index;
+                  batchErrors.push(`Row ${index + 2}: ${errorMsg}`);
+                }
+              }
+
+              // Batch process addresses: separate updates and inserts
+              const addressesToUpdate: Array<{ id: string; customerId: string; index: number; name: string; data: any }> = [];
+              const addressesToInsert: Array<{ customerId: string; index: number; name: string; data: any }> = [];
+
+              successfulUpdates.forEach(({ customerId, row, index, name }) => {
+                const addressData: any = {
+                  customer_id: customerId,
+                  address: row.address || null,
+                  city: row.city || null,
+                  state: row.state || null,
+                  country: row.country || null,
+                  latitude: row.latitude || null,
+                  longitude: row.longitude || null,
+                  is_default: true,
+                };
+
+                const existingAddressId = customerIdToAddressIdMap.get(customerId);
+                if (existingAddressId) {
+                  addressesToUpdate.push({
+                    id: existingAddressId,
+                    customerId,
+                    index,
+                    name,
+                    data: addressData,
+                  });
+                } else {
+                  addressesToInsert.push({
+                    customerId,
+                    index,
+                    name,
+                    data: addressData,
+                  });
+                }
+              });
+
+              // Track which customers succeeded (start with all, remove on failure)
+              const successfulCustomerMap = new Map<string, { index: number; name: string }>();
+              successfulUpdates.forEach(({ customerId, index, name }) => {
+                successfulCustomerMap.set(customerId, { index, name });
+              });
+
+              // Batch update existing addresses
+              if (addressesToUpdate.length > 0) {
+                const updatePromises = addressesToUpdate.map(async ({ id, customerId, data }) => {
+                  const { error } = await supabase
+                    .from('customer_addresses')
+                    .update(data)
+                    .eq('id', id);
+                  return { customerId, error };
+                });
+
+                const addressUpdateResults = await Promise.allSettled(updatePromises);
+                for (const result of addressUpdateResults) {
+                  if (result.status === 'rejected' || (result.status === 'fulfilled' && result.value.error)) {
+                    const customerId = result.status === 'fulfilled' 
+                      ? result.value.customerId
+                      : addressesToUpdate[0].customerId;
+                    const customerInfo = successfulCustomerMap.get(customerId);
+                    if (customerInfo) {
+                      successfulCustomerMap.delete(customerId);
+                      batchErrors.push(`Row ${customerInfo.index + 2}: Address update failed`);
+                    }
+                  }
+                }
+              }
+
+              // Batch insert new addresses
+              if (addressesToInsert.length > 0) {
+                const addressesData = addressesToInsert.map(({ data }) => data);
+                const { error: insertError } = await supabase
+                  .from('customer_addresses')
+                  .insert(addressesData);
+
+                if (insertError) {
+                  // If batch insert fails, mark all as failed
+                  addressesToInsert.forEach(({ customerId, index }) => {
+                    successfulCustomerMap.delete(customerId);
+                    batchErrors.push(`Row ${index + 2}: Address insert failed: ${insertError.message}`);
+                  });
+                }
+              }
+
+              // Track successful customer updates (only those that passed all operations)
+              successfulCustomerMap.forEach(({ index, name }, customerId) => {
+                batchProcessed.push({
+                  id: customerId,
+                  name,
+                  index,
+                  isUpdate: true,
+                });
+              });
+            }
+
+            return { success: batchProcessed.length, failed: batchErrors.length, errors: batchErrors, processed: batchProcessed };
+          })
+        );
+
+        // Aggregate results from all batches
+        for (const result of batchResults) {
+          if (result.status === 'fulfilled') {
+            updateSuccess += result.value.success;
+            updateFailed += result.value.failed;
+            updateErrors.push(...result.value.errors);
+            updateProcessed.push(...result.value.processed);
+          } else {
+            updateFailed++;
+            updateErrors.push(`Batch processing failed: ${result.reason?.message || 'Unknown error'}`);
+          }
+        }
+
+        return { success: updateSuccess, failed: updateFailed, errors: updateErrors, processed: updateProcessed };
+      })(),
+      // Process creates
+      (async () => {
+        if (customersToCreate.length === 0) {
+          return { success: 0, failed: 0, errors: [] as string[], processed: [] as Array<{ id: string; name: string; index: number; isUpdate: boolean }> };
+        }
+
+        let createSuccess = 0;
+        let createFailed = 0;
+        const createErrors: string[] = [];
+        const createProcessed: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+
+        const CREATE_BATCH_SIZE = 50;
+        const createBatches: Array<Array<{ index: number; row: any }>> = [];
+        for (let i = 0; i < customersToCreate.length; i += CREATE_BATCH_SIZE) {
+          createBatches.push(customersToCreate.slice(i, i + CREATE_BATCH_SIZE));
+        }
+
+        // Process all create batches in parallel
+        const createBatchResults = await Promise.allSettled(
+          createBatches.map(async (batch) => {
+            const batchErrors: string[] = [];
+            const batchProcessed: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+            
+            // Prepare batch insert data
+            const customersToInsert = batch.map(({ row }) => {
+              const customerData: any = {
+                tenant_id: tenantId,
+                name: row.name,
+                phone: row.phone,
+                email: row.email || null,
+                date_of_birth: row.dateOfBirth || null,
+                preferred_language: row.preferredLanguage || 'en',
+                notes: row.notes || null,
+              };
+              
+              if (branchId) {
+                customerData.branch_id = branchId;
+              }
+              
+              return customerData;
+            });
+
+            // Batch insert customers
+            const { data: insertedCustomers, error: insertError } = await supabase
+              .from('customers')
+              .insert(customersToInsert)
+              .select('id, name');
+
+            if (insertError) {
+              // If batch insert fails, try smaller batches first (10 at a time), then individual inserts
+              const SMALL_BATCH_SIZE = 10;
+              let remainingBatch = [...batch];
+              
+              // Try smaller batches first
+              for (let j = 0; j < remainingBatch.length; j += SMALL_BATCH_SIZE) {
+                const smallBatch = remainingBatch.slice(j, j + SMALL_BATCH_SIZE);
+                const smallBatchData = smallBatch.map(({ row }) => {
+                  const customerData: any = {
+                    tenant_id: tenantId,
+                    name: row.name,
+                    phone: row.phone,
+                    email: row.email || null,
+                    date_of_birth: row.dateOfBirth || null,
+                    preferred_language: row.preferredLanguage || 'en',
+                    notes: row.notes || null,
+                  };
+                  
+                  if (branchId) {
+                    customerData.branch_id = branchId;
+                  }
+                  
+                  return customerData;
+                });
+
+                const { data: smallBatchCustomers, error: smallBatchError } = await supabase
+                  .from('customers')
+                  .insert(smallBatchData)
+                  .select('id, name');
+
+                if (smallBatchError) {
+                  // Small batch failed, try individual inserts for this small batch
+                  for (const { index, row } of smallBatch) {
+                    try {
+                      const customerData: any = {
+                        tenant_id: tenantId,
+                        name: row.name,
+                        phone: row.phone,
+                        email: row.email || null,
+                        date_of_birth: row.dateOfBirth || null,
+                        preferred_language: row.preferredLanguage || 'en',
+                        notes: row.notes || null,
+                      };
+                      
+                      if (branchId) {
+                        customerData.branch_id = branchId;
+                      }
+
+                      const { data: customer, error: singleError } = await supabase
+                        .from('customers')
+                        .insert(customerData)
+                        .select('id, name')
+                        .single();
+
+                      if (singleError) {
+                        throw new Error(singleError.message);
+                      }
+
+                      // Insert address if provided
+                      if (customer && (row.address || row.city || row.state || row.country)) {
+                        const addressData: any = {
+                          customer_id: customer.id,
+                          address: row.address || null,
+                          city: row.city || null,
+                          state: row.state || null,
+                          country: row.country || null,
+                          latitude: row.latitude || null,
+                          longitude: row.longitude || null,
+                          is_default: true,
+                        };
+
+                        await supabase.from('customer_addresses').insert(addressData);
+                      }
+
+                      batchProcessed.push({
+                        id: customer.id,
+                        name: customer.name,
+                        index,
+                        isUpdate: false,
+                      });
+                    } catch (error: any) {
+                      batchErrors.push(`Row ${index + 2}: ${error.message}`);
+                    }
+                  }
+                } else {
+                  // Small batch succeeded, process addresses
+                  const addressesToInsert: any[] = [];
+                  const customerMap = new Map<string, { id: string; name: string; index: number }>();
+                  
+                  smallBatchCustomers.forEach((customer, idx) => {
+                    const { index, row } = smallBatch[idx];
+                    customerMap.set(customer.id, { id: customer.id, name: customer.name, index });
+                    
+                    if (row.address || row.city || row.state || row.country) {
+                      addressesToInsert.push({
+                        customer_id: customer.id,
+                        address: row.address || null,
+                        city: row.city || null,
+                        state: row.state || null,
+                        country: row.country || null,
+                        latitude: row.latitude || null,
+                        longitude: row.longitude || null,
+                        is_default: true,
+                      });
+                    }
+                  });
+
+                  // Batch insert addresses if any
+                  if (addressesToInsert.length > 0) {
+                    await supabase.from('customer_addresses').insert(addressesToInsert);
+                  }
+
+                  // Track successful creations
+                  customerMap.forEach(({ id, name, index }) => {
+                    batchProcessed.push({ id, name, index, isUpdate: false });
+                  });
+                }
+              }
+            } else {
+              // Batch insert succeeded, now insert addresses
+              const addressesToInsert: any[] = [];
+              const customerMap = new Map<string, { id: string; name: string; index: number }>();
+              
+              insertedCustomers.forEach((customer, idx) => {
+                const { index, row } = batch[idx];
+                customerMap.set(customer.id, { id: customer.id, name: customer.name, index });
+                
+                if (row.address || row.city || row.state || row.country) {
+                  addressesToInsert.push({
+                    customer_id: customer.id,
+                    address: row.address || null,
+                    city: row.city || null,
+                    state: row.state || null,
+                    country: row.country || null,
+                    latitude: row.latitude || null,
+                    longitude: row.longitude || null,
+                    is_default: true,
+                  });
+                }
+              });
+
+              // Batch insert addresses if any
+              if (addressesToInsert.length > 0) {
+                await supabase.from('customer_addresses').insert(addressesToInsert);
+              }
+
+              // Track successful creations
+              customerMap.forEach(({ id, name, index }) => {
+                batchProcessed.push({ id, name, index, isUpdate: false });
+              });
+            }
+
+            return { success: batchProcessed.length, failed: batchErrors.length, errors: batchErrors, processed: batchProcessed };
+          })
+        );
+
+        // Aggregate results from all batches
+        for (const result of createBatchResults) {
+          if (result.status === 'fulfilled') {
+            createSuccess += result.value.success;
+            createFailed += result.value.failed;
+            createErrors.push(...result.value.errors);
+            createProcessed.push(...result.value.processed);
+          } else {
+            createFailed++;
+            createErrors.push(`Batch processing failed: ${result.reason?.message || 'Unknown error'}`);
+          }
+        }
+
+        return { success: createSuccess, failed: createFailed, errors: createErrors, processed: createProcessed };
+      })(),
+    ]));
+
+    // Aggregate results
+    success = updateResults.success + createResults.success;
+    failed = updateResults.failed + createResults.failed;
+    errors.push(...updateResults.errors, ...createResults.errors);
+    processedCustomers.push(...updateResults.processed, ...createResults.processed);
 
     // Return response immediately - translations will happen in background
     const response = { success, failed, errors };

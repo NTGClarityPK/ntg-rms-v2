@@ -20,6 +20,7 @@ import { MenuService } from './menu.service';
 import { StorageService } from './utils/storage.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { TimeoutInterceptor } from '../../common/interceptors/timeout.interceptor';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateFoodItemDto } from './dto/create-food-item.dto';
@@ -718,7 +719,7 @@ export class MenuController {
       },
     },
   })
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file'), new TimeoutInterceptor(600000)) // 10 minutes timeout
   async bulkImportCategories(
     @CurrentUser() user: any,
     @UploadedFile() file: any,
@@ -744,7 +745,7 @@ export class MenuController {
       },
     },
   })
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file'), new TimeoutInterceptor(600000)) // 10 minutes timeout
   async bulkImportAddOnGroups(
     @CurrentUser() user: any,
     @UploadedFile() file: any,
@@ -770,7 +771,7 @@ export class MenuController {
       },
     },
   })
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file'), new TimeoutInterceptor(600000)) // 10 minutes timeout
   async bulkImportAddOns(
     @CurrentUser() user: any,
     @UploadedFile() file: any,
@@ -795,7 +796,7 @@ export class MenuController {
       },
     },
   })
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file'), new TimeoutInterceptor(600000)) // 10 minutes timeout
   async bulkImportAddOnGroupsAndAddOns(
     @CurrentUser() user: any,
     @UploadedFile() file: any,
@@ -821,7 +822,7 @@ export class MenuController {
       },
     },
   })
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file'), new TimeoutInterceptor(600000)) // 10 minutes timeout
   async bulkImportVariations(
     @CurrentUser() user: any,
     @UploadedFile() file: any,
@@ -846,7 +847,7 @@ export class MenuController {
       },
     },
   })
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file'), new TimeoutInterceptor(600000)) // 10 minutes timeout
   async bulkImportVariationGroupsAndVariations(
     @CurrentUser() user: any,
     @UploadedFile() file: any,
@@ -872,7 +873,7 @@ export class MenuController {
       },
     },
   })
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file'), new TimeoutInterceptor(600000)) // 10 minutes timeout
   async bulkImportFoodItems(
     @CurrentUser() user: any,
     @UploadedFile() file: any,
@@ -898,7 +899,7 @@ export class MenuController {
       },
     },
   })
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file'), new TimeoutInterceptor(600000)) // 10 minutes timeout
   async bulkImportMenus(
     @CurrentUser() user: any,
     @UploadedFile() file: any,
@@ -924,7 +925,7 @@ export class MenuController {
       },
     },
   })
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file'), new TimeoutInterceptor(600000)) // 10 minutes timeout
   async bulkImportBuffets(
     @CurrentUser() user: any,
     @UploadedFile() file: any,
@@ -950,7 +951,7 @@ export class MenuController {
       },
     },
   })
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file'), new TimeoutInterceptor(600000)) // 10 minutes timeout
   async bulkImportComboMeals(
     @CurrentUser() user: any,
     @UploadedFile() file: any,
