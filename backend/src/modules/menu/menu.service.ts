@@ -6193,6 +6193,12 @@ export class MenuService {
     fileBuffer: Buffer,
     branchId?: string,
   ): Promise<{ success: number; failed: number; errors: string[]; groupsCreated: number; groupsUpdated: number; addOnsCreated: number; addOnsUpdated: number }> {
+    // Validate and store tenantId as const to prevent modification
+    if (!tenantId || typeof tenantId !== 'string' || tenantId.trim() === '') {
+      throw new BadRequestException('tenantId is required and must be a non-empty string');
+    }
+    const validatedTenantId = tenantId.trim();
+
     const config = {
       entityType: 'addOnGroupAndAddOn',
       fields: this.getBulkImportFields('addOnGroupAndAddOn'),
@@ -6206,7 +6212,7 @@ export class MenuService {
     let groupQuery = supabase
       .from('add_on_groups')
       .select('id, name')
-      .eq('tenant_id', tenantId)
+      .eq('tenant_id', validatedTenantId)
       .is('deleted_at', null);
     
     if (branchId) {
@@ -6223,7 +6229,7 @@ export class MenuService {
     const { data: allAddOns } = await supabase
       .from('add_ons')
       .select('id, name, add_on_group_id')
-      .eq('tenant_id', tenantId)
+      .eq('tenant_id', validatedTenantId)
       .is('deleted_at', null);
     
     const addOnKeyToIdMap = new Map<string, string>(); // key: "groupId|||name" -> addOnId
@@ -6293,7 +6299,7 @@ export class MenuService {
       rows,
       'addOnGroupAndAddOn',
       ['addOnGroupName', 'addOnName'],
-      tenantId,
+      validatedTenantId,
     );
 
     for (let i = 0; i < rows.length; i++) {
@@ -6425,8 +6431,8 @@ export class MenuService {
             addOnsToUpdate.push({
               id: existingAddOnId,
               rowIndex: i,
-              name: addOnName,
-              price: row.addOnPrice || 0,
+                name: addOnName,
+                price: row.addOnPrice || 0,
               isActive: isActiveValue,
               displayOrder: row.addOnDisplayOrder || 0,
             });
@@ -6461,7 +6467,7 @@ export class MenuService {
           const minSelections = g.selectionType === 'single' && g.isRequired ? 1 : (g.minSelections ?? 0);
           
           const data: any = {
-            tenant_id: tenantId,
+            tenant_id: validatedTenantId,
             name: g.name,
             selection_type: g.selectionType,
             is_required: g.isRequired,
@@ -6482,7 +6488,7 @@ export class MenuService {
         const { data: createdGroups, error: createError } = await supabase
           .from('add_on_groups')
           .insert(groupCreateData)
-          .select('id, name');
+          .select('id, name, tenant_id');
 
         if (createError) {
           throw new Error(`Failed to batch create groups: ${createError.message}`);
@@ -6521,7 +6527,7 @@ export class MenuService {
           .from('add_on_groups')
           .select('id, selection_type, is_required')
           .in('id', groupIdsToUpdate)
-          .eq('tenant_id', tenantId);
+          .eq('tenant_id', validatedTenantId);
 
         const currentGroupsMap = new Map(
           (currentGroups || []).map(g => [g.id, g])
@@ -6545,7 +6551,7 @@ export class MenuService {
             if (g.selectionType === 'single') {
               updateData.max_selections = 1;
               updateData.min_selections = isRequired ? 1 : 0;
-            } else {
+          } else {
               if (g.minSelections !== undefined) updateData.min_selections = g.minSelections;
               if (g.maxSelections !== undefined) updateData.max_selections = g.maxSelections;
             }
@@ -6572,7 +6578,7 @@ export class MenuService {
             .from('add_on_groups')
             .update(updateData)
             .eq('id', g.id)
-            .eq('tenant_id', tenantId);
+            .eq('tenant_id', validatedTenantId);
 
           if (error) {
             throw new Error(`Failed to update group ${g.id}: ${error.message}`);
@@ -6615,17 +6621,104 @@ export class MenuService {
         }
 
         if (validAddOnsToCreate.length > 0) {
-          const addOnCreateData = validAddOnsToCreate.map(a => ({
-            tenant_id: tenantId,
-            add_on_group_id: a.groupId,
-            name: a.name,
-            price: a.price,
-            is_active: a.isActive,
-            display_order: a.displayOrder,
-          }));
+          // Fetch tenant_id from groups to verify
+          const groupIds = [...new Set(validAddOnsToCreate.map(a => a.groupId))];
+          const { data: groups, error: groupsError } = await supabase
+            .from('add_on_groups')
+            .select('id, tenant_id')
+            .in('id', groupIds);
+
+          if (groupsError) {
+            throw new Error(`Failed to fetch groups for tenant_id verification: ${groupsError.message}`);
+          }
+
+          const groupTenantMap = new Map(
+            (groups || []).map(g => [g.id, g.tenant_id])
+          );
+
+          // Verify all groups have tenant_id set and it matches validatedTenantId
+          for (const groupId of groupIds) {
+            const groupTenantId = groupTenantMap.get(groupId);
+            if (!groupTenantId) {
+              throw new Error(`Group ${groupId} does not have tenant_id set`);
+            }
+            // Verify tenant_id matches the validated parameter
+            if (groupTenantId !== validatedTenantId) {
+              console.warn(`Warning: Group ${groupId} has tenant_id ${groupTenantId} but expected ${validatedTenantId}`);
+            }
+          }
+
+          // Explicitly verify validatedTenantId is still valid before creating add-ons
+          if (!validatedTenantId || typeof validatedTenantId !== 'string' || validatedTenantId.trim() === '') {
+            console.error('ERROR: validatedTenantId is invalid:', validatedTenantId);
+            throw new Error(`Invalid validatedTenantId when creating add-ons: ${validatedTenantId}`);
+          }
+
+          // Store validatedTenantId in a local const to ensure it's captured correctly
+          const tenantIdForInsert = validatedTenantId;
+          
+          if (!tenantIdForInsert || typeof tenantIdForInsert !== 'string' || tenantIdForInsert.trim() === '') {
+            throw new Error(`tenantIdForInsert is invalid: ${tenantIdForInsert}`);
+          }
+
+          const addOnCreateData = validAddOnsToCreate.map(a => {
+            const groupTenantId = groupTenantMap.get(a.groupId);
+            
+            // Verify group has tenant_id set (should match validatedTenantId)
+            if (!groupTenantId) {
+              throw new Error(`Group ${a.groupId} does not have tenant_id set`);
+            }
+            
+            if (groupTenantId !== tenantIdForInsert) {
+              console.warn(`Warning: Group ${a.groupId} tenant_id (${groupTenantId}) doesn't match tenantIdForInsert (${tenantIdForInsert})`);
+            }
+            
+            // Explicitly create object with tenant_id set - no conditional logic
+            const addOnData: {
+              tenant_id: string;
+              add_on_group_id: string;
+              name: string;
+              price: number;
+              is_active: boolean;
+              display_order: number;
+            } = {
+              tenant_id: tenantIdForInsert,
+              add_on_group_id: a.groupId,
+              name: a.name,
+              price: a.price,
+              is_active: a.isActive,
+              display_order: a.displayOrder,
+            };
+            
+            // Final check before returning
+            if (!addOnData.tenant_id) {
+              throw new Error(`Failed to set tenant_id for add-on "${a.name}". tenantIdForInsert: ${tenantIdForInsert}`);
+            }
+            
+            return addOnData;
+          });
+
+          // Final validation: ensure all add-ons have tenant_id set
+          const missingTenantId = addOnCreateData.find(a => !a.tenant_id || a.tenant_id === null || a.tenant_id === undefined || a.tenant_id === '');
+          if (missingTenantId) {
+            console.error('ERROR: Add-on data missing tenant_id:', JSON.stringify(missingTenantId, null, 2));
+            console.error('tenantIdForInsert:', tenantIdForInsert);
+            console.error('validatedTenantId:', validatedTenantId);
+            console.error('Type of tenantIdForInsert:', typeof tenantIdForInsert);
+            console.error('All add-on data:', JSON.stringify(addOnCreateData, null, 2));
+            throw new Error(`Add-on data missing tenant_id. tenantIdForInsert: ${tenantIdForInsert}, validatedTenantId: ${validatedTenantId}`);
+          }
+
+          // Log first item for debugging
+          if (addOnCreateData.length > 0) {
+            console.log('Creating add-ons with tenant_id:', tenantIdForInsert);
+            console.log('First add-on data:', JSON.stringify(addOnCreateData[0], null, 2));
+            console.log('First add-on tenant_id value:', addOnCreateData[0].tenant_id);
+            console.log('First add-on tenant_id type:', typeof addOnCreateData[0].tenant_id);
+          }
 
           const { data: createdAddOns, error: createError } = await supabase
-            .from('add_ons')
+              .from('add_ons')
             .insert(addOnCreateData)
             .select('id, name');
 
@@ -6664,7 +6757,7 @@ export class MenuService {
               display_order: a.displayOrder,
             })
             .eq('id', a.id)
-            .eq('tenant_id', tenantId);
+            .eq('tenant_id', validatedTenantId);
 
           if (error) {
             throw new Error(`Failed to update add-on ${a.id}: ${error.message}`);
@@ -6709,13 +6802,13 @@ export class MenuService {
               entityId,
               fields,
               translationsMap,
-              undefined,
-              tenantId,
-              'en',
+            undefined,
+            validatedTenantId,
+            'en',
             ).catch((translationError) => {
               console.warn(`Failed to store translations for ${entityType} ${entityId}:`, translationError?.message || translationError);
             });
-          }
+        }
         }
       } catch (error: any) {
         console.error(`Failed to process background translations: ${error?.message || error}`);

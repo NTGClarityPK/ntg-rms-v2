@@ -1363,11 +1363,11 @@ export class AuthService {
 
         // Bulk insert add-ons
         const addOnsData = [
-          { add_on_group_id: addOnGroup1.id, name: 'Extra Cheese', price: 0, display_order: 1, is_active: true },
-          { add_on_group_id: addOnGroup1.id, name: 'Extra Sauce', price: 0, display_order: 2, is_active: true },
-          { add_on_group_id: addOnGroup2.id, name: 'Extra Spicy', price: 0, display_order: 1, is_active: true },
-          { add_on_group_id: addOnGroup2.id, name: 'No Onions', price: 0, display_order: 2, is_active: true },
-          { add_on_group_id: addOnGroup2.id, name: 'Well Done', price: 0, display_order: 3, is_active: true },
+          { tenant_id: tenantId, add_on_group_id: addOnGroup1.id, name: 'Extra Cheese', price: 0, display_order: 1, is_active: true },
+          { tenant_id: tenantId, add_on_group_id: addOnGroup1.id, name: 'Extra Sauce', price: 0, display_order: 2, is_active: true },
+          { tenant_id: tenantId, add_on_group_id: addOnGroup2.id, name: 'Extra Spicy', price: 0, display_order: 1, is_active: true },
+          { tenant_id: tenantId, add_on_group_id: addOnGroup2.id, name: 'No Onions', price: 0, display_order: 2, is_active: true },
+          { tenant_id: tenantId, add_on_group_id: addOnGroup2.id, name: 'Well Done', price: 0, display_order: 3, is_active: true },
         ];
 
         const { data: insertedAddOns, error: addOnsError } = await supabase

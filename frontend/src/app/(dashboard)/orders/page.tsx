@@ -562,15 +562,24 @@ export default function OrdersPage() {
             />
             {/* Only show kitchen display button for kitchen staff, manager, waiter and tenant owner */}
             {(() => {
-              if (!user?.role) return null;
+              if (!user) return null;
               
-              // If user has roles array, check if they have any non-restricted role
+              // Roles that should have access to kitchen display
+              const allowedRoles = ['manager', 'tenant_owner', 'waiter', 'kitchen_staff'];
+              const restrictedRoles = ['cashier', 'delivery'];
+              
+              // Check if user has roles array
               if (user.roles && Array.isArray(user.roles) && user.roles.length > 0) {
-                const hasNonRestrictedRole = user.roles.some(role => {
+                const hasAllowedRole = user.roles.some(role => {
                   const roleName = typeof role === 'string' ? role : (role?.name || '');
-                  return roleName && !['cashier', 'delivery'].includes(roleName.toLowerCase());
+                  const normalizedRole = roleName?.toLowerCase();
+                  // Allow if it's in allowed roles OR not in restricted roles
+                  return normalizedRole && (
+                    allowedRoles.includes(normalizedRole) || 
+                    !restrictedRoles.includes(normalizedRole)
+                  );
                 });
-                if (hasNonRestrictedRole) {
+                if (hasAllowedRole) {
                   return (
                     <Button
                       leftSection={<IconChefHat size={16} />}
@@ -583,23 +592,26 @@ export default function OrdersPage() {
                     </Button>
                   );
                 }
-                // If user has roles but all are restricted, don't show button
-                return null;
               }
               
               // Fallback: check single role string (backward compatibility)
-              if (!['cashier', 'delivery'].includes(user.role.toLowerCase())) {
-                return (
-                  <Button
-                    leftSection={<IconChefHat size={16} />}
-                    variant="light"
-                    component="a"
-                    href="/orders/kitchen"
-                    size="sm"
-                  >
-                    {t('orders.kitchenDisplay', language)}
-                  </Button>
-                );
+              // Also check if user.role exists even when roles array is empty
+              const userRole = user.role?.toLowerCase();
+              if (userRole) {
+                // Explicitly allow manager and tenant_owner, or any role not in restricted list
+                if (allowedRoles.includes(userRole) || !restrictedRoles.includes(userRole)) {
+                  return (
+                    <Button
+                      leftSection={<IconChefHat size={16} />}
+                      variant="light"
+                      component="a"
+                      href="/orders/kitchen"
+                      size="sm"
+                    >
+                      {t('orders.kitchenDisplay', language)}
+                    </Button>
+                  );
+                }
               }
               
               return null;
