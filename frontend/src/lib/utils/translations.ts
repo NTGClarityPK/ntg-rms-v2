@@ -25,7 +25,8 @@ const FALLBACK_LANGUAGES: Language[] = ['en'];
 
 export const getTranslation = (
   key: TranslationKeys,
-  language: Language = 'en'
+  language: Language = 'en',
+  variables?: Record<string, string | number>
 ): string => {
   const keys = key.split('.');
   
@@ -63,9 +64,16 @@ export const getTranslation = (
     }
   }
 
-  // If we have a valid string translation, return it
+  // If we have a valid string translation, interpolate variables if provided
   if (found && typeof value === 'string' && value.length > 0) {
-    return value;
+    let result = value;
+    if (variables) {
+      // Replace placeholders like {key} with actual values
+      result = result.replace(/\{(\w+)\}/g, (match, varKey) => {
+        return variables[varKey] !== undefined ? String(variables[varKey]) : match;
+      });
+    }
+    return result;
   }
 
   // Last resort: format the key nicely (e.g., "saveChanges" -> "Save Changes")
@@ -79,7 +87,18 @@ export const getTranslation = (
     .trim();
 };
 
-export const t = (key: TranslationKeys, language?: Language): string => {
-  return getTranslation(key, language);
-};
+// Function overloads for better type safety
+export function t(key: TranslationKeys, language?: Language): string;
+export function t(
+  key: TranslationKeys,
+  language: Language,
+  variables: Record<string, string | number>
+): string;
+export function t(
+  key: TranslationKeys,
+  language?: Language,
+  variables?: Record<string, string | number>
+): string {
+  return getTranslation(key, language, variables);
+}
 

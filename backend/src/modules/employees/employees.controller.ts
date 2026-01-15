@@ -1,5 +1,7 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Query, UseInterceptors, UploadedFile, Res, BadRequestException } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import { Response } from 'express';
 import { EmployeesService } from './employees.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -60,5 +62,48 @@ export class EmployeesController {
   @ApiOperation({ summary: 'Delete an employee (soft delete)' })
   deleteEmployee(@CurrentUser() user: any, @Param('id') id: string) {
     return this.employeesService.deleteEmployee(user.tenantId, id);
+  }
+
+  // ============================================
+  // BULK IMPORT ENDPOINTS
+  // ============================================
+
+  @Get('bulk-import/sample')
+  @ApiOperation({ summary: 'Download sample Excel file for bulk import' })
+  async downloadBulkImportSample(
+    @CurrentUser() user: any,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.employeesService.generateBulkImportSample(user.tenantId);
+    const filename = 'bulk-import-employees-sample.xlsx';
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  }
+
+  @Post('bulk-import')
+  @ApiOperation({ summary: 'Bulk import employees from Excel file' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  async bulkImportEmployees(
+    @CurrentUser() user: any,
+    @UploadedFile() file: any,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Excel file is required');
+    }
+    return this.employeesService.bulkImportEmployees(user.tenantId, file.buffer, user.id);
   }
 }

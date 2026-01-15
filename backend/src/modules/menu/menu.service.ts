@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { SupabaseService } from '../../database/supabase.service';
 import { StorageService } from './utils/storage.service';
+import { BulkImportService, FieldDefinition } from './utils/bulk-import.service';
 import { TranslationService } from '../translations/services/translation.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
@@ -35,6 +36,7 @@ export class MenuService {
     private supabaseService: SupabaseService,
     private storageService: StorageService,
     private translationService: TranslationService,
+    private bulkImportService: BulkImportService,
   ) {}
 
   // ============================================
@@ -4893,5 +4895,2039 @@ export class MenuService {
       }));
 
     return filteredItems;
+  }
+
+  // ============================================
+  // BULK IMPORT METHODS
+  // ============================================
+
+  /**
+   * Get field definitions for bulk import
+   */
+  getBulkImportFields(entityType: string): FieldDefinition[] {
+    const fieldDefinitions: Record<string, FieldDefinition[]> = {
+      category: [
+        { name: 'name', label: 'Name', required: true, type: 'string', description: 'Category name (used to identify existing category for update)' },
+        { name: 'description', label: 'Description', required: false, type: 'string', description: 'Category description' },
+        { name: 'categoryType', label: 'Category Type', required: false, type: 'string', description: 'Type: food, drink, etc.', example: 'food' },
+        { name: 'isActive', label: 'Is Active', required: false, type: 'boolean', description: 'Whether category is active', example: 'true' },
+      ],
+      addOnGroup: [
+        { name: 'name', label: 'Name', required: true, type: 'string', description: 'Add-on group name (used to identify existing group for update)' },
+        { name: 'selectionType', label: 'Selection Type', required: false, type: 'string', description: 'single or multiple', example: 'multiple' },
+        { name: 'isRequired', label: 'Is Required', required: false, type: 'boolean', description: 'Whether selection is required', example: 'false' },
+        { name: 'minSelections', label: 'Min Selections', required: false, type: 'number', description: 'Minimum number of selections', example: '0' },
+        { name: 'maxSelections', label: 'Max Selections', required: false, type: 'number', description: 'Maximum number of selections', example: '0' },
+        { name: 'category', label: 'Category', required: false, type: 'string', description: 'Add, Remove, or Change', example: 'Add' },
+      ],
+      addon: [
+        { name: 'addOnGroupName', label: 'Add-On Group Name', required: true, type: 'string', description: 'Name of the add-on group' },
+        { name: 'name', label: 'Name', required: true, type: 'string', description: 'Add-on name' },
+        { name: 'price', label: 'Price', required: false, type: 'number', description: 'Add-on price', example: '0' },
+        { name: 'isActive', label: 'Is Active', required: false, type: 'boolean', description: 'Whether add-on is active', example: 'true' },
+        { name: 'displayOrder', label: 'Display Order', required: false, type: 'number', description: 'Display order', example: '0' },
+      ],
+      variationGroup: [
+        { name: 'name', label: 'Name', required: true, type: 'string', description: 'Variation group name (used to identify existing group for update)' },
+      ],
+      variation: [
+        { name: 'variationGroupName', label: 'Variation Group Name', required: true, type: 'string', description: 'Variation group name' },
+        { name: 'name', label: 'Name', required: true, type: 'string', description: 'Variation name' },
+        { name: 'recipeMultiplier', label: 'Recipe Multiplier', required: false, type: 'number', description: 'Recipe multiplier', example: '1' },
+        { name: 'pricingAdjustment', label: 'Pricing Adjustment', required: false, type: 'number', description: 'Price adjustment', example: '0' },
+        { name: 'displayOrder', label: 'Display Order', required: false, type: 'number', description: 'Display order', example: '0' },
+      ],
+      // Combined: Add-on Groups and Add-ons in one sheet
+      addOnGroupAndAddOn: [
+        { name: 'addOnGroupName', label: 'Add-On Group Name', required: true, type: 'string', description: 'Name of the add-on group (required if creating/updating group)' },
+        { name: 'addOnGroupSelectionType', label: 'Add-On Group Selection Type', required: false, type: 'string', description: 'Selection type for group: single or multiple', example: 'multiple' },
+        { name: 'addOnGroupIsRequired', label: 'Add-On Group Is Required', required: false, type: 'boolean', description: 'Whether selection is required for group', example: 'false' },
+        { name: 'addOnGroupMinSelections', label: 'Add-On Group Min Selections', required: false, type: 'number', description: 'Minimum number of selections for group', example: '0' },
+        { name: 'addOnGroupMaxSelections', label: 'Add-On Group Max Selections', required: false, type: 'number', description: 'Maximum number of selections for group', example: '0' },
+        { name: 'addOnGroupCategory', label: 'Add-On Group Category', required: false, type: 'string', description: 'Category: Add, Remove, or Change', example: 'Add' },
+        { name: 'addOnName', label: 'Add-On Name', required: false, type: 'string', description: 'Name of the add-on (if provided, will create/update add-on)' },
+        { name: 'addOnPrice', label: 'Add-On Price', required: false, type: 'number', description: 'Price of the add-on', example: '0' },
+        { name: 'addOnIsActive', label: 'Add-On Is Active', required: false, type: 'boolean', description: 'Whether add-on is active', example: 'true' },
+        { name: 'addOnDisplayOrder', label: 'Add-On Display Order', required: false, type: 'number', description: 'Display order for add-on', example: '0' },
+      ],
+      // Combined: Variation Groups and Variations in one sheet
+      variationGroupAndVariation: [
+        { name: 'variationGroupName', label: 'Variation Group Name', required: true, type: 'string', description: 'Name of the variation group (required if creating/updating group)' },
+        { name: 'variationName', label: 'Variation Name', required: false, type: 'string', description: 'Name of the variation (if provided, will create/update variation)' },
+        { name: 'variationRecipeMultiplier', label: 'Variation Recipe Multiplier', required: false, type: 'number', description: 'Recipe multiplier for variation', example: '1' },
+        { name: 'variationPricingAdjustment', label: 'Variation Pricing Adjustment', required: false, type: 'number', description: 'Price adjustment for variation', example: '0' },
+        { name: 'variationDisplayOrder', label: 'Variation Display Order', required: false, type: 'number', description: 'Display order for variation', example: '0' },
+      ],
+      foodItem: [
+        { name: 'name', label: 'Name', required: true, type: 'string', description: 'Food item name (used to identify existing food item for update)' },
+        { name: 'description', label: 'Description', required: false, type: 'string', description: 'Food item description' },
+        { name: 'categoryName', label: 'Category Name', required: true, type: 'string', description: 'Category name (used to identify existing food item for update)' },
+        { name: 'basePrice', label: 'Base Price', required: true, type: 'number', description: 'Base price', example: '10.00' },
+        { name: 'stockType', label: 'Stock Type', required: false, type: 'string', description: 'unlimited or limited', example: 'unlimited' },
+        { name: 'stockQuantity', label: 'Stock Quantity', required: false, type: 'number', description: 'Stock quantity (if limited)' },
+        { name: 'menuTypes', label: 'Menu Types', required: false, type: 'array', description: 'Comma-separated menu types', example: 'breakfast,lunch' },
+        { name: 'ageLimit', label: 'Age Limit', required: false, type: 'number', description: 'Age limit' },
+        { name: 'labels', label: 'Labels', required: false, type: 'array', description: 'Comma-separated labels', example: 'spicy,vegetarian' },
+        { name: 'addOnGroupIds', label: 'Add-On Group IDs', required: false, type: 'array', description: 'Comma-separated add-on group UUIDs' },
+        { name: 'isActive', label: 'Is Active', required: false, type: 'boolean', description: 'Whether item is active', example: 'true' },
+      ],
+      menu: [
+        { name: 'menuType', label: 'Menu Type', required: true, type: 'string', description: 'Menu type (lowercase, underscore only)', example: 'breakfast' },
+        { name: 'name', label: 'Name', required: false, type: 'string', description: 'Menu name' },
+        { name: 'foodItemIds', label: 'Food Item IDs', required: false, type: 'array', description: 'Comma-separated food item UUIDs' },
+        { name: 'isActive', label: 'Is Active', required: false, type: 'boolean', description: 'Whether menu is active', example: 'true' },
+      ],
+      buffet: [
+        { name: 'name', label: 'Name', required: true, type: 'string', description: 'Buffet name' },
+        { name: 'description', label: 'Description', required: false, type: 'string', description: 'Buffet description' },
+        { name: 'pricePerPerson', label: 'Price Per Person', required: true, type: 'number', description: 'Price per person', example: '25.00' },
+        { name: 'minPersons', label: 'Minimum Persons', required: false, type: 'number', description: 'Minimum number of persons' },
+        { name: 'duration', label: 'Duration (minutes)', required: false, type: 'number', description: 'Duration in minutes' },
+        { name: 'menuTypes', label: 'Menu Types', required: true, type: 'array', description: 'Comma-separated menu types', example: 'breakfast,lunch' },
+        { name: 'displayOrder', label: 'Display Order', required: false, type: 'number', description: 'Display order', example: '0' },
+        { name: 'isActive', label: 'Is Active', required: false, type: 'boolean', description: 'Whether buffet is active', example: 'true' },
+      ],
+      comboMeal: [
+        { name: 'name', label: 'Name', required: true, type: 'string', description: 'Combo meal name' },
+        { name: 'description', label: 'Description', required: false, type: 'string', description: 'Combo meal description' },
+        { name: 'basePrice', label: 'Base Price', required: true, type: 'number', description: 'Base price', example: '15.00' },
+        { name: 'foodItemIds', label: 'Food Item IDs', required: true, type: 'array', description: 'Comma-separated food item UUIDs' },
+        { name: 'menuTypes', label: 'Menu Types', required: false, type: 'array', description: 'Comma-separated menu types', example: 'breakfast,lunch' },
+        { name: 'discountPercentage', label: 'Discount Percentage', required: false, type: 'number', description: 'Discount percentage', example: '10' },
+        { name: 'displayOrder', label: 'Display Order', required: false, type: 'number', description: 'Display order', example: '0' },
+        { name: 'isActive', label: 'Is Active', required: false, type: 'boolean', description: 'Whether combo meal is active', example: 'true' },
+      ],
+    };
+
+    return fieldDefinitions[entityType] || [];
+  }
+
+  /**
+   * Generate sample Excel file for bulk import
+   */
+  async generateBulkImportSample(entityType: string): Promise<Buffer> {
+    const fields = this.getBulkImportFields(entityType);
+    const translateFields = this.getTranslateFields(entityType);
+    
+    return this.bulkImportService.generateSampleExcel({
+      entityType,
+      fields,
+      translateFields,
+    });
+  }
+
+  /**
+   * Get fields that need translation for each entity type
+   */
+  private getTranslateFields(entityType: string): string[] {
+    const translateFieldsMap: Record<string, string[]> = {
+      category: ['name', 'description'],
+      addOnGroup: ['name'],
+      addon: ['name'],
+      variationGroup: ['name'],
+      variation: ['name'],
+      foodItem: ['name', 'description'],
+      menu: ['name'],
+      buffet: ['name', 'description'],
+      comboMeal: ['name', 'description'],
+      addOnGroupAndAddOn: ['addOnGroupName', 'addOnName'],
+      variationGroupAndVariation: ['variationGroupName', 'variationName'],
+    };
+    return translateFieldsMap[entityType] || [];
+  }
+
+  /**
+   * Bulk import categories
+   */
+  async bulkImportCategories(
+    tenantId: string,
+    fileBuffer: Buffer,
+    branchId?: string,
+  ): Promise<{ success: number; failed: number; errors: string[] }> {
+    const config = {
+      entityType: 'category',
+      fields: this.getBulkImportFields('category'),
+      translateFields: ['name', 'description'],
+    };
+
+    const rows = await this.bulkImportService.parseExcelFile(fileBuffer, config);
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Fetch all categories for name-to-ID mapping and checking existing
+    let categoryQuery = supabase
+      .from('categories')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      categoryQuery = categoryQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+    
+    const { data: allCategories } = await categoryQuery;
+    const categoryNameToIdMap = new Map<string, string>();
+    const existingCategoryMap = new Map<string, string>(); // name -> id
+    (allCategories || []).forEach(cat => {
+      categoryNameToIdMap.set(cat.name.toLowerCase(), cat.id);
+      existingCategoryMap.set(cat.name.toLowerCase(), cat.id);
+    });
+
+    // Prepare category data for processing
+    const categoryData: Array<{
+      index: number;
+      row: any;
+      parentId?: string;
+      isUpdate: boolean;
+      categoryId?: string;
+    }> = [];
+
+    let success = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    // Process and validate all rows
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        // Validate required fields
+        if (!row.name || row.name.trim() === '') {
+          throw new Error('Name is required');
+        }
+
+        // Validate category type if provided
+        if (row.categoryType && row.categoryType.trim()) {
+          const validCategoryTypes = ['food', 'dessert', 'beverage'];
+          const categoryTypeValue = row.categoryType.trim().toLowerCase();
+          if (!validCategoryTypes.includes(categoryTypeValue)) {
+            throw new Error(`Category type must be one of: ${validCategoryTypes.join(', ')}. Found: ${row.categoryType}`);
+          }
+        }
+
+        // Validate isActive is boolean if provided
+        if (row.isActive !== undefined && row.isActive !== null) {
+          if (typeof row.isActive !== 'boolean') {
+            const isActiveStr = String(row.isActive).toLowerCase().trim();
+            if (isActiveStr !== 'true' && isActiveStr !== 'false' && isActiveStr !== '1' && isActiveStr !== '0') {
+              throw new Error(`Is Active must be a boolean (true/false). Found: ${row.isActive}`);
+            }
+          }
+        }
+
+        // Map parent category name to ID if provided
+        let parentId: string | undefined;
+        if (row.parentName) {
+          parentId = categoryNameToIdMap.get(row.parentName.trim().toLowerCase());
+          if (!parentId) {
+            throw new Error(`Parent category not found: ${row.parentName}`);
+          }
+        } else if (row.parentId) {
+          // Support both parentName and parentId for backward compatibility
+          parentId = row.parentId;
+        }
+
+        // Check if category exists (by name)
+        const existingCategoryId = existingCategoryMap.get(row.name.trim().toLowerCase());
+        const isUpdate = !!existingCategoryId;
+
+        categoryData.push({
+          index: i,
+          row,
+          parentId,
+          isUpdate,
+          categoryId: existingCategoryId,
+        });
+      } catch (error: any) {
+        failed++;
+        errors.push(`Row ${i + 2}: ${error.message}`);
+      }
+    }
+
+    // Process categories in parallel batches (10 at a time)
+    const BATCH_SIZE = 10;
+    const processedCategories: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+
+    for (let batchStart = 0; batchStart < categoryData.length; batchStart += BATCH_SIZE) {
+      const batch = categoryData.slice(batchStart, batchStart + BATCH_SIZE);
+      
+      const batchResults = await Promise.allSettled(
+        batch.map(async ({ index, row, parentId, isUpdate, categoryId }) => {
+          try {
+            if (isUpdate && categoryId) {
+              // Update existing category
+              const updateDto: UpdateCategoryDto = {
+                name: row.name,
+                description: row.description || undefined,
+                categoryType: row.categoryType || undefined,
+                parentId: parentId || undefined,
+                isActive: row.isActive !== undefined ? row.isActive : undefined,
+              };
+
+              const category = await this.updateCategory(tenantId, categoryId, updateDto, 'en');
+              return { success: true, index, categoryId: category.id, name: row.name, isUpdate: true };
+            } else {
+              // Create new category
+              // Normalize boolean values
+              let isActiveValue = true; // default
+              if (row.isActive !== undefined && row.isActive !== null) {
+                if (typeof row.isActive === 'boolean') {
+                  isActiveValue = row.isActive;
+                } else {
+                  const isActiveStr = String(row.isActive).toLowerCase().trim();
+                  isActiveValue = isActiveStr === 'true' || isActiveStr === '1';
+                }
+              }
+
+              const createDto: CreateCategoryDto = {
+                name: row.name,
+                description: row.description || undefined,
+                categoryType: row.categoryType ? row.categoryType.trim().toLowerCase() : 'food',
+                parentId: parentId || undefined,
+                isActive: isActiveValue,
+              };
+
+              const category = await this.createCategory(tenantId, createDto, branchId);
+              return { success: true, index, categoryId: category.id, name: row.name, isUpdate: false };
+            }
+          } catch (error: any) {
+            return { success: false, index, error: error.message };
+          }
+        })
+      );
+
+      // Process batch results
+      for (const result of batchResults) {
+        if (result.status === 'fulfilled') {
+          if (result.value.success) {
+            success++;
+            processedCategories.push({
+              id: result.value.categoryId,
+              name: result.value.name,
+              index: result.value.index,
+              isUpdate: result.value.isUpdate || false,
+            });
+          } else {
+            failed++;
+            errors.push(`Row ${result.value.index + 2}: ${result.value.error}`);
+          }
+        } else {
+          failed++;
+          errors.push(`Row ${batch[0].index + 2}: ${result.reason?.message || 'Unknown error'}`);
+        }
+      }
+    }
+
+    // Fire-and-forget: Do translations asynchronously after returning response
+    if (processedCategories.length > 0) {
+      const categoriesToTranslate = processedCategories.map(pc => ({ name: pc.name, description: rows[pc.index]?.description }));
+      
+      this.bulkImportService.batchTranslateEntities(
+        categoriesToTranslate,
+        'category',
+        ['name', 'description'],
+        tenantId,
+      ).then((translations) => {
+        processedCategories.forEach(({ id, name }, arrayIndex) => {
+          const nameTranslations = translations.get('name')?.get(arrayIndex);
+          const descTranslations = translations.get('description')?.get(arrayIndex);
+          
+          if (nameTranslations || descTranslations) {
+            const fieldsToTranslate = [
+              { fieldName: 'name', text: name },
+              ...(rows[processedCategories[arrayIndex].index]?.description ? [{ fieldName: 'description', text: rows[processedCategories[arrayIndex].index].description }] : []),
+            ];
+
+            const translationsMap: { [fieldName: string]: any } = {};
+            if (nameTranslations) translationsMap['name'] = nameTranslations;
+            if (descTranslations) translationsMap['description'] = descTranslations;
+
+            this.translationService.storePreTranslatedBatch(
+              'category',
+              id,
+              fieldsToTranslate,
+              translationsMap,
+              undefined,
+              tenantId,
+              'en',
+            ).catch((err) => {
+              console.warn(`Failed to store translations for category ${id}:`, err.message);
+            });
+          }
+        });
+      }).catch((err) => {
+        console.error('Failed to batch translate categories:', err.message);
+      });
+    }
+
+    return { success, failed, errors };
+  }
+
+  /**
+   * Bulk import add-ons
+   */
+  async bulkImportAddOns(
+    tenantId: string,
+    fileBuffer: Buffer,
+  ): Promise<{ success: number; failed: number; errors: string[] }> {
+    const config = {
+      entityType: 'addon',
+      fields: this.getBulkImportFields('addon'),
+      translateFields: ['name'],
+    };
+
+    const rows = await this.bulkImportService.parseExcelFile(fileBuffer, config);
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Fetch all add-on groups for name-to-ID mapping
+    const { data: allGroups } = await supabase
+      .from('add_on_groups')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    const groupNameToIdMap = new Map<string, string>();
+    (allGroups || []).forEach(group => {
+      groupNameToIdMap.set(group.name.toLowerCase(), group.id);
+    });
+
+    // Batch translate all names
+    const translations = await this.bulkImportService.batchTranslateEntities(
+      rows,
+      'addon',
+      ['name'],
+      tenantId,
+    );
+
+    let success = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        // Check for parsing errors from parseExcelFile
+        if (row._errors && row._errors.length > 0) {
+          throw new Error(row._errors.join('; '));
+        }
+
+        // Validate required fields
+        if (!row.addOnGroupName || row.addOnGroupName.trim() === '') {
+          throw new Error('Add-on group name is required');
+        }
+
+        if (!row.name || row.name.trim() === '') {
+          throw new Error('Name is required');
+        }
+
+        // Map add-on group name to ID
+        const groupId = groupNameToIdMap.get(row.addOnGroupName.trim().toLowerCase());
+        if (!groupId) {
+          throw new Error(`Add-on group not found: ${row.addOnGroupName}`);
+        }
+
+        // Validate isActive is boolean if provided
+        let isActiveValue = true; // default
+        if (row.isActive !== undefined && row.isActive !== null) {
+          if (typeof row.isActive === 'boolean') {
+            isActiveValue = row.isActive;
+          } else {
+            const isActiveStr = String(row.isActive).toLowerCase().trim();
+            if (isActiveStr !== 'true' && isActiveStr !== 'false' && isActiveStr !== '1' && isActiveStr !== '0') {
+              throw new Error(`Is Active must be a boolean (true/false). Found: ${row.isActive}`);
+            }
+            isActiveValue = isActiveStr === 'true' || isActiveStr === '1';
+          }
+        }
+
+        const addOnData: any = {
+          add_on_group_id: groupId,
+          name: row.name,
+          price: row.price || 0,
+          is_active: isActiveValue,
+          display_order: row.displayOrder || 0,
+        };
+
+        const { data: addOn, error } = await supabase
+          .from('add_ons')
+          .insert(addOnData)
+          .select()
+          .single();
+
+        if (error) {
+          throw new Error(error.message);
+        }
+
+        // Store pre-translated translations (already translated in batch)
+        const nameTranslations = translations.get('name')?.get(i);
+        if (nameTranslations) {
+          await this.translationService.storePreTranslatedBatch(
+            'addon',
+            addOn.id,
+            [{ fieldName: 'name', text: row.name }],
+            { name: nameTranslations },
+            undefined,
+            tenantId,
+            'en',
+          );
+        }
+
+        success++;
+      } catch (error) {
+        failed++;
+        errors.push(`Row ${i + 1}: ${error.message}`);
+      }
+    }
+
+    return { success, failed, errors };
+  }
+
+  /**
+   * Bulk import add-on groups
+   */
+  async bulkImportAddOnGroups(
+    tenantId: string,
+    fileBuffer: Buffer,
+    branchId?: string,
+  ): Promise<{ success: number; failed: number; errors: string[] }> {
+    const config = {
+      entityType: 'addOnGroup',
+      fields: this.getBulkImportFields('addOnGroup'),
+      translateFields: ['name'],
+    };
+
+    const rows = await this.bulkImportService.parseExcelFile(fileBuffer, config);
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Fetch all add-on groups for name-to-ID mapping and checking existing
+    let groupQuery = supabase
+      .from('add_on_groups')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      groupQuery = groupQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+    
+    const { data: allGroups } = await groupQuery;
+    const groupNameToIdMap = new Map<string, string>();
+    (allGroups || []).forEach(group => {
+      groupNameToIdMap.set(group.name.toLowerCase(), group.id);
+    });
+
+    // Prepare group data for processing
+    const groupData: Array<{
+      index: number;
+      row: any;
+      isUpdate: boolean;
+      groupId?: string;
+    }> = [];
+
+    let success = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    // Process and validate all rows
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        // Validate required fields
+        if (!row.name || row.name.trim() === '') {
+          throw new Error('Name is required');
+        }
+
+        // Validate selectionType if provided
+        if (row.selectionType && row.selectionType.trim()) {
+          const validSelectionTypes = ['single', 'multiple'];
+          const selectionTypeValue = row.selectionType.trim().toLowerCase();
+          if (!validSelectionTypes.includes(selectionTypeValue)) {
+            throw new Error(`Selection type must be one of: ${validSelectionTypes.join(', ')}. Found: ${row.selectionType}`);
+          }
+        }
+
+        // Validate category if provided
+        if (row.category && row.category.trim()) {
+          const validCategories = ['Add', 'Remove', 'Change'];
+          const categoryValue = row.category.trim();
+          if (!validCategories.includes(categoryValue)) {
+            throw new Error(`Category must be one of: ${validCategories.join(', ')}. Found: ${categoryValue}`);
+          }
+        }
+
+        // Validate isRequired is boolean if provided
+        if (row.isRequired !== undefined && row.isRequired !== null) {
+          if (typeof row.isRequired !== 'boolean') {
+            const isRequiredStr = String(row.isRequired).toLowerCase().trim();
+            if (isRequiredStr !== 'true' && isRequiredStr !== 'false' && isRequiredStr !== '1' && isRequiredStr !== '0') {
+              throw new Error(`Is Required must be a boolean (true/false). Found: ${row.isRequired}`);
+            }
+          }
+        }
+
+        // Check if group exists (by name)
+        const existingGroupId = groupNameToIdMap.get(row.name.trim().toLowerCase());
+        const isUpdate = !!existingGroupId;
+
+        groupData.push({
+          index: i,
+          row,
+          isUpdate,
+          groupId: existingGroupId,
+        });
+      } catch (error: any) {
+        failed++;
+        errors.push(`Row ${i + 2}: ${error.message}`);
+      }
+    }
+
+    // Process groups in parallel batches (10 at a time)
+    const BATCH_SIZE = 10;
+    const processedGroups: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+
+    for (let batchStart = 0; batchStart < groupData.length; batchStart += BATCH_SIZE) {
+      const batch = groupData.slice(batchStart, batchStart + BATCH_SIZE);
+      
+      const batchResults = await Promise.allSettled(
+        batch.map(async ({ index, row, isUpdate, groupId }) => {
+          try {
+            if (isUpdate && groupId) {
+              // Update existing group
+              // Normalize boolean values
+              let isRequiredValue: boolean | undefined;
+              if (row.isRequired !== undefined && row.isRequired !== null) {
+                if (typeof row.isRequired === 'boolean') {
+                  isRequiredValue = row.isRequired;
+                } else {
+                  const isRequiredStr = String(row.isRequired).toLowerCase().trim();
+                  isRequiredValue = isRequiredStr === 'true' || isRequiredStr === '1';
+                }
+              }
+
+              const updateDto: UpdateAddOnGroupDto = {
+                name: row.name,
+                selectionType: row.selectionType ? row.selectionType.trim().toLowerCase() : undefined,
+                isRequired: isRequiredValue,
+                minSelections: row.minSelections !== undefined ? row.minSelections : undefined,
+                maxSelections: row.maxSelections !== undefined ? row.maxSelections : undefined,
+                category: row.category ? row.category.trim() : undefined,
+              };
+
+              const group = await this.updateAddOnGroup(tenantId, groupId, updateDto, 'en');
+              return { success: true, index, groupId: group.id, name: row.name, isUpdate: true };
+            } else {
+              // Create new group
+              // Normalize boolean values
+              let isRequiredValue = false; // default
+              if (row.isRequired !== undefined && row.isRequired !== null) {
+                if (typeof row.isRequired === 'boolean') {
+                  isRequiredValue = row.isRequired;
+                } else {
+                  const isRequiredStr = String(row.isRequired).toLowerCase().trim();
+                  isRequiredValue = isRequiredStr === 'true' || isRequiredStr === '1';
+                }
+              }
+
+              const createDto: CreateAddOnGroupDto = {
+                name: row.name,
+                selectionType: row.selectionType ? row.selectionType.trim().toLowerCase() : 'multiple',
+                isRequired: isRequiredValue,
+                minSelections: row.minSelections !== undefined ? row.minSelections : 0,
+                maxSelections: row.maxSelections !== undefined ? row.maxSelections : undefined,
+                category: row.category ? row.category.trim() : undefined,
+              };
+
+              const group = await this.createAddOnGroup(tenantId, createDto, branchId);
+              return { success: true, index, groupId: group.id, name: row.name, isUpdate: false };
+            }
+          } catch (error: any) {
+            return { success: false, index, error: error.message };
+          }
+        })
+      );
+
+      // Process batch results
+      for (const result of batchResults) {
+        if (result.status === 'fulfilled') {
+          if (result.value.success) {
+            success++;
+            processedGroups.push({
+              id: result.value.groupId,
+              name: result.value.name,
+              index: result.value.index,
+              isUpdate: result.value.isUpdate || false,
+            });
+          } else {
+            failed++;
+            errors.push(`Row ${result.value.index + 2}: ${result.value.error}`);
+          }
+        } else {
+          failed++;
+          errors.push(`Row ${batch[0].index + 2}: ${result.reason?.message || 'Unknown error'}`);
+        }
+      }
+    }
+
+    // Fire-and-forget: Do translations asynchronously after returning response
+    if (processedGroups.length > 0) {
+      const groupsToTranslate = processedGroups.map(pg => ({ name: pg.name }));
+      
+      this.bulkImportService.batchTranslateEntities(
+        groupsToTranslate,
+        'add_on_group',
+        ['name'],
+        tenantId,
+      ).then((translations) => {
+        processedGroups.forEach(({ id, name }, arrayIndex) => {
+          const nameTranslations = translations.get('name')?.get(arrayIndex);
+          if (nameTranslations) {
+            this.translationService.storePreTranslatedBatch(
+              'add_on_group',
+              id,
+              [{ fieldName: 'name', text: name }],
+              { name: nameTranslations },
+              undefined,
+              tenantId,
+              'en',
+            ).catch((err) => {
+              console.warn(`Failed to store translations for add-on group ${id}:`, err.message);
+            });
+          }
+        });
+      }).catch((err) => {
+        console.error('Failed to batch translate add-on groups:', err.message);
+      });
+    }
+
+    return { success, failed, errors };
+  }
+
+  /**
+   * Bulk import variations
+   */
+  async bulkImportVariations(
+    tenantId: string,
+    fileBuffer: Buffer,
+  ): Promise<{ success: number; failed: number; errors: string[] }> {
+    const config = {
+      entityType: 'variation',
+      fields: this.getBulkImportFields('variation'),
+      translateFields: ['name'],
+    };
+
+    const rows = await this.bulkImportService.parseExcelFile(fileBuffer, config);
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Fetch all variation groups for name-to-ID mapping
+    const { data: variationGroups } = await supabase
+      .from('variation_groups')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    const groupNameToIdMap = new Map<string, string>();
+    (variationGroups || []).forEach(group => {
+      groupNameToIdMap.set(group.name.toLowerCase(), group.id);
+    });
+
+    let success = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        if (!row.variationGroupName) {
+          throw new Error('Variation group name is required');
+        }
+        if (!row.name) {
+          throw new Error('Variation name is required');
+        }
+
+        // Map variation group name to ID
+        const groupId = groupNameToIdMap.get(row.variationGroupName.trim().toLowerCase());
+        if (!groupId) {
+          throw new Error(`Variation group not found: ${row.variationGroupName}`);
+        }
+
+        const variationData: any = {
+          variation_group_id: groupId,
+          name: row.name,
+          recipe_multiplier: row.recipeMultiplier || 1,
+          pricing_adjustment: row.pricingAdjustment || 0,
+          display_order: row.displayOrder || 0,
+        };
+
+        const { data: variation, error } = await supabase
+          .from('variations')
+          .insert(variationData)
+          .select()
+          .single();
+
+        if (error) {
+          throw new Error(error.message);
+        }
+
+        success++;
+      } catch (error: any) {
+        failed++;
+        errors.push(`Row ${i + 2}: ${error.message}`);
+      }
+    }
+
+    // Fire-and-forget: Do translations asynchronously after returning response
+    if (success > 0) {
+      const variationsToTranslate = rows
+        .map((row, index) => ({ name: row.name, index }))
+        .filter((_, index) => {
+          // Only include successful rows (we don't track which ones succeeded, so include all)
+          return true;
+        });
+
+      this.bulkImportService.batchTranslateEntities(
+        variationsToTranslate.map(v => ({ name: v.name })),
+        'variation',
+        ['name'],
+        tenantId,
+      ).then((translations) => {
+        // Note: We can't perfectly match translations to variations since we don't track which rows succeeded
+        // This is a limitation, but translations will still be created for successful variations
+        variationsToTranslate.forEach(({ name, index }) => {
+          const nameTranslations = translations.get('name')?.get(index);
+          if (nameTranslations) {
+            // Find the variation by name and group (best effort)
+            supabase
+              .from('variations')
+              .select('id')
+              .eq('name', name)
+              .eq('variation_group_id', groupNameToIdMap.get(rows[index].variationGroupName?.trim().toLowerCase() || ''))
+              .is('deleted_at', null)
+              .maybeSingle()
+              .then(({ data: variation }) => {
+                if (variation) {
+                  this.translationService.storePreTranslatedBatch(
+                    'variation',
+                    variation.id,
+                    [{ fieldName: 'name', text: name }],
+                    { name: nameTranslations },
+                    undefined,
+                    tenantId,
+                    'en',
+                  ).catch((err) => {
+                    console.warn(`Failed to store translations for variation:`, err.message);
+                  });
+                }
+              });
+          }
+        });
+      }).catch((err) => {
+        console.error('Failed to batch translate variations:', err.message);
+      });
+    }
+
+    return { success, failed, errors };
+  }
+
+  /**
+   * Combined bulk import: Add-on Groups and Add-ons in one sheet
+   * Logic:
+   * - If addOnGroupName is present but addOnName is not → create/update add-on group
+   * - If addOnName is present → create/update add-on (and create/update group if needed)
+   */
+  async bulkImportAddOnGroupsAndAddOns(
+    tenantId: string,
+    fileBuffer: Buffer,
+    branchId?: string,
+  ): Promise<{ success: number; failed: number; errors: string[]; groupsCreated: number; groupsUpdated: number; addOnsCreated: number; addOnsUpdated: number }> {
+    const config = {
+      entityType: 'addOnGroupAndAddOn',
+      fields: this.getBulkImportFields('addOnGroupAndAddOn'),
+      translateFields: ['addOnGroupName', 'addOnName'],
+    };
+
+    const rows = await this.bulkImportService.parseExcelFile(fileBuffer, config);
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Fetch all add-on groups for name-to-ID mapping
+    let groupQuery = supabase
+      .from('add_on_groups')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      groupQuery = groupQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+    
+    const { data: allGroups } = await groupQuery;
+    const groupNameToIdMap = new Map<string, string>();
+    (allGroups || []).forEach(group => {
+      groupNameToIdMap.set(group.name.toLowerCase(), group.id);
+    });
+
+    // Fetch all add-ons for update detection (by group + name)
+    const { data: allAddOns } = await supabase
+      .from('add_ons')
+      .select('id, name, add_on_group_id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    const addOnKeyToIdMap = new Map<string, string>(); // key: "groupId|||name" -> addOnId
+    (allAddOns || []).forEach(addOn => {
+      const key = `${addOn.add_on_group_id}|||${addOn.name.toLowerCase()}`;
+      addOnKeyToIdMap.set(key, addOn.id);
+    });
+
+    let success = 0;
+    let failed = 0;
+    let groupsCreated = 0;
+    let groupsUpdated = 0;
+    let addOnsCreated = 0;
+    let addOnsUpdated = 0;
+    const errors: string[] = [];
+
+    // Batch translate all names
+    const translations = await this.bulkImportService.batchTranslateEntities(
+      rows,
+      'addOnGroupAndAddOn',
+      ['addOnGroupName', 'addOnName'],
+      tenantId,
+    );
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        // Check for parsing errors
+        if (row._errors && row._errors.length > 0) {
+          throw new Error(row._errors.join('; '));
+        }
+
+        // Validate add-on group name is present
+        if (!row.addOnGroupName || row.addOnGroupName.trim() === '') {
+          throw new Error('Add-on group name is required');
+        }
+
+        const groupName = row.addOnGroupName.trim();
+        const groupNameLower = groupName.toLowerCase();
+
+        // Determine if this row is for group only or includes add-on
+        const hasAddOn = row.addOnName && row.addOnName.trim() !== '';
+
+        // Process add-on group (create or update)
+        let groupId = groupNameToIdMap.get(groupNameLower);
+        const isGroupUpdate = !!groupId;
+
+        // Validate group fields if provided
+        if (row.addOnGroupSelectionType && row.addOnGroupSelectionType.trim()) {
+          const validSelectionTypes = ['single', 'multiple'];
+          const selectionTypeValue = row.addOnGroupSelectionType.trim().toLowerCase();
+          if (!validSelectionTypes.includes(selectionTypeValue)) {
+            throw new Error(`Add-on group selection type must be one of: ${validSelectionTypes.join(', ')}. Found: ${row.addOnGroupSelectionType}`);
+          }
+        }
+
+        if (row.addOnGroupCategory && row.addOnGroupCategory.trim()) {
+          const validCategories = ['Add', 'Remove', 'Change'];
+          const categoryValue = row.addOnGroupCategory.trim();
+          if (!validCategories.includes(categoryValue)) {
+            throw new Error(`Add-on group category must be one of: ${validCategories.join(', ')}. Found: ${categoryValue}`);
+          }
+        }
+
+        // Normalize boolean values for group
+        let isRequiredValue: boolean | undefined;
+        if (row.addOnGroupIsRequired !== undefined && row.addOnGroupIsRequired !== null) {
+          if (typeof row.addOnGroupIsRequired === 'boolean') {
+            isRequiredValue = row.addOnGroupIsRequired;
+          } else {
+            const isRequiredStr = String(row.addOnGroupIsRequired).toLowerCase().trim();
+            if (isRequiredStr !== 'true' && isRequiredStr !== 'false' && isRequiredStr !== '1' && isRequiredStr !== '0') {
+              throw new Error(`Add-on group Is Required must be a boolean (true/false). Found: ${row.addOnGroupIsRequired}`);
+            }
+            isRequiredValue = isRequiredStr === 'true' || isRequiredStr === '1';
+          }
+        }
+
+        // Create or update add-on group
+        if (isGroupUpdate && groupId) {
+          const updateDto: UpdateAddOnGroupDto = {
+            name: groupName,
+            selectionType: row.addOnGroupSelectionType ? row.addOnGroupSelectionType.trim().toLowerCase() : undefined,
+            isRequired: isRequiredValue,
+            minSelections: row.addOnGroupMinSelections !== undefined ? row.addOnGroupMinSelections : undefined,
+            maxSelections: row.addOnGroupMaxSelections !== undefined ? row.addOnGroupMaxSelections : undefined,
+            category: row.addOnGroupCategory ? row.addOnGroupCategory.trim() : undefined,
+          };
+          await this.updateAddOnGroup(tenantId, groupId, updateDto, 'en');
+          groupsUpdated++;
+        } else {
+          const createDto: CreateAddOnGroupDto = {
+            name: groupName,
+            selectionType: row.addOnGroupSelectionType ? row.addOnGroupSelectionType.trim().toLowerCase() : 'multiple',
+            isRequired: isRequiredValue !== undefined ? isRequiredValue : false,
+            minSelections: row.addOnGroupMinSelections !== undefined ? row.addOnGroupMinSelections : 0,
+            maxSelections: row.addOnGroupMaxSelections !== undefined ? row.addOnGroupMaxSelections : undefined,
+            category: row.addOnGroupCategory ? row.addOnGroupCategory.trim() : undefined,
+          };
+          const group = await this.createAddOnGroup(tenantId, createDto, branchId);
+          groupId = group.id;
+          groupNameToIdMap.set(groupNameLower, groupId); // Update map for subsequent rows
+          groupsCreated++;
+        }
+
+        // Process add-on if name is provided
+        if (hasAddOn) {
+          const addOnName = row.addOnName.trim();
+          const addOnNameLower = addOnName.toLowerCase();
+
+          // Validate add-on fields
+          let isActiveValue = true; // default
+          if (row.addOnIsActive !== undefined && row.addOnIsActive !== null) {
+            if (typeof row.addOnIsActive === 'boolean') {
+              isActiveValue = row.addOnIsActive;
+            } else {
+              const isActiveStr = String(row.addOnIsActive).toLowerCase().trim();
+              if (isActiveStr !== 'true' && isActiveStr !== 'false' && isActiveStr !== '1' && isActiveStr !== '0') {
+                throw new Error(`Add-on Is Active must be a boolean (true/false). Found: ${row.addOnIsActive}`);
+              }
+              isActiveValue = isActiveStr === 'true' || isActiveStr === '1';
+            }
+          }
+
+          // Check if add-on exists
+          const addOnKey = `${groupId}|||${addOnNameLower}`;
+          const existingAddOnId = addOnKeyToIdMap.get(addOnKey);
+          const isAddOnUpdate = !!existingAddOnId;
+
+          if (isAddOnUpdate && existingAddOnId) {
+            // Update existing add-on
+            const { error: updateError } = await supabase
+              .from('add_ons')
+              .update({
+                name: addOnName,
+                price: row.addOnPrice || 0,
+                is_active: isActiveValue,
+                display_order: row.addOnDisplayOrder || 0,
+              })
+              .eq('id', existingAddOnId);
+
+            if (updateError) {
+              throw new Error(`Failed to update add-on: ${updateError.message}`);
+            }
+
+            // Store translations
+            const nameTranslations = translations.get('addOnName')?.get(i);
+            if (nameTranslations) {
+              await this.translationService.storePreTranslatedBatch(
+                'addon',
+                existingAddOnId,
+                [{ fieldName: 'name', text: addOnName }],
+                { name: nameTranslations },
+                undefined,
+                tenantId,
+                'en',
+              );
+            }
+
+            addOnsUpdated++;
+          } else {
+            // Create new add-on
+            const { data: addOn, error: insertError } = await supabase
+              .from('add_ons')
+              .insert({
+                tenant_id: tenantId,
+                add_on_group_id: groupId,
+                name: addOnName,
+                price: row.addOnPrice || 0,
+                is_active: isActiveValue,
+                display_order: row.addOnDisplayOrder || 0,
+              })
+              .select()
+              .single();
+
+            if (insertError) {
+              throw new Error(`Failed to create add-on: ${insertError.message}`);
+            }
+
+            // Store translations
+            const nameTranslations = translations.get('addOnName')?.get(i);
+            if (nameTranslations && addOn) {
+              await this.translationService.storePreTranslatedBatch(
+                'addon',
+                addOn.id,
+                [{ fieldName: 'name', text: addOnName }],
+                { name: nameTranslations },
+                undefined,
+                tenantId,
+                'en',
+              );
+            }
+
+            addOnKeyToIdMap.set(addOnKey, addOn.id); // Update map
+            addOnsCreated++;
+          }
+        }
+
+        // Store group name translations
+        const groupNameTranslations = translations.get('addOnGroupName')?.get(i);
+        if (groupNameTranslations && groupId) {
+          await this.translationService.storePreTranslatedBatch(
+            'add_on_group',
+            groupId,
+            [{ fieldName: 'name', text: groupName }],
+            { name: groupNameTranslations },
+            undefined,
+            tenantId,
+            'en',
+          );
+        }
+
+        success++;
+      } catch (error: any) {
+        failed++;
+        errors.push(`Row ${i + 2}: ${error.message}`);
+      }
+    }
+
+    return { success, failed, errors, groupsCreated, groupsUpdated, addOnsCreated, addOnsUpdated };
+  }
+
+  /**
+   * Combined bulk import: Variation Groups and Variations in one sheet
+   * Logic:
+   * - If variationGroupName is present but variationName is not → create/update variation group
+   * - If variationName is present → create/update variation (and create/update group if needed)
+   */
+  async bulkImportVariationGroupsAndVariations(
+    tenantId: string,
+    fileBuffer: Buffer,
+    branchId?: string,
+  ): Promise<{ success: number; failed: number; errors: string[]; groupsCreated: number; groupsUpdated: number; variationsCreated: number; variationsUpdated: number }> {
+    const config = {
+      entityType: 'variationGroupAndVariation',
+      fields: this.getBulkImportFields('variationGroupAndVariation'),
+      translateFields: ['variationGroupName', 'variationName'],
+    };
+
+    const rows = await this.bulkImportService.parseExcelFile(fileBuffer, config);
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Fetch all variation groups for name-to-ID mapping
+    let groupQuery = supabase
+      .from('variation_groups')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      groupQuery = groupQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+    
+    const { data: allGroups } = await groupQuery;
+    const groupNameToIdMap = new Map<string, string>();
+    (allGroups || []).forEach(group => {
+      groupNameToIdMap.set(group.name.toLowerCase(), group.id);
+    });
+
+    // Fetch all variations for update detection (by group + name)
+    const { data: allVariations } = await supabase
+      .from('variations')
+      .select('id, name, variation_group_id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    const variationKeyToIdMap = new Map<string, string>(); // key: "groupId|||name" -> variationId
+    (allVariations || []).forEach(variation => {
+      const key = `${variation.variation_group_id}|||${variation.name.toLowerCase()}`;
+      variationKeyToIdMap.set(key, variation.id);
+    });
+
+    let success = 0;
+    let failed = 0;
+    let groupsCreated = 0;
+    let groupsUpdated = 0;
+    let variationsCreated = 0;
+    let variationsUpdated = 0;
+    const errors: string[] = [];
+
+    // Batch translate all names
+    const translations = await this.bulkImportService.batchTranslateEntities(
+      rows,
+      'variationGroupAndVariation',
+      ['variationGroupName', 'variationName'],
+      tenantId,
+    );
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        // Check for parsing errors
+        if (row._errors && row._errors.length > 0) {
+          throw new Error(row._errors.join('; '));
+        }
+
+        // Validate variation group name is present
+        if (!row.variationGroupName || row.variationGroupName.trim() === '') {
+          throw new Error('Variation group name is required');
+        }
+
+        const groupName = row.variationGroupName.trim();
+        const groupNameLower = groupName.toLowerCase();
+
+        // Determine if this row is for group only or includes variation
+        const hasVariation = row.variationName && row.variationName.trim() !== '';
+
+        // Process variation group (create or update)
+        let groupId = groupNameToIdMap.get(groupNameLower);
+        const isGroupUpdate = !!groupId;
+
+        // Create or update variation group
+        if (isGroupUpdate && groupId) {
+          const updateDto: UpdateVariationGroupDto = {
+            name: groupName,
+          };
+          await this.updateVariationGroup(tenantId, groupId, updateDto, 'en');
+          groupsUpdated++;
+        } else {
+          const createDto: CreateVariationGroupDto = {
+            name: groupName,
+          };
+          const group = await this.createVariationGroup(tenantId, createDto, branchId);
+          groupId = group.id;
+          groupNameToIdMap.set(groupNameLower, groupId); // Update map for subsequent rows
+          groupsCreated++;
+        }
+
+        // Process variation if name is provided
+        if (hasVariation) {
+          const variationName = row.variationName.trim();
+          const variationNameLower = variationName.toLowerCase();
+
+          // Check if variation exists
+          const variationKey = `${groupId}|||${variationNameLower}`;
+          const existingVariationId = variationKeyToIdMap.get(variationKey);
+          const isVariationUpdate = !!existingVariationId;
+
+          if (isVariationUpdate && existingVariationId) {
+            // Update existing variation
+            const { error: updateError } = await supabase
+              .from('variations')
+              .update({
+                name: variationName,
+                recipe_multiplier: row.variationRecipeMultiplier || 1,
+                pricing_adjustment: row.variationPricingAdjustment || 0,
+                display_order: row.variationDisplayOrder || 0,
+              })
+              .eq('id', existingVariationId);
+
+            if (updateError) {
+              throw new Error(`Failed to update variation: ${updateError.message}`);
+            }
+
+            // Store translations
+            const nameTranslations = translations.get('variationName')?.get(i);
+            if (nameTranslations) {
+              await this.translationService.storePreTranslatedBatch(
+                'variation',
+                existingVariationId,
+                [{ fieldName: 'name', text: variationName }],
+                { name: nameTranslations },
+                undefined,
+                tenantId,
+                'en',
+              );
+            }
+
+            variationsUpdated++;
+          } else {
+            // Create new variation
+            const { data: variation, error: insertError } = await supabase
+              .from('variations')
+              .insert({
+                tenant_id: tenantId,
+                variation_group_id: groupId,
+                name: variationName,
+                recipe_multiplier: row.variationRecipeMultiplier || 1,
+                pricing_adjustment: row.variationPricingAdjustment || 0,
+                display_order: row.variationDisplayOrder || 0,
+              })
+              .select()
+              .single();
+
+            if (insertError) {
+              throw new Error(`Failed to create variation: ${insertError.message}`);
+            }
+
+            // Store translations
+            const nameTranslations = translations.get('variationName')?.get(i);
+            if (nameTranslations && variation) {
+              await this.translationService.storePreTranslatedBatch(
+                'variation',
+                variation.id,
+                [{ fieldName: 'name', text: variationName }],
+                { name: nameTranslations },
+                undefined,
+                tenantId,
+                'en',
+              );
+            }
+
+            variationKeyToIdMap.set(variationKey, variation.id); // Update map
+            variationsCreated++;
+          }
+        }
+
+        // Store group name translations
+        const groupNameTranslations = translations.get('variationGroupName')?.get(i);
+        if (groupNameTranslations && groupId) {
+          await this.translationService.storePreTranslatedBatch(
+            'variation_group',
+            groupId,
+            [{ fieldName: 'name', text: groupName }],
+            { name: groupNameTranslations },
+            undefined,
+            tenantId,
+            'en',
+          );
+        }
+
+        success++;
+      } catch (error: any) {
+        failed++;
+        errors.push(`Row ${i + 2}: ${error.message}`);
+      }
+    }
+
+    return { success, failed, errors, groupsCreated, groupsUpdated, variationsCreated, variationsUpdated };
+  }
+
+  /**
+   * Bulk import variation groups
+   */
+  async bulkImportVariationGroups(
+    tenantId: string,
+    fileBuffer: Buffer,
+    branchId?: string,
+  ): Promise<{ success: number; failed: number; errors: string[] }> {
+    const config = {
+      entityType: 'variationGroup',
+      fields: this.getBulkImportFields('variationGroup'),
+      translateFields: ['name'],
+    };
+
+    const rows = await this.bulkImportService.parseExcelFile(fileBuffer, config);
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Fetch all variation groups for name-to-ID mapping and checking existing
+    let groupQuery = supabase
+      .from('variation_groups')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      groupQuery = groupQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+    
+    const { data: allGroups } = await groupQuery;
+    const groupNameToIdMap = new Map<string, string>();
+    (allGroups || []).forEach(group => {
+      groupNameToIdMap.set(group.name.toLowerCase(), group.id);
+    });
+
+    // Prepare group data for processing
+    const groupData: Array<{
+      index: number;
+      row: any;
+      isUpdate: boolean;
+      groupId?: string;
+    }> = [];
+
+    let success = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    // Process and validate all rows
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        // Validate required fields
+        if (!row.name || row.name.trim() === '') {
+          throw new Error('Name is required');
+        }
+
+        // Check if group exists (by name)
+        const existingGroupId = groupNameToIdMap.get(row.name.trim().toLowerCase());
+        const isUpdate = !!existingGroupId;
+
+        groupData.push({
+          index: i,
+          row,
+          isUpdate,
+          groupId: existingGroupId,
+        });
+      } catch (error: any) {
+        failed++;
+        errors.push(`Row ${i + 2}: ${error.message}`);
+      }
+    }
+
+    // Process groups in parallel batches (10 at a time)
+    const BATCH_SIZE = 10;
+    const processedGroups: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+
+    for (let batchStart = 0; batchStart < groupData.length; batchStart += BATCH_SIZE) {
+      const batch = groupData.slice(batchStart, batchStart + BATCH_SIZE);
+      
+      const batchResults = await Promise.allSettled(
+        batch.map(async ({ index, row, isUpdate, groupId }) => {
+          try {
+            if (isUpdate && groupId) {
+              // Update existing group
+              const updateDto: UpdateVariationGroupDto = {
+                name: row.name,
+              };
+
+              const group = await this.updateVariationGroup(tenantId, groupId, updateDto, 'en');
+              return { success: true, index, groupId: group.id, name: row.name, isUpdate: true };
+            } else {
+              // Create new group
+              const createDto: CreateVariationGroupDto = {
+                name: row.name,
+              };
+
+              const group = await this.createVariationGroup(tenantId, createDto, branchId);
+              return { success: true, index, groupId: group.id, name: row.name, isUpdate: false };
+            }
+          } catch (error: any) {
+            return { success: false, index, error: error.message };
+          }
+        })
+      );
+
+      // Process batch results
+      for (const result of batchResults) {
+        if (result.status === 'fulfilled') {
+          if (result.value.success) {
+            success++;
+            processedGroups.push({
+              id: result.value.groupId,
+              name: result.value.name,
+              index: result.value.index,
+              isUpdate: result.value.isUpdate || false,
+            });
+          } else {
+            failed++;
+            errors.push(`Row ${result.value.index + 2}: ${result.value.error}`);
+          }
+        } else {
+          failed++;
+          errors.push(`Row ${batch[0].index + 2}: ${result.reason?.message || 'Unknown error'}`);
+        }
+      }
+    }
+
+    // Fire-and-forget: Do translations asynchronously after returning response
+    if (processedGroups.length > 0) {
+      const groupsToTranslate = processedGroups.map(pg => ({ name: pg.name }));
+      
+      this.bulkImportService.batchTranslateEntities(
+        groupsToTranslate,
+        'variation_group',
+        ['name'],
+        tenantId,
+      ).then((translations) => {
+        processedGroups.forEach(({ id, name }, arrayIndex) => {
+          const nameTranslations = translations.get('name')?.get(arrayIndex);
+          if (nameTranslations) {
+            this.translationService.storePreTranslatedBatch(
+              'variation_group',
+              id,
+              [{ fieldName: 'name', text: name }],
+              { name: nameTranslations },
+              undefined,
+              tenantId,
+              'en',
+            ).catch((err) => {
+              console.warn(`Failed to store translations for variation group ${id}:`, err.message);
+            });
+          }
+        });
+      }).catch((err) => {
+        console.error('Failed to batch translate variation groups:', err.message);
+      });
+    }
+
+    return { success, failed, errors };
+  }
+
+  /**
+   * Bulk import food items
+   */
+  async bulkImportFoodItems(
+    tenantId: string,
+    fileBuffer: Buffer,
+    branchId?: string,
+  ): Promise<{ success: number; failed: number; errors: string[] }> {
+    const config = {
+      entityType: 'foodItem',
+      fields: this.getBulkImportFields('foodItem'),
+      translateFields: ['name', 'description'],
+    };
+
+    const rows = await this.bulkImportService.parseExcelFile(fileBuffer, config);
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Fetch all categories for name-to-ID mapping
+    let categoryQuery = supabase
+      .from('categories')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      categoryQuery = categoryQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+    
+    const { data: categories } = await categoryQuery;
+    const categoryNameToIdMap = new Map<string, string>();
+    (categories || []).forEach(cat => {
+      categoryNameToIdMap.set(cat.name.toLowerCase(), cat.id);
+    });
+
+    // Get all food items for checking existing (by name + category)
+    const allFoodItemKeys = rows.map(r => ({ name: r.name?.toLowerCase(), categoryName: r.categoryName?.toLowerCase() })).filter(k => k.name && k.categoryName);
+    const nameCategoryPairs = Array.from(new Set(allFoodItemKeys.map(k => `${k.name}|||${k.categoryName}`)));
+    
+    // Build query to find existing food items
+    const existingFoodItemsMap = new Map<string, string>(); // key: "name|||categoryId" -> foodItemId
+    
+    if (nameCategoryPairs.length > 0) {
+      // Get all unique category IDs that match the names
+      const matchingCategoryIds = new Set<string>();
+      for (const pair of nameCategoryPairs) {
+        const [, categoryName] = pair.split('|||');
+        const categoryId = categoryNameToIdMap.get(categoryName);
+        if (categoryId) {
+          matchingCategoryIds.add(categoryId);
+        }
+      }
+
+      if (matchingCategoryIds.size > 0) {
+        let foodItemQuery = supabase
+          .from('food_items')
+          .select('id, name, category_id')
+          .eq('tenant_id', tenantId)
+          .in('category_id', Array.from(matchingCategoryIds))
+          .is('deleted_at', null);
+        
+        if (branchId) {
+          foodItemQuery = foodItemQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+        }
+
+        const { data: existingFoodItems } = await foodItemQuery;
+        (existingFoodItems || []).forEach(item => {
+          const key = `${item.name.toLowerCase()}|||${item.category_id}`;
+          existingFoodItemsMap.set(key, item.id);
+        });
+      }
+    }
+
+    // Prepare food item data for processing
+    const foodItemData: Array<{
+      index: number;
+      row: any;
+      categoryId: string;
+      isUpdate: boolean;
+      foodItemId?: string;
+    }> = [];
+
+    let success = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    // Process and validate all rows
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        // Validate required fields
+        if (!row.name || row.name.trim() === '') {
+          throw new Error('Name is required');
+        }
+        if (!row.categoryName || row.categoryName.trim() === '') {
+          throw new Error('Category name is required');
+        }
+        if (row.basePrice === undefined || row.basePrice === null || row.basePrice === '') {
+          throw new Error('Base price is required');
+        }
+        // Validate basePrice is a valid number
+        const basePriceNum = Number(row.basePrice);
+        if (isNaN(basePriceNum) || basePriceNum < 0) {
+          throw new Error(`Base price must be a valid positive number. Found: ${row.basePrice}`);
+        }
+
+        // Map category name to ID
+        const categoryId = categoryNameToIdMap.get(row.categoryName.trim().toLowerCase());
+        if (!categoryId) {
+          throw new Error(`Category not found: ${row.categoryName}`);
+        }
+
+        // Check if food item exists (by name + category)
+        const key = `${row.name.toLowerCase()}|||${categoryId}`;
+        const existingFoodItemId = existingFoodItemsMap.get(key);
+        const isUpdate = !!existingFoodItemId;
+
+        foodItemData.push({
+          index: i,
+          row,
+          categoryId,
+          isUpdate,
+          foodItemId: existingFoodItemId,
+        });
+      } catch (error: any) {
+        failed++;
+        errors.push(`Row ${i + 2}: ${error.message}`);
+      }
+    }
+
+    // Process food items in parallel batches (10 at a time)
+    const BATCH_SIZE = 10;
+    const processedFoodItems: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+
+    for (let batchStart = 0; batchStart < foodItemData.length; batchStart += BATCH_SIZE) {
+      const batch = foodItemData.slice(batchStart, batchStart + BATCH_SIZE);
+      
+      const batchResults = await Promise.allSettled(
+        batch.map(async ({ index, row, categoryId, isUpdate, foodItemId }) => {
+          try {
+            if (isUpdate && foodItemId) {
+              // Update existing food item
+              const updateDto: UpdateFoodItemDto = {
+                name: row.name,
+                description: row.description || undefined,
+                categoryId,
+                basePrice: row.basePrice,
+                stockType: row.stockType || undefined,
+                stockQuantity: row.stockQuantity || undefined,
+                ageLimit: row.ageLimit || undefined,
+                isActive: row.isActive !== undefined ? row.isActive : undefined,
+              };
+
+              const foodItem = await this.updateFoodItem(tenantId, foodItemId, updateDto, 'en');
+
+              // Update menu types
+              if (row.menuTypes && Array.isArray(row.menuTypes) && row.menuTypes.length > 0) {
+                // Remove from all menus first, then add to specified ones
+                await supabase.from('menu_food_items').delete().eq('food_item_id', foodItemId);
+                for (const menuType of row.menuTypes) {
+                  await this.assignItemsToMenu(tenantId, menuType, [foodItemId]);
+                }
+              }
+
+              // Update labels
+              if (row.labels !== undefined) {
+                await supabase.from('food_item_labels').delete().eq('food_item_id', foodItemId);
+                if (Array.isArray(row.labels) && row.labels.length > 0) {
+                  const labelData = row.labels.map((label: string) => ({
+                    food_item_id: foodItemId,
+                    label: label.trim(),
+                  }));
+                  await supabase.from('food_item_labels').insert(labelData);
+                }
+              }
+
+              // Update add-on groups
+              if (row.addOnGroupIds !== undefined) {
+                await supabase.from('food_item_add_on_groups').delete().eq('food_item_id', foodItemId);
+                if (Array.isArray(row.addOnGroupIds) && row.addOnGroupIds.length > 0) {
+                  const addOnGroupData = row.addOnGroupIds.map((groupId: string) => ({
+                    food_item_id: foodItemId,
+                    add_on_group_id: groupId,
+                  }));
+                  await supabase.from('food_item_add_on_groups').insert(addOnGroupData);
+                }
+              }
+
+              return { success: true, index, foodItemId: foodItem.id, name: row.name, isUpdate: true };
+            } else {
+              // Create new food item
+              const createDto: CreateFoodItemDto = {
+                name: row.name,
+                description: row.description || undefined,
+                categoryId,
+                basePrice: row.basePrice,
+                stockType: row.stockType || 'unlimited',
+                stockQuantity: row.stockQuantity || undefined,
+                menuTypes: row.menuTypes || undefined,
+                ageLimit: row.ageLimit || undefined,
+                labels: row.labels || undefined,
+                addOnGroupIds: row.addOnGroupIds || undefined,
+              };
+
+              const foodItem = await this.createFoodItem(tenantId, createDto, branchId);
+              return { success: true, index, foodItemId: foodItem.id, name: row.name, isUpdate: false };
+            }
+          } catch (error: any) {
+            return { success: false, index, error: error.message };
+          }
+        })
+      );
+
+      // Process batch results
+      for (const result of batchResults) {
+        if (result.status === 'fulfilled') {
+          if (result.value.success) {
+            success++;
+            processedFoodItems.push({
+              id: result.value.foodItemId,
+              name: result.value.name,
+              index: result.value.index,
+              isUpdate: result.value.isUpdate || false,
+            });
+          } else {
+            failed++;
+            errors.push(`Row ${result.value.index + 2}: ${result.value.error}`);
+          }
+        } else {
+          failed++;
+          errors.push(`Row ${batch[0].index + 2}: ${result.reason?.message || 'Unknown error'}`);
+        }
+      }
+    }
+
+    // Fire-and-forget: Do translations asynchronously after returning response
+    if (processedFoodItems.length > 0) {
+      const foodItemsToTranslate = processedFoodItems.map(pfi => ({ name: pfi.name, description: rows[pfi.index]?.description }));
+      
+      this.bulkImportService.batchTranslateEntities(
+        foodItemsToTranslate,
+        'food_item',
+        ['name', 'description'],
+        tenantId,
+      ).then((translations) => {
+        processedFoodItems.forEach(({ id, name }, arrayIndex) => {
+          const nameTranslations = translations.get('name')?.get(arrayIndex);
+          const descTranslations = translations.get('description')?.get(arrayIndex);
+          
+          if (nameTranslations || descTranslations) {
+            const fieldsToTranslate = [
+              { fieldName: 'name', text: name },
+              ...(rows[processedFoodItems[arrayIndex].index]?.description ? [{ fieldName: 'description', text: rows[processedFoodItems[arrayIndex].index].description }] : []),
+            ];
+
+            const translationsMap: { [fieldName: string]: any } = {};
+            if (nameTranslations) translationsMap['name'] = nameTranslations;
+            if (descTranslations) translationsMap['description'] = descTranslations;
+
+            this.translationService.storePreTranslatedBatch(
+              'food_item',
+              id,
+              fieldsToTranslate,
+              translationsMap,
+              undefined,
+              tenantId,
+              'en',
+            ).catch((err) => {
+              console.warn(`Failed to store translations for food item ${id}:`, err.message);
+            });
+          }
+        });
+      }).catch((err) => {
+        console.error('Failed to batch translate food items:', err.message);
+      });
+    }
+
+    return { success, failed, errors };
+  }
+
+  /**
+   * Bulk import menus
+   */
+  async bulkImportMenus(
+    tenantId: string,
+    fileBuffer: Buffer,
+    branchId?: string,
+  ): Promise<{ success: number; failed: number; errors: string[] }> {
+    const config = {
+      entityType: 'menu',
+      fields: this.getBulkImportFields('menu'),
+      translateFields: ['name'],
+    };
+
+    const rows = await this.bulkImportService.parseExcelFile(fileBuffer, config);
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Batch translate all names
+    const translations = await this.bulkImportService.batchTranslateEntities(
+      rows,
+      'menu',
+      ['name'],
+      tenantId,
+    );
+
+    let success = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        const menuData: any = {
+          tenant_id: tenantId,
+          menu_type: row.menuType,
+          name: row.name || null,
+          is_active: row.isActive !== undefined ? row.isActive : true,
+        };
+
+        if (branchId) {
+          menuData.branch_id = branchId;
+        }
+
+        const { data: menu, error } = await supabase
+          .from('menus')
+          .insert(menuData)
+          .select()
+          .single();
+
+        if (error) {
+          throw new Error(error.message);
+        }
+
+        // Assign food items if provided
+        if (row.foodItemIds && Array.isArray(row.foodItemIds) && row.foodItemIds.length > 0) {
+          await this.assignItemsToMenu(tenantId, row.menuType, row.foodItemIds);
+        }
+
+        // Store pre-translated translations (already translated in batch)
+        if (row.name) {
+          const nameTranslations = translations.get('name')?.get(i);
+          if (nameTranslations) {
+            await this.translationService.storePreTranslatedBatch(
+              'menu',
+              menu.id,
+              [{ fieldName: 'name', text: row.name }],
+              { name: nameTranslations },
+              undefined,
+              tenantId,
+              'en',
+            );
+          }
+        }
+
+        success++;
+      } catch (error) {
+        failed++;
+        errors.push(`Row ${i + 1}: ${error.message}`);
+      }
+    }
+
+    return { success, failed, errors };
+  }
+
+  /**
+   * Bulk import buffets
+   */
+  async bulkImportBuffets(
+    tenantId: string,
+    fileBuffer: Buffer,
+    branchId?: string,
+  ): Promise<{ success: number; failed: number; errors: string[] }> {
+    const config = {
+      entityType: 'buffet',
+      fields: this.getBulkImportFields('buffet'),
+      translateFields: ['name', 'description'],
+    };
+
+    const rows = await this.bulkImportService.parseExcelFile(fileBuffer, config);
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Batch translate all names and descriptions
+    const translations = await this.bulkImportService.batchTranslateEntities(
+      rows,
+      'buffet',
+      ['name', 'description'],
+      tenantId,
+    );
+
+    let success = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        const buffetData: any = {
+          tenant_id: tenantId,
+          name: row.name,
+          description: row.description || null,
+          price_per_person: row.pricePerPerson,
+          min_persons: row.minPersons || null,
+          duration: row.duration || null,
+          display_order: row.displayOrder || 0,
+          is_active: row.isActive !== undefined ? row.isActive : true,
+        };
+
+        if (branchId) {
+          buffetData.branch_id = branchId;
+        }
+
+        const { data: buffet, error } = await supabase
+          .from('buffets')
+          .insert(buffetData)
+          .select()
+          .single();
+
+        if (error) {
+          throw new Error(error.message);
+        }
+
+        // Handle menu types
+        if (row.menuTypes && Array.isArray(row.menuTypes) && row.menuTypes.length > 0) {
+          const menuTypeData = row.menuTypes.map((menuType: string) => ({
+            buffet_id: buffet.id,
+            menu_type: menuType.trim(),
+          }));
+          await supabase.from('buffet_menu_types').insert(menuTypeData);
+        }
+
+        // Store pre-translated translations (already translated in batch)
+        const nameTranslations = translations.get('name')?.get(i);
+        const descTranslations = translations.get('description')?.get(i);
+
+        if (nameTranslations || descTranslations) {
+          const fieldsToTranslate = [
+            { fieldName: 'name', text: row.name },
+            ...(row.description ? [{ fieldName: 'description', text: row.description }] : []),
+          ];
+
+          const translationsMap: { [fieldName: string]: any } = {};
+          if (nameTranslations) translationsMap['name'] = nameTranslations;
+          if (descTranslations) translationsMap['description'] = descTranslations;
+
+          await this.translationService.storePreTranslatedBatch(
+            'buffet',
+            buffet.id,
+            fieldsToTranslate,
+            translationsMap,
+            undefined,
+            tenantId,
+            'en',
+          );
+        }
+
+        success++;
+      } catch (error) {
+        failed++;
+        errors.push(`Row ${i + 1}: ${error.message}`);
+      }
+    }
+
+    return { success, failed, errors };
+  }
+
+  /**
+   * Bulk import combo meals
+   */
+  async bulkImportComboMeals(
+    tenantId: string,
+    fileBuffer: Buffer,
+    branchId?: string,
+  ): Promise<{ success: number; failed: number; errors: string[] }> {
+    const config = {
+      entityType: 'comboMeal',
+      fields: this.getBulkImportFields('comboMeal'),
+      translateFields: ['name', 'description'],
+    };
+
+    const rows = await this.bulkImportService.parseExcelFile(fileBuffer, config);
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Batch translate all names and descriptions
+    const translations = await this.bulkImportService.batchTranslateEntities(
+      rows,
+      'combo_meal',
+      ['name', 'description'],
+      tenantId,
+    );
+
+    let success = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        const comboMealData: any = {
+          tenant_id: tenantId,
+          name: row.name,
+          description: row.description || null,
+          base_price: row.basePrice,
+          discount_percentage: row.discountPercentage || null,
+          display_order: row.displayOrder || 0,
+          is_active: row.isActive !== undefined ? row.isActive : true,
+        };
+
+        if (branchId) {
+          comboMealData.branch_id = branchId;
+        }
+
+        const { data: comboMeal, error } = await supabase
+          .from('combo_meals')
+          .insert(comboMealData)
+          .select()
+          .single();
+
+        if (error) {
+          throw new Error(error.message);
+        }
+
+        // Handle food items
+        if (row.foodItemIds && Array.isArray(row.foodItemIds) && row.foodItemIds.length > 0) {
+          const foodItemData = row.foodItemIds.map((foodItemId: string) => ({
+            combo_meal_id: comboMeal.id,
+            food_item_id: foodItemId,
+          }));
+          await supabase.from('combo_meal_food_items').insert(foodItemData);
+        }
+
+        // Handle menu types
+        if (row.menuTypes && Array.isArray(row.menuTypes) && row.menuTypes.length > 0) {
+          const menuTypeData = row.menuTypes.map((menuType: string) => ({
+            combo_meal_id: comboMeal.id,
+            menu_type: menuType.trim(),
+          }));
+          await supabase.from('combo_meal_menu_types').insert(menuTypeData);
+        }
+
+        // Store pre-translated translations (already translated in batch)
+        const nameTranslations = translations.get('name')?.get(i);
+        const descTranslations = translations.get('description')?.get(i);
+
+        if (nameTranslations || descTranslations) {
+          const fieldsToTranslate = [
+            { fieldName: 'name', text: row.name },
+            ...(row.description ? [{ fieldName: 'description', text: row.description }] : []),
+          ];
+
+          const translationsMap: { [fieldName: string]: any } = {};
+          if (nameTranslations) translationsMap['name'] = nameTranslations;
+          if (descTranslations) translationsMap['description'] = descTranslations;
+
+          await this.translationService.storePreTranslatedBatch(
+            'combo_meal',
+            comboMeal.id,
+            fieldsToTranslate,
+            translationsMap,
+            undefined,
+            tenantId,
+            'en',
+          );
+        }
+
+        success++;
+      } catch (error) {
+        failed++;
+        errors.push(`Row ${i + 1}: ${error.message}`);
+      }
+    }
+
+    return { success, failed, errors };
   }
 }

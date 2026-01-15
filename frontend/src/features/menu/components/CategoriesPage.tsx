@@ -25,7 +25,7 @@ import {
   Progress,
   Loader,
 } from '@mantine/core';
-import { IconPlus, IconEdit, IconTrash, IconUpload, IconToolsKitchen2, IconAlertCircle } from '@tabler/icons-react';
+import { IconPlus, IconEdit, IconTrash, IconUpload, IconToolsKitchen2, IconAlertCircle, IconFileSpreadsheet } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { menuApi, Category } from '@/lib/api/menu';
@@ -40,6 +40,7 @@ import { onMenuDataUpdate, notifyMenuDataUpdate } from '@/lib/utils/menu-events'
 import { handleApiError } from '@/shared/utils/error-handler';
 import { TranslationStatusBadge, LanguageIndicator, RetranslateButton } from '@/components/translations';
 import { translationsApi, SupportedLanguage } from '@/lib/api/translations';
+import { BulkImportModal } from '@/components/common/BulkImportModal';
 
 export function CategoriesPage() {
   const { language } = useLanguageStore();
@@ -62,6 +63,7 @@ export function CategoriesPage() {
   const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
   const [supportedLanguages, setSupportedLanguages] = useState<SupportedLanguage[]>([]);
   const [categoryTranslations, setCategoryTranslations] = useState<{ [categoryId: string]: { [fieldName: string]: { [languageCode: string]: string } } }>({});
+  const [bulkImportOpened, setBulkImportOpened] = useState(false);
 
   // Track if any API call is in progress
   const isApiInProgress = loading || submitting || deletingCategoryId !== null;
@@ -313,6 +315,13 @@ export function CategoriesPage() {
         <Progress value={100} animated color={primaryColor} size="xs" radius={0} style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000 }} />
       )}
       <Group justify="flex-end">
+        <Button
+          leftSection={<IconFileSpreadsheet size={16} />}
+          onClick={() => setBulkImportOpened(true)}
+          variant="light"
+        >
+          {t('bulkImport.bulkImport', language) || 'Bulk Import'}
+        </Button>
         <Button
           leftSection={<IconPlus size={16} />}
           onClick={() => handleOpenModal()}
@@ -581,6 +590,24 @@ export function CategoriesPage() {
           </Stack>
         </form>
       </Modal>
+
+      <BulkImportModal
+        opened={bulkImportOpened}
+        onClose={() => setBulkImportOpened(false)}
+        onSuccess={() => {
+          loadCategories();
+          notifyMenuDataUpdate('categories-updated');
+          notifyMenuDataUpdate('food-items-updated');
+        }}
+        entityType="category"
+        entityName={t('menu.categories', language) || 'Categories'}
+        downloadSample={async () => {
+          return await menuApi.downloadBulkImportSample('category');
+        }}
+        uploadFile={async (file: File) => {
+          return await menuApi.bulkImportCategories(file, selectedBranchId || undefined);
+        }}
+      />
     </Stack>
   );
 }

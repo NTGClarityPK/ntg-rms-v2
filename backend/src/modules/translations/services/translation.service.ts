@@ -361,6 +361,68 @@ export class TranslationService {
   }
 
   /**
+   * Store pre-translated batch translations without calling AI translation
+   * Used when translations have already been done (e.g., bulk import)
+   */
+  async storePreTranslatedBatch(
+    entityType: EntityType | string,
+    entityId: string,
+    fields: Array<{ fieldName: FieldName | string; text: string }>,
+    translationsMap: { [fieldName: string]: TranslationResult },
+    userId?: string,
+    tenantId?: string,
+    sourceLanguage: string = 'en',
+  ): Promise<void> {
+    if (!fields || fields.length === 0) {
+      return;
+    }
+
+    try {
+      // Create or get translation metadata
+      const metadata = await this.translationRepository.createOrGetMetadata(
+        entityType,
+        entityId,
+        sourceLanguage,
+      );
+
+      // Store source text and pre-translated data for all fields
+      for (const field of fields) {
+        if (!field.text || !field.text.trim()) continue;
+
+        const translations: TranslationResult = translationsMap[field.fieldName] || {};
+
+        // Include source language text
+        const allFieldTranslations: TranslationResult = {
+          [sourceLanguage]: field.text,
+          ...translations,
+        };
+
+        // Store each translation in database
+        for (const [languageCode, translatedText] of Object.entries(allFieldTranslations)) {
+          if (translatedText && translatedText.trim()) {
+            const isAiGenerated = languageCode !== sourceLanguage;
+            await this.translationRepository.upsertTranslation(
+              metadata.id,
+              languageCode,
+              field.fieldName,
+              translatedText,
+              isAiGenerated,
+              languageCode === sourceLanguage ? userId : undefined,
+            );
+          }
+        }
+      }
+
+      this.logger.log(
+        `Stored pre-translated batch translations for ${fields.length} fields of ${entityType}:${entityId}`,
+      );
+    } catch (error) {
+      this.logger.error(`Failed to store pre-translated batch: ${error.message}`, error.stack);
+      // Don't throw - translations are not critical for bulk import
+    }
+  }
+
+  /**
    * Bulk insert translations directly (optimized for seed data)
    * Inserts multiple translations in a single batch operation
    * Only inserts for tenant-enabled languages

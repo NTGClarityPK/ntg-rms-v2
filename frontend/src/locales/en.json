@@ -365,6 +365,7 @@
     "editFoodItemToUpdateVariation": "Please edit the food item to update its variation.",
     "addLabel": "Add Label",
     "addOnGroups": "Add-on Groups",
+    "addOnGroupsAndAddOns": "Add-on Groups & Add-ons",
     "discounts": "Discounts",
     "addDiscount": "Add Discount",
     "discountType": "Discount Type",
@@ -786,6 +787,7 @@
   },
   "employees": {
     "title": "Employee Management",
+    "employees": "Employees",
     "addEmployee": "Add Employee",
     "editEmployee": "Edit Employee",
     "name": "Name",
@@ -825,6 +827,7 @@
   },
   "customers": {
     "title": "Customer Management",
+    "customers": "Customers",
     "addCustomer": "Add Customer",
     "editCustomer": "Edit Customer",
     "customerProfile": "Customer Profile",
@@ -1184,6 +1187,33 @@
     "showing": "Showing",
     "of": "of",
     "itemsPerPage": "Items per page"
+  },
+  "bulkImport": {
+    "title": "Bulk Import {entity}",
+    "instructions": "Download the sample Excel file, fill it with your data, and upload it here.",
+    "step1": "Step 1: Download sample file",
+    "step2": "Step 2: Upload filled file",
+    "downloadSample": "Download Sample",
+    "selectFile": "Select File",
+    "upload": "Upload & Import",
+    "sampleDownloaded": "Sample downloaded",
+    "sampleDownloadedMessage": "Sample Excel file downloaded successfully",
+    "downloadError": "Download error",
+    "noFileSelected": "No file selected",
+    "pleaseSelectFile": "Please select an Excel file to upload",
+    "uploadSuccess": "Upload successful",
+    "allRecordsImported": "Successfully imported {count} records",
+    "uploadPartial": "Partial success",
+    "someRecordsFailed": "Imported {success} records, {failed} failed",
+    "uploadError": "Upload error",
+    "allSuccess": "Successfully imported {count} records",
+    "partialSuccess": "Imported {success} records, {failed} failed",
+    "successCount": "Successfully imported: {count}",
+    "failedCount": "Failed: {count}",
+    "errors": "Errors",
+    "moreErrors": "... and {count} more errors",
+    "bulkImport": "Bulk Import",
+    "bulkImportDescription": "Import multiple records at once using Excel"
   }
 
 }

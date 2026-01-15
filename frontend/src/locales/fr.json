@@ -365,6 +365,7 @@
     "editFoodItemToUpdateVariation": "Veuillez modifier l'article alimentaire pour mettre à jour sa variation.",
     "addLabel": "Ajouter une étiquette",
     "addOnGroups": "Groupes de suppléments",
+    "addOnGroupsAndAddOns": "Groupes de suppléments et suppléments",
     "discounts": "Remises",
     "addDiscount": "Ajouter une remise",
     "discountType": "Type de remise",
@@ -786,6 +787,7 @@
   },
   "employees": {
     "title": "Gestion des employés",
+    "employees": "Employés",
     "addEmployee": "Ajouter un employé",
     "editEmployee": "Modifier l'employé",
     "name": "Nom",
@@ -825,6 +827,7 @@
   },
   "customers": {
     "title": "Gestion des clients",
+    "customers": "Clients",
     "addCustomer": "Ajouter un client",
     "editCustomer": "Modifier le client",
     "customerProfile": "Profil client",
@@ -1184,5 +1187,32 @@
     "showing": "Affichage",
     "of": "de",
     "itemsPerPage": "Articles par page"
+  },
+  "bulkImport": {
+    "title": "Import en masse {entity}",
+    "instructions": "Téléchargez le fichier Excel modèle, remplissez-le avec vos données, puis téléversez-le ici.",
+    "step1": "Étape 1 : Télécharger le fichier modèle",
+    "step2": "Étape 2 : Téléverser le fichier rempli",
+    "downloadSample": "Télécharger le modèle",
+    "selectFile": "Sélectionner un fichier",
+    "upload": "Téléverser et importer",
+    "sampleDownloaded": "Modèle téléchargé",
+    "sampleDownloadedMessage": "Fichier Excel modèle téléchargé avec succès",
+    "downloadError": "Erreur de téléchargement",
+    "noFileSelected": "Aucun fichier sélectionné",
+    "pleaseSelectFile": "Veuillez sélectionner un fichier Excel à téléverser",
+    "uploadSuccess": "Téléversement réussi",
+    "allRecordsImported": "Importation réussie de {count} enregistrements",
+    "uploadPartial": "Succès partiel",
+    "someRecordsFailed": "Importation de {success} enregistrements, {failed} échoués",
+    "uploadError": "Erreur de téléversement",
+    "allSuccess": "Importation réussie de {count} enregistrements",
+    "partialSuccess": "Importation de {success} enregistrements, {failed} échoués",
+    "successCount": "Importation réussie : {count}",
+    "failedCount": "Échoué : {count}",
+    "errors": "Erreurs",
+    "moreErrors": "... et {count} erreurs supplémentaires",
+    "bulkImport": "Import en masse",
+    "bulkImportDescription": "Importer plusieurs enregistrements à la fois en utilisant Excel"
   }
 }

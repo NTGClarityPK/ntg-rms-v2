@@ -9,8 +9,8 @@ export function hasPermission(
   action: string,
   userRole?: string,
 ): boolean {
-  // Owners have full access to everything
-  if (userRole === 'tenant_owner') {
+  // Owners and managers have full access to everything
+  if (userRole === 'tenant_owner' || userRole === 'manager') {
     return true;
   }
 

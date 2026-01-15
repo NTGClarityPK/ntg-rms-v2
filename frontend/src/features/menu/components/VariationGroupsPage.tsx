@@ -31,6 +31,7 @@ import {
   IconAlertCircle,
   IconList,
   IconTable,
+  IconFileSpreadsheet,
 } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
@@ -46,6 +47,7 @@ import { onMenuDataUpdate, notifyMenuDataUpdate } from '@/lib/utils/menu-events'
 import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
 import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
+import { BulkImportModal } from '@/components/common/BulkImportModal';
 
 export function VariationGroupsPage() {
   const { language } = useLanguageStore();
@@ -82,6 +84,8 @@ export function VariationGroupsPage() {
   const [pendingVariation, setPendingVariation] = useState<Variation | null>(null);
   const [updatingVariationId, setUpdatingVariationId] = useState<string | null>(null);
   const [deletingVariationId, setDeletingVariationId] = useState<string | null>(null);
+  const [bulkImportOpened, setBulkImportOpened] = useState(false);
+  const [bulkImportGroupsOpened, setBulkImportGroupsOpened] = useState(false);
 
   const groupForm = useForm({
     initialValues: {
@@ -478,7 +482,14 @@ export function VariationGroupsPage() {
 
   return (
     <Stack gap="md">
-      <Group justify="flex-end">
+      <Group justify="space-between">
+        <Button
+          leftSection={<IconFileSpreadsheet size={16} />}
+          onClick={() => setBulkImportGroupsOpened(true)}
+          variant="light"
+        >
+          {t('bulkImport.bulkImport', language) || 'Bulk Import Groups'}
+        </Button>
         <Button
           leftSection={<IconPlus size={16} />}
           onClick={() => handleOpenGroupModal()}
@@ -644,15 +655,26 @@ export function VariationGroupsPage() {
                 <Title order={4}>
                   {selectedGroup.name}
                 </Title>
-                <Button
-                  size="xs"
-                  leftSection={<IconPlus size={14} />}
-                  onClick={() => handleOpenVariationModal()}
-                  style={{ backgroundColor: primaryColor }}
-                  disabled={loadingVariations}
-                >
-                  {t('menu.createVariation', language)}
-                </Button>
+                <Group gap="xs">
+                  <Button
+                    size="xs"
+                    leftSection={<IconFileSpreadsheet size={14} />}
+                    onClick={() => setBulkImportOpened(true)}
+                    variant="light"
+                    disabled={loadingVariations}
+                  >
+                    {t('bulkImport.bulkImport', language) || 'Bulk Import'}
+                  </Button>
+                  <Button
+                    size="xs"
+                    leftSection={<IconPlus size={14} />}
+                    onClick={() => handleOpenVariationModal()}
+                    style={{ backgroundColor: primaryColor }}
+                    disabled={loadingVariations}
+                  >
+                    {t('menu.createVariation', language)}
+                  </Button>
+                </Group>
               </Group>
 
               {loadingVariations ? (
@@ -968,6 +990,44 @@ export function VariationGroupsPage() {
           </Stack>
         </form>
       </Modal>
+
+      <BulkImportModal
+        opened={bulkImportGroupsOpened}
+        onClose={() => setBulkImportGroupsOpened(false)}
+        onSuccess={() => {
+          loadVariationGroups();
+          notifyMenuDataUpdate('variation-groups-updated');
+        }}
+        entityType="variationGroup"
+        entityName={t('menu.variationGroups', language) || 'Variation Groups'}
+        downloadSample={async () => {
+          return await menuApi.downloadBulkImportSample('variationGroup');
+        }}
+        uploadFile={async (file: File) => {
+          return await menuApi.bulkImportVariationGroups(file, selectedBranchId || undefined);
+        }}
+      />
+
+      {selectedGroup && (
+        <BulkImportModal
+          opened={bulkImportOpened}
+          onClose={() => setBulkImportOpened(false)}
+          onSuccess={() => {
+            if (selectedGroup) {
+              loadVariations(selectedGroup.id);
+            }
+            notifyMenuDataUpdate('variations-updated');
+          }}
+          entityType="variation"
+          entityName={t('menu.variations', language) || 'Variations'}
+          downloadSample={async () => {
+            return await menuApi.downloadBulkImportSample('variation');
+          }}
+          uploadFile={async (file: File) => {
+            return await menuApi.bulkImportVariations(file);
+          }}
+        />
+      )}
     </Stack>
   );
 }

@@ -1,5 +1,7 @@
-import { Controller, Get, Post, Put, Body, Param, UseGuards, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Get, Post, Put, Body, Param, UseGuards, Query, UseInterceptors, UploadedFile, Res, BadRequestException } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import { Response } from 'express';
 import { CustomersService } from './customers.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -73,5 +75,49 @@ export class CustomersController {
     @Body() addressDto: CreateCustomerAddressDto,
   ) {
     return this.customersService.createCustomerAddress(user.tenantId, id, addressDto);
+  }
+
+  // ============================================
+  // BULK IMPORT ENDPOINTS
+  // ============================================
+
+  @Get('bulk-import/sample')
+  @ApiOperation({ summary: 'Download sample Excel file for bulk import' })
+  async downloadBulkImportSample(
+    @CurrentUser() user: any,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.customersService.generateBulkImportSample();
+    const filename = 'bulk-import-customers-sample.xlsx';
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  }
+
+  @Post('bulk-import')
+  @ApiOperation({ summary: 'Bulk import customers from Excel file' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  async bulkImportCustomers(
+    @CurrentUser() user: any,
+    @UploadedFile() file: any,
+    @Query('branchId') branchId?: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Excel file is required');
+    }
+    return this.customersService.bulkImportCustomers(user.tenantId, file.buffer, branchId);
   }
 }

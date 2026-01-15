@@ -27,13 +27,13 @@ import {
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import {
-  IconPlus,
   IconEdit,
   IconTrash,
   IconAlertCircle,
   IconSearch,
   IconCircleCheck,
   IconCircleX,
+  IconFileSpreadsheet,
 } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
@@ -57,6 +57,7 @@ import '@mantine/dates/styles.css';
 import { EMPLOYMENT_TYPES } from '@/shared/constants/employees.constants';
 import { handleApiError } from '@/shared/utils/error-handler';
 import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
+import { BulkImportModal } from '@/components/common/BulkImportModal';
 
 interface EmployeesPageProps {
   addTrigger?: number;
@@ -94,6 +95,7 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
   const [pendingEmployee, setPendingEmployee] = useState<Partial<Employee> | null>(null);
   const [updatingEmployeeId, setUpdatingEmployeeId] = useState<string | null>(null);
   const [deletingEmployeeId, setDeletingEmployeeId] = useState<string | null>(null);
+  const [bulkImportOpened, setBulkImportOpened] = useState(false);
 
   const form = useForm({
     initialValues: {
@@ -514,7 +516,7 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
 
       <Paper withBorder p="md">
         <Grid>
-          <Grid.Col span={{ base: 12, md: 4 }}>
+          <Grid.Col span={{ base: 12, md: 3 }}>
             <TextInput
               placeholder={t('common.search' as any, language) || 'Search'}
               leftSection={<IconSearch size={16} />}
@@ -522,7 +524,7 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
               onChange={(e) => setSearchQuery(e.currentTarget.value)}
             />
           </Grid.Col>
-          <Grid.Col span={{ base: 12, md: 4 }}>
+          <Grid.Col span={{ base: 12, md: 3 }}>
             <Select
               placeholder={t('employees.filterByRole', language)}
               data={roles.map((r) => ({
@@ -534,7 +536,7 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
               onChange={setRoleFilter}
             />
           </Grid.Col>
-          <Grid.Col span={{ base: 12, md: 4 }}>
+          <Grid.Col span={{ base: 12, md: 3 }}>
             <Select
               placeholder={t('employees.filterByStatus', language)}
               data={[
@@ -545,6 +547,20 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
               value={statusFilter}
               onChange={setStatusFilter}
             />
+          </Grid.Col>
+          <Grid.Col span={{ base: 12, md: 3 }}>
+            <Group gap="xs" justify="flex-end">
+              <PermissionGuard resource="employees" action="create">
+                <Button
+                  leftSection={<IconFileSpreadsheet size={16} />}
+                  onClick={() => setBulkImportOpened(true)}
+                  variant="light"
+                  fullWidth
+                >
+                  {t('bulkImport.bulkImport', language) || 'Bulk Import'}
+                </Button>
+              </PermissionGuard>
+            </Group>
           </Grid.Col>
         </Grid>
       </Paper>
@@ -909,6 +925,22 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
           </Stack>
         </form>
       </Modal>
+
+      <BulkImportModal
+        opened={bulkImportOpened}
+        onClose={() => setBulkImportOpened(false)}
+        onSuccess={() => {
+          loadEmployees();
+        }}
+        entityType="employee"
+        entityName={t('employees.employees', language) || 'Employees'}
+        downloadSample={async () => {
+          return await employeesApi.downloadBulkImportSample();
+        }}
+        uploadFile={async (file: File) => {
+          return await employeesApi.bulkImportEmployees(file);
+        }}
+      />
     </Stack>
   );
 }

@@ -32,6 +32,7 @@ import {
   IconTrash,
   IconAlertCircle,
   IconList,
+  IconFileSpreadsheet,
 } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
@@ -49,6 +50,7 @@ import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
 import { handleApiError } from '@/shared/utils/error-handler';
 import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
+import { BulkImportModal } from '@/components/common/BulkImportModal';
 
 export function AddOnGroupsPage() {
   const { language } = useLanguageStore();
@@ -83,6 +85,7 @@ export function AddOnGroupsPage() {
   const [openingAddOnModalId, setOpeningAddOnModalId] = useState<string | null>(null);
   const [updatingGroupId, setUpdatingGroupId] = useState<string | null>(null);
   const [updatingAddOnId, setUpdatingAddOnId] = useState<string | null>(null);
+  const [bulkImportGroupsOpened, setBulkImportGroupsOpened] = useState(false);
 
   // Track if any API call is in progress
   const isApiInProgress = loading || submittingGroup || submittingAddOn || deletingGroupId !== null || deletingAddOnId !== null || creatingGroup || creatingAddOn || openingGroupModalId !== null || openingAddOnModalId !== null || updatingGroupId !== null || updatingAddOnId !== null;
@@ -540,7 +543,14 @@ export function AddOnGroupsPage() {
       {isApiInProgress && (
         <Progress value={100} animated color={primaryColor} size="xs" radius={0} style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000 }} />
       )}
-      <Group justify="flex-end">
+      <Group justify="space-between">
+        <Button
+          leftSection={<IconFileSpreadsheet size={16} />}
+          onClick={() => setBulkImportGroupsOpened(true)}
+          variant="light"
+        >
+          {t('bulkImport.bulkImport', language) || 'Bulk Import Groups'}
+        </Button>
         <Button
           leftSection={<IconPlus size={16} />}
           onClick={() => handleOpenGroupModal()}
@@ -721,15 +731,17 @@ export function AddOnGroupsPage() {
                 <Title order={4}>
                   {selectedGroup.name}
                 </Title>
-                <Button
-                  size="xs"
-                  leftSection={<IconPlus size={14} />}
-                  onClick={() => handleOpenAddOnModal()}
-                  style={{ backgroundColor: primaryColor }}
-                  disabled={loadingAddOns}
-                >
-                  {t('menu.createAddOn', language)}
-                </Button>
+                <Group gap="xs">
+                  <Button
+                    size="xs"
+                    leftSection={<IconPlus size={14} />}
+                    onClick={() => handleOpenAddOnModal()}
+                    style={{ backgroundColor: primaryColor }}
+                    disabled={loadingAddOns}
+                  >
+                    {t('menu.createAddOn', language)}
+                  </Button>
+                </Group>
               </Group>
 
               {loadingAddOns ? (
@@ -1111,6 +1123,32 @@ export function AddOnGroupsPage() {
           </Stack>
         </form>
       </Modal>
+
+      <BulkImportModal
+        opened={bulkImportGroupsOpened}
+        onClose={() => setBulkImportGroupsOpened(false)}
+        onSuccess={() => {
+          loadAddOnGroups();
+          if (selectedGroup) {
+            loadAddOns(selectedGroup.id);
+          }
+          notifyMenuDataUpdate('add-on-groups-updated');
+          notifyMenuDataUpdate('add-ons-updated');
+        }}
+        entityType="addOnGroupAndAddOn"
+        entityName={t('menu.addOnGroupsAndAddOns', language) || 'Add-on Groups & Add-ons'}
+        downloadSample={async () => {
+          return await menuApi.downloadBulkImportSample('addOnGroupAndAddOn');
+        }}
+        uploadFile={async (file: File) => {
+          const result = await menuApi.bulkImportAddOnGroupsAndAddOns(file, selectedBranchId || undefined);
+          // Reload both groups and add-ons if a group is selected
+          if (selectedGroup) {
+            loadAddOns(selectedGroup.id);
+          }
+          return result;
+        }}
+      />
     </Stack>
   );
 }

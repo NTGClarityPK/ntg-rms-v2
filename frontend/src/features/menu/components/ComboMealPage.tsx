@@ -33,6 +33,7 @@ import {
   IconUpload,
   IconToolsKitchen2,
   IconAlertCircle,
+  IconFileSpreadsheet,
 } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
@@ -49,6 +50,7 @@ import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
 import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
+import { BulkImportModal } from '@/components/common/BulkImportModal';
 
 export function ComboMealPage() {
   const { language } = useLanguageStore();
@@ -71,6 +73,7 @@ export function ComboMealPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [bulkImportOpened, setBulkImportOpened] = useState(false);
 
   const form = useForm({
     initialValues: {
@@ -357,13 +360,22 @@ export function ComboMealPage() {
     <Container size="xl" py="xl">
       <Group justify="space-between" mb="xl">
         <Title order={2}>{t('menu.comboMealManagement', language)}</Title>
-        <Button
-          leftSection={<IconPlus size={16} />}
-          onClick={() => handleOpenModal()}
-          style={{ backgroundColor: primaryColor }}
-        >
-          {t('menu.createComboMeal', language)}
-        </Button>
+        <Group gap="xs">
+          <Button
+            leftSection={<IconFileSpreadsheet size={16} />}
+            onClick={() => setBulkImportOpened(true)}
+            variant="light"
+          >
+            {t('bulkImport.bulkImport', language) || 'Bulk Import'}
+          </Button>
+          <Button
+            leftSection={<IconPlus size={16} />}
+            onClick={() => handleOpenModal()}
+            style={{ backgroundColor: primaryColor }}
+          >
+            {t('menu.createComboMeal', language)}
+          </Button>
+        </Group>
       </Group>
 
       {error && (
@@ -712,6 +724,23 @@ export function ComboMealPage() {
           </Stack>
         </form>
       </Modal>
+
+      <BulkImportModal
+        opened={bulkImportOpened}
+        onClose={() => setBulkImportOpened(false)}
+        onSuccess={() => {
+          loadData();
+          notifyMenuDataUpdate('combo-meals-updated');
+        }}
+        entityType="comboMeal"
+        entityName={t('menu.comboMeals', language) || 'Combo Meals'}
+        downloadSample={async () => {
+          return await menuApi.downloadBulkImportSample('comboMeal');
+        }}
+        uploadFile={async (file: File) => {
+          return await menuApi.bulkImportComboMeals(file, selectedBranchId || undefined);
+        }}
+      />
     </Container>
   );
 }

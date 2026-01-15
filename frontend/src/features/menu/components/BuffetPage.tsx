@@ -34,6 +34,7 @@ import {
   IconUpload,
   IconToolsKitchen2,
   IconAlertCircle,
+  IconFileSpreadsheet,
 } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
@@ -50,6 +51,7 @@ import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
 import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
+import { BulkImportModal } from '@/components/common/BulkImportModal';
 
 export function BuffetPage() {
   const { language } = useLanguageStore();
@@ -76,6 +78,7 @@ export function BuffetPage() {
   const [pendingBuffet, setPendingBuffet] = useState<Partial<Buffet> | null>(null);
   const [updatingBuffetId, setUpdatingBuffetId] = useState<string | null>(null);
   const [deletingBuffetId, setDeletingBuffetId] = useState<string | null>(null);
+  const [bulkImportOpened, setBulkImportOpened] = useState(false);
 
   const form = useForm({
     initialValues: {
@@ -382,13 +385,22 @@ export function BuffetPage() {
     <Container size="xl" py="xl">
       <Group justify="space-between" mb="xl">
         <Title order={2}>{t('menu.buffetManagement', language)}</Title>
-        <Button
-          leftSection={<IconPlus size={16} />}
-          onClick={() => handleOpenModal()}
-          style={{ backgroundColor: primaryColor }}
-        >
-          {t('menu.createBuffet', language)}
-        </Button>
+        <Group gap="xs">
+          <Button
+            leftSection={<IconFileSpreadsheet size={16} />}
+            onClick={() => setBulkImportOpened(true)}
+            variant="light"
+          >
+            {t('bulkImport.bulkImport', language) || 'Bulk Import'}
+          </Button>
+          <Button
+            leftSection={<IconPlus size={16} />}
+            onClick={() => handleOpenModal()}
+            style={{ backgroundColor: primaryColor }}
+          >
+            {t('menu.createBuffet', language)}
+          </Button>
+        </Group>
       </Group>
 
       {error && (
@@ -812,6 +824,23 @@ export function BuffetPage() {
           </Stack>
         </form>
       </Modal>
+
+      <BulkImportModal
+        opened={bulkImportOpened}
+        onClose={() => setBulkImportOpened(false)}
+        onSuccess={() => {
+          loadData();
+          notifyMenuDataUpdate('buffets-updated');
+        }}
+        entityType="buffet"
+        entityName={t('menu.buffets', language) || 'Buffets'}
+        downloadSample={async () => {
+          return await menuApi.downloadBulkImportSample('buffet');
+        }}
+        uploadFile={async (file: File) => {
+          return await menuApi.bulkImportBuffets(file, selectedBranchId || undefined);
+        }}
+      />
     </Container>
   );
 }

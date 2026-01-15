@@ -21,7 +21,7 @@ import {
   Grid,
   Loader,
 } from '@mantine/core';
-import { IconMenu2, IconAlertCircle, IconCheck, IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconMenu2, IconAlertCircle, IconCheck, IconPlus, IconTrash, IconFileSpreadsheet } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { menuApi, FoodItem } from '@/lib/api/menu';
@@ -36,6 +36,7 @@ import { getBadgeColorForText } from '@/lib/utils/theme';
 import { onMenuDataUpdate, notifyMenuDataUpdate } from '@/lib/utils/menu-events';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
 import { handleApiError } from '@/shared/utils/error-handler';
+import { BulkImportModal } from '@/components/common/BulkImportModal';
 
 export function MenusPage() {
   const { language } = useLanguageStore();
@@ -56,6 +57,7 @@ export function MenusPage() {
   const [pendingMenu, setPendingMenu] = useState<Partial<any> | null>(null);
   const [updatingMenuType, setUpdatingMenuType] = useState<string | null>(null);
   const [deletingMenuType, setDeletingMenuType] = useState<string | null>(null);
+  const [bulkImportOpened, setBulkImportOpened] = useState(false);
 
   const form = useForm({
     initialValues: {
@@ -444,13 +446,22 @@ export function MenusPage() {
         <Title order={2}>
           {t('menu.menuManagement', language)}
         </Title>
-        <Button
-          leftSection={<IconPlus size={16} />}
-          onClick={handleOpenCreateModal}
-          style={{ backgroundColor: primaryColor }}
-        >
-          {t('menu.createMenu', language) || 'Create Menu'}
-        </Button>
+        <Group gap="xs">
+          <Button
+            leftSection={<IconFileSpreadsheet size={16} />}
+            onClick={() => setBulkImportOpened(true)}
+            variant="light"
+          >
+            {t('bulkImport.bulkImport', language) || 'Bulk Import'}
+          </Button>
+          <Button
+            leftSection={<IconPlus size={16} />}
+            onClick={handleOpenCreateModal}
+            style={{ backgroundColor: primaryColor }}
+          >
+            {t('menu.createMenu', language) || 'Create Menu'}
+          </Button>
+        </Group>
       </Group>
 
       {error && (
@@ -667,6 +678,23 @@ export function MenusPage() {
           </Stack>
         </form>
       </Modal>
+
+      <BulkImportModal
+        opened={bulkImportOpened}
+        onClose={() => setBulkImportOpened(false)}
+        onSuccess={() => {
+          loadData();
+          notifyMenuDataUpdate('menus-updated');
+        }}
+        entityType="menu"
+        entityName={t('menu.menus', language) || 'Menus'}
+        downloadSample={async () => {
+          return await menuApi.downloadBulkImportSample('menu');
+        }}
+        uploadFile={async (file: File) => {
+          return await menuApi.bulkImportMenus(file, selectedBranchId || undefined);
+        }}
+      />
     </Stack>
   );
 }

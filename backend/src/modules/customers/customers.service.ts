@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { SupabaseService } from '../../database/supabase.service';
 import { TranslationService } from '../translations/services/translation.service';
+import { BulkImportService, FieldDefinition } from '../menu/utils/bulk-import.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { PaginationParams, PaginatedResponse, getPaginationParams, createPaginatedResponse } from '../../common/dto/pagination.dto';
@@ -17,6 +18,7 @@ export class CustomersService {
   constructor(
     private supabaseService: SupabaseService,
     private translationService: TranslationService,
+    private bulkImportService: BulkImportService,
   ) {}
 
   /**
@@ -419,7 +421,7 @@ export class CustomersService {
   /**
    * Create a new customer
    */
-  async createCustomer(tenantId: string, createDto: CreateCustomerDto, branchId?: string) {
+  async createCustomer(tenantId: string, createDto: CreateCustomerDto, branchId?: string, skipTranslations: boolean = false) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Check if phone already exists in the same branch (or tenant if no branch)
@@ -496,42 +498,45 @@ export class CustomersService {
     }
 
     // Create translations for name, notes, and address fields asynchronously (fire and forget)
-    // Use batch translation to handle multiple fields efficiently
-    // Don't block the response - translations will be processed in the background
-    const customerFieldsToTranslate = [
-      { fieldName: 'name', text: createDto.name },
-      ...(createDto.notes ? [{ fieldName: 'notes', text: createDto.notes }] : []),
-    ];
-
-    this.translationService
-      .createBatchTranslations('customer', customer.id, customerFieldsToTranslate, undefined, tenantId)
-      .catch((translationError) => {
-        console.error('Failed to create batch translations for customer:', translationError);
-      });
-
-    // Create translations for address fields if provided
-    // Address translations use CUSTOMER_ADDRESS entity type with the address ID
-    // Use batch translation for all address fields at once
-    if (createDto.address && defaultAddressId) {
-      const addressFieldsToTranslate = [
-        ...(createDto.address.address ? [{ fieldName: FieldName.ADDRESS, text: createDto.address.address }] : []),
-        ...(createDto.address.city ? [{ fieldName: FieldName.CITY, text: createDto.address.city }] : []),
-        ...(createDto.address.state ? [{ fieldName: FieldName.STATE, text: createDto.address.state }] : []),
-        ...(createDto.address.country ? [{ fieldName: FieldName.COUNTRY, text: createDto.address.country }] : []),
+    // Skip translations if called from bulk import (will be handled in batch)
+    if (!skipTranslations) {
+      // Use batch translation to handle multiple fields efficiently
+      // Don't block the response - translations will be processed in the background
+      const customerFieldsToTranslate = [
+        { fieldName: 'name', text: createDto.name },
+        ...(createDto.notes ? [{ fieldName: 'notes', text: createDto.notes }] : []),
       ];
 
-      if (addressFieldsToTranslate.length > 0) {
-        this.translationService
-          .createBatchTranslations(
-            EntityType.CUSTOMER_ADDRESS,
-            defaultAddressId,
-            addressFieldsToTranslate,
-            undefined,
-            tenantId,
-          )
-          .catch((translationError) => {
-            console.error('Failed to create batch translations for customer address:', translationError);
-          });
+      this.translationService
+        .createBatchTranslations('customer', customer.id, customerFieldsToTranslate, undefined, tenantId)
+        .catch((translationError) => {
+          console.error('Failed to create batch translations for customer:', translationError);
+        });
+
+      // Create translations for address fields if provided
+      // Address translations use CUSTOMER_ADDRESS entity type with the address ID
+      // Use batch translation for all address fields at once
+      if (createDto.address && defaultAddressId) {
+        const addressFieldsToTranslate = [
+          ...(createDto.address.address ? [{ fieldName: FieldName.ADDRESS, text: createDto.address.address }] : []),
+          ...(createDto.address.city ? [{ fieldName: FieldName.CITY, text: createDto.address.city }] : []),
+          ...(createDto.address.state ? [{ fieldName: FieldName.STATE, text: createDto.address.state }] : []),
+          ...(createDto.address.country ? [{ fieldName: FieldName.COUNTRY, text: createDto.address.country }] : []),
+        ];
+
+        if (addressFieldsToTranslate.length > 0) {
+          this.translationService
+            .createBatchTranslations(
+              EntityType.CUSTOMER_ADDRESS,
+              defaultAddressId,
+              addressFieldsToTranslate,
+              undefined,
+              tenantId,
+            )
+            .catch((translationError) => {
+              console.error('Failed to create batch translations for customer address:', translationError);
+            });
+        }
       }
     }
 
@@ -853,5 +858,420 @@ export class CustomersService {
     if (totalOrders >= 51) return 'gold';
     if (totalOrders >= 3) return 'silver';
     return 'regular';
+  }
+
+  // ============================================
+  // BULK IMPORT METHODS
+  // ============================================
+
+  /**
+   * Get field definitions for bulk import
+   */
+  getBulkImportFields(): FieldDefinition[] {
+    return [
+      { name: 'name', label: 'Name', required: true, type: 'string', description: 'Customer name' },
+      { name: 'phone', label: 'Phone', required: true, type: 'string', description: 'Customer phone number' },
+      { name: 'email', label: 'Email', required: false, type: 'string', description: 'Customer email address' },
+      { name: 'dateOfBirth', label: 'Date of Birth', required: false, type: 'date', description: 'Date of birth (YYYY-MM-DD)' },
+      { name: 'preferredLanguage', label: 'Preferred Language', required: false, type: 'string', description: 'Preferred language code (en, ar, etc.)' },
+      { name: 'notes', label: 'Notes', required: false, type: 'string', description: 'Additional notes' },
+      { name: 'address', label: 'Address', required: false, type: 'string', description: 'Street address' },
+      { name: 'city', label: 'City', required: false, type: 'string', description: 'City name' },
+      { name: 'state', label: 'State', required: false, type: 'string', description: 'State/Province' },
+      { name: 'country', label: 'Country', required: false, type: 'string', description: 'Country name' },
+      { name: 'latitude', label: 'Latitude', required: false, type: 'number', description: 'Latitude coordinate' },
+      { name: 'longitude', label: 'Longitude', required: false, type: 'number', description: 'Longitude coordinate' },
+    ];
+  }
+
+  /**
+   * Generate sample Excel file for bulk import
+   */
+  async generateBulkImportSample(): Promise<Buffer> {
+    const fields = this.getBulkImportFields();
+    
+    return this.bulkImportService.generateSampleExcel({
+      entityType: 'customer',
+      fields,
+      translateFields: ['name'], // Only name needs translation for customers
+    });
+  }
+
+  /**
+   * Bulk import customers
+   */
+  async bulkImportCustomers(
+    tenantId: string,
+    fileBuffer: Buffer,
+    branchId?: string,
+  ): Promise<{ success: number; failed: number; errors: string[] }> {
+    const config = {
+      entityType: 'customer',
+      fields: this.getBulkImportFields(),
+      translateFields: ['name'],
+    };
+
+    const rows = await this.bulkImportService.parseExcelFile(fileBuffer, config);
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Helper function to normalize phone numbers (remove spaces, dashes, etc.)
+    const normalizePhone = (phone: string): string => {
+      if (!phone) return '';
+      return String(phone).trim().replace(/[\s\-\(\)]/g, '');
+    };
+
+    // Get all phones for checking existing customers (batch)
+    // Normalize phone numbers from Excel rows  
+    const allPhones = rows.map(r => r.phone ? normalizePhone(r.phone) : '').filter(Boolean);
+    const allRawPhones = rows.map(r => r.phone ? r.phone.trim() : '').filter(Boolean);
+    
+    // Fetch customers that match phones we're importing (optimized - only fetch what we need)
+    // We fetch by raw phone first, then normalize in memory for matching
+    let customerQuery = supabase
+      .from('customers')
+      .select('id, phone, name')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    // Filter by phones if we have any (Supabase .in() is efficient)
+    if (allRawPhones.length > 0) {
+      customerQuery = customerQuery.in('phone', allRawPhones);
+    }
+    
+    const { data: existingCustomersData } = await customerQuery;
+    
+    // Create maps with normalized phone numbers and names as keys
+    const phoneToCustomerIdMap = new Map<string, string>();
+    const nameToCustomerIdMap = new Map<string, string>(); // Fallback: match by name (case-insensitive)
+    (existingCustomersData || []).forEach(cust => {
+      if (cust.phone) {
+        const normalizedPhone = normalizePhone(cust.phone);
+        phoneToCustomerIdMap.set(normalizedPhone, cust.id);
+      }
+      if (cust.name) {
+        const normalizedName = cust.name.trim().toLowerCase();
+        // Only set if not already set (prefer phone match)
+        if (!nameToCustomerIdMap.has(normalizedName)) {
+          nameToCustomerIdMap.set(normalizedName, cust.id);
+        }
+      }
+    });
+
+    // Prepare customer data for processing
+    const customerData: Array<{
+      index: number;
+      row: any;
+      isUpdate: boolean;
+      customerId?: string;
+    }> = [];
+
+    let success = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    // Process and validate all rows
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        // Validate required fields
+        if (!row.phone || row.phone.trim() === '') {
+          throw new Error('Phone is required');
+        }
+        if (!row.name || row.name.trim() === '') {
+          throw new Error('Name is required');
+        }
+
+        // Normalize phone number for lookup
+        const normalizedPhone = normalizePhone(row.phone);
+        let existingCustomerId = phoneToCustomerIdMap.get(normalizedPhone);
+        
+        // Fallback: if phone doesn't match, try matching by name (case-insensitive)
+        if (!existingCustomerId && row.name) {
+          const normalizedName = row.name.trim().toLowerCase();
+          existingCustomerId = nameToCustomerIdMap.get(normalizedName);
+        }
+        
+        const isUpdate = !!existingCustomerId;
+
+        customerData.push({
+          index: i,
+          row,
+          isUpdate,
+          customerId: existingCustomerId,
+        });
+      } catch (error: any) {
+        failed++;
+        errors.push(`Row ${i + 2}: ${error.message}`);
+      }
+    }
+
+    // Separate customers into updates and creates for batch processing
+    const customersToUpdate: Array<{ index: number; row: any; customerId: string }> = [];
+    const customersToCreate: Array<{ index: number; row: any }> = [];
+
+    for (const { index, row, isUpdate, customerId } of customerData) {
+      if (isUpdate && customerId) {
+        customersToUpdate.push({ index, row, customerId });
+      } else {
+        customersToCreate.push({ index, row });
+      }
+    }
+
+    const processedCustomers: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+
+    // Batch update existing customers
+    if (customersToUpdate.length > 0) {
+      // Fetch all existing addresses for customers being updated (batch query)
+      const customerIdsToUpdate = customersToUpdate.map(c => c.customerId);
+      const { data: existingAddresses } = await supabase
+        .from('customer_addresses')
+        .select('id, customer_id')
+        .in('customer_id', customerIdsToUpdate)
+        .eq('is_default', true);
+
+      const customerIdToAddressIdMap = new Map<string, string>();
+      (existingAddresses || []).forEach(addr => {
+        customerIdToAddressIdMap.set(addr.customer_id, addr.id);
+      });
+
+      // Process updates in parallel (all at once, not in batches)
+      const updatePromises = customersToUpdate.map(async ({ index, row, customerId }) => {
+        try {
+          // Update customer
+          const customerUpdateData: any = {
+            name: row.name,
+            phone: row.phone || null,
+            email: row.email || null,
+            date_of_birth: row.dateOfBirth || null,
+            preferred_language: row.preferredLanguage || 'en',
+            notes: row.notes || null,
+          };
+
+          const { error: updateError } = await supabase
+            .from('customers')
+            .update(customerUpdateData)
+            .eq('id', customerId)
+            .eq('tenant_id', tenantId);
+
+          if (updateError) {
+            throw new Error(updateError.message);
+          }
+
+          // Update or create address if provided
+          if (row.address || row.city || row.state || row.country) {
+            const addressData: any = {
+              customer_id: customerId,
+              address: row.address || null,
+              city: row.city || null,
+              state: row.state || null,
+              country: row.country || null,
+              latitude: row.latitude || null,
+              longitude: row.longitude || null,
+              is_default: true,
+            };
+
+            const existingAddressId = customerIdToAddressIdMap.get(customerId);
+            if (existingAddressId) {
+              const { error: addrError } = await supabase
+                .from('customer_addresses')
+                .update(addressData)
+                .eq('id', existingAddressId);
+              if (addrError) throw new Error(`Address update failed: ${addrError.message}`);
+            } else {
+              const { error: addrError } = await supabase
+                .from('customer_addresses')
+                .insert(addressData);
+              if (addrError) throw new Error(`Address insert failed: ${addrError.message}`);
+            }
+          }
+
+          return { success: true, index, customerId, name: row.name, isUpdate: true };
+        } catch (error: any) {
+          return { success: false, index, error: error.message };
+        }
+      });
+
+      const updateResults = await Promise.allSettled(updatePromises);
+      for (const result of updateResults) {
+        if (result.status === 'fulfilled' && result.value.success) {
+          success++;
+          processedCustomers.push({
+            id: result.value.customerId,
+            name: result.value.name,
+            index: result.value.index,
+            isUpdate: true,
+          });
+        } else {
+          failed++;
+          const errorMsg = result.status === 'fulfilled' 
+            ? result.value.error 
+            : result.reason?.message || 'Unknown error';
+          const index = result.status === 'fulfilled' 
+            ? result.value.index 
+            : customersToUpdate[0].index;
+          errors.push(`Row ${index + 2}: ${errorMsg}`);
+        }
+      }
+    }
+
+    // Batch create new customers
+    if (customersToCreate.length > 0) {
+      const CREATE_BATCH_SIZE = 50;
+      for (let i = 0; i < customersToCreate.length; i += CREATE_BATCH_SIZE) {
+        const batch = customersToCreate.slice(i, i + CREATE_BATCH_SIZE);
+        
+        // Prepare batch insert data
+        const customersToInsert = batch.map(({ row }) => {
+          const customerData: any = {
+            tenant_id: tenantId,
+            name: row.name,
+            phone: row.phone,
+            email: row.email || null,
+            date_of_birth: row.dateOfBirth || null,
+            preferred_language: row.preferredLanguage || 'en',
+            notes: row.notes || null,
+          };
+          
+          if (branchId) {
+            customerData.branch_id = branchId;
+          }
+          
+          return customerData;
+        });
+
+        // Batch insert customers
+        const { data: insertedCustomers, error: insertError } = await supabase
+          .from('customers')
+          .insert(customersToInsert)
+          .select('id, name');
+
+        if (insertError) {
+          // If batch insert fails, try individual inserts
+          for (const { index, row } of batch) {
+            try {
+              const customerData: any = {
+                tenant_id: tenantId,
+                name: row.name,
+                phone: row.phone,
+                email: row.email || null,
+                date_of_birth: row.dateOfBirth || null,
+                preferred_language: row.preferredLanguage || 'en',
+                notes: row.notes || null,
+              };
+              
+              if (branchId) {
+                customerData.branch_id = branchId;
+              }
+
+              const { data: customer, error: singleError } = await supabase
+                .from('customers')
+                .insert(customerData)
+                .select('id, name')
+                .single();
+
+              if (singleError) {
+                throw new Error(singleError.message);
+              }
+
+              // Insert address if provided
+              if (customer && (row.address || row.city || row.state || row.country)) {
+                const addressData: any = {
+                  customer_id: customer.id,
+                  address: row.address || null,
+                  city: row.city || null,
+                  state: row.state || null,
+                  country: row.country || null,
+                  latitude: row.latitude || null,
+                  longitude: row.longitude || null,
+                  is_default: true,
+                };
+
+                await supabase.from('customer_addresses').insert(addressData);
+              }
+
+              success++;
+              processedCustomers.push({
+                id: customer.id,
+                name: customer.name,
+                index,
+                isUpdate: false,
+              });
+            } catch (error: any) {
+              failed++;
+              errors.push(`Row ${index + 2}: ${error.message}`);
+            }
+          }
+        } else {
+          // Batch insert succeeded, now insert addresses
+          const addressesToInsert: any[] = [];
+          const customerMap = new Map<string, { id: string; name: string; index: number }>();
+          
+          insertedCustomers.forEach((customer, idx) => {
+            const { index, row } = batch[idx];
+            customerMap.set(customer.id, { id: customer.id, name: customer.name, index });
+            
+            if (row.address || row.city || row.state || row.country) {
+              addressesToInsert.push({
+                customer_id: customer.id,
+                address: row.address || null,
+                city: row.city || null,
+                state: row.state || null,
+                country: row.country || null,
+                latitude: row.latitude || null,
+                longitude: row.longitude || null,
+                is_default: true,
+              });
+            }
+          });
+
+          // Batch insert addresses if any
+          if (addressesToInsert.length > 0) {
+            await supabase.from('customer_addresses').insert(addressesToInsert);
+          }
+
+          // Track successful creations
+          customerMap.forEach(({ id, name, index }) => {
+            success++;
+            processedCustomers.push({ id, name, index, isUpdate: false });
+          });
+        }
+      }
+    }
+
+    // Return response immediately - translations will happen in background
+    const response = { success, failed, errors };
+    
+    // Fire-and-forget: Do translations asynchronously after returning response
+    if (processedCustomers.length > 0) {
+      const customersToTranslate = processedCustomers.map(pc => ({ name: pc.name }));
+      
+      this.bulkImportService.batchTranslateEntities(
+        customersToTranslate,
+        'customer',
+        ['name'],
+        tenantId,
+      ).then((translations) => {
+        processedCustomers.forEach(({ id, name }, arrayIndex) => {
+          const nameTranslations = translations.get('name')?.get(arrayIndex);
+          if (nameTranslations) {
+            this.translationService.storePreTranslatedBatch(
+              EntityType.CUSTOMER,
+              id,
+              [{ fieldName: FieldName.NAME, text: name }],
+              { name: nameTranslations },
+              undefined,
+              tenantId,
+              'en',
+            ).catch((err) => {
+              console.warn(`Failed to store translations for customer ${id}:`, err.message);
+            });
+          }
+        });
+      }).catch((err) => {
+        console.error('Failed to batch translate customers:', err.message);
+      });
+    }
+
+    return response;
   }
 }

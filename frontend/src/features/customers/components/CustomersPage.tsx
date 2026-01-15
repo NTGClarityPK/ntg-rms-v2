@@ -25,7 +25,6 @@ import {
   Loader,
 } from '@mantine/core';
 import {
-  IconPlus,
   IconEdit,
   IconAlertCircle,
   IconSearch,
@@ -34,6 +33,7 @@ import {
   IconTrophy,
   IconMapPin,
   IconInfoCircle,
+  IconFileSpreadsheet,
 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { customersApi, Customer, CreateCustomerDto, UpdateCustomerDto } from '@/lib/api/customers';
@@ -55,6 +55,7 @@ import { Fragment } from 'react';
 import { LOYALTY_TIERS } from '@/shared/constants/customers.constants';
 import { handleApiError } from '@/shared/utils/error-handler';
 import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
+import { BulkImportModal } from '@/components/common/BulkImportModal';
 
 interface CustomersPageProps {
   addTrigger?: number;
@@ -87,6 +88,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
   const [submitting, setSubmitting] = useState(false);
   const [pendingCustomer, setPendingCustomer] = useState<Customer | null>(null);
   const [updatingCustomerId, setUpdatingCustomerId] = useState<string | null>(null);
+  const [bulkImportOpened, setBulkImportOpened] = useState(false);
 
   const form = useForm({
     initialValues: {
@@ -388,12 +390,22 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
       )}
 
       <Paper withBorder p="md">
-        <TextInput
-          placeholder={t('customers.searchPlaceholder', language)}
-          leftSection={<IconSearch size={16} />}
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.currentTarget.value)}
-        />
+        <Group gap="md">
+          <TextInput
+            placeholder={t('customers.searchPlaceholder', language)}
+            leftSection={<IconSearch size={16} />}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.currentTarget.value)}
+            style={{ flex: 1 }}
+          />
+          <Button
+            leftSection={<IconFileSpreadsheet size={16} />}
+            onClick={() => setBulkImportOpened(true)}
+            variant="light"
+          >
+            {t('bulkImport.bulkImport', language) || 'Bulk Import'}
+          </Button>
+        </Group>
       </Paper>
 
       <Paper withBorder>
@@ -969,8 +981,24 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
             </Tabs.Panel>
           </Tabs>
         )}
-      </Modal>
-    </Stack>
-  );
-}
+        </Modal>
+
+        <BulkImportModal
+          opened={bulkImportOpened}
+          onClose={() => setBulkImportOpened(false)}
+          onSuccess={() => {
+            loadCustomers();
+          }}
+          entityType="customer"
+          entityName={t('customers.customers', language) || 'Customers'}
+          downloadSample={async () => {
+            return await customersApi.downloadBulkImportSample();
+          }}
+          uploadFile={async (file: File) => {
+            return await customersApi.bulkImportCustomers(file, selectedBranchId || undefined);
+          }}
+        />
+      </Stack>
+    );
+  }
 

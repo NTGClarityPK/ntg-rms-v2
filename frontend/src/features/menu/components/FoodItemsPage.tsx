@@ -38,6 +38,7 @@ import {
   IconAlertCircle,
   IconCheck,
   IconSearch,
+  IconFileSpreadsheet,
 } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
@@ -59,6 +60,7 @@ import { handleApiError } from '@/shared/utils/error-handler';
 import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
 import { TranslationStatusBadge, LanguageIndicator, RetranslateButton } from '@/components/translations';
 import { translationsApi, SupportedLanguage } from '@/lib/api/translations';
+import { BulkImportModal } from '@/components/common/BulkImportModal';
 
 export function FoodItemsPage() {
   const { language } = useLanguageStore();
@@ -98,6 +100,7 @@ export function FoodItemsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
   const [supportedLanguages, setSupportedLanguages] = useState<SupportedLanguage[]>([]);
+  const [bulkImportOpened, setBulkImportOpened] = useState(false);
   const [itemTranslations, setItemTranslations] = useState<{ [itemId: string]: { [fieldName: string]: { [languageCode: string]: string } } }>({});
 
   // Helper function to resolve variation group name from UUID
@@ -705,13 +708,22 @@ export function FoodItemsPage() {
           onChange={(e) => setSearch(e.currentTarget.value)}
           style={{ flex: 1, maxWidth: 400 }}
         />
-        <Button
-          leftSection={<IconPlus size={16} />}
-          onClick={() => handleOpenModal()}
-          style={{ backgroundColor: primaryColor }}
-        >
-          {t('menu.createFoodItem', language)}
-        </Button>
+        <Group gap="xs">
+          <Button
+            leftSection={<IconFileSpreadsheet size={16} />}
+            onClick={() => setBulkImportOpened(true)}
+            variant="light"
+          >
+            {t('bulkImport.bulkImport', language) || 'Bulk Import'}
+          </Button>
+          <Button
+            leftSection={<IconPlus size={16} />}
+            onClick={() => handleOpenModal()}
+            style={{ backgroundColor: primaryColor }}
+          >
+            {t('menu.createFoodItem', language)}
+          </Button>
+        </Group>
       </Group>
 
       {error && (
@@ -1524,6 +1536,23 @@ export function FoodItemsPage() {
           </Group>
         </form>
       </Modal>
+
+      <BulkImportModal
+        opened={bulkImportOpened}
+        onClose={() => setBulkImportOpened(false)}
+        onSuccess={() => {
+          loadData();
+          notifyMenuDataUpdate('food-items-updated');
+        }}
+        entityType="foodItem"
+        entityName={t('menu.foodItems', language) || 'Food Items'}
+        downloadSample={async () => {
+          return await menuApi.downloadBulkImportSample('foodItem');
+        }}
+        uploadFile={async (file: File) => {
+          return await menuApi.bulkImportFoodItems(file, selectedBranchId || undefined);
+        }}
+      />
     </Stack>
   );
 }

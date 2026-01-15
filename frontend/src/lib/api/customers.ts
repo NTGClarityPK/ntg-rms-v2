@@ -137,5 +137,25 @@ export const customersApi = {
     );
     return response.data;
   },
+
+  // Bulk Import
+  downloadBulkImportSample: async (): Promise<Blob> => {
+    const { data } = await apiClient.get(`${API_ENDPOINTS.CUSTOMERS}/bulk-import/sample`, {
+      responseType: 'blob',
+    });
+    return data;
+  },
+
+  bulkImportCustomers: async (file: File, branchId?: string): Promise<{ success: number; failed: number; errors: string[] }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const { data } = await apiClient.post(`${API_ENDPOINTS.CUSTOMERS}/bulk-import${params}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return data;
+  },
 };
 

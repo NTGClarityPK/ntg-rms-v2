@@ -7,7 +7,9 @@ export type MenuDataEventType =
   | 'categories-updated'
   | 'food-items-updated'
   | 'add-on-groups-updated'
+  | 'add-ons-updated'
   | 'variation-groups-updated'
+  | 'variations-updated'
   | 'menus-updated'
   | 'buffets-updated'
   | 'combo-meals-updated';

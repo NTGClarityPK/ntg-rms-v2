@@ -102,4 +102,23 @@ export const employeesApi = {
     return response.data;
   },
   deleteEmployee: baseEmployeesApi.delete,
+
+  // Bulk Import
+  downloadBulkImportSample: async (): Promise<Blob> => {
+    const { data } = await apiClient.get(`${API_ENDPOINTS.EMPLOYEES}/bulk-import/sample`, {
+      responseType: 'blob',
+    });
+    return data;
+  },
+
+  bulkImportEmployees: async (file: File): Promise<{ success: number; failed: number; errors: string[] }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await apiClient.post(`${API_ENDPOINTS.EMPLOYEES}/bulk-import`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return data;
+  },
 };

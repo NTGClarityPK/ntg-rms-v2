@@ -374,6 +374,7 @@
     "fixed": "جێگیر",
 
     "addOnGroups": "گرووپەکانی زیادکراو",
+    "addOnGroupsAndAddOns": "گرووپەکانی زیادکراو و زیادکراوەکان",
     "addOnGroupManagement": "بەڕێوەبردنی گرووپی زیادکراو",
     "createAddOnGroup": "دروستکردنی گرووپی زیادکراو",
     "editAddOnGroup": "دەستکاری گرووپی زیادکراو",
@@ -791,6 +792,7 @@
   },
   "employees": {
     "title": "بەڕێوەبردنی کارمەندان",
+    "employees": "کارمەندان",
     "addEmployee": "زیادکردنی کارمەند",
     "editEmployee": "دەستکاری کارمەند",
     "name": "ناو",
@@ -830,6 +832,7 @@
   },
   "customers": {
     "title": "بەڕێوەبردنی کڕیاران",
+    "customers": "کڕیاران",
     "addCustomer": "زیادکردنی کڕیار",
     "editCustomer": "دەستکاری کڕیار",
     "customerProfile": "پڕۆفایلی کڕیار",
@@ -1216,6 +1219,33 @@
     "showing": "نیشاندانی",
     "of": "لە",
     "itemsPerPage": "مادە بۆ هەر پەڕە"
+  },
+  "bulkImport": {
+    "title": "هاوردەی کۆمەڵی {entity}",
+    "instructions": "فایلی Excel نموونەیی داونلۆد بکە، بە زانیارییەکانت پڕی بکەوە، و پاشان لێرە بەرز بکەوە.",
+    "step1": "هەنگاو 1: داونلۆدکردنی فایلی نموونەیی",
+    "step2": "هەنگاو 2: بەرزکردنەوەی فایلی پڕکراو",
+    "downloadSample": "داونلۆدکردنی نموونە",
+    "selectFile": "هەڵبژاردنی فایل",
+    "upload": "بەرزکردنەوە و هاوردە",
+    "sampleDownloaded": "نموونە داونلۆد کرا",
+    "sampleDownloadedMessage": "فایلی Excel نموونەیی بە سەرکەوتوویی داونلۆد کرا",
+    "downloadError": "هەڵەی داونلۆد",
+    "noFileSelected": "هیچ فایلێک هەڵنەبژێردراوە",
+    "pleaseSelectFile": "تکایە فایلی Excel هەڵبژێرە بۆ بەرزکردنەوە",
+    "uploadSuccess": "بەرزکردنەوە سەرکەوتوو بوو",
+    "allRecordsImported": "بە سەرکەوتوویی {count} تۆمار هاوردە کرا",
+    "uploadPartial": "سەرکەوتنی بەشێک",
+    "someRecordsFailed": "{success} تۆمار هاوردە کرا، {failed} شکستی هێنا",
+    "uploadError": "هەڵەی بەرزکردنەوە",
+    "allSuccess": "بە سەرکەوتوویی {count} تۆمار هاوردە کرا",
+    "partialSuccess": "{success} تۆمار هاوردە کرا، {failed} شکستی هێنا",
+    "successCount": "بە سەرکەوتوویی هاوردە کرا: {count}",
+    "failedCount": "شکستی هێنا: {count}",
+    "errors": "هەڵەکان",
+    "moreErrors": "... و {count} هەڵەی تر",
+    "bulkImport": "هاوردەی کۆمەڵی",
+    "bulkImportDescription": "هاوردەی چەند تۆمارێک لە جارێکدا بە بەکارهێنانی Excel"
   }
 }
 

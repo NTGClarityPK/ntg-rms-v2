@@ -342,6 +342,7 @@
     "priceAdjustment": "تعديل السعر",
     "addLabel": "إضافة علامة",
     "addOnGroups": "مجموعات الإضافات",
+    "addOnGroupsAndAddOns": "مجموعات الإضافات والإضافات",
     "discounts": "الخصومات",
     "addDiscount": "إضافة خصم",
     "discountType": "نوع الخصم",
@@ -764,6 +765,7 @@
   },
   "employees": {
     "title": "إدارة الموظفين",
+    "employees": "الموظفون",
     "addEmployee": "إضافة موظف",
     "editEmployee": "تعديل موظف",
     "name": "الاسم",
@@ -802,6 +804,7 @@
   },
   "customers": {
     "title": "إدارة العملاء",
+    "customers": "العملاء",
     "addCustomer": "إضافة عميل",
     "editCustomer": "تعديل عميل",
     "customerProfile": "ملف العميل",
@@ -1172,6 +1175,33 @@
     "showing": "عرض",
     "of": "من",
     "itemsPerPage": "عناصر في الصفحة"
+  },
+  "bulkImport": {
+    "title": "استيراد مجمع {entity}",
+    "instructions": "قم بتنزيل ملف Excel النموذجي، املأه ببياناتك، ثم قم برفعه هنا.",
+    "step1": "الخطوة 1: تنزيل الملف النموذجي",
+    "step2": "الخطوة 2: رفع الملف المملوء",
+    "downloadSample": "تنزيل النموذج",
+    "selectFile": "اختر الملف",
+    "upload": "رفع واستيراد",
+    "sampleDownloaded": "تم تنزيل النموذج",
+    "sampleDownloadedMessage": "تم تنزيل ملف Excel النموذجي بنجاح",
+    "downloadError": "خطأ في التنزيل",
+    "noFileSelected": "لم يتم اختيار ملف",
+    "pleaseSelectFile": "يرجى اختيار ملف Excel للرفع",
+    "uploadSuccess": "تم الرفع بنجاح",
+    "allRecordsImported": "تم استيراد {count} سجل بنجاح",
+    "uploadPartial": "نجاح جزئي",
+    "someRecordsFailed": "تم استيراد {success} سجل، فشل {failed}",
+    "uploadError": "خطأ في الرفع",
+    "allSuccess": "تم استيراد {count} سجل بنجاح",
+    "partialSuccess": "تم استيراد {success} سجل، فشل {failed}",
+    "successCount": "تم الاستيراد بنجاح: {count}",
+    "failedCount": "فشل: {count}",
+    "errors": "الأخطاء",
+    "moreErrors": "... و {count} أخطاء أخرى",
+    "bulkImport": "استيراد مجمع",
+    "bulkImportDescription": "استيراد عدة سجلات في وقت واحد باستخدام Excel"
   }
 
 }

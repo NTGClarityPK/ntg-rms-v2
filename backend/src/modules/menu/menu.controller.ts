@@ -10,9 +10,12 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFile,
+  Res,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody, ApiResponse } from '@nestjs/swagger';
+import { Response } from 'express';
 import { MenuService } from './menu.service';
 import { StorageService } from './utils/storage.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -675,5 +678,287 @@ export class MenuController {
     @Param('id') id: string,
   ) {
     return this.menuService.getFoodItemsWithVariationGroup(user.tenantId, id);
+  }
+
+  // ============================================
+  // BULK IMPORT ENDPOINTS
+  // ============================================
+
+  @Get('bulk-import/:entityType/sample')
+  @ApiOperation({ summary: 'Download sample Excel file for bulk import' })
+  async downloadBulkImportSample(
+    @CurrentUser() user: any,
+    @Param('entityType') entityType: string,
+    @Res() res: Response,
+  ) {
+    const validTypes = ['category', 'addOnGroup', 'addon', 'variationGroup', 'variation', 'foodItem', 'menu', 'buffet', 'comboMeal', 'addOnGroupAndAddOn', 'variationGroupAndVariation'];
+    if (!validTypes.includes(entityType)) {
+      return res.status(400).json({ message: `Invalid entity type. Valid types: ${validTypes.join(', ')}` });
+    }
+
+    const buffer = await this.menuService.generateBulkImportSample(entityType);
+    const filename = `bulk-import-${entityType}-sample.xlsx`;
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  }
+
+  @Post('bulk-import/categories')
+  @ApiOperation({ summary: 'Bulk import categories from Excel file' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  async bulkImportCategories(
+    @CurrentUser() user: any,
+    @UploadedFile() file: any,
+    @Query('branchId') branchId?: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Excel file is required');
+    }
+    return this.menuService.bulkImportCategories(user.tenantId, file.buffer, branchId);
+  }
+
+  @Post('bulk-import/add-on-groups')
+  @ApiOperation({ summary: 'Bulk import add-on groups from Excel file' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  async bulkImportAddOnGroups(
+    @CurrentUser() user: any,
+    @UploadedFile() file: any,
+    @Query('branchId') branchId?: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Excel file is required');
+    }
+    return this.menuService.bulkImportAddOnGroups(user.tenantId, file.buffer, branchId);
+  }
+
+  @Post('bulk-import/add-ons')
+  @ApiOperation({ summary: 'Bulk import add-ons from Excel file' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  async bulkImportAddOns(
+    @CurrentUser() user: any,
+    @UploadedFile() file: any,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Excel file is required');
+    }
+    return this.menuService.bulkImportAddOns(user.tenantId, file.buffer);
+  }
+
+  @Post('bulk-import/add-on-groups-and-add-ons')
+  @ApiOperation({ summary: 'Bulk import add-on groups and add-ons from Excel file (combined)' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  async bulkImportAddOnGroupsAndAddOns(
+    @CurrentUser() user: any,
+    @UploadedFile() file: any,
+    @Query('branchId') branchId?: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Excel file is required');
+    }
+    return this.menuService.bulkImportAddOnGroupsAndAddOns(user.tenantId, file.buffer, branchId);
+  }
+
+  @Post('bulk-import/variations')
+  @ApiOperation({ summary: 'Bulk import variations from Excel file' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  async bulkImportVariations(
+    @CurrentUser() user: any,
+    @UploadedFile() file: any,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Excel file is required');
+    }
+    return this.menuService.bulkImportVariations(user.tenantId, file.buffer);
+  }
+
+  @Post('bulk-import/variation-groups-and-variations')
+  @ApiOperation({ summary: 'Bulk import variation groups and variations from Excel file (combined)' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  async bulkImportVariationGroupsAndVariations(
+    @CurrentUser() user: any,
+    @UploadedFile() file: any,
+    @Query('branchId') branchId?: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Excel file is required');
+    }
+    return this.menuService.bulkImportVariationGroupsAndVariations(user.tenantId, file.buffer, branchId);
+  }
+
+  @Post('bulk-import/food-items')
+  @ApiOperation({ summary: 'Bulk import food items from Excel file' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  async bulkImportFoodItems(
+    @CurrentUser() user: any,
+    @UploadedFile() file: any,
+    @Query('branchId') branchId?: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Excel file is required');
+    }
+    return this.menuService.bulkImportFoodItems(user.tenantId, file.buffer, branchId);
+  }
+
+  @Post('bulk-import/menus')
+  @ApiOperation({ summary: 'Bulk import menus from Excel file' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  async bulkImportMenus(
+    @CurrentUser() user: any,
+    @UploadedFile() file: any,
+    @Query('branchId') branchId?: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Excel file is required');
+    }
+    return this.menuService.bulkImportMenus(user.tenantId, file.buffer, branchId);
+  }
+
+  @Post('bulk-import/buffets')
+  @ApiOperation({ summary: 'Bulk import buffets from Excel file' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  async bulkImportBuffets(
+    @CurrentUser() user: any,
+    @UploadedFile() file: any,
+    @Query('branchId') branchId?: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Excel file is required');
+    }
+    return this.menuService.bulkImportBuffets(user.tenantId, file.buffer, branchId);
+  }
+
+  @Post('bulk-import/combo-meals')
+  @ApiOperation({ summary: 'Bulk import combo meals from Excel file' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  async bulkImportComboMeals(
+    @CurrentUser() user: any,
+    @UploadedFile() file: any,
+    @Query('branchId') branchId?: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Excel file is required');
+    }
+    return this.menuService.bulkImportComboMeals(user.tenantId, file.buffer, branchId);
   }
 }

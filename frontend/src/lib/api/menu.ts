@@ -490,6 +490,132 @@ export const menuApi = {
     const { data } = await apiClient.get(`/menu/variation-groups/${variationGroupId}/food-items`);
     return data;
   },
+
+  // Bulk Import
+  downloadBulkImportSample: async (entityType: string): Promise<Blob> => {
+    const { data } = await apiClient.get(`/menu/bulk-import/${entityType}/sample`, {
+      responseType: 'blob',
+    });
+    return data;
+  },
+
+  bulkImportCategories: async (file: File, branchId?: string): Promise<{ success: number; failed: number; errors: string[] }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const { data } = await apiClient.post(`/menu/bulk-import/categories${params}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return data;
+  },
+
+  bulkImportAddOnGroups: async (file: File, branchId?: string): Promise<{ success: number; failed: number; errors: string[] }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const { data } = await apiClient.post(`/menu/bulk-import/add-on-groups${params}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return data;
+  },
+
+  bulkImportAddOnGroupsAndAddOns: async (file: File, branchId?: string): Promise<{ success: number; failed: number; errors: string[]; groupsCreated: number; groupsUpdated: number; addOnsCreated: number; addOnsUpdated: number }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const { data } = await apiClient.post(`/menu/bulk-import/add-on-groups-and-add-ons${params}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return data;
+  },
+
+  bulkImportAddOns: async (file: File): Promise<{ success: number; failed: number; errors: string[] }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await apiClient.post('/menu/bulk-import/add-ons', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return data;
+  },
+
+  bulkImportVariationGroups: async (file: File, branchId?: string): Promise<{ success: number; failed: number; errors: string[] }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const { data } = await apiClient.post(`/menu/bulk-import/variation-groups${params}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return data;
+  },
+
+  bulkImportVariations: async (file: File): Promise<{ success: number; failed: number; errors: string[] }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await apiClient.post('/menu/bulk-import/variations', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return data;
+  },
+
+  bulkImportFoodItems: async (file: File, branchId?: string): Promise<{ success: number; failed: number; errors: string[] }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const { data } = await apiClient.post(`/menu/bulk-import/food-items${params}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return data;
+  },
+
+  bulkImportMenus: async (file: File, branchId?: string): Promise<{ success: number; failed: number; errors: string[] }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const { data } = await apiClient.post(`/menu/bulk-import/menus${params}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return data;
+  },
+
+  bulkImportBuffets: async (file: File, branchId?: string): Promise<{ success: number; failed: number; errors: string[] }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const { data } = await apiClient.post(`/menu/bulk-import/buffets${params}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return data;
+  },
+
+  bulkImportComboMeals: async (file: File, branchId?: string): Promise<{ success: number; failed: number; errors: string[] }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const params = branchId ? `?branchId=${branchId}` : '';
+    const { data } = await apiClient.post(`/menu/bulk-import/combo-meals${params}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return data;
+  },
 };
 
 

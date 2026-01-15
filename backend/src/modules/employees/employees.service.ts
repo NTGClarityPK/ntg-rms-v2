@@ -7,6 +7,7 @@ import {
 import { SupabaseService } from '../../database/supabase.service';
 import { RolesService } from '../roles/roles.service';
 import { TranslationService } from '../translations/services/translation.service';
+import { BulkImportService, FieldDefinition } from '../menu/utils/bulk-import.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { PaginationParams, PaginatedResponse, getPaginationParams, createPaginatedResponse } from '../../common/dto/pagination.dto';
@@ -17,6 +18,7 @@ export class EmployeesService {
     private supabaseService: SupabaseService,
     private rolesService: RolesService,
     private translationService: TranslationService,
+    private bulkImportService: BulkImportService,
   ) {}
 
   /**
@@ -333,7 +335,13 @@ export class EmployeesService {
   /**
    * Create a new employee
    */
-  async createEmployee(tenantId: string, userId: string, createDto: CreateEmployeeDto) {
+  async createEmployee(
+    tenantId: string,
+    userId: string,
+    createDto: CreateEmployeeDto,
+    skipTranslations: boolean = false,
+    firstRoleName?: string, // Optional: pass first role name to avoid getRoles() call
+  ) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
     // Validate that branchIds is provided and not empty
@@ -379,11 +387,12 @@ export class EmployeesService {
     }
 
     // Get first role name for backward compatibility (keep role field)
-    let firstRoleName = '';
-    if (createDto.roleIds && createDto.roleIds.length > 0) {
+    // Use provided firstRoleName if available, otherwise fetch it
+    let roleName = firstRoleName || '';
+    if (!roleName && createDto.roleIds && createDto.roleIds.length > 0) {
       const roles = await this.rolesService.getRoles();
       const firstRole = roles.find((r) => r.id === createDto.roleIds[0]);
-      firstRoleName = firstRole?.name || '';
+      roleName = firstRole?.name || '';
     }
 
     // Create employee record
@@ -395,7 +404,7 @@ export class EmployeesService {
         email: createDto.email,
         name: createDto.name,
         phone: createDto.phone,
-        role: firstRoleName, // Keep for backward compatibility
+        role: roleName, // Keep for backward compatibility
         employee_id: employeeId,
         photo_url: createDto.photoUrl,
         national_id: createDto.nationalId,
@@ -462,20 +471,22 @@ export class EmployeesService {
       .in('id', createDto.branchIds);
     const assignedBranches = branchesData || [];
 
-    // Create translations for name (before returning)
-    try {
-      await this.translationService.createTranslations(
-        {
-          entityType: 'employee',
-          entityId: employee.id,
-          fieldName: 'name',
-          text: createDto.name,
-        },
-        userId, // Pass userId
-        tenantId, // Pass tenantId to ensure only enabled languages are translated
-      );
-    } catch (translationError) {
-      console.warn(`Failed to create translations for employee ${employee.id}:`, translationError);
+    // Create translations for name (before returning) - skip if already translated in bulk
+    if (!skipTranslations) {
+      try {
+        await this.translationService.createTranslations(
+          {
+            entityType: 'employee',
+            entityId: employee.id,
+            fieldName: 'name',
+            text: createDto.name,
+          },
+          userId, // Pass userId
+          tenantId, // Pass tenantId to ensure only enabled languages are translated
+        );
+      } catch (translationError) {
+        console.warn(`Failed to create translations for employee ${employee.id}:`, translationError);
+      }
     }
 
     // Return employee data directly instead of calling getEmployeeById
@@ -708,5 +719,327 @@ export class EmployeesService {
     }
 
     return { message: 'Employee deleted successfully' };
+  }
+
+  // ============================================
+  // BULK IMPORT METHODS
+  // ============================================
+
+  /**
+   * Get field definitions for bulk import
+   */
+  getBulkImportFields(): FieldDefinition[] {
+    return [
+      { name: 'email', label: 'Email', required: true, type: 'string', description: 'Employee email address (used to identify existing employee for update)' },
+      { name: 'name', label: 'Name', required: true, type: 'string', description: 'Employee name' },
+      { name: 'roleNames', label: 'Role Names', required: true, type: 'array', description: 'Comma-separated role names (e.g., Manager, Cashier)' },
+      { name: 'branchNames', label: 'Branch Names', required: true, type: 'array', description: 'Comma-separated branch names' },
+      { name: 'phone', label: 'Phone', required: false, type: 'string', description: 'Employee phone number' },
+      { name: 'employeeId', label: 'Employee ID', required: false, type: 'string', description: 'Employee ID number' },
+      { name: 'nationalId', label: 'National ID', required: false, type: 'string', description: 'National ID number' },
+      { name: 'dateOfBirth', label: 'Date of Birth', required: false, type: 'date', description: 'Date of birth (YYYY-MM-DD)' },
+      { name: 'employmentType', label: 'Employment Type', required: false, type: 'string', description: 'full_time, part_time, or contract' },
+      { name: 'joiningDate', label: 'Joining Date', required: false, type: 'date', description: 'Joining date (YYYY-MM-DD)' },
+      { name: 'salary', label: 'Salary', required: false, type: 'number', description: 'Employee salary' },
+      { name: 'isActive', label: 'Is Active', required: false, type: 'boolean', description: 'Whether employee is active', example: 'true' },
+      { name: 'createAuthAccount', label: 'Create Auth Account', required: false, type: 'boolean', description: 'Whether to create auth account', example: 'true' },
+      { name: 'password', label: 'Password', required: false, type: 'string', description: 'Password for auth account (if creating)' },
+    ];
+  }
+
+  /**
+   * Generate sample Excel file for bulk import
+   */
+  async generateBulkImportSample(tenantId: string): Promise<Buffer> {
+    const fields = this.getBulkImportFields();
+    
+    return this.bulkImportService.generateSampleExcel({
+      entityType: 'employee',
+      fields,
+      translateFields: ['name'], // Only name needs translation for employees
+    });
+  }
+
+  /**
+   * Bulk import employees
+   */
+  async bulkImportEmployees(
+    tenantId: string,
+    fileBuffer: Buffer,
+    userId: string,
+  ): Promise<{ success: number; failed: number; errors: string[] }> {
+    const config = {
+      entityType: 'employee',
+      fields: this.getBulkImportFields(),
+      translateFields: ['name'],
+    };
+
+    const rows = await this.bulkImportService.parseExcelFile(fileBuffer, config);
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Fetch all roles and branches upfront for name-to-ID mapping
+    const roles = await this.rolesService.getRoles();
+    const roleNameToIdMap = new Map<string, string>();
+    roles.forEach(role => {
+      roleNameToIdMap.set(role.name.toLowerCase(), role.id);
+      if (role.displayNameEn) {
+        roleNameToIdMap.set(role.displayNameEn.toLowerCase(), role.id);
+      }
+    });
+
+    const { data: branches } = await supabase
+      .from('branches')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    const branchNameToIdMap = new Map<string, string>();
+    (branches || []).forEach(branch => {
+      branchNameToIdMap.set(branch.name.toLowerCase(), branch.id);
+    });
+
+    // Get all emails for checking existing employees
+    const allEmails = rows.map(r => r.email).filter(Boolean);
+    const { data: existingEmployeesData } = await supabase
+      .from('users')
+      .select('id, email')
+      .eq('tenant_id', tenantId)
+      .in('email', allEmails)
+      .is('deleted_at', null);
+    const emailToEmployeeIdMap = new Map<string, string>();
+    (existingEmployeesData || []).forEach(emp => {
+      emailToEmployeeIdMap.set(emp.email.toLowerCase(), emp.id);
+    });
+
+    // Prepare employee data for processing
+    const employeeData: Array<{
+      index: number;
+      createDto: CreateEmployeeDto;
+      updateDto?: UpdateEmployeeDto;
+      isUpdate: boolean;
+      employeeId?: string;
+      rowName: string;
+    }> = [];
+
+    let success = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    // Process and validate all rows
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        // Validate required fields
+        if (!row.email || row.email.trim() === '') {
+          throw new Error('Email is required');
+        }
+
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(row.email.trim())) {
+          throw new Error(`Invalid email format: ${row.email}`);
+        }
+
+        // Validate name
+        if (!row.name || row.name.trim() === '') {
+          throw new Error('Name is required');
+        }
+
+        // Map role names to IDs
+        if (!row.roleNames || !Array.isArray(row.roleNames) || row.roleNames.length === 0) {
+          throw new Error('At least one role name is required');
+        }
+        const roleIds: string[] = [];
+        const invalidRoleNames: string[] = [];
+        for (const roleName of row.roleNames) {
+          const roleId = roleNameToIdMap.get(roleName.trim().toLowerCase());
+          if (roleId) {
+            roleIds.push(roleId);
+          } else {
+            invalidRoleNames.push(roleName);
+          }
+        }
+        if (invalidRoleNames.length > 0) {
+          throw new Error(`Role(s) not found: ${invalidRoleNames.join(', ')}`);
+        }
+
+        // Map branch names to IDs
+        if (!row.branchNames || !Array.isArray(row.branchNames) || row.branchNames.length === 0) {
+          throw new Error('At least one branch name is required');
+        }
+        const branchIds: string[] = [];
+        const invalidBranchNames: string[] = [];
+        for (const branchName of row.branchNames) {
+          const branchId = branchNameToIdMap.get(branchName.trim().toLowerCase());
+          if (branchId) {
+            branchIds.push(branchId);
+          } else {
+            invalidBranchNames.push(branchName);
+          }
+        }
+        if (invalidBranchNames.length > 0) {
+          throw new Error(`Branch(es) not found: ${invalidBranchNames.join(', ')}`);
+        }
+
+        // Check if employee exists (for update)
+        const existingEmployeeId = emailToEmployeeIdMap.get(row.email.toLowerCase());
+        const isUpdate = !!existingEmployeeId;
+
+        if (isUpdate) {
+          // Prepare update DTO
+          const updateDto: UpdateEmployeeDto = {
+            name: row.name,
+            roleIds,
+            branchIds,
+            phone: row.phone || undefined,
+            employeeId: row.employeeId || undefined,
+            nationalId: row.nationalId || undefined,
+            dateOfBirth: row.dateOfBirth || undefined,
+            employmentType: row.employmentType || undefined,
+            joiningDate: row.joiningDate || undefined,
+            salary: row.salary || undefined,
+            isActive: row.isActive !== undefined ? row.isActive : undefined,
+          };
+
+          employeeData.push({
+            index: i,
+            createDto: {} as CreateEmployeeDto, // Not used for updates
+            updateDto,
+            isUpdate: true,
+            employeeId: existingEmployeeId,
+            rowName: row.name,
+          });
+        } else {
+          // Prepare create DTO
+          // Normalize boolean values
+          let isActiveValue = true; // default
+          if (row.isActive !== undefined && row.isActive !== null) {
+            if (typeof row.isActive === 'boolean') {
+              isActiveValue = row.isActive;
+            } else {
+              const isActiveStr = String(row.isActive).toLowerCase().trim();
+              isActiveValue = isActiveStr === 'true' || isActiveStr === '1';
+            }
+          }
+
+          let createAuthAccountValue = false; // default
+          if (row.createAuthAccount !== undefined && row.createAuthAccount !== null) {
+            if (typeof row.createAuthAccount === 'boolean') {
+              createAuthAccountValue = row.createAuthAccount;
+            } else {
+              const createAuthStr = String(row.createAuthAccount).toLowerCase().trim();
+              createAuthAccountValue = createAuthStr === 'true' || createAuthStr === '1';
+            }
+          }
+
+          const createDto: CreateEmployeeDto = {
+            email: row.email.trim(),
+            name: row.name,
+            roleIds,
+            branchIds,
+            phone: row.phone || undefined,
+            employeeId: row.employeeId || undefined,
+            nationalId: row.nationalId || undefined,
+            dateOfBirth: row.dateOfBirth || undefined,
+            employmentType: row.employmentType ? row.employmentType.trim().toLowerCase() : undefined,
+            joiningDate: row.joiningDate || undefined,
+            salary: row.salary || undefined,
+            isActive: isActiveValue,
+            createAuthAccount: createAuthAccountValue,
+            password: row.password || undefined,
+          };
+
+          employeeData.push({
+            index: i,
+            createDto,
+            isUpdate: false,
+            rowName: row.name,
+          });
+        }
+      } catch (error: any) {
+        failed++;
+        errors.push(`Row ${i + 2}: ${error.message}`); // +2 because row 1 is header, Excel rows start at 2
+      }
+    }
+
+    // Process employees in parallel batches (10 at a time)
+    const BATCH_SIZE = 10;
+    const processedEmployees: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
+
+    for (let batchStart = 0; batchStart < employeeData.length; batchStart += BATCH_SIZE) {
+      const batch = employeeData.slice(batchStart, batchStart + BATCH_SIZE);
+      
+      const batchResults = await Promise.allSettled(
+        batch.map(async ({ index, createDto, updateDto, isUpdate, employeeId, rowName }) => {
+          try {
+            if (isUpdate && updateDto && employeeId) {
+              // Update existing employee
+              const employee = await this.updateEmployee(tenantId, employeeId, updateDto, userId, 'en');
+              return { success: true, index, employeeId: employee.id, name: rowName, isUpdate: true };
+            } else {
+              // Create new employee
+              const employee = await this.createEmployee(tenantId, userId, createDto, true);
+              return { success: true, index, employeeId: employee.id, name: rowName, isUpdate: false };
+            }
+          } catch (error: any) {
+            return { success: false, index, error: error.message };
+          }
+        })
+      );
+
+      // Process batch results
+      for (const result of batchResults) {
+        if (result.status === 'fulfilled') {
+          if (result.value.success) {
+            success++;
+            processedEmployees.push({
+              id: result.value.employeeId,
+              name: result.value.name,
+              index: result.value.index,
+              isUpdate: result.value.isUpdate || false,
+            });
+          } else {
+            failed++;
+            errors.push(`Row ${result.value.index + 2}: ${result.value.error}`);
+          }
+        } else {
+          failed++;
+          errors.push(`Row ${batch[0].index + 2}: ${result.reason?.message || 'Unknown error'}`);
+        }
+      }
+    }
+
+    // Fire-and-forget: Do translations asynchronously after returning response
+    if (processedEmployees.length > 0) {
+      const employeesToTranslate = processedEmployees.map(pe => ({ name: pe.name }));
+      
+      // Don't await - let it run in background
+      this.bulkImportService.batchTranslateEntities(
+        employeesToTranslate,
+        'employee',
+        ['name'],
+        tenantId,
+      ).then((translations) => {
+        processedEmployees.forEach(({ id, name }, arrayIndex) => {
+          const nameTranslations = translations.get('name')?.get(arrayIndex);
+          if (nameTranslations) {
+            this.translationService.storePreTranslatedBatch(
+              'employee',
+              id,
+              [{ fieldName: 'name', text: name }],
+              { name: nameTranslations },
+              userId,
+              tenantId,
+              'en',
+            ).catch((err) => {
+              console.warn(`Failed to store translations for employee ${id}:`, err.message);
+            });
+          }
+        });
+      }).catch((err) => {
+        console.error('Failed to batch translate employees:', err.message);
+      });
+    }
+
+    return { success, failed, errors };
   }
 }
