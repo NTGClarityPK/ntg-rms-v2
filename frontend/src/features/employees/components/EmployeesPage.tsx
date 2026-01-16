@@ -80,6 +80,7 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
   const [branches, setBranches] = useState<Array<{ id: string; name: string }>>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exportLoading, setExportLoading] = useState(false);
   // Employee name translations cache: { employeeId: { name: { languageCode: string } } }
   const [employeeTranslationsCache, setEmployeeTranslationsCache] = useState<{
     [employeeId: string]: { name?: { [languageCode: string]: string } };
@@ -555,6 +556,7 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
                 leftSection={<IconDownload size={16} />}
                 onClick={async () => {
                   try {
+                    setExportLoading(true);
                     const blob = await employeesApi.exportEmployees(language);
                     const url = window.URL.createObjectURL(blob);
                     const link = document.createElement('a');
@@ -575,8 +577,11 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
                       language,
                       errorColor: notificationColors.error,
                     });
+                  } finally {
+                    setExportLoading(false);
                   }
                 }}
+                loading={exportLoading}
                 variant="light"
               >
                 {t('bulkImport.export', language) || 'Export'}

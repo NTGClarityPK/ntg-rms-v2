@@ -25,6 +25,7 @@ export default function TopItemsReportPage() {
   const themeColor = useThemeColor();
   const tooltipStyle = useChartTooltip();
   const [loading, setLoading] = useState(true);
+  const [exportLoading, setExportLoading] = useState(false);
   const [report, setReport] = useState<TopItemsReport | null>(null);
   const [branches, setBranches] = useState<Array<{ value: string; label: string }>>([]);
   const [filters, setFilters] = useState<ReportQueryParams>({ limit: 10 });
@@ -95,6 +96,7 @@ export default function TopItemsReportPage() {
   const handleFilterChange = (newFilters: ReportQueryParams) => setFilters(newFilters);
   const handleExport = async (format: 'csv' | 'excel') => {
     try {
+      setExportLoading(true);
       const url = await reportsApi.exportReport('/reports/top-items', {
         ...filters,
         export: format,
@@ -110,6 +112,8 @@ export default function TopItemsReportPage() {
         defaultMessage: 'Failed to export report',
         language,
       });
+    } finally {
+      setExportLoading(false);
     }
   };
   const handlePrint = () => window.print();
@@ -123,7 +127,7 @@ export default function TopItemsReportPage() {
 
   return (
     <Stack gap="md">
-      <ReportFilters branches={branches} onFilterChange={handleFilterChange} onExport={handleExport} onPrint={handlePrint} onRefresh={() => loadReport(filters)} loading={loading} currentFilters={filters} showGroupBy={false} />
+      <ReportFilters branches={branches} onFilterChange={handleFilterChange} onExport={handleExport} onPrint={handlePrint} onRefresh={() => loadReport(filters)} loading={loading} exportLoading={exportLoading} currentFilters={filters} showGroupBy={false} />
       <Paper p="md" withBorder>
         <Text fw={600} mb="md" size="lg">{t('reports.topSellingItems' as any, language) || 'Top Selling Items'}</Text>
         <Box h={400}>

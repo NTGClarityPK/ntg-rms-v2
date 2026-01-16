@@ -2096,6 +2096,20 @@ export class MenuService {
       throw new NotFoundException('Add-on group not found');
     }
 
+    // Remove references from food items
+    try {
+      const { error: removeError } = await supabase
+        .from('food_item_add_on_groups')
+        .delete()
+        .eq('add_on_group_id', id);
+
+      if (removeError) {
+        console.warn(`Failed to remove addon group ${id} from food items:`, removeError);
+      }
+    } catch (removeError) {
+      console.warn(`Failed to remove addon group ${id} from food items:`, removeError);
+    }
+
     // Soft delete
     const { error } = await supabase
       .from('add_on_groups')
@@ -4721,6 +4735,20 @@ export class MenuService {
 
     if (!existing) {
       throw new NotFoundException('Variation group not found');
+    }
+
+    // Remove references from food items
+    try {
+      const { error: removeError } = await supabase
+        .from('food_item_variations')
+        .delete()
+        .eq('variation_group_id', id);
+
+      if (removeError) {
+        console.warn(`Failed to remove variation group ${id} from food items:`, removeError);
+      }
+    } catch (removeError) {
+      console.warn(`Failed to remove variation group ${id} from food items:`, removeError);
     }
 
     // Soft delete

@@ -67,6 +67,7 @@ export function VariationGroupsPage() {
   const [selectedGroup, setSelectedGroup] = useState<VariationGroup | null>(null);
   const [variations, setVariations] = useState<Variation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exportLoading, setExportLoading] = useState(false);
   const [loadingVariations, setLoadingVariations] = useState(false);
   const [groupModalOpened, setGroupModalOpened] = useState(false);
   const [variationModalOpened, setVariationModalOpened] = useState(false);
@@ -491,6 +492,7 @@ export function VariationGroupsPage() {
             leftSection={<IconDownload size={16} />}
             onClick={async () => {
               try {
+                setExportLoading(true);
                 const blob = await menuApi.exportEntities('variationGroupAndVariation', selectedBranchId || undefined, language);
                 const url = window.URL.createObjectURL(blob);
                 const link = document.createElement('a');
@@ -511,8 +513,11 @@ export function VariationGroupsPage() {
                   language,
                   errorColor: notificationColors.error,
                 });
+              } finally {
+                setExportLoading(false);
               }
             }}
+            loading={exportLoading}
             variant="light"
           >
             {t('bulkImport.export', language) || 'Export'}

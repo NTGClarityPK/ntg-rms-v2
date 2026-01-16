@@ -49,6 +49,7 @@ export function MenusPage() {
   const [menus, setMenus] = useState<any[]>([]);
   const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exportLoading, setExportLoading] = useState(false);
   const [assignModalOpened, setAssignModalOpened] = useState(false);
   const [createModalOpened, setCreateModalOpened] = useState(false);
   const [selectedMenuType, setSelectedMenuType] = useState<string>('');
@@ -452,6 +453,7 @@ export function MenusPage() {
             leftSection={<IconDownload size={16} />}
             onClick={async () => {
               try {
+                setExportLoading(true);
                 const blob = await menuApi.exportEntities('menu', selectedBranchId || undefined, language);
                 const url = window.URL.createObjectURL(blob);
                 const link = document.createElement('a');
@@ -472,8 +474,11 @@ export function MenusPage() {
                   language,
                   errorColor: notificationColors.error,
                 });
+              } finally {
+                setExportLoading(false);
               }
             }}
+            loading={exportLoading}
             variant="light"
           >
             {t('bulkImport.export', language) || 'Export'}

@@ -25,6 +25,7 @@ export default function TaxReportPage() {
   const themeColor = useThemeColor();
   const tooltipStyle = useChartTooltip();
   const [loading, setLoading] = useState(true);
+  const [exportLoading, setExportLoading] = useState(false);
   const [report, setReport] = useState<TaxReport | null>(null);
   const [branches, setBranches] = useState<Array<{ value: string; label: string }>>([]);
   const [filters, setFilters] = useState<ReportQueryParams>({ groupBy: 'day' });
@@ -95,6 +96,7 @@ export default function TaxReportPage() {
   const handleFilterChange = (newFilters: ReportQueryParams) => setFilters(newFilters);
   const handleExport = async (format: 'csv' | 'excel') => {
     try {
+      setExportLoading(true);
       const url = await reportsApi.exportReport('/reports/tax', {
         ...filters,
         export: format,
@@ -110,6 +112,8 @@ export default function TaxReportPage() {
         defaultMessage: 'Failed to export report',
         language,
       });
+    } finally {
+      setExportLoading(false);
     }
   };
   const handlePrint = () => window.print();
@@ -123,7 +127,7 @@ export default function TaxReportPage() {
 
   return (
     <Stack gap="md">
-      <ReportFilters branches={branches} onFilterChange={handleFilterChange} onExport={handleExport} onPrint={handlePrint} onRefresh={() => loadReport(filters)} loading={loading} currentFilters={filters} showGroupBy={true} />
+      <ReportFilters branches={branches} onFilterChange={handleFilterChange} onExport={handleExport} onPrint={handlePrint} onRefresh={() => loadReport(filters)} loading={loading} exportLoading={exportLoading} currentFilters={filters} showGroupBy={true} />
       <Grid>
         <Grid.Col span={{ base: 12, sm: 6, md: 4 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.totalTax' as any, language)}</Text><Text size="xl" fw={700} style={{ color: themeColor }}>{formatCurrency(report.summary.totalTax, currency)}</Text></Card></Grid.Col>
         <Grid.Col span={{ base: 12, sm: 6, md: 4 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.taxableAmount' as any, language)}</Text><Text size="xl" fw={700} style={{ color: getSuccessColor() }}>{formatCurrency(report.summary.taxableAmount, currency)}</Text></Card></Grid.Col>

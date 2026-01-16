@@ -71,6 +71,7 @@ export function BuffetPage() {
   const [menus, setMenus] = useState<any[]>([]);
   const [selectedMenuFoodItems, setSelectedMenuFoodItems] = useState<FoodItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exportLoading, setExportLoading] = useState(false);
   const [opened, setOpened] = useState(false);
   const [editingBuffet, setEditingBuffet] = useState<Buffet | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -394,6 +395,7 @@ export function BuffetPage() {
             leftSection={<IconDownload size={16} />}
             onClick={async () => {
               try {
+                setExportLoading(true);
                 const blob = await menuApi.exportEntities('buffet', selectedBranchId || undefined, language);
                 const url = window.URL.createObjectURL(blob);
                 const link = document.createElement('a');
@@ -414,8 +416,11 @@ export function BuffetPage() {
                   language,
                   errorColor: notificationColors.error,
                 });
+              } finally {
+                setExportLoading(false);
               }
             }}
+            loading={exportLoading}
             variant="light"
           >
             {t('bulkImport.export', language) || 'Export'}

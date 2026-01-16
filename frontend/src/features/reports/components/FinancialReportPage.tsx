@@ -25,6 +25,7 @@ export default function FinancialReportPage() {
   const themeColor = useThemeColor();
   const tooltipStyle = useChartTooltip();
   const [loading, setLoading] = useState(true);
+  const [exportLoading, setExportLoading] = useState(false);
   const [report, setReport] = useState<FinancialReport | null>(null);
   const [branches, setBranches] = useState<Array<{ value: string; label: string }>>([]);
   const [filters, setFilters] = useState<ReportQueryParams>({});
@@ -95,6 +96,7 @@ export default function FinancialReportPage() {
   const handleFilterChange = (newFilters: ReportQueryParams) => setFilters(newFilters);
   const handleExport = async (format: 'csv' | 'excel') => {
     try {
+      setExportLoading(true);
       const url = await reportsApi.exportReport('/reports/financial', {
         ...filters,
         export: format,
@@ -110,6 +112,8 @@ export default function FinancialReportPage() {
         defaultMessage: 'Failed to export report',
         language,
       });
+    } finally {
+      setExportLoading(false);
     }
   };
   const handlePrint = () => window.print();
@@ -150,7 +154,7 @@ export default function FinancialReportPage() {
 
   return (
     <Stack gap="md">
-      <ReportFilters branches={branches} onFilterChange={handleFilterChange} onExport={handleExport} onPrint={handlePrint} onRefresh={() => loadReport(filters)} loading={loading} currentFilters={filters} showGroupBy={false} />
+      <ReportFilters branches={branches} onFilterChange={handleFilterChange} onExport={handleExport} onPrint={handlePrint} onRefresh={() => loadReport(filters)} loading={loading} exportLoading={exportLoading} currentFilters={filters} showGroupBy={false} />
       <Grid>
         <Grid.Col span={{ base: 12, sm: 6, md: 3 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.totalRevenue' as any, language)}</Text><Text size="xl" fw={700} style={{ color: themeColor }}>{formatCurrency(report.revenue.total, currency)}</Text></Card></Grid.Col>
         <Grid.Col span={{ base: 12, sm: 6, md: 3 }}><Card withBorder p="md"><Text size="sm" c="dimmed" mb="xs">{t('reports.costOfGoods' as any, language)}</Text><Text size="xl" fw={700} style={{ color: getErrorColor() }}>{formatCurrency(report.costs.costOfGoods, currency)}</Text></Card></Grid.Col>

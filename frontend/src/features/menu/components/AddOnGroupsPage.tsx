@@ -69,6 +69,7 @@ export function AddOnGroupsPage() {
   const [selectedGroup, setSelectedGroup] = useState<AddOnGroup | null>(null);
   const [addOns, setAddOns] = useState<AddOn[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exportLoading, setExportLoading] = useState(false);
   const [loadingAddOns, setLoadingAddOns] = useState(false);
   const [groupModalOpened, setGroupModalOpened] = useState(false);
   const [addOnModalOpened, setAddOnModalOpened] = useState(false);
@@ -551,6 +552,7 @@ export function AddOnGroupsPage() {
             leftSection={<IconDownload size={16} />}
             onClick={async () => {
               try {
+                setExportLoading(true);
                 const blob = await menuApi.exportEntities('addOnGroupAndAddOn', selectedBranchId || undefined, language);
                 const url = window.URL.createObjectURL(blob);
                 const link = document.createElement('a');
@@ -571,8 +573,11 @@ export function AddOnGroupsPage() {
                   language,
                   errorColor: notificationColors.error,
                 });
+              } finally {
+                setExportLoading(false);
               }
             }}
+            loading={exportLoading}
             variant="light"
           >
             {t('bulkImport.export', language) || 'Export'}

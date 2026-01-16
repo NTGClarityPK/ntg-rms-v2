@@ -26,6 +26,7 @@ interface ReportFiltersProps {
   onPrint: () => void;
   onRefresh: () => void;
   loading?: boolean;
+  exportLoading?: boolean;
   defaultDateRange?: { start: Date | null; end: Date | null };
   currentFilters?: ReportQueryParams;
   showGroupBy?: boolean;
@@ -38,6 +39,7 @@ export function ReportFilters({
   onPrint,
   onRefresh,
   loading = false,
+  exportLoading = false,
   defaultDateRange,
   currentFilters,
   showGroupBy = false,
@@ -338,6 +340,7 @@ export function ReportFilters({
             leftSection={<IconDownload size={16} />}
             variant="light"
             onClick={() => onExport('csv')}
+            loading={exportLoading}
             style={{ color: themeColor }}
           >
             {t('reports.exportCSV' as any, language)}
@@ -346,6 +349,7 @@ export function ReportFilters({
             leftSection={<IconDownload size={16} />}
             variant="light"
             onClick={() => onExport('excel')}
+            loading={exportLoading}
             style={{ color: themeColor }}
           >
             {t('reports.exportExcel' as any, language)}

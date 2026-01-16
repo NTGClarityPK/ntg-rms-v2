@@ -70,6 +70,7 @@ export function ComboMealPage() {
   const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
   const [menus, setMenus] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exportLoading, setExportLoading] = useState(false);
   const [opened, setOpened] = useState(false);
   const [editingComboMeal, setEditingComboMeal] = useState<ComboMeal | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -369,6 +370,7 @@ export function ComboMealPage() {
             leftSection={<IconDownload size={16} />}
             onClick={async () => {
               try {
+                setExportLoading(true);
                 const blob = await menuApi.exportEntities('comboMeal', selectedBranchId || undefined, language);
                 const url = window.URL.createObjectURL(blob);
                 const link = document.createElement('a');
@@ -389,8 +391,11 @@ export function ComboMealPage() {
                   language,
                   errorColor: notificationColors.error,
                 });
+              } finally {
+                setExportLoading(false);
               }
             }}
+            loading={exportLoading}
             variant="light"
           >
             {t('bulkImport.export', language) || 'Export'}

@@ -54,6 +54,7 @@ export function CategoriesPage() {
   const primaryColor = useThemeColor();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exportLoading, setExportLoading] = useState(false);
   const [opened, setOpened] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -319,6 +320,7 @@ export function CategoriesPage() {
           leftSection={<IconDownload size={16} />}
           onClick={async () => {
             try {
+              setExportLoading(true);
               const blob = await menuApi.exportEntities('category', selectedBranchId || undefined, language);
               const url = window.URL.createObjectURL(blob);
               const link = document.createElement('a');
@@ -339,8 +341,11 @@ export function CategoriesPage() {
                 language,
                 errorColor: notificationColors.error,
               });
+            } finally {
+              setExportLoading(false);
             }
           }}
+          loading={exportLoading}
           variant="light"
         >
           {t('bulkImport.export', language) || 'Export'}

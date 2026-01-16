@@ -79,6 +79,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exportLoading, setExportLoading] = useState(false);
 
   const [opened, setOpened] = useState(false);
   const [profileOpened, setProfileOpened] = useState(false);
@@ -403,6 +404,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
             leftSection={<IconDownload size={16} />}
             onClick={async () => {
               try {
+                setExportLoading(true);
                 const blob = await customersApi.exportCustomers(selectedBranchId || undefined, language);
                 const url = window.URL.createObjectURL(blob);
                 const link = document.createElement('a');
@@ -423,8 +425,11 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
                   language,
                   errorColor: notificationColors.error,
                 });
+              } finally {
+                setExportLoading(false);
               }
             }}
+            loading={exportLoading}
             variant="light"
           >
             {t('bulkImport.export', language) || 'Export'}

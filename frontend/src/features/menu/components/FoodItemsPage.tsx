@@ -83,6 +83,7 @@ export function FoodItemsPage() {
   const [menus, setMenus] = useState<any[]>([]);
   const [variationGroups, setVariationGroups] = useState<VariationGroup[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exportLoading, setExportLoading] = useState(false);
   const [opened, setOpened] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
   const [editingItem, setEditingItem] = useState<FoodItem | null>(null);
@@ -715,6 +716,7 @@ export function FoodItemsPage() {
             leftSection={<IconDownload size={16} />}
             onClick={async () => {
               try {
+                setExportLoading(true);
                 const blob = await menuApi.exportEntities('foodItem', selectedBranchId || undefined, language);
                 const url = window.URL.createObjectURL(blob);
                 const link = document.createElement('a');
@@ -735,8 +737,11 @@ export function FoodItemsPage() {
                   language,
                   errorColor: notificationColors.error,
                 });
+              } finally {
+                setExportLoading(false);
               }
             }}
+            loading={exportLoading}
             variant="light"
           >
             {t('bulkImport.export', language) || 'Export'}

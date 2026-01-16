@@ -48,6 +48,7 @@ export default function SalesReportPage() {
   const themeColor = useThemeColor();
   const tooltipStyle = useChartTooltip();
   const [loading, setLoading] = useState(true);
+  const [exportLoading, setExportLoading] = useState(false);
   const [report, setReport] = useState<SalesReport | null>(null);
   const [branches, setBranches] = useState<Array<{ value: string; label: string }>>([]);
   const [filters, setFilters] = useState<ReportQueryParams>({
@@ -126,6 +127,7 @@ export default function SalesReportPage() {
 
   const handleExport = async (format: 'csv' | 'excel') => {
     try {
+      setExportLoading(true);
       const url = await reportsApi.exportReport('/reports/sales', {
         ...filters,
         export: format,
@@ -141,6 +143,8 @@ export default function SalesReportPage() {
         message: error?.message || 'Failed to export report',
         color: getErrorColor(),
       });
+    } finally {
+      setExportLoading(false);
     }
   };
 
@@ -179,6 +183,7 @@ export default function SalesReportPage() {
         onPrint={handlePrint}
         onRefresh={() => loadReport(filters)}
         loading={loading}
+        exportLoading={exportLoading}
         currentFilters={filters}
         showGroupBy={true}
       />
