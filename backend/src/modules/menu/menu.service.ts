@@ -4969,13 +4969,14 @@ export class MenuService {
         { name: 'menuTypes', label: 'Menu Types', required: false, type: 'array', description: 'Comma-separated menu types', example: 'breakfast,lunch' },
         { name: 'ageLimit', label: 'Age Limit', required: false, type: 'number', description: 'Age limit' },
         { name: 'labels', label: 'Labels', required: false, type: 'array', description: 'Comma-separated labels', example: 'spicy,vegetarian' },
-        { name: 'addOnGroupIds', label: 'Add-On Group IDs', required: false, type: 'array', description: 'Comma-separated add-on group UUIDs' },
+        { name: 'addOnGroupNames', label: 'Add-On Group Names', required: false, type: 'array', description: 'Comma-separated add-on group names', example: 'Extra Toppings,Spice Level' },
+        { name: 'variationGroupNames', label: 'Variation Group Names', required: false, type: 'array', description: 'Comma-separated variation group names', example: 'Size,Spice Level' },
         { name: 'isActive', label: 'Is Active', required: false, type: 'boolean', description: 'Whether item is active', example: 'true' },
       ],
       menu: [
         { name: 'menuType', label: 'Menu Type', required: true, type: 'string', description: 'Menu type (lowercase, underscore only)', example: 'breakfast' },
         { name: 'name', label: 'Name', required: false, type: 'string', description: 'Menu name' },
-        { name: 'foodItemIds', label: 'Food Item IDs', required: false, type: 'array', description: 'Comma-separated food item UUIDs' },
+        { name: 'foodItemNames', label: 'Food Item Names', required: false, type: 'array', description: 'Comma-separated food item names', example: 'Pizza,Margherita Pizza' },
         { name: 'isActive', label: 'Is Active', required: false, type: 'boolean', description: 'Whether menu is active', example: 'true' },
       ],
       buffet: [
@@ -5007,11 +5008,14 @@ export class MenuService {
    * Generate sample Excel file for bulk import
    */
   async generateBulkImportSample(entityType: string): Promise<Buffer> {
-    const fields = this.getBulkImportFields(entityType);
-    const translateFields = this.getTranslateFields(entityType);
+    // Map variationGroup to variationGroupAndVariation since bulk import now handles both
+    const actualEntityType = entityType === 'variationGroup' ? 'variationGroupAndVariation' : entityType;
+    
+    const fields = this.getBulkImportFields(actualEntityType);
+    const translateFields = this.getTranslateFields(actualEntityType);
     
     return this.bulkImportService.generateSampleExcel({
-      entityType,
+      entityType: actualEntityType,
       fields,
       translateFields,
     });
@@ -6829,6 +6833,12 @@ export class MenuService {
     fileBuffer: Buffer,
     branchId?: string,
   ): Promise<{ success: number; failed: number; errors: string[]; groupsCreated: number; groupsUpdated: number; variationsCreated: number; variationsUpdated: number }> {
+    // Validate and store tenantId as const to prevent modification
+    if (!tenantId || typeof tenantId !== 'string' || tenantId.trim() === '') {
+      throw new BadRequestException('tenantId is required and must be a non-empty string');
+    }
+    const validatedTenantId = tenantId.trim();
+
     const config = {
       entityType: 'variationGroupAndVariation',
       fields: this.getBulkImportFields('variationGroupAndVariation'),
@@ -6842,7 +6852,7 @@ export class MenuService {
     let groupQuery = supabase
       .from('variation_groups')
       .select('id, name')
-      .eq('tenant_id', tenantId)
+      .eq('tenant_id', validatedTenantId)
       .is('deleted_at', null);
     
     if (branchId) {
@@ -6859,7 +6869,7 @@ export class MenuService {
     const { data: allVariations } = await supabase
       .from('variations')
       .select('id, name, variation_group_id')
-      .eq('tenant_id', tenantId)
+      .eq('tenant_id', validatedTenantId)
       .is('deleted_at', null);
     
     const variationKeyToIdMap = new Map<string, string>(); // key: "groupId|||name" -> variationId
@@ -6881,7 +6891,7 @@ export class MenuService {
       rows,
       'variationGroupAndVariation',
       ['variationGroupName', 'variationName'],
-      tenantId,
+      validatedTenantId,
     );
 
     for (let i = 0; i < rows.length; i++) {
@@ -6912,13 +6922,13 @@ export class MenuService {
           const updateDto: UpdateVariationGroupDto = {
             name: groupName,
           };
-          await this.updateVariationGroup(tenantId, groupId, updateDto, 'en');
+          await this.updateVariationGroup(validatedTenantId, groupId, updateDto, 'en');
           groupsUpdated++;
         } else {
           const createDto: CreateVariationGroupDto = {
             name: groupName,
           };
-          const group = await this.createVariationGroup(tenantId, createDto, branchId);
+          const group = await this.createVariationGroup(validatedTenantId, createDto, branchId);
           groupId = group.id;
           groupNameToIdMap.set(groupNameLower, groupId); // Update map for subsequent rows
           groupsCreated++;
@@ -6944,7 +6954,8 @@ export class MenuService {
                 pricing_adjustment: row.variationPricingAdjustment || 0,
                 display_order: row.variationDisplayOrder || 0,
               })
-              .eq('id', existingVariationId);
+              .eq('id', existingVariationId)
+              .eq('tenant_id', validatedTenantId);
 
             if (updateError) {
               throw new Error(`Failed to update variation: ${updateError.message}`);
@@ -6959,7 +6970,7 @@ export class MenuService {
                 [{ fieldName: 'name', text: variationName }],
                 { name: nameTranslations },
                 undefined,
-                tenantId,
+                validatedTenantId,
                 'en',
               );
             }
@@ -6970,7 +6981,7 @@ export class MenuService {
             const { data: variation, error: insertError } = await supabase
               .from('variations')
               .insert({
-                tenant_id: tenantId,
+                tenant_id: validatedTenantId,
                 variation_group_id: groupId,
                 name: variationName,
                 recipe_multiplier: row.variationRecipeMultiplier || 1,
@@ -6981,6 +6992,12 @@ export class MenuService {
               .single();
 
             if (insertError) {
+              // If schema cache error, provide helpful message
+              if (insertError.message?.includes('schema cache') || 
+                  insertError.message?.includes('tenant_id') ||
+                  insertError.code === 'PGRST116') {
+                throw new Error(`Failed to create variation: Schema cache issue. Please ensure tenant_id column exists in variations table. Original error: ${insertError.message}`);
+              }
               throw new Error(`Failed to create variation: ${insertError.message}`);
             }
 
@@ -6993,7 +7010,7 @@ export class MenuService {
                 [{ fieldName: 'name', text: variationName }],
                 { name: nameTranslations },
                 undefined,
-                tenantId,
+                validatedTenantId,
                 'en',
               );
             }
@@ -7012,7 +7029,7 @@ export class MenuService {
             [{ fieldName: 'name', text: groupName }],
             { name: groupNameTranslations },
             undefined,
-            tenantId,
+            validatedTenantId,
             'en',
           );
         }
@@ -7028,27 +7045,36 @@ export class MenuService {
   }
 
   /**
-   * Bulk import variation groups
+   * Bulk import variation groups and variations (combined)
+   * Logic:
+   * - If variationGroupName is present but variationName is not → create/update variation group
+   * - If variationName is present → create/update variation (and create/update group if needed)
    */
   async bulkImportVariationGroups(
     tenantId: string,
     fileBuffer: Buffer,
     branchId?: string,
-  ): Promise<{ success: number; failed: number; errors: string[] }> {
+  ): Promise<{ success: number; failed: number; errors: string[]; groupsCreated: number; groupsUpdated: number; variationsCreated: number; variationsUpdated: number }> {
+    // Validate and store tenantId as const to prevent modification
+    if (!tenantId || typeof tenantId !== 'string' || tenantId.trim() === '') {
+      throw new BadRequestException('tenantId is required and must be a non-empty string');
+    }
+    const validatedTenantId = tenantId.trim();
+
     const config = {
-      entityType: 'variationGroup',
-      fields: this.getBulkImportFields('variationGroup'),
-      translateFields: ['name'],
+      entityType: 'variationGroupAndVariation',
+      fields: this.getBulkImportFields('variationGroupAndVariation'),
+      translateFields: ['variationGroupName', 'variationName'],
     };
 
     const rows = await this.bulkImportService.parseExcelFile(fileBuffer, config);
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Fetch all variation groups for name-to-ID mapping and checking existing
+    // Fetch all variation groups for name-to-ID mapping
     let groupQuery = supabase
       .from('variation_groups')
       .select('id, name')
-      .eq('tenant_id', tenantId)
+      .eq('tenant_id', validatedTenantId)
       .is('deleted_at', null);
     
     if (branchId) {
@@ -7061,130 +7087,489 @@ export class MenuService {
       groupNameToIdMap.set(group.name.toLowerCase(), group.id);
     });
 
-    // Prepare group data for processing
-    const groupData: Array<{
-      index: number;
-      row: any;
-      isUpdate: boolean;
-      groupId?: string;
-    }> = [];
+    // Fetch all variations for update detection (by group + name)
+    const { data: allVariations } = await supabase
+      .from('variations')
+      .select('id, name, variation_group_id')
+      .eq('tenant_id', validatedTenantId)
+      .is('deleted_at', null);
+    
+    const variationKeyToIdMap = new Map<string, string>(); // key: "groupId|||name" -> variationId
+    (allVariations || []).forEach(variation => {
+      const key = `${variation.variation_group_id}|||${variation.name.toLowerCase()}`;
+      variationKeyToIdMap.set(key, variation.id);
+    });
 
     let success = 0;
     let failed = 0;
+    let groupsCreated = 0;
+    let groupsUpdated = 0;
+    let variationsCreated = 0;
+    let variationsUpdated = 0;
     const errors: string[] = [];
 
-    // Process and validate all rows
+    // Collect translation data to process after response
+    const translationTasks: Array<{
+      entityType: string;
+      entityId: string;
+      fields: Array<{ fieldName: string; text: string }>;
+      translations: Record<string, any>;
+    }> = [];
+
+    // Collect operations for batching
+    const groupsToCreate: Array<{
+      rowIndex: number;
+      name: string;
+      nameLower: string;
+    }> = [];
+    const groupsToUpdate: Array<{
+      id: string;
+      rowIndex: number;
+      name: string;
+    }> = [];
+    const variationsToCreate: Array<{
+      rowIndex: number;
+      groupId: string;
+      groupNameLower?: string; // For resolving pending groupIds
+      name: string;
+      nameLower: string;
+      recipeMultiplier: number;
+      pricingAdjustment: number;
+      displayOrder: number;
+    }> = [];
+    const variationsToUpdate: Array<{
+      id: string;
+      rowIndex: number;
+      name: string;
+      recipeMultiplier: number;
+      pricingAdjustment: number;
+      displayOrder: number;
+    }> = [];
+
+    // Start batch translation asynchronously (don't await - process after response)
+    const translationPromise = this.bulkImportService.batchTranslateEntities(
+      rows,
+      'variationGroupAndVariation',
+      ['variationGroupName', 'variationName'],
+      validatedTenantId,
+    );
+
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       try {
-        // Validate required fields
-        if (!row.name || row.name.trim() === '') {
-          throw new Error('Name is required');
+        // Check for parsing errors
+        if (row._errors && row._errors.length > 0) {
+          throw new Error(row._errors.join('; '));
         }
 
-        // Check if group exists (by name)
-        const existingGroupId = groupNameToIdMap.get(row.name.trim().toLowerCase());
-        const isUpdate = !!existingGroupId;
+        // Validate variation group name is present
+        if (!row.variationGroupName || row.variationGroupName.trim() === '') {
+          throw new Error('Variation group name is required');
+        }
 
-        groupData.push({
-          index: i,
-          row,
-          isUpdate,
-          groupId: existingGroupId,
-        });
+        const groupName = row.variationGroupName.trim();
+        const groupNameLower = groupName.toLowerCase();
+
+        // Determine if this row is for group only or includes variation
+        const hasVariation = row.variationName && row.variationName.trim() !== '';
+
+        // Process variation group (create or update)
+        let groupId = groupNameToIdMap.get(groupNameLower);
+        const isGroupUpdate = !!groupId;
+        
+        // Track if group is being created in this batch (to avoid duplicates)
+        const groupBeingCreated = groupsToCreate.find(g => g.nameLower === groupNameLower);
+
+        // Queue variation group operations for batch processing
+        if (isGroupUpdate && groupId) {
+          groupsToUpdate.push({
+            id: groupId,
+            rowIndex: i,
+            name: groupName,
+          });
+        } else if (!groupBeingCreated) {
+          // Only queue if not already being created
+          groupsToCreate.push({
+            rowIndex: i,
+            name: groupName,
+            nameLower: groupNameLower,
+          });
+        }
+        
+        // Use existing groupId or mark as pending if being created
+        if (!groupId && groupBeingCreated) {
+          groupId = 'pending';
+        }
+
+        // Process variation if name is provided
+        if (hasVariation) {
+          const variationName = row.variationName.trim();
+          const variationNameLower = variationName.toLowerCase();
+
+          // Resolve groupId if pending (group being created in this batch)
+          let resolvedGroupId = groupId;
+          if (groupId === 'pending' || !groupId) {
+            const groupBeingCreated = groupsToCreate.find(g => g.nameLower === groupNameLower);
+            if (groupBeingCreated) {
+              resolvedGroupId = 'pending'; // Will be resolved after batch create
+            } else {
+              // Group should exist, try to find it
+              resolvedGroupId = groupNameToIdMap.get(groupNameLower) || 'pending';
+            }
+          }
+
+          // Check if variation exists (will resolve groupId after batch create)
+          const variationKey = resolvedGroupId !== 'pending' ? `${resolvedGroupId}|||${variationNameLower}` : `pending|||${variationNameLower}`;
+          const existingVariationId = variationKeyToIdMap.get(variationKey);
+          const isVariationUpdate = !!existingVariationId;
+
+          if (isVariationUpdate && existingVariationId) {
+            // Queue variation update for batch processing
+            variationsToUpdate.push({
+              id: existingVariationId,
+              rowIndex: i,
+              name: variationName,
+              recipeMultiplier: row.variationRecipeMultiplier || 1,
+              pricingAdjustment: row.variationPricingAdjustment || 0,
+              displayOrder: row.variationDisplayOrder || 0,
+            });
+          } else {
+            // Queue variation create for batch processing (groupId will be resolved after groups are created)
+            variationsToCreate.push({
+              rowIndex: i,
+              groupId: resolvedGroupId, // Will be resolved after groups are created
+              groupNameLower: groupNameLower, // Store for resolution
+              name: variationName,
+              nameLower: variationNameLower,
+              recipeMultiplier: row.variationRecipeMultiplier || 1,
+              pricingAdjustment: row.variationPricingAdjustment || 0,
+              displayOrder: row.variationDisplayOrder || 0,
+            });
+          }
+        }
+
+        success++;
       } catch (error: any) {
         failed++;
         errors.push(`Row ${i + 2}: ${error.message}`);
       }
     }
 
-    // Process groups in parallel batches (10 at a time)
-    const BATCH_SIZE = 10;
-    const processedGroups: Array<{ id: string; name: string; index: number; isUpdate: boolean }> = [];
-
-    for (let batchStart = 0; batchStart < groupData.length; batchStart += BATCH_SIZE) {
-      const batch = groupData.slice(batchStart, batchStart + BATCH_SIZE);
-      
-      const batchResults = await Promise.allSettled(
-        batch.map(async ({ index, row, isUpdate, groupId }) => {
-          try {
-            if (isUpdate && groupId) {
-              // Update existing group
-              const updateDto: UpdateVariationGroupDto = {
-                name: row.name,
-              };
-
-              const group = await this.updateVariationGroup(tenantId, groupId, updateDto, 'en');
-              return { success: true, index, groupId: group.id, name: row.name, isUpdate: true };
-            } else {
-              // Create new group
-              const createDto: CreateVariationGroupDto = {
-                name: row.name,
-              };
-
-              const group = await this.createVariationGroup(tenantId, createDto, branchId);
-              return { success: true, index, groupId: group.id, name: row.name, isUpdate: false };
-            }
-          } catch (error: any) {
-            return { success: false, index, error: error.message };
+    // Batch process all operations
+    try {
+      // 1. Batch create groups
+      if (groupsToCreate.length > 0) {
+        const groupCreateData = groupsToCreate.map(g => {
+          const data: any = {
+            tenant_id: validatedTenantId,
+            name: g.name,
+          };
+          
+          if (branchId) {
+            data.branch_id = branchId;
           }
-        })
-      );
+          
+          return data;
+        });
 
-      // Process batch results
-      for (const result of batchResults) {
-        if (result.status === 'fulfilled') {
-          if (result.value.success) {
-            success++;
-            processedGroups.push({
-              id: result.value.groupId,
-              name: result.value.name,
-              index: result.value.index,
-              isUpdate: result.value.isUpdate || false,
-            });
-          } else {
+        const { data: createdGroups, error: createError } = await supabase
+          .from('variation_groups')
+          .insert(groupCreateData)
+          .select('id, name, tenant_id');
+
+        if (createError) {
+          throw new Error(`Failed to batch create groups: ${createError.message}`);
+        }
+
+        // Map created groups back to row indices
+        createdGroups?.forEach((group, idx) => {
+          const groupCreate = groupsToCreate[idx];
+          const groupNameLower = groupCreate.nameLower;
+          groupNameToIdMap.set(groupNameLower, group.id);
+          
+          // Update pending variations with resolved groupId
+          variationsToCreate.forEach(variation => {
+            if (variation.groupId === 'pending' && variation.rowIndex === groupCreate.rowIndex) {
+              variation.groupId = group.id;
+            }
+          });
+
+          // Queue translation task
+          translationTasks.push({
+            entityType: 'variation_group',
+            entityId: group.id,
+            fields: [{ fieldName: 'name', text: group.name }],
+            translations: { rowIndex: groupCreate.rowIndex, fieldName: 'variationGroupName' },
+          });
+        });
+
+        groupsCreated = createdGroups?.length || 0;
+      }
+
+      // 2. Batch update groups
+      if (groupsToUpdate.length > 0) {
+        // Process updates in parallel batches
+        const updatePromises = groupsToUpdate.map(async (g) => {
+          const { error } = await supabase
+            .from('variation_groups')
+            .update({
+              name: g.name,
+            })
+            .eq('id', g.id)
+            .eq('tenant_id', validatedTenantId);
+
+          if (error) {
+            throw new Error(`Failed to update group ${g.id}: ${error.message}`);
+          }
+
+          // Queue translation task
+          translationTasks.push({
+            entityType: 'variation_group',
+            entityId: g.id,
+            fields: [{ fieldName: 'name', text: g.name }],
+            translations: { rowIndex: g.rowIndex, fieldName: 'variationGroupName' },
+          });
+        });
+
+        await Promise.all(updatePromises);
+        groupsUpdated = groupsToUpdate.length;
+      }
+
+      // 3. Resolve pending groupIds for variations
+      variationsToCreate.forEach(variation => {
+        if (variation.groupId === 'pending' && variation.groupNameLower) {
+          const resolvedGroupId = groupNameToIdMap.get(variation.groupNameLower);
+          if (resolvedGroupId) {
+            variation.groupId = resolvedGroupId;
+          }
+        }
+      });
+
+      // 4. Batch create variations
+      if (variationsToCreate.length > 0) {
+        const validVariationsToCreate = variationsToCreate.filter(v => v.groupId !== 'pending');
+        const invalidVariations = variationsToCreate.filter(v => v.groupId === 'pending');
+        
+        if (invalidVariations.length > 0) {
+          invalidVariations.forEach(variation => {
+            errors.push(`Row ${variation.rowIndex + 2}: Failed to create variation - group not found`);
             failed++;
-            errors.push(`Row ${result.value.index + 2}: ${result.value.error}`);
+            success--;
+          });
+        }
+
+        if (validVariationsToCreate.length > 0) {
+          // Fetch tenant_id from groups to verify
+          const groupIds = [...new Set(validVariationsToCreate.map(v => v.groupId))];
+          const { data: groups, error: groupsError } = await supabase
+            .from('variation_groups')
+            .select('id, tenant_id')
+            .in('id', groupIds);
+
+          if (groupsError) {
+            throw new Error(`Failed to fetch groups for tenant_id verification: ${groupsError.message}`);
+          }
+
+          const groupTenantMap = new Map(
+            (groups || []).map(g => [g.id, g.tenant_id])
+          );
+
+          // Verify all groups have tenant_id set and it matches validatedTenantId
+          for (const groupId of groupIds) {
+            const groupTenantId = groupTenantMap.get(groupId);
+            if (!groupTenantId) {
+              throw new Error(`Group ${groupId} does not have tenant_id set`);
+            }
+            if (groupTenantId !== validatedTenantId) {
+              console.warn(`Warning: Group ${groupId} has tenant_id ${groupTenantId} but expected ${validatedTenantId}`);
+            }
+          }
+
+          const tenantIdForInsert = validatedTenantId;
+          
+          if (!tenantIdForInsert || typeof tenantIdForInsert !== 'string' || tenantIdForInsert.trim() === '') {
+            throw new Error(`tenantIdForInsert is invalid: ${tenantIdForInsert}`);
+          }
+
+          const variationCreateData = validVariationsToCreate.map(v => {
+            const groupTenantId = groupTenantMap.get(v.groupId);
+            
+            if (!groupTenantId) {
+              throw new Error(`Group ${v.groupId} does not have tenant_id set`);
+            }
+            
+            const variationData: {
+              tenant_id: string;
+              variation_group_id: string;
+              name: string;
+              recipe_multiplier: number;
+              pricing_adjustment: number;
+              display_order: number;
+            } = {
+              tenant_id: tenantIdForInsert,
+              variation_group_id: v.groupId,
+              name: v.name,
+              recipe_multiplier: v.recipeMultiplier,
+              pricing_adjustment: v.pricingAdjustment,
+              display_order: v.displayOrder,
+            };
+            
+            return variationData;
+          });
+
+          // Final validation: ensure all variations have tenant_id set
+          const missingTenantId = variationCreateData.find(v => !v.tenant_id || v.tenant_id === null || v.tenant_id === undefined || v.tenant_id === '');
+          if (missingTenantId) {
+            throw new Error(`Variation data missing tenant_id. tenantIdForInsert: ${tenantIdForInsert}`);
+          }
+
+          // Try batch insert first
+          let createdVariations: Array<{ id: string; name: string }> = [];
+          let batchInsertError: any = null;
+
+          const { data: batchCreated, error: batchError } = await supabase
+            .from('variations')
+            .insert(variationCreateData)
+            .select('id, name');
+
+          if (batchError) {
+            batchInsertError = batchError;
+            // If schema cache error, fall back to individual inserts
+            if (batchError.message?.includes('schema cache') || 
+                batchError.message?.includes('tenant_id') ||
+                batchError.code === 'PGRST116') {
+              console.warn('Batch insert failed due to schema cache, falling back to individual inserts...');
+              
+              // Fallback: insert individually
+              const insertResults: Array<{ id: string; name: string }> = [];
+              const insertErrors: string[] = [];
+
+              for (const variationData of variationCreateData) {
+                try {
+                  const { data: insertedVariation, error: insertError } = await supabase
+                    .from('variations')
+                    .insert(variationData)
+                    .select('id, name')
+                    .single();
+
+                  if (insertError) {
+                    insertErrors.push(`Failed to create variation "${variationData.name}": ${insertError.message}`);
+                  } else if (insertedVariation) {
+                    insertResults.push(insertedVariation);
+                  }
+                } catch (error: any) {
+                  insertErrors.push(`Failed to create variation "${variationData.name}": ${error?.message || error}`);
+                }
+              }
+
+              if (insertResults.length === 0 && insertErrors.length > 0) {
+                throw new Error(`Failed to create variations: ${insertErrors.join('; ')}`);
+              }
+
+              if (insertErrors.length > 0) {
+                console.warn(`Some variations failed to create: ${insertErrors.join('; ')}`);
+              }
+
+              createdVariations = insertResults;
+          } else {
+              throw new Error(`Failed to batch create variations: ${batchError.message}`);
           }
         } else {
-          failed++;
-          errors.push(`Row ${batch[0].index + 2}: ${result.reason?.message || 'Unknown error'}`);
+            createdVariations = batchCreated || [];
+          }
+
+          // Map created variations back and queue translation tasks
+          createdVariations.forEach((variation, idx) => {
+            const variationCreate = validVariationsToCreate[idx];
+            if (variationCreate) {
+              const variationKey = `${variationCreate.groupId}|||${variationCreate.nameLower}`;
+              variationKeyToIdMap.set(variationKey, variation.id);
+
+              translationTasks.push({
+                entityType: 'variation',
+                entityId: variation.id,
+                fields: [{ fieldName: 'name', text: variation.name }],
+                translations: { rowIndex: variationCreate.rowIndex, fieldName: 'variationName' },
+              });
+            }
+          });
+
+          variationsCreated = createdVariations.length;
         }
       }
+
+      // 5. Batch update variations
+      if (variationsToUpdate.length > 0) {
+        // Process updates in parallel batches
+        const updatePromises = variationsToUpdate.map(async (v) => {
+          const { error } = await supabase
+            .from('variations')
+            .update({
+              name: v.name,
+              recipe_multiplier: v.recipeMultiplier,
+              pricing_adjustment: v.pricingAdjustment,
+              display_order: v.displayOrder,
+            })
+            .eq('id', v.id)
+            .eq('tenant_id', validatedTenantId);
+
+          if (error) {
+            throw new Error(`Failed to update variation ${v.id}: ${error.message}`);
+          }
+
+          // Queue translation task
+          translationTasks.push({
+            entityType: 'variation',
+            entityId: v.id,
+            fields: [{ fieldName: 'name', text: v.name }],
+            translations: { rowIndex: v.rowIndex, fieldName: 'variationName' },
+          });
+        });
+
+        await Promise.all(updatePromises);
+        variationsUpdated = variationsToUpdate.length;
+      }
+    } catch (batchError: any) {
+      errors.push(`Batch operation failed: ${batchError.message}`);
+      failed += groupsToCreate.length + groupsToUpdate.length + variationsToCreate.length + variationsToUpdate.length;
+      success -= groupsToCreate.length + groupsToUpdate.length + variationsToCreate.length + variationsToUpdate.length;
     }
 
-    // Fire-and-forget: Do translations asynchronously after returning response
-    if (processedGroups.length > 0) {
-      const groupsToTranslate = processedGroups.map(pg => ({ name: pg.name }));
-      
-      this.bulkImportService.batchTranslateEntities(
-        groupsToTranslate,
-        'variation_group',
-        ['name'],
-        tenantId,
-      ).then((translations) => {
-        processedGroups.forEach(({ id, name }, arrayIndex) => {
-          const nameTranslations = translations.get('name')?.get(arrayIndex);
+    // Process translations in background after returning response
+    setImmediate(async () => {
+      try {
+        const translations = await translationPromise;
+        
+        for (const task of translationTasks) {
+          const { entityType, entityId, fields, translations: translationRef } = task;
+          const { rowIndex, fieldName } = translationRef;
+          
+          const nameTranslations = translations.get(fieldName)?.get(rowIndex);
           if (nameTranslations) {
+            const translationsMap: Record<string, any> = {};
+            if (fieldName === 'variationName' || fieldName === 'variationGroupName') {
+              translationsMap['name'] = nameTranslations;
+            }
+            
             this.translationService.storePreTranslatedBatch(
-              'variation_group',
-              id,
-              [{ fieldName: 'name', text: name }],
-              { name: nameTranslations },
+              entityType,
+              entityId,
+              fields,
+              translationsMap,
               undefined,
-              tenantId,
+            validatedTenantId,
               'en',
-            ).catch((err) => {
-              console.warn(`Failed to store translations for variation group ${id}:`, err.message);
+            ).catch((translationError) => {
+              console.warn(`Failed to store translations for ${entityType} ${entityId}:`, translationError?.message || translationError);
             });
           }
-        });
-      }).catch((err) => {
-        console.error('Failed to batch translate variation groups:', err.message);
-      });
     }
+      } catch (error: any) {
+        console.error(`Failed to process background translations: ${error?.message || error}`);
+      }
+    });
 
-    return { success, failed, errors };
+    return { success, failed, errors, groupsCreated, groupsUpdated, variationsCreated, variationsUpdated };
   }
 
   /**
@@ -7221,30 +7606,93 @@ export class MenuService {
       categoryNameToIdMap.set(cat.name.toLowerCase(), cat.id);
     });
 
-    // Get all food items for checking existing (by name + category)
-    const allFoodItemKeys = rows.map(r => ({ name: r.name?.toLowerCase(), categoryName: r.categoryName?.toLowerCase() })).filter(k => k.name && k.categoryName);
-    const nameCategoryPairs = Array.from(new Set(allFoodItemKeys.map(k => `${k.name}|||${k.categoryName}`)));
+    // Fetch all add-on groups for name-to-ID mapping
+    let addOnGroupQuery = supabase
+      .from('add_on_groups')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
     
-    // Build query to find existing food items
-    const existingFoodItemsMap = new Map<string, string>(); // key: "name|||categoryId" -> foodItemId
+    if (branchId) {
+      addOnGroupQuery = addOnGroupQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
     
-    if (nameCategoryPairs.length > 0) {
-      // Get all unique category IDs that match the names
-      const matchingCategoryIds = new Set<string>();
-      for (const pair of nameCategoryPairs) {
-        const [, categoryName] = pair.split('|||');
-        const categoryId = categoryNameToIdMap.get(categoryName);
-        if (categoryId) {
-          matchingCategoryIds.add(categoryId);
-        }
-      }
+    const { data: addOnGroups } = await addOnGroupQuery;
+    const addOnGroupNameToIdMap = new Map<string, string>();
+    (addOnGroups || []).forEach(group => {
+      addOnGroupNameToIdMap.set(group.name.toLowerCase(), group.id);
+    });
 
-      if (matchingCategoryIds.size > 0) {
+    // Fetch all variation groups for name-to-ID mapping
+    let variationGroupQuery = supabase
+      .from('variation_groups')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      variationGroupQuery = variationGroupQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+    
+    const { data: variationGroups } = await variationGroupQuery;
+    const variationGroupNameToIdMap = new Map<string, string>();
+    (variationGroups || []).forEach(group => {
+      variationGroupNameToIdMap.set(group.name.toLowerCase(), group.id);
+    });
+
+    // Fetch all distinct menu types from database for validation (from both menus and menu_items tables)
+    const [menusResult, menuItemsResult] = await Promise.all([
+      supabase
+        .from('menus')
+        .select('menu_type')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null),
+      supabase
+        .from('menu_items')
+        .select('menu_type')
+        .eq('tenant_id', tenantId)
+    ]);
+    
+    const validMenuTypes = new Set<string>();
+    
+    // Add menu types from menus table
+    (menusResult.data || []).forEach(menu => {
+      if (menu.menu_type) {
+        validMenuTypes.add(menu.menu_type.toLowerCase());
+      }
+    });
+    
+    // Add menu types from menu_items table (for legacy support)
+    (menuItemsResult.data || []).forEach(item => {
+      if (item.menu_type) {
+        validMenuTypes.add(item.menu_type.toLowerCase());
+      }
+    });
+    
+    // Only use menu types that exist in the database - no hardcoded fallback
+
+    // Valid stock types
+    const validStockTypes = ['daily_limited', 'limited', 'unlimited'];
+    
+    // Valid labels from constants (matching frontend constants)
+    const validLabels = [
+      'spicy', 'vegetarian', 'vegan', 'gluten_free', 
+      'halal', 'new', 'popular', 'chefs_special'
+    ];
+
+    // Get all unique food item names from the import rows
+    const allFoodItemNames = Array.from(new Set(
+      rows.map(r => r.name?.trim().toLowerCase()).filter(n => n)
+    ));
+    
+    // Build query to find existing food items BY NAME ONLY (user requirement: update if name exists)
+    const existingFoodItemsMap = new Map<string, string>(); // key: "name" -> foodItemId
+    
+    if (allFoodItemNames.length > 0) {
         let foodItemQuery = supabase
           .from('food_items')
           .select('id, name, category_id')
           .eq('tenant_id', tenantId)
-          .in('category_id', Array.from(matchingCategoryIds))
           .is('deleted_at', null);
         
         if (branchId) {
@@ -7253,10 +7701,15 @@ export class MenuService {
 
         const { data: existingFoodItems } = await foodItemQuery;
         (existingFoodItems || []).forEach(item => {
-          const key = `${item.name.toLowerCase()}|||${item.category_id}`;
-          existingFoodItemsMap.set(key, item.id);
-        });
-      }
+        const nameKey = item.name.toLowerCase().trim();
+        // Only store items that match the names being imported
+        if (allFoodItemNames.includes(nameKey)) {
+          // Store by name only - if multiple items with same name exist, use the first one found
+          if (!existingFoodItemsMap.has(nameKey)) {
+            existingFoodItemsMap.set(nameKey, item.id);
+          }
+        }
+      });
     }
 
     // Prepare food item data for processing
@@ -7292,15 +7745,156 @@ export class MenuService {
           throw new Error(`Base price must be a valid positive number. Found: ${row.basePrice}`);
         }
 
+        // Validate stock type
+        if (row.stockType !== undefined && row.stockType !== null && row.stockType !== '') {
+          const stockTypeLower = String(row.stockType).trim().toLowerCase();
+          if (!validStockTypes.includes(stockTypeLower)) {
+            throw new Error(`Stock type must be one of: ${validStockTypes.join(', ')}. Found: ${row.stockType}`);
+          }
+          // Normalize to lowercase
+          row.stockType = stockTypeLower;
+        }
+
+        // Validate menu types - STRICT: if provided, ALL must be valid
+        // Check if menuTypes field exists and has a value (even if empty string/null, we need to process it)
+        // Excel might set empty cells to empty string '', null, or undefined, or omit the field entirely
+        const menuTypesValue = row.menuTypes;
+        const hasMenuTypesField = menuTypesValue !== undefined || 'menuTypes' in row;
+        
+        if (hasMenuTypesField) {
+          // Convert to array if it's a string (comma-separated)
+          let menuTypesArray: string[] = [];
+          if (Array.isArray(menuTypesValue)) {
+            menuTypesArray = menuTypesValue;
+          } else if (typeof menuTypesValue === 'string') {
+            // Handle empty string - treat as empty array (to allow clearing menu types)
+            menuTypesArray = menuTypesValue.trim() === '' ? [] : menuTypesValue.split(',').map(m => m.trim()).filter(m => m);
+          } else if (menuTypesValue === null || menuTypesValue === undefined) {
+            // Treat null/undefined as empty array (to allow clearing menu types)
+            menuTypesArray = [];
+          }
+          
+          // Always validate and normalize, even if empty array (to allow clearing menu types)
+          const invalidMenuTypes: string[] = [];
+          const normalizedMenuTypes: string[] = [];
+          
+          for (const menuType of menuTypesArray) {
+            const menuTypeLower = String(menuType).trim().toLowerCase();
+            if (!validMenuTypes.has(menuTypeLower)) {
+              invalidMenuTypes.push(String(menuType));
+            } else {
+              normalizedMenuTypes.push(menuTypeLower);
+            }
+          }
+          
+          // STRICT: If ANY menu type is invalid, fail the entire row
+          if (invalidMenuTypes.length > 0) {
+            throw new Error(`Invalid menu types: ${invalidMenuTypes.join(', ')}. Valid menu types are: ${Array.from(validMenuTypes).join(', ')}`);
+          }
+          
+          // Always update row with normalized menu types (even if empty array - this allows clearing menu types)
+          // This ensures the update logic knows menuTypes was explicitly provided
+          row.menuTypes = normalizedMenuTypes;
+        } else {
+          // If menuTypes field doesn't exist in row, explicitly set to undefined to skip update
+          row.menuTypes = undefined;
+        }
+
+        // Validate labels
+        if (row.labels !== undefined && row.labels !== null) {
+          if (Array.isArray(row.labels) && row.labels.length > 0) {
+            const invalidLabels: string[] = [];
+            const normalizedLabels: string[] = [];
+            
+            for (const label of row.labels) {
+              const labelLower = String(label).trim().toLowerCase();
+              if (!validLabels.includes(labelLower)) {
+                invalidLabels.push(String(label));
+              } else {
+                normalizedLabels.push(labelLower);
+              }
+            }
+            
+            if (invalidLabels.length > 0) {
+              throw new Error(`Invalid labels: ${invalidLabels.join(', ')}. Valid labels are: ${validLabels.join(', ')}`);
+            }
+            
+            // Update row with normalized labels
+            row.labels = normalizedLabels;
+          }
+        }
+
         // Map category name to ID
         const categoryId = categoryNameToIdMap.get(row.categoryName.trim().toLowerCase());
         if (!categoryId) {
           throw new Error(`Category not found: ${row.categoryName}`);
         }
 
-        // Check if food item exists (by name + category)
-        const key = `${row.name.toLowerCase()}|||${categoryId}`;
-        const existingFoodItemId = existingFoodItemsMap.get(key);
+        // Validate variation group names BEFORE processing (fail early if invalid)
+        if (row.variationGroupNames !== undefined && row.variationGroupNames !== null && row.variationGroupNames !== '') {
+          // Convert to array if it's a string (comma-separated)
+          let variationGroupNamesArray: string[] = [];
+          if (Array.isArray(row.variationGroupNames)) {
+            variationGroupNamesArray = row.variationGroupNames;
+          } else if (typeof row.variationGroupNames === 'string') {
+            variationGroupNamesArray = row.variationGroupNames.split(',').map(n => n.trim()).filter(n => n);
+          }
+          
+          if (variationGroupNamesArray.length > 0) {
+            const invalidNames: string[] = [];
+            
+            for (const groupName of variationGroupNamesArray) {
+              const trimmedName = String(groupName).trim().toLowerCase();
+              const groupId = variationGroupNameToIdMap.get(trimmedName);
+              if (!groupId) {
+                invalidNames.push(String(groupName));
+              }
+            }
+            
+            // STRICT: If ANY variation group name is invalid, fail the entire row
+            if (invalidNames.length > 0) {
+              throw new Error(`Variation groups not found: ${invalidNames.join(', ')}`);
+            }
+            
+            // Store validated array for later use
+            row.variationGroupNames = variationGroupNamesArray;
+          }
+        }
+
+        // Validate add-on group names BEFORE processing (fail early if invalid)
+        if (row.addOnGroupNames !== undefined && row.addOnGroupNames !== null && row.addOnGroupNames !== '') {
+          // Convert to array if it's a string (comma-separated)
+          let addOnGroupNamesArray: string[] = [];
+          if (Array.isArray(row.addOnGroupNames)) {
+            addOnGroupNamesArray = row.addOnGroupNames;
+          } else if (typeof row.addOnGroupNames === 'string') {
+            addOnGroupNamesArray = row.addOnGroupNames.split(',').map(n => n.trim()).filter(n => n);
+          }
+          
+          if (addOnGroupNamesArray.length > 0) {
+            const invalidNames: string[] = [];
+            
+            for (const groupName of addOnGroupNamesArray) {
+              const trimmedName = String(groupName).trim().toLowerCase();
+              const groupId = addOnGroupNameToIdMap.get(trimmedName);
+              if (!groupId) {
+                invalidNames.push(String(groupName));
+              }
+            }
+            
+            // STRICT: If ANY add-on group name is invalid, fail the entire row
+            if (invalidNames.length > 0) {
+              throw new Error(`Add-on groups not found: ${invalidNames.join(', ')}`);
+            }
+            
+            // Store validated array for later use
+            row.addOnGroupNames = addOnGroupNamesArray;
+          }
+        }
+
+        // Check if food item exists BY NAME ONLY (user requirement: update if name exists)
+        const foodItemNameLower = row.name.trim().toLowerCase();
+        const existingFoodItemId = existingFoodItemsMap.get(foodItemNameLower);
         const isUpdate = !!existingFoodItemId;
 
         foodItemData.push({
@@ -7341,13 +7935,53 @@ export class MenuService {
 
               const foodItem = await this.updateFoodItem(tenantId, foodItemId, updateDto, 'en');
 
-              // Update menu types
-              if (row.menuTypes && Array.isArray(row.menuTypes) && row.menuTypes.length > 0) {
-                // Remove from all menus first, then add to specified ones
-                await supabase.from('menu_food_items').delete().eq('food_item_id', foodItemId);
+              // Update menu types - if menuTypes is defined (even if empty array), update it
+              if (row.menuTypes !== undefined && Array.isArray(row.menuTypes)) {
+                // Always remove from all menus first (use correct table: menu_items)
+                await supabase.from('menu_items').delete().eq('food_item_id', foodItemId).eq('tenant_id', tenantId);
+                
+                // Then add to specified ones (if any)
+                if (row.menuTypes.length > 0) {
+                  // Insert menu items directly (more efficient than calling assignItemsToMenu which deletes all items for menu type)
+                  const menuItemsToInsert = row.menuTypes.map((menuType: string, index: number) => ({
+                    tenant_id: tenantId,
+                    menu_type: menuType,
+                    food_item_id: foodItemId,
+                    display_order: index,
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                  }));
+                  
+                  const { error: insertError } = await supabase
+                    .from('menu_items')
+                    .insert(menuItemsToInsert);
+                  
+                  if (insertError) {
+                    throw new Error(`Failed to assign food item to menus: ${insertError.message}`);
+                  }
+                  
+                  // Ensure menu records exist in menus table for each menu type
                 for (const menuType of row.menuTypes) {
-                  await this.assignItemsToMenu(tenantId, menuType, [foodItemId]);
+                    const { data: existingMenu } = await supabase
+                      .from('menus')
+                      .select('menu_type')
+                      .eq('tenant_id', tenantId)
+                      .eq('menu_type', menuType)
+                      .single();
+                    
+                    if (!existingMenu) {
+                      // Create menu record if it doesn't exist
+                      await supabase.from('menus').insert({
+                        tenant_id: tenantId,
+                        menu_type: menuType,
+                        is_active: true,
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString(),
+                      });
+                    }
+                  }
                 }
+                // If menuTypes is empty array, this will clear all menu associations (already deleted above)
               }
 
               // Update labels
@@ -7362,11 +7996,22 @@ export class MenuService {
                 }
               }
 
-              // Update add-on groups
-              if (row.addOnGroupIds !== undefined) {
+              // Update add-on groups (convert names to IDs - already validated in processing loop)
+              if (row.addOnGroupNames !== undefined && Array.isArray(row.addOnGroupNames) && row.addOnGroupNames.length > 0) {
                 await supabase.from('food_item_add_on_groups').delete().eq('food_item_id', foodItemId);
-                if (Array.isArray(row.addOnGroupIds) && row.addOnGroupIds.length > 0) {
-                  const addOnGroupData = row.addOnGroupIds.map((groupId: string) => ({
+                const addOnGroupIds: string[] = [];
+                
+                // Names are already validated, just convert to IDs
+                for (const groupName of row.addOnGroupNames) {
+                  const trimmedName = String(groupName).trim().toLowerCase();
+                  const groupId = addOnGroupNameToIdMap.get(trimmedName);
+                  if (groupId) {
+                    addOnGroupIds.push(groupId);
+                  }
+                }
+                
+                if (addOnGroupIds.length > 0) {
+                  const addOnGroupData = addOnGroupIds.map((groupId: string) => ({
                     food_item_id: foodItemId,
                     add_on_group_id: groupId,
                   }));
@@ -7374,8 +8019,79 @@ export class MenuService {
                 }
               }
 
+              // Update variation groups (link all variations from specified groups - already validated in processing loop)
+              if (row.variationGroupNames !== undefined && Array.isArray(row.variationGroupNames) && row.variationGroupNames.length > 0) {
+                await supabase.from('food_item_variations').delete().eq('food_item_id', foodItemId);
+                const variationGroupIds: string[] = [];
+                
+                // Names are already validated, just convert to IDs
+                for (const groupName of row.variationGroupNames) {
+                  const trimmedName = String(groupName).trim().toLowerCase();
+                  const groupId = variationGroupNameToIdMap.get(trimmedName);
+                  if (groupId) {
+                    variationGroupIds.push(groupId);
+                  }
+                }
+                
+                if (variationGroupIds.length > 0) {
+                  // Fetch all variations from these groups
+                  const { data: variations } = await supabase
+                    .from('variations')
+                    .select('id, variation_group_id, name')
+                    .in('variation_group_id', variationGroupIds)
+                    .eq('tenant_id', tenantId)
+                    .is('deleted_at', null);
+                  
+                  if (variations && variations.length > 0) {
+                    // Get variation group names for each variation
+                    const variationGroupMap = new Map(
+                      (variationGroups || []).map(g => [g.id, g.name])
+                    );
+                    
+                    const variationsData = variations.map((v, index) => ({
+                      food_item_id: foodItemId,
+                      variation_group: variationGroupMap.get(v.variation_group_id) || '',
+                      variation_name: v.name,
+                      variation_id: v.id,
+                      price_adjustment: 0,
+                      stock_quantity: null,
+                      display_order: index,
+                    }));
+                    
+                    await supabase.from('food_item_variations').insert(variationsData);
+                  }
+                }
+              }
+
               return { success: true, index, foodItemId: foodItem.id, name: row.name, isUpdate: true };
             } else {
+              // Convert add-on group names to IDs (already validated in processing loop)
+              let addOnGroupIds: string[] | undefined = undefined;
+              if (row.addOnGroupNames !== undefined && Array.isArray(row.addOnGroupNames) && row.addOnGroupNames.length > 0) {
+                addOnGroupIds = [];
+                // Names are already validated, just convert to IDs
+                for (const groupName of row.addOnGroupNames) {
+                  const trimmedName = String(groupName).trim().toLowerCase();
+                  const groupId = addOnGroupNameToIdMap.get(trimmedName);
+                  if (groupId) {
+                    addOnGroupIds.push(groupId);
+                  }
+                }
+              }
+
+              // Convert variation group names to IDs BEFORE creating food item (already validated in processing loop)
+              let variationGroupIds: string[] = [];
+              if (row.variationGroupNames !== undefined && Array.isArray(row.variationGroupNames) && row.variationGroupNames.length > 0) {
+                // Names are already validated, just convert to IDs
+                for (const groupName of row.variationGroupNames) {
+                  const trimmedName = String(groupName).trim().toLowerCase();
+                  const groupId = variationGroupNameToIdMap.get(trimmedName);
+                  if (groupId) {
+                    variationGroupIds.push(groupId);
+                  }
+                }
+              }
+
               // Create new food item
               const createDto: CreateFoodItemDto = {
                 name: row.name,
@@ -7387,10 +8103,41 @@ export class MenuService {
                 menuTypes: row.menuTypes || undefined,
                 ageLimit: row.ageLimit || undefined,
                 labels: row.labels || undefined,
-                addOnGroupIds: row.addOnGroupIds || undefined,
+                addOnGroupIds: addOnGroupIds,
               };
 
               const foodItem = await this.createFoodItem(tenantId, createDto, branchId);
+              
+              // Link variation groups (link all variations from specified groups)
+              if (variationGroupIds.length > 0) {
+                // Fetch all variations from these groups
+                const { data: variations } = await supabase
+                  .from('variations')
+                  .select('id, variation_group_id, name')
+                  .in('variation_group_id', variationGroupIds)
+                  .eq('tenant_id', tenantId)
+                  .is('deleted_at', null);
+                
+                if (variations && variations.length > 0) {
+                  // Get variation group names for each variation
+                  const variationGroupMap = new Map(
+                    (variationGroups || []).map(g => [g.id, g.name])
+                  );
+                  
+                  const variationsData = variations.map((v, index) => ({
+                    food_item_id: foodItem.id,
+                    variation_group: variationGroupMap.get(v.variation_group_id) || '',
+                    variation_name: v.name,
+                    variation_id: v.id,
+                    price_adjustment: 0,
+                    stock_quantity: null,
+                    display_order: index,
+                  }));
+                  
+                  await supabase.from('food_item_variations').insert(variationsData);
+                }
+              }
+              
               return { success: true, index, foodItemId: foodItem.id, name: row.name, isUpdate: false };
             }
           } catch (error: any) {
@@ -7483,6 +8230,27 @@ export class MenuService {
     const rows = await this.bulkImportService.parseExcelFile(fileBuffer, config);
     const supabase = this.supabaseService.getServiceRoleClient();
 
+    // Fetch all food items to create name-to-ID map
+    let foodItemQuery = supabase
+      .from('food_items')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      foodItemQuery = foodItemQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+    
+    const { data: allFoodItems } = await foodItemQuery;
+    const foodItemNameToIdMap = new Map<string, string>();
+    (allFoodItems || []).forEach(item => {
+      const nameKey = item.name.toLowerCase().trim();
+      // If multiple items with same name exist, use the first one found
+      if (!foodItemNameToIdMap.has(nameKey)) {
+        foodItemNameToIdMap.set(nameKey, item.id);
+      }
+    });
+
     // Batch translate all names
     const translations = await this.bulkImportService.batchTranslateEntities(
       rows,
@@ -7491,60 +8259,254 @@ export class MenuService {
       tenantId,
     );
 
+    // Batch fetch all existing menus to avoid individual queries
+    let existingMenusQuery = supabase
+      .from('menus')
+      .select('id, menu_type, branch_id')
+      .eq('tenant_id', tenantId);
+    
+    if (branchId) {
+      existingMenusQuery = existingMenusQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    } else {
+      existingMenusQuery = existingMenusQuery.is('branch_id', null);
+    }
+    
+    const { data: existingMenus } = await existingMenusQuery;
+    const existingMenusMap = new Map<string, string>(); // key: "menu_type|||branch_id" -> menu_id
+    (existingMenus || []).forEach(menu => {
+      const branchKey = menu.branch_id || 'null';
+      const key = `${menu.menu_type}|||${branchKey}`;
+      existingMenusMap.set(key, menu.id);
+    });
+
+    // Prepare all menu data for batch processing
+    const menuDataToProcess: Array<{
+      index: number;
+      row: any;
+      menuTypeNormalized: string;
+      foodItemIds: string[];
+      menuData: any;
+      existingMenuId?: string;
+    }> = [];
+
     let success = 0;
     let failed = 0;
     const errors: string[] = [];
 
+    // Validate and prepare all rows first
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       try {
+        // Validate required fields
+        if (!row.menuType || row.menuType.trim() === '') {
+          throw new Error('Menu type is required');
+        }
+
+        const menuTypeNormalized = row.menuType.trim().toLowerCase();
+
+        // Validate food items FIRST before creating/updating menu
+        let foodItemIds: string[] = [];
+        if (row.foodItemNames !== undefined && row.foodItemNames !== null && row.foodItemNames !== '') {
+          // Convert to array if it's a string (comma-separated)
+          let foodItemNamesArray: string[] = [];
+          if (Array.isArray(row.foodItemNames)) {
+            foodItemNamesArray = row.foodItemNames;
+          } else if (typeof row.foodItemNames === 'string') {
+            foodItemNamesArray = row.foodItemNames.split(',').map(n => n.trim()).filter(n => n);
+          }
+          
+          if (foodItemNamesArray.length > 0) {
+            const invalidNames: string[] = [];
+            
+            for (const foodItemName of foodItemNamesArray) {
+              const trimmedName = String(foodItemName).trim().toLowerCase();
+              const foodItemId = foodItemNameToIdMap.get(trimmedName);
+              if (foodItemId) {
+                foodItemIds.push(foodItemId);
+              } else {
+                invalidNames.push(String(foodItemName));
+              }
+            }
+            
+            // STRICT: If ANY food item name is invalid, fail the entire row (don't create menu)
+            if (invalidNames.length > 0) {
+              throw new Error(`Food items not found: ${invalidNames.join(', ')}`);
+            }
+          }
+        }
+
+        // Check if menu already exists using the map
+        const branchKey = branchId || 'null';
+        const menuKey = `${menuTypeNormalized}|||${branchKey}`;
+        const existingMenuId = existingMenusMap.get(menuKey);
+
         const menuData: any = {
           tenant_id: tenantId,
-          menu_type: row.menuType,
-          name: row.name || null,
+          menu_type: menuTypeNormalized,
+          name: row.name || menuTypeNormalized, // Use menuType as fallback if name not provided
           is_active: row.isActive !== undefined ? row.isActive : true,
+          updated_at: new Date().toISOString(),
         };
 
         if (branchId) {
           menuData.branch_id = branchId;
         }
 
-        const { data: menu, error } = await supabase
-          .from('menus')
-          .insert(menuData)
-          .select()
-          .single();
-
-        if (error) {
-          throw new Error(error.message);
-        }
-
-        // Assign food items if provided
-        if (row.foodItemIds && Array.isArray(row.foodItemIds) && row.foodItemIds.length > 0) {
-          await this.assignItemsToMenu(tenantId, row.menuType, row.foodItemIds);
-        }
-
-        // Store pre-translated translations (already translated in batch)
-        if (row.name) {
-          const nameTranslations = translations.get('name')?.get(i);
-          if (nameTranslations) {
-            await this.translationService.storePreTranslatedBatch(
-              'menu',
-              menu.id,
-              [{ fieldName: 'name', text: row.name }],
-              { name: nameTranslations },
-              undefined,
-              tenantId,
-              'en',
-            );
-          }
-        }
-
-        success++;
-      } catch (error) {
+        menuDataToProcess.push({
+          index: i,
+          row,
+          menuTypeNormalized,
+          foodItemIds,
+          menuData,
+          existingMenuId,
+        });
+      } catch (error: any) {
         failed++;
         errors.push(`Row ${i + 1}: ${error.message}`);
       }
+    }
+
+    // Batch process menus (upsert)
+    const menusToInsert: any[] = [];
+    const menusToUpdate: Array<{ id: string; data: any }> = [];
+    const menuItemsData: Array<{ menuType: string; foodItemIds: string[] }> = [];
+    const translationBatches: Array<{ menuId: string; index: number; row: any; translations: any }> = [];
+
+    for (const { index, row, menuTypeNormalized, foodItemIds, menuData, existingMenuId } of menuDataToProcess) {
+      if (existingMenuId) {
+        // Will update in batch
+        menusToUpdate.push({ id: existingMenuId, data: menuData });
+        
+        // Store menu items data for this menu
+        if (foodItemIds.length > 0) {
+          menuItemsData.push({ menuType: menuTypeNormalized, foodItemIds });
+        }
+        
+        // Prepare translations for batch storage
+        if (row.name) {
+          const nameTranslations = translations.get('name')?.get(index);
+          if (nameTranslations) {
+            translationBatches.push({
+              menuId: existingMenuId,
+              index,
+              row,
+              translations: { name: nameTranslations },
+            });
+          }
+        }
+      } else {
+        // Will insert in batch
+        menuData.created_at = new Date().toISOString();
+        menusToInsert.push({ ...menuData, _index: index, _row: row, _foodItemIds: foodItemIds });
+      }
+    }
+
+    // Batch insert new menus
+    const insertedMenusMap = new Map<number, any>(); // index -> menu
+    if (menusToInsert.length > 0) {
+      const menusToInsertClean = menusToInsert.map(({ _index, _row, _foodItemIds, ...menuData }) => menuData);
+      const { data: insertedMenus, error: insertError } = await supabase
+          .from('menus')
+        .insert(menusToInsertClean)
+        .select('id, menu_type');
+
+      if (insertError) {
+        throw new Error(`Failed to batch insert menus: ${insertError.message}`);
+      }
+
+      // Map inserted menus back to their original indices
+      (insertedMenus || []).forEach((menu, idx) => {
+        const originalIndex = menusToInsert[idx]._index;
+        insertedMenusMap.set(originalIndex, menu);
+        
+        // Store menu items data for newly inserted menus
+        const foodItemIds = menusToInsert[idx]._foodItemIds;
+        if (foodItemIds && foodItemIds.length > 0) {
+          menuItemsData.push({ menuType: menu.menu_type, foodItemIds });
+        }
+        
+        // Prepare translations for newly inserted menus
+        const row = menusToInsert[idx]._row;
+        if (row.name) {
+          const nameTranslations = translations.get('name')?.get(originalIndex);
+          if (nameTranslations) {
+            translationBatches.push({
+              menuId: menu.id,
+              index: originalIndex,
+              row,
+              translations: { name: nameTranslations },
+            });
+          }
+        }
+      });
+    }
+
+    // Batch update existing menus
+    if (menusToUpdate.length > 0) {
+      const updatePromises = menusToUpdate.map(({ id, data }) =>
+        supabase.from('menus').update(data).eq('id', id)
+      );
+      await Promise.all(updatePromises);
+    }
+
+    // Batch delete and insert menu_items (grouped by menu_type)
+    const menuTypesToProcess = new Set(menuItemsData.map(m => m.menuType));
+    if (menuTypesToProcess.size > 0) {
+      // Delete existing menu_items for these menu_types
+      await supabase
+        .from('menu_items')
+        .delete()
+        .eq('tenant_id', tenantId)
+        .in('menu_type', Array.from(menuTypesToProcess));
+
+      // Batch insert all menu_items
+      const allMenuItems: any[] = [];
+      menuItemsData.forEach(({ menuType, foodItemIds }) => {
+        const menuItems = foodItemIds.map((foodItemId, idx) => ({
+          tenant_id: tenantId,
+          menu_type: menuType,
+          food_item_id: foodItemId,
+          display_order: idx,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }));
+        allMenuItems.push(...menuItems);
+      });
+
+      if (allMenuItems.length > 0) {
+        const { error: menuItemsError } = await supabase
+          .from('menu_items')
+          .insert(allMenuItems);
+
+        if (menuItemsError) {
+          throw new Error(`Failed to batch insert menu items: ${menuItemsError.message}`);
+        }
+      }
+    }
+
+    // Count successes
+    success = menuDataToProcess.length;
+
+    // Process translations asynchronously after response (non-blocking)
+    if (translationBatches.length > 0) {
+      setImmediate(async () => {
+        try {
+          const translationPromises = translationBatches.map(({ menuId, row, translations }) =>
+            this.translationService.storePreTranslatedBatch(
+              'menu',
+              menuId,
+              [{ fieldName: 'name', text: row.name }],
+              translations,
+              undefined,
+              tenantId,
+              'en',
+            )
+            );
+          await Promise.allSettled(translationPromises);
+      } catch (error) {
+          console.error('Failed to store menu translations asynchronously:', error);
+      }
+      });
     }
 
     return { success, failed, errors };
@@ -7567,6 +8529,35 @@ export class MenuService {
     const rows = await this.bulkImportService.parseExcelFile(fileBuffer, config);
     const supabase = this.supabaseService.getServiceRoleClient();
 
+    // Fetch valid menu types from database to ensure they exist (from both menus and menu_items tables)
+    const [menusResult, menuItemsResult] = await Promise.all([
+      supabase
+        .from('menus')
+        .select('menu_type')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null),
+      supabase
+        .from('menu_items')
+        .select('menu_type')
+        .eq('tenant_id', tenantId)
+    ]);
+    
+    const validMenuTypesFromDb = new Set<string>();
+    
+    // Add menu types from menus table
+    (menusResult.data || []).forEach(menu => {
+      if (menu.menu_type) {
+        validMenuTypesFromDb.add(menu.menu_type.toLowerCase());
+      }
+    });
+    
+    // Add menu types from menu_items table (for legacy support and completeness)
+    (menuItemsResult.data || []).forEach(item => {
+      if (item.menu_type) {
+        validMenuTypesFromDb.add(item.menu_type.toLowerCase());
+      }
+    });
+
     // Batch translate all names and descriptions
     const translations = await this.bulkImportService.batchTranslateEntities(
       rows,
@@ -7575,13 +8566,99 @@ export class MenuService {
       tenantId,
     );
 
+    // Batch fetch all existing buffets to check for duplicates (upsert logic)
+    let existingBuffetsQuery = supabase
+      .from('buffets')
+      .select('id, name, branch_id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      existingBuffetsQuery = existingBuffetsQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    } else {
+      existingBuffetsQuery = existingBuffetsQuery.is('branch_id', null);
+    }
+    
+    const { data: existingBuffets } = await existingBuffetsQuery;
+    const existingBuffetsMap = new Map<string, string>(); // key: "name|||branch_id" -> buffet_id
+    (existingBuffets || []).forEach(buffet => {
+      const branchKey = buffet.branch_id || 'null';
+      const nameKey = buffet.name.toLowerCase().trim();
+      const key = `${nameKey}|||${branchKey}`;
+      // If multiple buffets with same name exist, use the first one found
+      if (!existingBuffetsMap.has(key)) {
+        existingBuffetsMap.set(key, buffet.id);
+      }
+    });
+
+    // Prepare all buffet data for batch processing
+    const buffetDataToProcess: Array<{
+      index: number;
+      row: any;
+      buffetData: any;
+      normalizedMenuTypes: string[];
+      existingBuffetId?: string;
+    }> = [];
+
     let success = 0;
     let failed = 0;
     const errors: string[] = [];
 
+    // Validate and prepare all rows first
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       try {
+        // Validate required fields
+        if (!row.name || row.name.trim() === '') {
+          throw new Error('Name is required');
+        }
+
+        // STRICT: Validate menu types are required and exist
+        if (!row.menuTypes || row.menuTypes === null || row.menuTypes === '') {
+          throw new Error('Menu types are required');
+        }
+
+        // Convert to array if it's a string (comma-separated)
+        let menuTypesArray: string[] = [];
+        if (Array.isArray(row.menuTypes)) {
+          menuTypesArray = row.menuTypes;
+        } else if (typeof row.menuTypes === 'string') {
+          menuTypesArray = row.menuTypes.split(',').map(m => m.trim()).filter(m => m);
+        }
+
+        if (menuTypesArray.length === 0) {
+          throw new Error('Menu types are required and cannot be empty');
+        }
+
+        // Validate all menu types exist in database
+        const invalidMenuTypes: string[] = [];
+        const normalizedMenuTypes: string[] = [];
+        
+        for (const menuType of menuTypesArray) {
+          const menuTypeLower = String(menuType).trim().toLowerCase();
+          // Check if menu type exists in database
+          if (!validMenuTypesFromDb.has(menuTypeLower)) {
+            invalidMenuTypes.push(String(menuType));
+          } else {
+            normalizedMenuTypes.push(menuTypeLower);
+          }
+        }
+
+        // STRICT: If ANY menu type is invalid or doesn't exist in DB, fail the entire row
+        if (invalidMenuTypes.length > 0) {
+          throw new Error(`Menu types not found in database: ${invalidMenuTypes.join(', ')}`);
+        }
+
+        // Ensure we have valid menu types after validation
+        if (normalizedMenuTypes.length === 0) {
+          throw new Error('Menu types are required and must exist in database');
+        }
+
+        // Validate required fields
+        if (row.pricePerPerson === undefined || row.pricePerPerson === null) {
+          throw new Error('Price per person is required');
+        }
+
         const buffetData: any = {
           tenant_id: tenantId,
           name: row.name,
@@ -7589,63 +8666,172 @@ export class MenuService {
           price_per_person: row.pricePerPerson,
           min_persons: row.minPersons || null,
           duration: row.duration || null,
+          menu_types: normalizedMenuTypes,
           display_order: row.displayOrder || 0,
           is_active: row.isActive !== undefined ? row.isActive : true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         };
 
         if (branchId) {
           buffetData.branch_id = branchId;
         }
 
-        const { data: buffet, error } = await supabase
-          .from('buffets')
-          .insert(buffetData)
-          .select()
-          .single();
+        // Check if buffet already exists (upsert logic)
+        const branchKey = branchId || 'null';
+        const nameKey = row.name.toLowerCase().trim();
+        const buffetKey = `${nameKey}|||${branchKey}`;
+        const existingBuffetId = existingBuffetsMap.get(buffetKey);
 
-        if (error) {
-          throw new Error(error.message);
-        }
-
-        // Handle menu types
-        if (row.menuTypes && Array.isArray(row.menuTypes) && row.menuTypes.length > 0) {
-          const menuTypeData = row.menuTypes.map((menuType: string) => ({
-            buffet_id: buffet.id,
-            menu_type: menuType.trim(),
-          }));
-          await supabase.from('buffet_menu_types').insert(menuTypeData);
-        }
-
-        // Store pre-translated translations (already translated in batch)
-        const nameTranslations = translations.get('name')?.get(i);
-        const descTranslations = translations.get('description')?.get(i);
-
-        if (nameTranslations || descTranslations) {
-          const fieldsToTranslate = [
-            { fieldName: 'name', text: row.name },
-            ...(row.description ? [{ fieldName: 'description', text: row.description }] : []),
-          ];
-
-          const translationsMap: { [fieldName: string]: any } = {};
-          if (nameTranslations) translationsMap['name'] = nameTranslations;
-          if (descTranslations) translationsMap['description'] = descTranslations;
-
-          await this.translationService.storePreTranslatedBatch(
-            'buffet',
-            buffet.id,
-            fieldsToTranslate,
-            translationsMap,
-            undefined,
-            tenantId,
-            'en',
-          );
-        }
-
-        success++;
-      } catch (error) {
+        buffetDataToProcess.push({
+          index: i,
+          row,
+          buffetData,
+          normalizedMenuTypes,
+          existingBuffetId,
+        });
+      } catch (error: any) {
         failed++;
         errors.push(`Row ${i + 1}: ${error.message}`);
       }
+    }
+
+    // Separate buffets into updates and inserts (upsert logic)
+    const buffetsToUpdate: Array<{ id: string; data: any; index: number; row: any }> = [];
+    const buffetsToInsert: Array<{ data: any; index: number; row: any }> = [];
+
+    buffetDataToProcess.forEach(({ existingBuffetId, buffetData, index, row }) => {
+      // Remove created_at from update data (don't update creation timestamp)
+      const { created_at, ...updateData } = buffetData;
+      updateData.updated_at = new Date().toISOString();
+
+      if (existingBuffetId) {
+        buffetsToUpdate.push({ id: existingBuffetId, data: updateData, index, row });
+      } else {
+        buffetsToInsert.push({ data: buffetData, index, row });
+      }
+    });
+
+    const processedBuffets: Array<{ id: string; index: number; row: any }> = [];
+
+    // Batch update existing buffets
+    if (buffetsToUpdate.length > 0) {
+      const updatePromises = buffetsToUpdate.map(({ id, data }) =>
+        supabase.from('buffets').update(data).eq('id', id).select('id').single()
+      );
+      const updateResults = await Promise.allSettled(updatePromises);
+      
+      updateResults.forEach((result, idx) => {
+        if (result.status === 'fulfilled' && result.value.data) {
+          processedBuffets.push({
+            id: result.value.data.id,
+            index: buffetsToUpdate[idx].index,
+            row: buffetsToUpdate[idx].row,
+          });
+          success++;
+        } else {
+          failed++;
+          errors.push(`Row ${buffetsToUpdate[idx].index + 1}: ${result.status === 'rejected' ? result.reason : result.value.error?.message || 'Update failed'}`);
+        }
+      });
+    }
+
+    // Batch insert new buffets
+    if (buffetsToInsert.length > 0) {
+      const insertData = buffetsToInsert.map(({ data }) => data);
+      const { data: insertedBuffets, error: insertError } = await supabase
+        .from('buffets')
+        .insert(insertData)
+        .select('id');
+
+      if (insertError) {
+        // If batch insert fails, try individual inserts to get better error messages
+        for (const { index, data } of buffetsToInsert) {
+          try {
+            const { data: buffet, error: singleError } = await supabase
+              .from('buffets')
+              .insert(data)
+              .select('id')
+              .single();
+
+            if (singleError) {
+              failed++;
+              errors.push(`Row ${index + 1}: ${singleError.message}`);
+            } else {
+              processedBuffets.push({ id: buffet.id, index, row: buffetsToInsert.find(b => b.index === index)?.row });
+              success++;
+            }
+          } catch (error: any) {
+            failed++;
+            errors.push(`Row ${index + 1}: ${error.message}`);
+          }
+        }
+      } else {
+        // Batch insert succeeded
+        (insertedBuffets || []).forEach((buffet, idx) => {
+          processedBuffets.push({
+            id: buffet.id,
+            index: buffetsToInsert[idx].index,
+            row: buffetsToInsert[idx].row,
+          });
+          success++;
+        });
+      }
+    }
+
+    // Prepare translations for batch storage (asynchronously)
+    const translationBatches: Array<{
+      buffetId: string;
+      index: number;
+      row: any;
+      nameTranslations?: any;
+      descTranslations?: any;
+    }> = [];
+
+    processedBuffets.forEach(({ id, index, row }) => {
+      const nameTranslations = translations.get('name')?.get(index);
+      const descTranslations = translations.get('description')?.get(index);
+
+      if (nameTranslations || descTranslations) {
+        translationBatches.push({
+          buffetId: id,
+          index,
+          row,
+          nameTranslations,
+          descTranslations,
+        });
+      }
+    });
+
+    // Store translations asynchronously after response (non-blocking)
+    if (translationBatches.length > 0) {
+      setImmediate(async () => {
+        try {
+          const translationPromises = translationBatches.map(({ buffetId, row, nameTranslations, descTranslations }) => {
+            const fieldsToTranslate = [
+              { fieldName: 'name', text: row.name },
+              ...(row.description ? [{ fieldName: 'description', text: row.description }] : []),
+            ];
+
+            const translationsMap: { [fieldName: string]: any } = {};
+            if (nameTranslations) translationsMap['name'] = nameTranslations;
+            if (descTranslations) translationsMap['description'] = descTranslations;
+
+            return this.translationService.storePreTranslatedBatch(
+              'buffet',
+              buffetId,
+              fieldsToTranslate,
+              translationsMap,
+              undefined,
+              tenantId,
+              'en',
+            );
+          });
+          await Promise.allSettled(translationPromises);
+        } catch (error) {
+          console.error('Failed to store buffet translations asynchronously:', error);
+        }
+      });
     }
 
     return { success, failed, errors };
@@ -7668,6 +8854,27 @@ export class MenuService {
     const rows = await this.bulkImportService.parseExcelFile(fileBuffer, config);
     const supabase = this.supabaseService.getServiceRoleClient();
 
+    // Fetch valid menu types from database dynamically
+    let menuTypesQuery = supabase
+      .from('menus')
+      .select('menu_type')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      menuTypesQuery = menuTypesQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    } else {
+      menuTypesQuery = menuTypesQuery.is('branch_id', null);
+    }
+    
+    const { data: existingMenus } = await menuTypesQuery;
+    const validMenuTypesFromDb = new Set<string>();
+    (existingMenus || []).forEach(menu => {
+      if (menu.menu_type) {
+        validMenuTypesFromDb.add(menu.menu_type.toLowerCase());
+      }
+    });
+
     // Batch translate all names and descriptions
     const translations = await this.bulkImportService.batchTranslateEntities(
       rows,
@@ -7683,6 +8890,37 @@ export class MenuService {
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       try {
+        // Validate menu types if provided
+        let normalizedMenuTypes: string[] = [];
+        if (row.menuTypes !== undefined && row.menuTypes !== null && row.menuTypes !== '') {
+          // Convert to array if it's a string (comma-separated)
+          let menuTypesArray: string[] = [];
+          if (Array.isArray(row.menuTypes)) {
+            menuTypesArray = row.menuTypes;
+          } else if (typeof row.menuTypes === 'string') {
+            menuTypesArray = row.menuTypes.split(',').map(m => m.trim()).filter(m => m);
+          }
+
+          if (menuTypesArray.length > 0) {
+            const invalidMenuTypes: string[] = [];
+            
+            for (const menuType of menuTypesArray) {
+              const menuTypeLower = String(menuType).trim().toLowerCase();
+              // Check if menu type exists in database
+              if (!validMenuTypesFromDb.has(menuTypeLower)) {
+                invalidMenuTypes.push(String(menuType));
+              } else {
+                normalizedMenuTypes.push(menuTypeLower);
+              }
+            }
+
+            // STRICT: If ANY menu type is invalid or doesn't exist in DB, fail the entire row
+            if (invalidMenuTypes.length > 0) {
+              throw new Error(`Menu types not found in database: ${invalidMenuTypes.join(', ')}`);
+            }
+          }
+        }
+
         const comboMealData: any = {
           tenant_id: tenantId,
           name: row.name,
@@ -7716,11 +8954,11 @@ export class MenuService {
           await supabase.from('combo_meal_food_items').insert(foodItemData);
         }
 
-        // Handle menu types
-        if (row.menuTypes && Array.isArray(row.menuTypes) && row.menuTypes.length > 0) {
-          const menuTypeData = row.menuTypes.map((menuType: string) => ({
+        // Handle menu types (now guaranteed to be valid)
+        if (normalizedMenuTypes.length > 0) {
+          const menuTypeData = normalizedMenuTypes.map((menuType: string) => ({
             combo_meal_id: comboMeal.id,
-            menu_type: menuType.trim(),
+            menu_type: menuType,
           }));
           await supabase.from('combo_meal_menu_types').insert(menuTypeData);
         }

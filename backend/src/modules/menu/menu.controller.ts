@@ -808,6 +808,32 @@ export class MenuController {
     return this.menuService.bulkImportAddOnGroupsAndAddOns(user.tenantId, file.buffer, branchId);
   }
 
+  @Post('bulk-import/variation-groups')
+  @ApiOperation({ summary: 'Bulk import variation groups and variations from Excel file (combined)' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'), new TimeoutInterceptor(600000)) // 10 minutes timeout
+  async bulkImportVariationGroups(
+    @CurrentUser() user: any,
+    @UploadedFile() file: any,
+    @Query('branchId') branchId?: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Excel file is required');
+    }
+    return this.menuService.bulkImportVariationGroups(user.tenantId, file.buffer, branchId);
+  }
+
   @Post('bulk-import/variations')
   @ApiOperation({ summary: 'Bulk import variations from Excel file' })
   @ApiConsumes('multipart/form-data')
