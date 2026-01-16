@@ -20,24 +20,42 @@ export class BulkImportService {
     fields: FieldDefinition[];
     translateFields: string[];
     language: string;
+    getTranslatedFieldNote?: (field: FieldDefinition, language: string) => string;
+    getTranslatedSampleText?: (language: string) => string;
+    getTranslatedLegendText?: (language: string) => string;
+    getTranslatedDefaultArrayExample?: (language: string) => string;
   }): Promise<any> {
     const { fields, entityType } = params;
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet(`${entityType} Import Sample`);
 
-    // Add header row
-    const headerRow = worksheet.addRow(fields.map(field => field.label));
+    // Add header row with required field indicators
+    const headerRow = worksheet.addRow(fields.map(field => field.required ? `${field.label}*` : field.label));
 
-    // Style header row
-    headerRow.font = { bold: true };
-    headerRow.fill = {
+    // Style header row - different colors for required vs optional
+    headerRow.eachCell((cell, colNumber) => {
+      const field = fields[colNumber - 1];
+      cell.font = { bold: true };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: field.required ? { argb: 'FFFFD700' } : { argb: 'FFE6E6FA' } // Gold for required, light gray for optional
+      };
+    });
+
+    // Add legend row
+    const legendText = params.getTranslatedLegendText ? params.getTranslatedLegendText(params.language) : '* Required field';
+    const legendRow = worksheet.addRow([legendText]);
+    legendRow.font = { italic: true, size: 10 };
+    legendRow.getCell(1).fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: 'FFE6E6FA' }
+      fgColor: { argb: 'FFF0F0F0' }
     };
 
     // Add sample data row
+    const sampleText = params.getTranslatedSampleText ? params.getTranslatedSampleText(params.language) : 'Sample';
     const sampleRow = fields.map(field => {
       switch (field.type) {
         case 'boolean':
@@ -47,9 +65,9 @@ export class BulkImportService {
         case 'date':
           return field.example || '2023-01-01';
         case 'array':
-          return field.example || 'Item1,Item2';
+          return field.example || (params.getTranslatedDefaultArrayExample ? params.getTranslatedDefaultArrayExample(params.language) : 'Item1,Item2');
         default:
-          return field.example || `Sample ${field.label}`;
+          return field.example || `${sampleText} ${field.label}`;
       }
     });
     worksheet.addRow(sampleRow);
@@ -59,14 +77,13 @@ export class BulkImportService {
       worksheet.getColumn(index + 1).width = Math.max(field.label.length, 15);
     });
 
-    // Add comments for required fields
+    // Add comments for fields (updated to match header labels with asterisks)
     fields.forEach((field, index) => {
-      if (field.required) {
-        const cell = worksheet.getCell(1, index + 1);
-        cell.note = `${field.description} (Required)`;
+      const cell = worksheet.getCell(1, index + 1);
+      if (params.getTranslatedFieldNote) {
+        cell.note = params.getTranslatedFieldNote(field, params.language);
       } else {
-        const cell = worksheet.getCell(1, index + 1);
-        cell.note = field.description;
+        cell.note = field.required ? `${field.description} (Required field)` : `${field.description} (Optional field)`;
       }
     });
 
@@ -104,6 +121,10 @@ export class BulkImportService {
       const headerValue = cell.value?.toString()?.trim();
       if (headerValue) {
         headerMap.set(headerValue.toLowerCase(), colNumber);
+        // Also store without asterisk for required field indicators
+        if (headerValue.endsWith('*')) {
+          headerMap.set(headerValue.slice(0, -1).toLowerCase(), colNumber);
+        }
       }
     });
 
@@ -113,7 +134,14 @@ export class BulkImportService {
       const rowData: any = {};
 
       fields.forEach(field => {
-        const colIndex = headerMap.get(field.label.toLowerCase());
+        // Try multiple header matching strategies to handle translated headers and asterisks
+        let colIndex = headerMap.get(field.label.toLowerCase());
+
+        // If not found, try field name (lowercase)
+        if (!colIndex) {
+          colIndex = headerMap.get(field.name.toLowerCase());
+        }
+
         if (colIndex) {
           const cell = row.getCell(colIndex);
           let value = cell.value;

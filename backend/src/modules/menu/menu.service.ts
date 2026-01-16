@@ -5161,7 +5161,6 @@ export class MenuService {
         { name: 'name', label: 'Name', required: true, type: 'string', description: 'Add-on name' },
         { name: 'price', label: 'Price', required: false, type: 'number', description: 'Add-on price', example: '0' },
         { name: 'isActive', label: 'Is Active', required: false, type: 'boolean', description: 'Whether add-on is active', example: 'true' },
-        { name: 'displayOrder', label: 'Display Order', required: false, type: 'number', description: 'Display order', example: '0' },
       ],
       variationGroup: [
         { name: 'name', label: 'Name', required: true, type: 'string', description: 'Variation group name (used to identify existing group for update)' },
@@ -5171,7 +5170,6 @@ export class MenuService {
         { name: 'name', label: 'Name', required: true, type: 'string', description: 'Variation name' },
         { name: 'recipeMultiplier', label: 'Recipe Multiplier', required: false, type: 'number', description: 'Recipe multiplier', example: '1' },
         { name: 'pricingAdjustment', label: 'Pricing Adjustment', required: false, type: 'number', description: 'Price adjustment', example: '0' },
-        { name: 'displayOrder', label: 'Display Order', required: false, type: 'number', description: 'Display order', example: '0' },
       ],
       // Combined: Add-on Groups and Add-ons in one sheet
       addOnGroupAndAddOn: [
@@ -5209,7 +5207,7 @@ export class MenuService {
         { name: 'isActive', label: 'Is Active', required: false, type: 'boolean', description: 'Whether item is active', example: 'true' },
       ],
       menu: [
-        { name: 'name', label: 'Name', required: true, type: 'string', description: 'Menu name (used as menu type identifier)', example: 'Breakfast' },
+        { name: 'name', label: 'Menu Name', required: true, type: 'string', description: 'Menu name (used as menu type identifier)', example: 'Breakfast' },
         { name: 'foodItemNames', label: 'Food Item Names', required: false, type: 'array', description: 'Comma-separated food item names', example: 'Pizza,Margherita Pizza' },
         { name: 'isActive', label: 'Is Active', required: false, type: 'boolean', description: 'Whether menu is active', example: 'true' },
       ],
@@ -5220,7 +5218,6 @@ export class MenuService {
         { name: 'minPersons', label: 'Minimum Persons', required: false, type: 'number', description: 'Minimum number of persons' },
         { name: 'duration', label: 'Duration (minutes)', required: false, type: 'number', description: 'Duration in minutes' },
         { name: 'menuNames', label: 'Menu Names', required: true, type: 'array', description: 'Comma-separated menu names', example: 'Breakfast,Lunch' },
-        { name: 'displayOrder', label: 'Display Order', required: false, type: 'number', description: 'Display order', example: '0' },
         { name: 'isActive', label: 'Is Active', required: false, type: 'boolean', description: 'Whether buffet is active', example: 'true' },
       ],
       comboMeal: [
@@ -5230,7 +5227,6 @@ export class MenuService {
         { name: 'foodItemNames', label: 'Food Item Names', required: false, type: 'array', description: 'Comma-separated food item names', example: 'Pizza,Margherita Pizza' },
         { name: 'menuNames', label: 'Menu Names', required: false, type: 'array', description: 'Comma-separated menu names', example: 'Breakfast,Lunch' },
         { name: 'discountPercentage', label: 'Discount Percentage', required: false, type: 'number', description: 'Discount percentage', example: '10' },
-        { name: 'displayOrder', label: 'Display Order', required: false, type: 'number', description: 'Display order', example: '0' },
         { name: 'isActive', label: 'Is Active', required: false, type: 'boolean', description: 'Whether combo meal is active', example: 'true' },
       ],
     };
@@ -5244,15 +5240,58 @@ export class MenuService {
   async generateBulkImportSample(entityType: string, language: string = 'en'): Promise<Buffer> {
     // Map variationGroup to variationGroupAndVariation since bulk import now handles both
     const actualEntityType = entityType === 'variationGroup' ? 'variationGroupAndVariation' : entityType;
-    
-    const fields = this.getBulkImportFields(actualEntityType);
+
+    const fields = this.getTranslatedFieldDefinitions(actualEntityType, language);
     const translateFields = this.getTranslateFields(actualEntityType);
-    
+
+    // Create translated field notes for required/optional
+    const getTranslatedFieldNote = (field: FieldDefinition, language: string) => {
+      const requiredText = language === 'en' ? 'Required field' :
+        language === 'ar' ? 'حقل مطلوب' :
+        language === 'ku' ? 'خانەی پێویست' :
+        language === 'fr' ? 'Champ requis' : 'Required field';
+
+      const optionalText = language === 'en' ? 'Optional field' :
+        language === 'ar' ? 'حقل اختياري' :
+        language === 'ku' ? 'خانەی ئارەزوومەندانە' :
+        language === 'fr' ? 'Champ optionnel' : 'Optional field';
+
+      return field.required ? `${field.description} (${requiredText})` : `${field.description} (${optionalText})`;
+    };
+
+    // Get translated sample text
+    const getTranslatedSampleText = (language: string) => {
+      return language === 'en' ? 'Sample' :
+        language === 'ar' ? 'عينة' :
+        language === 'ku' ? 'نمونه' :
+        language === 'fr' ? 'Exemple' : 'Sample';
+    };
+
+    // Get translated legend text
+    const getTranslatedLegendText = (language: string) => {
+      return language === 'en' ? '* Required field' :
+        language === 'ar' ? '* حقل مطلوب' :
+        language === 'ku' ? '* خانەی پێویست' :
+        language === 'fr' ? '* Champ requis' : '* Required field';
+    };
+
+    // Get translated default array example
+    const getTranslatedDefaultArrayExample = (language: string) => {
+      return language === 'en' ? 'Item1,Item2' :
+        language === 'ar' ? 'العنصر1,العنصر2' :
+        language === 'ku' ? 'بەشی1,بەشی2' :
+        language === 'fr' ? 'Élément1,Élément2' : 'Item1,Item2';
+    };
+
     return this.bulkImportService.generateSampleExcel({
       entityType: actualEntityType,
       fields,
       translateFields,
       language,
+      getTranslatedFieldNote,
+      getTranslatedSampleText,
+      getTranslatedLegendText,
+      getTranslatedDefaultArrayExample,
     });
   }
 
@@ -5263,7 +5302,7 @@ export class MenuService {
     const translateFieldsMap: Record<string, string[]> = {
       category: ['name', 'description'],
       addOnGroup: ['name'],
-      addon: ['name'],
+      addon: ['name', 'addOnGroupName'],
       variationGroup: ['name'],
       variation: ['name'],
       foodItem: ['name', 'description'],
@@ -5291,6 +5330,7 @@ export class MenuService {
     const fieldTranslations: Record<string, Record<string, string>> = {
       'name': { 'ar': 'الاسم', 'ku': 'ناو', 'fr': 'Nom' },
       'description': { 'ar': 'الوصف', 'ku': 'باساندن', 'fr': 'Description' },
+      'categoryType': { 'ar': 'نوع الفئة', 'ku': 'جۆری پۆل', 'fr': 'Type de catégorie' },
       'categoryName': { 'ar': 'اسم الفئة', 'ku': 'ناوی پۆل', 'fr': 'Nom de la catégorie' },
       'basePrice': { 'ar': 'السعر الأساسي', 'ku': 'نرخی بنەڕەتی', 'fr': 'Prix de base' },
       'stockType': { 'ar': 'نوع المخزون', 'ku': 'جۆری بار', 'fr': 'Type de stock' },
@@ -5305,18 +5345,269 @@ export class MenuService {
       'pricePerPerson': { 'ar': 'السعر لكل شخص', 'ku': 'نرخ بۆ هەر کەس', 'fr': 'Prix par personne' },
       'minPersons': { 'ar': 'الحد الأدنى للأشخاص', 'ku': 'کەمترین کەس', 'fr': 'Minimum de personnes' },
       'duration': { 'ar': 'المدة (بالدقائق)', 'ku': 'ماوە (خولەک)', 'fr': 'Durée (minutes)' },
-      'displayOrder': { 'ar': 'ترتيب العرض', 'ku': 'ڕیزبەندی پیشاندان', 'fr': 'Ordre d\'affichage' },
       'discountPercentage': { 'ar': 'نسبة الخصم', 'ku': 'ڕێژەی داشکان', 'fr': 'Pourcentage de remise' },
+      'selectionType': { 'ar': 'نوع الاختيار', 'ku': 'جۆری هەڵبژاردن', 'fr': 'Type de sélection' },
+      'isRequired': { 'ar': 'مطلوب', 'ku': 'پێویستە', 'fr': 'Requis' },
+      'minSelections': { 'ar': 'الحد الأدنى للاختيارات', 'ku': 'کەمترین هەڵبژاردن', 'fr': 'Sélections minimum' },
+      'maxSelections': { 'ar': 'الحد الأقصى للاختيارات', 'ku': 'زۆرترین هەڵبژاردن', 'fr': 'Sélections maximum' },
+      'category': { 'ar': 'الفئة', 'ku': 'پۆل', 'fr': 'Catégorie' },
+      'addOnGroupName': { 'ar': 'اسم مجموعة الإضافات', 'ku': 'ناوی گروپی زیادکراوەکان', 'fr': 'Nom du groupe d\'ajouts' },
+      'addOnGroupSelectionType': { 'ar': 'نوع اختيار مجموعة الإضافات', 'ku': 'جۆری هەڵبژاردنی گروپی زیادکراوەکان', 'fr': 'Type de sélection du groupe d\'ajouts' },
+      'addOnGroupIsRequired': { 'ar': 'مطلوب لمجموعة الإضافات', 'ku': 'پێویستە بۆ گروپی زیادکراوەکان', 'fr': 'Requis pour le groupe d\'ajouts' },
+      'addOnGroupMinSelections': { 'ar': 'الحد الأدنى لاختيارات مجموعة الإضافات', 'ku': 'کەمترین هەڵبژاردنی گروپی زیادکراوەکان', 'fr': 'Sélections minimum du groupe d\'ajouts' },
+      'addOnGroupMaxSelections': { 'ar': 'الحد الأقصى لاختيارات مجموعة الإضافات', 'ku': 'زۆرترین هەڵبژاردنی گروپی زیادکراوەکان', 'fr': 'Sélections maximum du groupe d\'ajouts' },
+      'price': { 'ar': 'السعر', 'ku': 'نرخ', 'fr': 'Prix' },
+      'addOnGroupCategory': { 'ar': 'فئة مجموعة الإضافات', 'ku': 'پۆلی گروپی زیادکراوەکان', 'fr': 'Catégorie du groupe d\'ajouts' },
+      'addOnName': { 'ar': 'اسم الإضافة', 'ku': 'ناوی زیادکراو', 'fr': 'Nom de l\'ajout' },
+      'addOnPrice': { 'ar': 'سعر الإضافة', 'ku': 'نرخی زیادکراو', 'fr': 'Prix de l\'ajout' },
+      'addOnIsActive': { 'ar': 'الإضافة نشطة', 'ku': 'زیادکراو چالاکە', 'fr': 'Ajout actif' },
+      'addOnDisplayOrder': { 'ar': 'ترتيب عرض الإضافة', 'ku': 'ڕیزبەندی پیشاندانی زیادکراو', 'fr': 'Ordre d\'affichage de l\'ajout' },
+      'menuName': { 'ar': 'اسم القائمة', 'ku': 'ناوی لیستی خواردن', 'fr': 'Nom du menu' },
+      'variationGroupName': { 'ar': 'اسم مجموعة التنويعات', 'ku': 'ناوی گروپی گۆڕانکارییەکان', 'fr': 'Nom du groupe de variations' },
+      'variationName': { 'ar': 'اسم التنويع', 'ku': 'ناوی گۆڕانکاری', 'fr': 'Nom de la variation' },
+      'variationRecipeMultiplier': { 'ar': 'مضاعف الوصفة للتنويع', 'ku': 'لە زیادکردنی ڕەچەتە بۆ گۆڕانکاری', 'fr': 'Multiplicateur de recette pour la variation' },
+      'variationPricingAdjustment': { 'ar': 'تعديل السعر للتنويع', 'ku': 'ڕێکخستنی نرخ بۆ گۆڕانکاری', 'fr': 'Ajustement de prix pour la variation' },
+      'variationDisplayOrder': { 'ar': 'ترتيب العرض للتنويع', 'ku': 'ڕیزبەندی پیشاندان بۆ گۆڕانکاری', 'fr': 'Ordre d\'affichage pour la variation' },
+      'recipeMultiplier': { 'ar': 'مضاعف الوصفة', 'ku': 'لە زیادکردنی ڕەچەتە', 'fr': 'Multiplicateur de recette' },
+      'pricingAdjustment': { 'ar': 'تعديل السعر', 'ku': 'ڕێکخستنی نرخ', 'fr': 'Ajustement de prix' },
+    };
+
+    // Translation mappings for example values
+    const exampleTranslations: Record<string, Record<string, string>> = {
+      'food': { 'ar': 'طعام', 'ku': 'خواردن', 'fr': 'nourriture' },
+      'drink': { 'ar': 'مشروب', 'ku': 'خواردنەوە', 'fr': 'boisson' },
+      'single': { 'ar': 'واحد', 'ku': 'تاک', 'fr': 'unique' },
+      'multiple': { 'ar': 'متعدد', 'ku': 'فرە', 'fr': 'multiple' },
+      'Add': { 'ar': 'إضافة', 'ku': 'زیادکردن', 'fr': 'Ajouter' },
+      'Remove': { 'ar': 'إزالة', 'ku': 'لابردن', 'fr': 'Supprimer' },
+      'Change': { 'ar': 'تغيير', 'ku': 'گۆڕین', 'fr': 'Changer' },
+      'unlimited': { 'ar': 'غير محدود', 'ku': 'بێ سنوور', 'fr': 'illimité' },
+      'limited': { 'ar': 'محدود', 'ku': 'سنووردار', 'fr': 'limité' },
+      'Breakfast': { 'ar': 'الإفطار', 'ku': 'نانی بەیانی', 'fr': 'Petit-déjeuner' },
+      'Lunch': { 'ar': 'الغداء', 'ku': 'نانی نیوەڕۆ', 'fr': 'Déjeuner' },
+      'Pizza': { 'ar': 'بيتزا', 'ku': 'پیتزا', 'fr': 'Pizza' },
+      'Margherita Pizza': { 'ar': 'بيتزا مارغريتا', 'ku': 'پیتزای مارغەریتا', 'fr': 'Pizza Margherita' },
+      'spicy': { 'ar': 'حار', 'ku': 'تیژ', 'fr': 'épicé' },
+      'vegetarian': { 'ar': 'نباتي', 'ku': 'سبەیی', 'fr': 'végétarien' },
+      'Extra Toppings': { 'ar': 'إضافات إضافية', 'ku': 'زیادکراوەکانی زیادە', 'fr': 'Garnitures supplémentaires' },
+      'Spice Level': { 'ar': 'مستوى التوابل', 'ku': 'ئاستی بەهارات', 'fr': 'Niveau d\'épices' },
+      'Size': { 'ar': 'الحجم', 'ku': 'قەبارە', 'fr': 'Taille' },
+    };
+
+    // Translation mappings for descriptions
+    const descriptionTranslations: Record<string, Record<string, string>> = {
+      'Category name (used to identify existing category for update)': {
+        'ar': 'اسم الفئة (يُستخدم لتحديد الفئة الموجودة للتحديث)',
+        'ku': 'ناوی پۆل (بەکاردێت بۆ ناساندنی پۆلی بوونی بۆ نوێکردنەوە)',
+        'fr': 'Nom de la catégorie (utilisé pour identifier la catégorie existante pour la mise à jour)'
+      },
+      'Category description': {
+        'ar': 'وصف الفئة',
+        'ku': 'باساندنی پۆل',
+        'fr': 'Description de la catégorie'
+      },
+      'Type: food, drink, etc.': {
+        'ar': 'النوع: طعام، مشروب، إلخ.',
+        'ku': 'جۆر: خواردن، خواردنەوە، هتد.',
+        'fr': 'Type: nourriture, boisson, etc.'
+      },
+      'Whether category is active': {
+        'ar': 'ما إذا كانت الفئة نشطة',
+        'ku': 'ئایا پۆل چالاکە',
+        'fr': 'Si la catégorie est active'
+      },
+      'single or multiple': {
+        'ar': 'واحد أو متعدد',
+        'ku': 'تاک یان فرە',
+        'fr': 'unique ou multiple'
+      },
+      'Add, Remove, or Change': {
+        'ar': 'إضافة، إزالة، أو تغيير',
+        'ku': 'زیادکردن، لابردن، یان گۆڕین',
+        'fr': 'Ajouter, Supprimer ou Changer'
+      },
+      'Selection type for group: single or multiple': {
+        'ar': 'نوع الاختيار للمجموعة: واحد أو متعدد',
+        'ku': 'جۆری هەڵبژاردن بۆ گروپ: تاک یان فرە',
+        'fr': 'Type de sélection pour le groupe: unique ou multiple'
+      },
+      'Category: Add, Remove, or Change': {
+        'ar': 'الفئة: إضافة، إزالة، أو تغيير',
+        'ku': 'پۆل: زیادکردن، لابردن، یان گۆڕین',
+        'fr': 'Catégorie: Ajouter, Supprimer ou Changer'
+      },
+      'Add-on group name (used to identify existing group for update)': {
+        'ar': 'اسم مجموعة الإضافات (يُستخدم لتحديد المجموعة الموجودة للتحديث)',
+        'ku': 'ناوی گروپی زیادکراوەکان (بەکاردێت بۆ ناساندنی گروپی بوونی بۆ نوێکردنەوە)',
+        'fr': 'Nom du groupe d\'ajouts (utilisé pour identifier le groupe existant pour la mise à jour)'
+      },
+      'Whether selection is required': {
+        'ar': 'ما إذا كان الاختيار مطلوباً',
+        'ku': 'ئایا هەڵبژاردن پێویستە',
+        'fr': 'Si la sélection est requise'
+      },
+      'Minimum number of selections': {
+        'ar': 'الحد الأدنى لعدد الاختيارات',
+        'ku': 'کەمترین ژمارەی هەڵبژاردن',
+        'fr': 'Nombre minimum de sélections'
+      },
+      'Maximum number of selections': {
+        'ar': 'الحد الأقصى لعدد الاختيارات',
+        'ku': 'زۆرترین ژمارەی هەڵبژاردن',
+        'fr': 'Nombre maximum de sélections'
+      },
+      'Name of the add-on group': {
+        'ar': 'اسم مجموعة الإضافات',
+        'ku': 'ناوی گروپی زیادکراوەکان',
+        'fr': 'Nom du groupe d\'ajouts'
+      },
+      'Add-on name': {
+        'ar': 'اسم الإضافة',
+        'ku': 'ناوی زیادکراو',
+        'fr': 'Nom de l\'ajout'
+      },
+      'Add-on price': {
+        'ar': 'سعر الإضافة',
+        'ku': 'نرخی زیادکراو',
+        'fr': 'Prix de l\'ajout'
+      },
+      'Whether add-on is active': {
+        'ar': 'ما إذا كانت الإضافة نشطة',
+        'ku': 'ئایا زیادکراو چالاکە',
+        'fr': 'Si l\'ajout est actif'
+      },
+      'Display order': {
+        'ar': 'ترتيب العرض',
+        'ku': 'ڕیزبەندی پیشاندان',
+        'fr': 'Ordre d\'affichage'
+      },
+      'Whether selection is required for group': {
+        'ar': 'ما إذا كان الاختيار مطلوباً للمجموعة',
+        'ku': 'ئایا هەڵبژاردن پێویستە بۆ گروپ',
+        'fr': 'Si la sélection est requise pour le groupe'
+      },
+      'Minimum number of selections for group': {
+        'ar': 'الحد الأدنى لعدد الاختيارات للمجموعة',
+        'ku': 'کەمترین ژمارەی هەڵبژاردن بۆ گروپ',
+        'fr': 'Nombre minimum de sélections pour le groupe'
+      },
+      'Maximum number of selections for group': {
+        'ar': 'الحد الأقصى لعدد الاختيارات للمجموعة',
+        'ku': 'زۆرترین ژمارەی هەڵبژاردن بۆ گروپ',
+        'fr': 'Nombre maximum de sélections pour le groupe'
+      },
+      'Comma-separated add-on group names': {
+        'ar': 'أسماء مجموعات الإضافات مفصولة بفاصلة',
+        'ku': 'ناوی گروپی زیادکراوەکان بە فاریزە جیاکراوە',
+        'fr': 'Noms des groupes d\'ajouts séparés par des virgules'
+      },
+      'Name of the add-on (if provided, will create/update add-on)': {
+        'ar': 'اسم الإضافة (إذا تم توفيره، سيتم إنشاء/تحديث الإضافة)',
+        'ku': 'ناوی زیادکراو (ئەگەر دابینکرا، زیادکراو دەدرێتەوە/نوێدەکرێتەوە)',
+        'fr': 'Nom de l\'ajout (si fourni, l\'ajout sera créé/mis à jour)'
+      },
+      'Price of the add-on': {
+        'ar': 'سعر الإضافة',
+        'ku': 'نرخی زیادکراو',
+        'fr': 'Prix de l\'ajout'
+      },
+      'Display order for add-on': {
+        'ar': 'ترتيب العرض للإضافة',
+        'ku': 'ڕیزبەندی پیشاندان بۆ زیادکراو',
+        'fr': 'Ordre d\'affichage pour l\'ajout'
+      },
+      'Name of the variation group (required if creating/updating group)': {
+        'ar': 'اسم مجموعة التنويعات (مطلوب إذا كنت تقوم بإنشاء/تحديث المجموعة)',
+        'ku': 'ناوی گروپی گۆڕانکارییەکان (پێویستە ئەگەر گروپ دروست بکەیت/نوێ بکەیتەوە)',
+        'fr': 'Nom du groupe de variations (requis si création/mise à jour du groupe)'
+      },
+      'Name of the variation (if provided, will create/update variation)': {
+        'ar': 'اسم التنويع (إذا تم توفيره، سيتم إنشاء/تحديث التنويع)',
+        'ku': 'ناوی گۆڕانکاری (ئەگەر دابینکرا، گۆڕانکاری دەدرێتەوە/نوێدەکرێتەوە)',
+        'fr': 'Nom de la variation (si fourni, la variation sera créée/mise à jour)'
+      },
+      'Recipe multiplier for variation': {
+        'ar': 'مضاعف الوصفة للتنويع',
+        'ku': 'لە زیادکردنی ڕەچەتە بۆ گۆڕانکاری',
+        'fr': 'Multiplicateur de recette pour la variation'
+      },
+      'Price adjustment for variation': {
+        'ar': 'تعديل السعر للتنويع',
+        'ku': 'ڕێکخستنی نرخ بۆ گۆڕانکاری',
+        'fr': 'Ajustement de prix pour la variation'
+      },
+      'Display order for variation': {
+        'ar': 'ترتيب العرض للتنويع',
+        'ku': 'ڕیزبەندی پیشاندان بۆ گۆڕانکاری',
+        'fr': 'Ordre d\'affichage pour la variation'
+      },
+      'Recipe multiplier': {
+        'ar': 'مضاعف الوصفة',
+        'ku': 'لە زیادکردنی ڕەچەتە',
+        'fr': 'Multiplicateur de recette'
+      },
+      'Price adjustment': {
+        'ar': 'تعديل السعر',
+        'ku': 'ڕێکخستنی نرخ',
+        'fr': 'Ajustement de prix'
+      },
+      'Required field': {
+        'ar': 'حقل مطلوب',
+        'ku': 'خانەی پێویست',
+        'fr': 'Champ requis'
+      },
+      'Optional field': {
+        'ar': 'حقل اختياري',
+        'ku': 'خانەی ئارەزوومەندانە',
+        'fr': 'Champ optionnel'
+      },
     };
 
     // Create translated field definitions
     return fields.map(field => {
-      const translations = fieldTranslations[field.name];
-      const translatedLabel = translations?.[language] || field.label;
+      // Get translations for this field - handle entity-specific cases
+      let translationKey = field.name;
+
+      // Special case: for menu entity, use 'menuName' instead of 'name' for translation
+      if (entityType === 'menu' && field.name === 'name') {
+        translationKey = 'menuName';
+      }
+
+      const translations = fieldTranslations[translationKey];
+      let translatedLabel = field.label;
+
+      if (translations && translations[language]) {
+        translatedLabel = translations[language];
+      }
+
+
+      // Translate example value if it exists
+      let translatedExample = field.example;
+      if (field.example) {
+        // Handle comma-separated values
+        if (field.example.includes(',')) {
+          const parts = field.example.split(',').map(part => part.trim());
+          const translatedParts = parts.map(part => {
+            return exampleTranslations[part]?.[language] || part;
+          });
+          translatedExample = translatedParts.join(',');
+        } else {
+          // Handle single values
+          translatedExample = exampleTranslations[field.example]?.[language] || field.example;
+        }
+      }
+
+      // Translate description if it exists
+      let translatedDescription = field.description;
+      if (field.description && descriptionTranslations[field.description]) {
+        translatedDescription = descriptionTranslations[field.description][language] || field.description;
+      }
 
       return {
         ...field,
         label: translatedLabel,
+        example: translatedExample,
+        description: translatedDescription,
       };
     });
   }
@@ -8119,13 +8410,13 @@ export class MenuService {
         if (!row.categoryName || row.categoryName.trim() === '') {
           throw new Error('Category name is required');
         }
-        if (row.basePrice === undefined || row.basePrice === null || row.basePrice === '') {
-          throw new Error('Base price is required');
+        if (row.basePrice === undefined || row.basePrice === null || row.basePrice === '' || row.basePrice === 0) {
+          throw new Error('Base price is required and must be greater than 0');
         }
         // Validate basePrice is a valid number
         const basePriceNum = Number(row.basePrice);
-        if (isNaN(basePriceNum) || basePriceNum < 0) {
-          throw new Error(`Base price must be a valid positive number. Found: ${row.basePrice}`);
+        if (isNaN(basePriceNum) || basePriceNum <= 0) {
+          throw new Error(`Base price must be a valid positive number greater than 0. Found: ${row.basePrice}`);
         }
 
         // Validate stock type
@@ -8622,19 +8913,44 @@ export class MenuService {
     const rows = await this.bulkImportService.parseExcelFile(fileBuffer, config);
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Fetch all food items to create name-to-ID map
+    // Extract all unique food item names from the import to optimize query
+    const foodItemNamesSet = new Set<string>();
+    rows.forEach(row => {
+      // Skip empty rows
+      const isEmptyRow = (!row.name || row.name.trim() === '') &&
+                        (!row.foodItemNames || (Array.isArray(row.foodItemNames) ? row.foodItemNames.length === 0 : row.foodItemNames.trim() === '')) &&
+                        (row.isActive === undefined || row.isActive === null || row.isActive === '');
+      if (!isEmptyRow && row.foodItemNames !== undefined && row.foodItemNames !== null && row.foodItemNames !== '') {
+        let foodItemNamesArray: string[] = [];
+        if (Array.isArray(row.foodItemNames)) {
+          foodItemNamesArray = row.foodItemNames;
+        } else if (typeof row.foodItemNames === 'string') {
+          foodItemNamesArray = row.foodItemNames.split(',').map(n => n.trim()).filter(n => n && n.length > 0);
+        }
+
+        foodItemNamesArray.forEach(name => {
+          const trimmedName = name.toLowerCase().trim();
+          if (trimmedName) foodItemNamesSet.add(trimmedName);
+        });
+      }
+    });
+
+    // Fetch ALL food items for the tenant to ensure proper validation and error messages
+    // (This is necessary to show available food items in error messages)
     let foodItemQuery = supabase
       .from('food_items')
       .select('id, name')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null);
-    
+
     if (branchId) {
       foodItemQuery = foodItemQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
     }
-    
+
     const { data: allFoodItems } = await foodItemQuery;
     const foodItemNameToIdMap = new Map<string, string>();
+
+    // Populate the map with all food items for validation and error messages
     (allFoodItems || []).forEach(item => {
       const nameKey = item.name.toLowerCase().trim();
       // If multiple items with same name exist, use the first one found
@@ -8651,25 +8967,41 @@ export class MenuService {
       tenantId,
     );
 
-    // Batch fetch all existing menus to avoid individual queries
-    let existingMenusQuery = supabase
-      .from('menus')
-      .select('id, menu_type, branch_id')
-      .eq('tenant_id', tenantId);
-    
-    if (branchId) {
-      existingMenusQuery = existingMenusQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
-    } else {
-      existingMenusQuery = existingMenusQuery.is('branch_id', null);
-    }
-    
-    const { data: existingMenus } = await existingMenusQuery;
-    const existingMenusMap = new Map<string, string>(); // key: "menu_type|||branch_id" -> menu_id
-    (existingMenus || []).forEach(menu => {
-      const branchKey = menu.branch_id || 'null';
-      const key = `${menu.menu_type}|||${branchKey}`;
-      existingMenusMap.set(key, menu.id);
+    // Extract menu types from rows to optimize existing menus query
+    const menuTypesFromRows = new Set<string>();
+    rows.forEach(row => {
+      // Skip empty rows
+      const isEmptyRow = (!row.name || row.name.trim() === '') &&
+                        (!row.foodItemNames || (Array.isArray(row.foodItemNames) ? row.foodItemNames.length === 0 : row.foodItemNames.trim() === '')) &&
+                        (row.isActive === undefined || row.isActive === null || row.isActive === '');
+      if (!isEmptyRow && row.name && row.name.trim()) {
+        const menuTypeNormalized = row.name.trim().toLowerCase().replace(/\s+/g, '_');
+        menuTypesFromRows.add(menuTypeNormalized);
+      }
     });
+
+    // Only fetch existing menus for the menu types we're importing
+    const existingMenusMap = new Map<string, string>(); // key: "menu_type|||branch_id" -> menu_id
+    if (menuTypesFromRows.size > 0) {
+      let existingMenusQuery = supabase
+        .from('menus')
+        .select('id, menu_type, branch_id')
+        .eq('tenant_id', tenantId)
+        .in('menu_type', Array.from(menuTypesFromRows));
+
+      if (branchId) {
+        existingMenusQuery = existingMenusQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+      } else {
+        existingMenusQuery = existingMenusQuery.is('branch_id', null);
+      }
+
+      const { data: existingMenus } = await existingMenusQuery;
+      (existingMenus || []).forEach(menu => {
+        const branchKey = menu.branch_id || 'null';
+        const key = `${menu.menu_type}|||${branchKey}`;
+        existingMenusMap.set(key, menu.id);
+      });
+    }
 
     // Prepare all menu data for batch processing
     const menuDataToProcess: Array<{
@@ -8689,6 +9021,14 @@ export class MenuService {
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       try {
+        // Skip completely empty rows
+        const isEmptyRow = (!row.name || row.name.trim() === '') &&
+                          (!row.foodItemNames || (Array.isArray(row.foodItemNames) ? row.foodItemNames.length === 0 : row.foodItemNames.trim() === '')) &&
+                          (row.isActive === undefined || row.isActive === null || row.isActive === '');
+        if (isEmptyRow) {
+          continue; // Skip empty rows silently
+        }
+
         // Validate required fields
         if (!row.name || row.name.trim() === '') {
           throw new Error('Menu name is required');
@@ -8709,20 +9049,41 @@ export class MenuService {
           
           if (foodItemNamesArray.length > 0) {
             const invalidNames: string[] = [];
-            
+            const foundNames: string[] = [];
+
             for (const foodItemName of foodItemNamesArray) {
-              const trimmedName = String(foodItemName).trim().toLowerCase();
-              const foodItemId = foodItemNameToIdMap.get(trimmedName);
+              const trimmedName = String(foodItemName).trim();
+              const searchName = trimmedName.toLowerCase();
+
+              // Try exact match first
+              let foodItemId = foodItemNameToIdMap.get(searchName);
+
+              // If not found, try case-insensitive search in the map
+              if (!foodItemId) {
+                for (const [key, id] of foodItemNameToIdMap.entries()) {
+                  if (key.toLowerCase() === searchName) {
+                    foodItemId = id;
+                    break;
+                  }
+                }
+              }
+
               if (foodItemId) {
                 foodItemIds.push(foodItemId);
+                foundNames.push(trimmedName);
               } else {
-                invalidNames.push(String(foodItemName));
+                invalidNames.push(trimmedName);
               }
             }
-            
+
             // STRICT: If ANY food item name is invalid, fail the entire row (don't create menu)
             if (invalidNames.length > 0) {
-              throw new Error(`Food items not found: ${invalidNames.join(', ')}`);
+              // Provide helpful error message with available food items
+              const availableNames = Array.from(foodItemNameToIdMap.keys());
+              const availableDisplay = availableNames.length > 0
+                ? availableNames.slice(0, 20).join(', ') + (availableNames.length > 20 ? `... (${availableNames.length} total)` : '')
+                : 'None found in database';
+              throw new Error(`Food items not found: ${invalidNames.join(', ')}. Available food items: ${availableDisplay}`);
             }
           }
         }
@@ -8833,47 +9194,64 @@ export class MenuService {
       });
     }
 
-    // Batch update existing menus
+    // Batch update existing menus using upsert for better performance
     if (menusToUpdate.length > 0) {
-      const updatePromises = menusToUpdate.map(({ id, data }) =>
-        supabase.from('menus').update(data).eq('id', id)
-      );
-      await Promise.all(updatePromises);
+      const updateData = menusToUpdate.map(({ id, data }) => ({
+        ...data,
+        id, // Include id for upsert
+      }));
+
+      const { error: updateError } = await supabase
+        .from('menus')
+        .upsert(updateData, {
+          onConflict: 'id',
+          ignoreDuplicates: false
+        });
+
+      if (updateError) {
+        throw new Error(`Failed to batch update menus: ${updateError.message}`);
+      }
     }
 
-    // Batch delete and insert menu_items (grouped by menu_type)
-    const menuTypesToProcess = new Set(menuItemsData.map(m => m.menuType));
-    if (menuTypesToProcess.size > 0) {
-      // Delete existing menu_items for these menu_types
-      await supabase
-        .from('menu_items')
-        .delete()
-        .eq('tenant_id', tenantId)
-        .in('menu_type', Array.from(menuTypesToProcess));
+    // Optimized menu_items processing - only process menu types that have changes
+    if (menuItemsData.length > 0) {
+      const menuTypesToProcess = new Set(menuItemsData.map(m => m.menuType));
 
-      // Batch insert all menu_items
-      const allMenuItems: any[] = [];
-      menuItemsData.forEach(({ menuType, foodItemIds }) => {
-        const menuItems = foodItemIds.map((foodItemId, idx) => ({
-          tenant_id: tenantId,
-          menu_type: menuType,
-          food_item_id: foodItemId,
-          display_order: idx,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }));
-        allMenuItems.push(...menuItems);
+      // Use individual operations per menu_type for better performance and to avoid conflicts
+      const menuItemPromises = Array.from(menuTypesToProcess).map(async (menuType) => {
+        // Find all food item IDs for this menu type
+        const menuTypeData = menuItemsData.filter(m => m.menuType === menuType);
+        const allFoodItemIds = menuTypeData.flatMap(m => m.foodItemIds);
+
+        if (allFoodItemIds.length > 0) {
+          // Delete existing menu_items for this specific menu_type
+          await supabase
+            .from('menu_items')
+            .delete()
+            .eq('tenant_id', tenantId)
+            .eq('menu_type', menuType);
+
+          // Batch insert menu_items for this menu_type
+          const menuItems = allFoodItemIds.map((foodItemId, idx) => ({
+            tenant_id: tenantId,
+            menu_type: menuType,
+            food_item_id: foodItemId,
+            display_order: idx,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }));
+
+          const { error: menuItemsError } = await supabase
+            .from('menu_items')
+            .insert(menuItems);
+
+          if (menuItemsError) {
+            throw new Error(`Failed to insert menu items for ${menuType}: ${menuItemsError.message}`);
+          }
+        }
       });
 
-      if (allMenuItems.length > 0) {
-        const { error: menuItemsError } = await supabase
-          .from('menu_items')
-          .insert(allMenuItems);
-
-        if (menuItemsError) {
-          throw new Error(`Failed to batch insert menu items: ${menuItemsError.message}`);
-        }
-      }
+      await Promise.all(menuItemPromises);
     }
 
     // Count successes
@@ -9099,8 +9477,14 @@ export class MenuService {
         }
 
         // Validate required fields
-        if (row.pricePerPerson === undefined || row.pricePerPerson === null) {
-          throw new Error('Price per person is required');
+        if (row.pricePerPerson === undefined || row.pricePerPerson === null || row.pricePerPerson === '' || row.pricePerPerson === 0) {
+          throw new Error('Price per person is required and must be greater than 0');
+        }
+
+        // Validate pricePerPerson is a valid positive number
+        const pricePerPersonNum = Number(row.pricePerPerson);
+        if (isNaN(pricePerPersonNum) || pricePerPersonNum <= 0) {
+          throw new Error(`Price per person must be a valid positive number greater than 0. Found: ${row.pricePerPerson}`);
         }
 
         const buffetData: any = {
@@ -9451,8 +9835,14 @@ export class MenuService {
         }
 
         // Validate base price is required
-        if (row.basePrice === undefined || row.basePrice === null) {
-          throw new Error('Base price is required');
+        if (row.basePrice === undefined || row.basePrice === null || row.basePrice === '' || row.basePrice === 0) {
+          throw new Error('Base price is required and must be greater than 0');
+        }
+
+        // Validate basePrice is a valid positive number
+        const basePriceNum = Number(row.basePrice);
+        if (isNaN(basePriceNum) || basePriceNum <= 0) {
+          throw new Error(`Base price must be a valid positive number greater than 0. Found: ${row.basePrice}`);
         }
 
         // Validate menu names if provided

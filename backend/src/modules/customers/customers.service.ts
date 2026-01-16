@@ -909,17 +909,52 @@ export class CustomersService {
       { name: 'city', label: 'City', required: false, type: 'string', description: 'City name' },
       { name: 'state', label: 'State', required: false, type: 'string', description: 'State/Province' },
       { name: 'country', label: 'Country', required: false, type: 'string', description: 'Country name' },
-      { name: 'latitude', label: 'Latitude', required: false, type: 'number', description: 'Latitude coordinate' },
-      { name: 'longitude', label: 'Longitude', required: false, type: 'number', description: 'Longitude coordinate' },
     ];
+  }
+
+  /**
+   * Get translated field definitions for export
+   */
+  private getTranslatedFieldDefinitions(language: string = 'en'): FieldDefinition[] {
+    const fields = this.getBulkImportFields();
+
+    // If language is English, return the original fields
+    if (language === 'en') {
+      return fields;
+    }
+
+    // Translation mappings for customer field labels
+    const fieldTranslations: Record<string, Record<string, string>> = {
+      'name': { 'ar': 'الاسم', 'ku': 'ناو', 'fr': 'Nom' },
+      'phone': { 'ar': 'الهاتف', 'ku': 'تەلەفۆن', 'fr': 'Téléphone' },
+      'email': { 'ar': 'البريد الإلكتروني', 'ku': 'ئیمەیڵ', 'fr': 'Email' },
+      'dateOfBirth': { 'ar': 'تاريخ الميلاد', 'ku': 'بەرواری لەدایکبوون', 'fr': 'Date de naissance' },
+      'preferredLanguage': { 'ar': 'اللغة المفضلة', 'ku': 'زمانی پەسەندکراو', 'fr': 'Langue préférée' },
+      'notes': { 'ar': 'ملاحظات', 'ku': 'تێبینییەکان', 'fr': 'Notes' },
+      'address': { 'ar': 'العنوان', 'ku': 'ناونیشان', 'fr': 'Adresse' },
+      'city': { 'ar': 'المدينة', 'ku': 'شار', 'fr': 'Ville' },
+      'state': { 'ar': 'الولاية/المقاطعة', 'ku': 'ولایت/پارێزگا', 'fr': 'État/Province' },
+      'country': { 'ar': 'البلد', 'ku': 'وڵات', 'fr': 'Pays' },
+    };
+
+    // Create translated field definitions
+    return fields.map(field => {
+      const translations = fieldTranslations[field.name];
+      const translatedLabel = translations?.[language] || field.label;
+
+      return {
+        ...field,
+        label: translatedLabel,
+      };
+    });
   }
 
   /**
    * Generate sample Excel file for bulk import
    */
   async generateBulkImportSample(language: string = 'en'): Promise<Buffer> {
-    const fields = this.getBulkImportFields();
-    
+    const fields = this.getTranslatedFieldDefinitions(language);
+
     return this.bulkImportService.generateSampleExcel({
       entityType: 'customer',
       fields,

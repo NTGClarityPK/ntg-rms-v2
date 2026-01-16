@@ -778,11 +778,52 @@ export class EmployeesService {
   }
 
   /**
+   * Get translated field definitions for export
+   */
+  private getTranslatedFieldDefinitions(language: string = 'en'): FieldDefinition[] {
+    const fields = this.getBulkImportFields();
+
+    // If language is English, return the original fields
+    if (language === 'en') {
+      return fields;
+    }
+
+    // Translation mappings for employee field labels
+    const fieldTranslations: Record<string, Record<string, string>> = {
+      'email': { 'ar': 'البريد الإلكتروني', 'ku': 'ئیمەیڵ', 'fr': 'Email' },
+      'name': { 'ar': 'الاسم', 'ku': 'ناو', 'fr': 'Nom' },
+      'roleNames': { 'ar': 'أسماء الأدوار', 'ku': 'ناوی ڕۆڵەکان', 'fr': 'Noms des rôles' },
+      'branchNames': { 'ar': 'أسماء الفروع', 'ku': 'ناوی لقەکان', 'fr': 'Noms des succursales' },
+      'phone': { 'ar': 'الهاتف', 'ku': 'تەلەفۆن', 'fr': 'Téléphone' },
+      'employeeId': { 'ar': 'رقم الموظف', 'ku': 'ژمارەی فەرمانبەر', 'fr': 'ID employé' },
+      'nationalId': { 'ar': 'رقم الهوية الوطنية', 'ku': 'ژمارەی ناسنامەی نیشتمانی', 'fr': 'ID national' },
+      'dateOfBirth': { 'ar': 'تاريخ الميلاد', 'ku': 'بەرواری لەدایکبوون', 'fr': 'Date de naissance' },
+      'employmentType': { 'ar': 'نوع التوظيف', 'ku': 'جۆری کارکردن', 'fr': 'Type d\'emploi' },
+      'joiningDate': { 'ar': 'تاريخ الانضمام', 'ku': 'بەرواری بەشداری', 'fr': 'Date d\'embauche' },
+      'salary': { 'ar': 'الراتب', 'ku': 'مووچە', 'fr': 'Salaire' },
+      'isActive': { 'ar': 'نشط', 'ku': 'چالاک', 'fr': 'Actif' },
+      'createAuthAccount': { 'ar': 'إنشاء حساب مصادقة', 'ku': 'درووستکردنی هەژماری سەلماندن', 'fr': 'Créer compte auth' },
+      'password': { 'ar': 'كلمة المرور', 'ku': 'وشەی تێپەڕبوون', 'fr': 'Mot de passe' },
+    };
+
+    // Create translated field definitions
+    return fields.map(field => {
+      const translations = fieldTranslations[field.name];
+      const translatedLabel = translations?.[language] || field.label;
+
+      return {
+        ...field,
+        label: translatedLabel,
+      };
+    });
+  }
+
+  /**
    * Generate sample Excel file for bulk import
    */
   async generateBulkImportSample(tenantId: string, language: string = 'en'): Promise<Buffer> {
-    const fields = this.getBulkImportFields();
-    
+    const fields = this.getTranslatedFieldDefinitions(language);
+
     return this.bulkImportService.generateSampleExcel({
       entityType: 'employee',
       fields,
