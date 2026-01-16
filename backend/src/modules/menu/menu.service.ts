@@ -4993,7 +4993,7 @@ export class MenuService {
         { name: 'name', label: 'Name', required: true, type: 'string', description: 'Combo meal name' },
         { name: 'description', label: 'Description', required: false, type: 'string', description: 'Combo meal description' },
         { name: 'basePrice', label: 'Base Price', required: true, type: 'number', description: 'Base price', example: '15.00' },
-        { name: 'foodItemIds', label: 'Food Item IDs', required: true, type: 'array', description: 'Comma-separated food item UUIDs' },
+        { name: 'foodItemNames', label: 'Food Item Names', required: false, type: 'array', description: 'Comma-separated food item names', example: 'Pizza,Margherita Pizza' },
         { name: 'menuTypes', label: 'Menu Types', required: false, type: 'array', description: 'Comma-separated menu types', example: 'breakfast,lunch' },
         { name: 'discountPercentage', label: 'Discount Percentage', required: false, type: 'number', description: 'Discount percentage', example: '10' },
         { name: 'displayOrder', label: 'Display Order', required: false, type: 'number', description: 'Display order', example: '0' },
@@ -8854,7 +8854,7 @@ export class MenuService {
     const rows = await this.bulkImportService.parseExcelFile(fileBuffer, config);
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Fetch valid menu types from database dynamically
+    // Fetch valid menu types from database dynamically (from both menus and menu_items tables)
     let menuTypesQuery = supabase
       .from('menus')
       .select('menu_type')
@@ -8875,6 +8875,48 @@ export class MenuService {
       }
     });
 
+    // Also fetch menu types from menu_items table (food items can be assigned to menu types)
+    let menuItemsQuery = supabase
+      .from('menu_items')
+      .select('menu_type')
+      .eq('tenant_id', tenantId);
+    
+    if (branchId) {
+      menuItemsQuery = menuItemsQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    } else {
+      menuItemsQuery = menuItemsQuery.is('branch_id', null);
+    }
+    
+    const { data: existingMenuItems } = await menuItemsQuery;
+    (existingMenuItems || []).forEach(item => {
+      if (item.menu_type) {
+        validMenuTypesFromDb.add(item.menu_type.toLowerCase());
+      }
+    });
+
+    // Batch fetch all food items to create name-to-ID mapping
+    let foodItemQuery = supabase
+      .from('food_items')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      foodItemQuery = foodItemQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    } else {
+      foodItemQuery = foodItemQuery.is('branch_id', null);
+    }
+    
+    const { data: allFoodItems } = await foodItemQuery;
+    const foodItemNameToIdMap = new Map<string, string>();
+    (allFoodItems || []).forEach(item => {
+      const nameKey = item.name.toLowerCase().trim();
+      // If multiple items with same name exist, use the first one found
+      if (!foodItemNameToIdMap.has(nameKey)) {
+        foodItemNameToIdMap.set(nameKey, item.id);
+      }
+    });
+
     // Batch translate all names and descriptions
     const translations = await this.bulkImportService.batchTranslateEntities(
       rows,
@@ -8883,13 +8925,59 @@ export class MenuService {
       tenantId,
     );
 
+    // Batch fetch all existing combo meals to check for duplicates (upsert logic)
+    let existingComboMealsQuery = supabase
+      .from('combo_meals')
+      .select('id, name, branch_id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    if (branchId) {
+      existingComboMealsQuery = existingComboMealsQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    } else {
+      existingComboMealsQuery = existingComboMealsQuery.is('branch_id', null);
+    }
+    
+    const { data: existingComboMeals } = await existingComboMealsQuery;
+    const existingComboMealsMap = new Map<string, string>(); // key: "name|||branch_id" -> combo_meal_id
+    (existingComboMeals || []).forEach(comboMeal => {
+      const branchKey = comboMeal.branch_id || 'null';
+      const nameKey = comboMeal.name.toLowerCase().trim();
+      const key = `${nameKey}|||${branchKey}`;
+      // If multiple combo meals with same name exist, use the first one found
+      if (!existingComboMealsMap.has(key)) {
+        existingComboMealsMap.set(key, comboMeal.id);
+      }
+    });
+
+    // Prepare all combo meal data for batch processing
+    const comboMealDataToProcess: Array<{
+      index: number;
+      row: any;
+      comboMealData: any;
+      normalizedMenuTypes: string[];
+      foodItemIds: string[];
+      existingComboMealId?: string;
+    }> = [];
+
     let success = 0;
     let failed = 0;
     const errors: string[] = [];
 
+    // Validate and prepare all rows first
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       try {
+        // Validate required fields
+        if (!row.name || row.name.trim() === '') {
+          throw new Error('Name is required');
+        }
+
+        // Validate base price is required
+        if (row.basePrice === undefined || row.basePrice === null) {
+          throw new Error('Base price is required');
+        }
+
         // Validate menu types if provided
         let normalizedMenuTypes: string[] = [];
         if (row.menuTypes !== undefined && row.menuTypes !== null && row.menuTypes !== '') {
@@ -8921,6 +9009,37 @@ export class MenuService {
           }
         }
 
+        // Parse food item names and convert to IDs
+        let foodItemIds: string[] = [];
+        if (row.foodItemNames !== undefined && row.foodItemNames !== null && row.foodItemNames !== '') {
+          // Convert to array if it's a string (comma-separated)
+          let foodItemNamesArray: string[] = [];
+          if (Array.isArray(row.foodItemNames)) {
+            foodItemNamesArray = row.foodItemNames;
+          } else if (typeof row.foodItemNames === 'string') {
+            foodItemNamesArray = row.foodItemNames.split(',').map(n => n.trim()).filter(n => n);
+          }
+          
+          if (foodItemNamesArray.length > 0) {
+            const invalidNames: string[] = [];
+            
+            for (const foodItemName of foodItemNamesArray) {
+              const trimmedName = String(foodItemName).trim().toLowerCase();
+              const foodItemId = foodItemNameToIdMap.get(trimmedName);
+              if (foodItemId) {
+                foodItemIds.push(foodItemId);
+              } else {
+                invalidNames.push(String(foodItemName));
+              }
+            }
+            
+            // STRICT: If ANY food item name is invalid, fail the entire row
+            if (invalidNames.length > 0) {
+              throw new Error(`Food items not found: ${invalidNames.join(', ')}`);
+            }
+          }
+        }
+
         const comboMealData: any = {
           tenant_id: tenantId,
           name: row.name,
@@ -8929,70 +9048,204 @@ export class MenuService {
           discount_percentage: row.discountPercentage || null,
           display_order: row.displayOrder || 0,
           is_active: row.isActive !== undefined ? row.isActive : true,
+          menu_types: normalizedMenuTypes, // Store as JSONB array column
+          food_item_ids: foodItemIds, // Store as JSONB array column
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         };
 
         if (branchId) {
           comboMealData.branch_id = branchId;
         }
 
-        const { data: comboMeal, error } = await supabase
-          .from('combo_meals')
-          .insert(comboMealData)
-          .select()
-          .single();
+        // Check if combo meal already exists (upsert logic)
+        const branchKey = branchId || 'null';
+        const nameKey = row.name.toLowerCase().trim();
+        const comboMealKey = `${nameKey}|||${branchKey}`;
+        const existingComboMealId = existingComboMealsMap.get(comboMealKey);
 
-        if (error) {
-          throw new Error(error.message);
-        }
-
-        // Handle food items
-        if (row.foodItemIds && Array.isArray(row.foodItemIds) && row.foodItemIds.length > 0) {
-          const foodItemData = row.foodItemIds.map((foodItemId: string) => ({
-            combo_meal_id: comboMeal.id,
-            food_item_id: foodItemId,
-          }));
-          await supabase.from('combo_meal_food_items').insert(foodItemData);
-        }
-
-        // Handle menu types (now guaranteed to be valid)
-        if (normalizedMenuTypes.length > 0) {
-          const menuTypeData = normalizedMenuTypes.map((menuType: string) => ({
-            combo_meal_id: comboMeal.id,
-            menu_type: menuType,
-          }));
-          await supabase.from('combo_meal_menu_types').insert(menuTypeData);
-        }
-
-        // Store pre-translated translations (already translated in batch)
-        const nameTranslations = translations.get('name')?.get(i);
-        const descTranslations = translations.get('description')?.get(i);
-
-        if (nameTranslations || descTranslations) {
-          const fieldsToTranslate = [
-            { fieldName: 'name', text: row.name },
-            ...(row.description ? [{ fieldName: 'description', text: row.description }] : []),
-          ];
-
-          const translationsMap: { [fieldName: string]: any } = {};
-          if (nameTranslations) translationsMap['name'] = nameTranslations;
-          if (descTranslations) translationsMap['description'] = descTranslations;
-
-          await this.translationService.storePreTranslatedBatch(
-            'combo_meal',
-            comboMeal.id,
-            fieldsToTranslate,
-            translationsMap,
-            undefined,
-            tenantId,
-            'en',
-          );
-        }
-
-        success++;
-      } catch (error) {
+        comboMealDataToProcess.push({
+          index: i,
+          row,
+          comboMealData,
+          normalizedMenuTypes,
+          foodItemIds,
+          existingComboMealId,
+        });
+      } catch (error: any) {
         failed++;
         errors.push(`Row ${i + 1}: ${error.message}`);
       }
+    }
+
+    // Separate combo meals into updates and inserts (upsert logic)
+    const comboMealsToUpdate: Array<{ id: string; data: any; index: number; row: any; foodItemIds: string[] }> = [];
+    const comboMealsToInsert: Array<{ data: any; index: number; row: any; foodItemIds: string[] }> = [];
+
+    comboMealDataToProcess.forEach(({ existingComboMealId, comboMealData, index, row, foodItemIds }) => {
+      // Remove created_at from update data (don't update creation timestamp)
+      const { created_at, ...updateData } = comboMealData;
+      updateData.updated_at = new Date().toISOString();
+
+      if (existingComboMealId) {
+        comboMealsToUpdate.push({ id: existingComboMealId, data: updateData, index, row, foodItemIds });
+      } else {
+        comboMealsToInsert.push({ data: comboMealData, index, row, foodItemIds });
+      }
+    });
+
+    const processedComboMeals: Array<{ id: string; index: number; row: any; foodItemIds: string[] }> = [];
+
+    // Batch update existing combo meals
+    if (comboMealsToUpdate.length > 0) {
+      const updatePromises = comboMealsToUpdate.map(({ id, data }) =>
+        supabase.from('combo_meals').update(data).eq('id', id).select('id').single()
+      );
+      const updateResults = await Promise.allSettled(updatePromises);
+      
+      updateResults.forEach((result, idx) => {
+        if (result.status === 'fulfilled' && result.value.data) {
+          processedComboMeals.push({
+            id: result.value.data.id,
+            index: comboMealsToUpdate[idx].index,
+            row: comboMealsToUpdate[idx].row,
+            foodItemIds: comboMealsToUpdate[idx].foodItemIds,
+          });
+          success++;
+        } else {
+          failed++;
+          errors.push(`Row ${comboMealsToUpdate[idx].index + 1}: ${result.status === 'rejected' ? result.reason : result.value.error?.message || 'Update failed'}`);
+        }
+      });
+    }
+
+    // Batch insert new combo meals
+    if (comboMealsToInsert.length > 0) {
+      const insertData = comboMealsToInsert.map(({ data }) => data);
+      const { data: insertedComboMeals, error: insertError } = await supabase
+        .from('combo_meals')
+        .insert(insertData)
+        .select('id');
+
+      if (insertError) {
+        // If batch insert fails, try individual inserts to get better error messages
+        for (const { index, data, foodItemIds } of comboMealsToInsert) {
+          try {
+            const { data: comboMeal, error: singleError } = await supabase
+              .from('combo_meals')
+              .insert(data)
+              .select('id')
+              .single();
+
+            if (singleError) {
+              failed++;
+              errors.push(`Row ${index + 1}: ${singleError.message}`);
+            } else {
+              processedComboMeals.push({ id: comboMeal.id, index, row: comboMealsToInsert.find(c => c.index === index)?.row, foodItemIds });
+              success++;
+            }
+          } catch (error: any) {
+            failed++;
+            errors.push(`Row ${index + 1}: ${error.message}`);
+          }
+        }
+      } else {
+        // Batch insert succeeded
+        (insertedComboMeals || []).forEach((comboMeal, idx) => {
+          processedComboMeals.push({
+            id: comboMeal.id,
+            index: comboMealsToInsert[idx].index,
+            row: comboMealsToInsert[idx].row,
+            foodItemIds: comboMealsToInsert[idx].foodItemIds,
+          });
+          success++;
+        });
+      }
+    }
+
+    // Handle combo_meal_food_items junction table (if food items are provided)
+    // Note: The food_item_ids are already stored in the JSONB column, but we may also need to maintain the junction table
+    // Check if combo_meal_food_items table exists and is used
+    const comboMealsWithFoodItems = processedComboMeals.filter(c => c.foodItemIds && c.foodItemIds.length > 0);
+    if (comboMealsWithFoodItems.length > 0) {
+      // Delete existing food items for updated combo meals
+      const updatedComboMealIds = comboMealsToUpdate.map(c => c.id);
+      if (updatedComboMealIds.length > 0) {
+        await supabase
+          .from('combo_meal_food_items')
+          .delete()
+          .in('combo_meal_id', updatedComboMealIds);
+      }
+
+      // Batch insert food items for all combo meals
+      const foodItemData: Array<{ combo_meal_id: string; food_item_id: string }> = [];
+      comboMealsWithFoodItems.forEach(({ id, foodItemIds }) => {
+        foodItemIds.forEach(foodItemId => {
+          foodItemData.push({
+            combo_meal_id: id,
+            food_item_id: foodItemId,
+          });
+        });
+      });
+
+      if (foodItemData.length > 0) {
+        await supabase.from('combo_meal_food_items').insert(foodItemData);
+      }
+    }
+
+    // Prepare translations for batch storage (asynchronously)
+    const translationBatches: Array<{
+      comboMealId: string;
+      index: number;
+      row: any;
+      nameTranslations?: any;
+      descTranslations?: any;
+    }> = [];
+
+    processedComboMeals.forEach(({ id, index, row }) => {
+      const nameTranslations = translations.get('name')?.get(index);
+      const descTranslations = translations.get('description')?.get(index);
+
+      if (nameTranslations || descTranslations) {
+        translationBatches.push({
+          comboMealId: id,
+          index,
+          row,
+          nameTranslations,
+          descTranslations,
+        });
+      }
+    });
+
+    // Store translations asynchronously after response (non-blocking)
+    if (translationBatches.length > 0) {
+      setImmediate(async () => {
+        try {
+          const translationPromises = translationBatches.map(({ comboMealId, row, nameTranslations, descTranslations }) => {
+            const fieldsToTranslate = [
+              { fieldName: 'name', text: row.name },
+              ...(row.description ? [{ fieldName: 'description', text: row.description }] : []),
+            ];
+
+            const translationsMap: { [fieldName: string]: any } = {};
+            if (nameTranslations) translationsMap['name'] = nameTranslations;
+            if (descTranslations) translationsMap['description'] = descTranslations;
+
+            return this.translationService.storePreTranslatedBatch(
+              'combo_meal',
+              comboMealId,
+              fieldsToTranslate,
+              translationsMap,
+              undefined,
+              tenantId,
+              'en',
+            );
+          });
+          await Promise.allSettled(translationPromises);
+        } catch (error) {
+          console.error('Failed to store combo meal translations asynchronously:', error);
+        }
+      });
     }
 
     return { success, failed, errors };
