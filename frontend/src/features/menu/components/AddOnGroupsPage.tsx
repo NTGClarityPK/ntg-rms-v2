@@ -366,11 +366,11 @@ export function AddOnGroupsPage() {
       // Notify other tabs that add-on groups have been updated
       notifyMenuDataUpdate('add-on-groups-updated');
     } catch (err: any) {
-      const errorMsg = err.response?.data?.message || err.message || 'Failed to save add-on group';
-      notifications.show({
-        title: t('common.error' as any, language) || 'Error',
-        message: errorMsg,
-        color: errorColor,
+      const errorMsg = handleApiError(err, {
+        defaultMessage: 'Failed to save add-on group',
+        language,
+        errorColor,
+        showNotification: true,
       });
       // Reopen modal on error
       if (editingGroup) {
@@ -455,11 +455,11 @@ export function AddOnGroupsPage() {
 
       loadAddOns(selectedGroup.id);
     } catch (err: any) {
-      const errorMsg = err.response?.data?.message || err.message || 'Failed to save add-on';
-      notifications.show({
-        title: t('common.error' as any, language) || 'Error',
-        message: errorMsg,
-        color: errorColor,
+      handleApiError(err, {
+        defaultMessage: 'Failed to save add-on',
+        language,
+        errorColor,
+        showNotification: true,
       });
     } finally {
       setSubmittingAddOn(false);

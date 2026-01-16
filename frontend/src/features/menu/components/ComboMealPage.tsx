@@ -51,6 +51,7 @@ import { PaginationControls } from '@/components/common/PaginationControls';
 import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
 import { BulkImportModal } from '@/components/common/BulkImportModal';
+import { handleApiError } from '@/shared/utils/error-handler';
 
 export function ComboMealPage() {
   const { language } = useLanguageStore();
@@ -307,11 +308,11 @@ export function ComboMealPage() {
         loadData();
         notifyMenuDataUpdate('combo-meals-updated');
       } catch (err: any) {
-        const errorMsg = err.response?.data?.message || err.message || 'Failed to save combo meal';
-        notifications.show({
-          title: t('common.error' as any, language) || 'Error',
-          message: errorMsg,
-          color: errorColor,
+        handleApiError(err, {
+          defaultMessage: 'Failed to save combo meal',
+          language,
+          errorColor,
+          showNotification: true,
         });
       }
     })();
@@ -337,10 +338,11 @@ export function ComboMealPage() {
           loadData();
           notifyMenuDataUpdate('combo-meals-updated');
         } catch (err: any) {
-          notifications.show({
-            title: t('common.error' as any, language) || 'Error',
-            message: err.message || 'Failed to delete combo meal',
-            color: errorColor,
+          handleApiError(err, {
+            defaultMessage: 'Failed to delete combo meal',
+            language,
+            errorColor,
+            showNotification: true,
           });
         }
       },

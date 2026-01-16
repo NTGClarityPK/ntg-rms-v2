@@ -254,13 +254,13 @@ export function CategoriesPage() {
       // Also notify food items tab since it depends on categories
       notifyMenuDataUpdate('food-items-updated');
     } catch (err: any) {
-      const errorMsg = err.response?.data?.message || err.message || 'Failed to save category';
-      setError(errorMsg);
-      notifications.show({
-        title: t('common.error' as any, language) || 'Error',
-        message: errorMsg,
-        color: errorColor,
+      const errorMsg = handleApiError(err, {
+        defaultMessage: 'Failed to save category',
+        language,
+        errorColor,
+        showNotification: true,
       });
+      setError(errorMsg);
     } finally {
       setSubmitting(false);
     }

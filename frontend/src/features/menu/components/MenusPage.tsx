@@ -374,11 +374,11 @@ export function MenusPage() {
       loadData();
       notifyMenuDataUpdate('menus-updated');
     } catch (err: any) {
-      const errorMsg = err.response?.data?.message || err.message || 'Failed to create menu';
-      notifications.show({
-        title: t('common.error' as any, language) || 'Error',
-        message: errorMsg,
-        color: errorColor,
+      handleApiError(err, {
+        defaultMessage: 'Failed to create menu',
+        language,
+        errorColor,
+        showNotification: true,
       });
       
       // Remove pending menu skeleton on error
@@ -417,11 +417,11 @@ export function MenusPage() {
           notifyMenuDataUpdate('menus-updated');
         } catch (err: any) {
           setDeletingMenuType(null);
-          const errorMsg = err.response?.data?.message || err.message || 'Failed to delete menu';
-          notifications.show({
-            title: t('common.error' as any, language) || 'Error',
-            message: errorMsg,
-            color: errorColor,
+          handleApiError(err, {
+            defaultMessage: 'Failed to delete menu',
+            language,
+            errorColor,
+            showNotification: true,
           });
         }
       },

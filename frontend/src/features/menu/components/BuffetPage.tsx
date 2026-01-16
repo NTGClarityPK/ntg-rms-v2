@@ -52,6 +52,7 @@ import { PaginationControls } from '@/components/common/PaginationControls';
 import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
 import { isPaginatedResponse } from '@/lib/types/pagination.types';
 import { BulkImportModal } from '@/components/common/BulkImportModal';
+import { handleApiError } from '@/shared/utils/error-handler';
 
 export function BuffetPage() {
   const { language } = useLanguageStore();
@@ -333,11 +334,11 @@ export function BuffetPage() {
       loadData();
       notifyMenuDataUpdate('buffets-updated');
     } catch (err: any) {
-      const errorMsg = err.response?.data?.message || err.message || 'Failed to save buffet';
-      notifications.show({
-        title: t('common.error' as any, language) || 'Error',
-        message: errorMsg,
-        color: errorColor,
+      handleApiError(err, {
+        defaultMessage: 'Failed to save buffet',
+        language,
+        errorColor,
+        showNotification: true,
       });
       
       // Remove pending buffet skeleton and updating state on error
@@ -371,10 +372,11 @@ export function BuffetPage() {
           notifyMenuDataUpdate('buffets-updated');
         } catch (err: any) {
           setDeletingBuffetId(null);
-          notifications.show({
-            title: t('common.error' as any, language) || 'Error',
-            message: err.message || 'Failed to delete buffet',
-            color: errorColor,
+          handleApiError(err, {
+            defaultMessage: 'Failed to delete buffet',
+            language,
+            errorColor,
+            showNotification: true,
           });
         }
       },

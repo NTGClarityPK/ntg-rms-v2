@@ -48,6 +48,7 @@ import { usePagination } from '@/lib/hooks/use-pagination';
 import { PaginationControls } from '@/components/common/PaginationControls';
 import { DEFAULT_PAGINATION } from '@/shared/constants/app.constants';
 import { BulkImportModal } from '@/components/common/BulkImportModal';
+import { handleApiError } from '@/shared/utils/error-handler';
 
 export function VariationGroupsPage() {
   const { language } = useLanguageStore();
@@ -308,11 +309,11 @@ export function VariationGroupsPage() {
       // Notify other tabs that variation groups have been updated
       notifyMenuDataUpdate('variation-groups-updated');
     } catch (err: any) {
-      const errorMsg = err.response?.data?.message || err.message || 'Failed to save variation group';
-      notifications.show({
-        title: t('common.error' as any, language) || 'Error',
-        message: errorMsg,
-        color: errorColor,
+      const errorMsg = handleApiError(err, {
+        defaultMessage: 'Failed to save variation group',
+        language,
+        errorColor,
+        showNotification: true,
       });
       // Reopen modal on error
       if (editingGroup) {
@@ -381,11 +382,11 @@ export function VariationGroupsPage() {
         color: successColor,
       });
     } catch (err: any) {
-      const errorMsg = err.response?.data?.message || err.message || 'Failed to save variation';
-      notifications.show({
-        title: t('common.error' as any, language) || 'Error',
-        message: errorMsg,
-        color: errorColor,
+      handleApiError(err, {
+        defaultMessage: 'Failed to save variation',
+        language,
+        errorColor,
+        showNotification: true,
       });
       // Reopen modal on error
       if (editingVariation) {
@@ -656,15 +657,7 @@ export function VariationGroupsPage() {
                   {selectedGroup.name}
                 </Title>
                 <Group gap="xs">
-                  <Button
-                    size="xs"
-                    leftSection={<IconFileSpreadsheet size={14} />}
-                    onClick={() => setBulkImportOpened(true)}
-                    variant="light"
-                    disabled={loadingVariations}
-                  >
-                    {t('bulkImport.bulkImport', language) || 'Bulk Import'}
-                  </Button>
+
                   <Button
                     size="xs"
                     leftSection={<IconPlus size={14} />}

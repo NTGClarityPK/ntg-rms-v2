@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   InternalServerErrorException,
+  ConflictException,
 } from '@nestjs/common';
 import { SupabaseService } from '../../database/supabase.service';
 import { RolesService } from '../roles/roles.service';
@@ -361,6 +362,19 @@ export class EmployeesService {
       throw new BadRequestException('Email already exists');
     }
 
+    // Check if employee name already exists for this tenant
+    const { data: existingEmployeeByName } = await supabase
+      .from('users')
+      .select('id')
+      .eq('name', createDto.name.trim())
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (existingEmployeeByName) {
+      throw new ConflictException('An employee with this name already exists in this tenant');
+    }
+
     // Generate employee ID if not provided
     const employeeId = createDto.employeeId || `EMP-${Date.now()}`;
 
@@ -524,6 +538,22 @@ export class EmployeesService {
     const currentEmployee = await this.getEmployeeById(tenantId, employeeId, 'en');
 
     // Email updates are disabled - email cannot be changed after creation
+
+    // Check if name is being changed and if new name already exists
+    if (updateDto.name && updateDto.name.trim() !== '' && updateDto.name.trim() !== currentEmployee.name) {
+      const { data: nameExists } = await supabase
+        .from('users')
+        .select('id')
+        .eq('name', updateDto.name.trim())
+        .neq('id', employeeId)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (nameExists) {
+        throw new ConflictException('An employee with this name already exists in this tenant');
+      }
+    }
 
     // Build update object
     const updateData: any = {

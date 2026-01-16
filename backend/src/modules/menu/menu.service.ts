@@ -269,6 +269,20 @@ export class MenuService {
   async createCategory(tenantId: string, createDto: CreateCategoryDto, branchId?: string, skipTranslations = false) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
+    // Check if category name already exists for this tenant
+    let nameCheckQuery = supabase
+      .from('categories')
+      .select('id')
+      .eq('name', createDto.name.trim())
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    const { data: existingCategoryByName } = await nameCheckQuery.maybeSingle();
+
+    if (existingCategoryByName) {
+      throw new ConflictException('A category with this name already exists in this tenant');
+    }
+
     // Validate parent category if provided
     if (createDto.parentId) {
       const { data: parent } = await supabase
@@ -395,6 +409,22 @@ export class MenuService {
 
     // Get current category to check if name/description changed
     const currentCategory = await this.getCategoryById(tenantId, id);
+
+    // Check if name is being changed and if new name already exists
+    if (updateDto.name && updateDto.name.trim() !== '' && updateDto.name.trim() !== currentCategory.name) {
+      const { data: nameExists } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('name', updateDto.name.trim())
+        .neq('id', id)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (nameExists) {
+        throw new ConflictException('A category with this name already exists in this tenant');
+      }
+    }
 
     const { data: category, error } = await supabase
       .from('categories')
@@ -976,6 +1006,20 @@ export class MenuService {
       throw new NotFoundException('Category not found');
     }
 
+    // Check if food item name already exists for this tenant
+    let nameCheckQuery = supabase
+      .from('food_items')
+      .select('id')
+      .eq('name', createDto.name.trim())
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    const { data: existingFoodItemByName } = await nameCheckQuery.maybeSingle();
+
+    if (existingFoodItemByName) {
+      throw new ConflictException('A food item with this name already exists in this tenant');
+    }
+
     // Create food item
     const foodItemData: any = {
       tenant_id: tenantId,
@@ -1213,6 +1257,22 @@ export class MenuService {
 
     const isActivating = updateDto.isActive === true && currentFoodItem?.is_active !== true;
     const isDeactivating = updateDto.isActive === false && currentFoodItem?.is_active !== false;
+
+    // Check if name is being changed and if new name already exists
+    if (updateDto.name && updateDto.name.trim() !== '' && updateDto.name.trim() !== currentFoodItem?.name) {
+      const { data: nameExists } = await supabase
+        .from('food_items')
+        .select('id')
+        .eq('name', updateDto.name.trim())
+        .neq('id', id)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (nameExists) {
+        throw new ConflictException('A food item with this name already exists in this tenant');
+      }
+    }
 
     // Update food item
     const updateData: any = {};
@@ -1814,6 +1874,20 @@ export class MenuService {
   async createAddOnGroup(tenantId: string, createDto: CreateAddOnGroupDto, branchId?: string, skipTranslations = false) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
+    // Check if add-on group name already exists for this tenant
+    let nameCheckQuery = supabase
+      .from('add_on_groups')
+      .select('id')
+      .eq('name', createDto.name.trim())
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    const { data: existingAddOnGroupByName } = await nameCheckQuery.maybeSingle();
+
+    if (existingAddOnGroupByName) {
+      throw new ConflictException('An add-on group with this name already exists in this tenant');
+    }
+
     // Auto-set maxSelections to 1 if selectionType is single
     const maxSelections = createDto.selectionType === 'single' 
       ? 1 
@@ -1903,6 +1977,22 @@ export class MenuService {
       .select('selection_type, is_required, name')
       .eq('id', id)
       .single();
+
+    // Check if name is being changed and if new name already exists
+    if (updateDto.name && updateDto.name.trim() !== '' && updateDto.name.trim() !== current?.name) {
+      const { data: nameExists } = await supabase
+        .from('add_on_groups')
+        .select('id')
+        .eq('name', updateDto.name.trim())
+        .neq('id', id)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (nameExists) {
+        throw new ConflictException('An add-on group with this name already exists in this tenant');
+      }
+    }
 
     const updateData: any = {};
     if (updateDto.name !== undefined) updateData.name = updateDto.name.trim();
@@ -2159,22 +2249,47 @@ export class MenuService {
       throw new NotFoundException('Add-on group not found');
     }
 
-    // Use PostgreSQL function to insert add-on, bypassing PostgREST schema validation
-    // This fixes the "Could not find the 'tenant_id' column" schema cache error
-    const { data: insertedAddOn, error: insertError } = await supabase.rpc('insert_addon', {
-      p_add_on_group_id: createDto.addOnGroupId,
-      p_name: createDto.name,
-      p_price: createDto.price || 0,
-      p_is_active: createDto.isActive !== undefined ? createDto.isActive : true,
-      p_display_order: createDto.displayOrder || 0,
-    });
+    // Check if add-on name already exists for this tenant
+    // We need to check across all add-on groups in the tenant
+    const { data: allAddOnGroups } = await supabase
+      .from('add_on_groups')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
 
-    if (insertError || !insertedAddOn || insertedAddOn.length === 0) {
-      const errorMsg = insertError?.message || String(insertError) || 'Unknown error';
-      throw new BadRequestException(`Failed to create add-on: ${errorMsg}`);
+    if (allAddOnGroups && allAddOnGroups.length > 0) {
+      const addOnGroupIds = allAddOnGroups.map(g => g.id);
+      const { data: existingAddOnByName } = await supabase
+        .from('add_ons')
+        .select('id')
+        .eq('name', createDto.name.trim())
+        .in('add_on_group_id', addOnGroupIds)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (existingAddOnByName) {
+        throw new ConflictException('An add-on with this name already exists in this tenant');
+      }
     }
 
-    const addOn = insertedAddOn[0];
+    // Insert add-on directly (tenant_id is now in the table, so we can use direct insert)
+    const { data: addOn, error: insertError } = await supabase
+      .from('add_ons')
+      .insert({
+        add_on_group_id: createDto.addOnGroupId,
+        tenant_id: tenantId,
+        name: createDto.name.trim(),
+        price: createDto.price || 0,
+        is_active: createDto.isActive !== undefined ? createDto.isActive : true,
+        display_order: createDto.displayOrder || 0,
+      })
+      .select()
+      .single();
+
+    if (insertError || !addOn) {
+      const errorMsg = insertError?.message || 'Unknown error';
+      throw new BadRequestException(`Failed to create add-on: ${errorMsg}`);
+    }
 
     // Create translations for name asynchronously (fire and forget)
     // Don't block the response - translations will be processed in the background
@@ -2230,6 +2345,31 @@ export class MenuService {
 
     if (!existing) {
       throw new NotFoundException('Add-on not found');
+    }
+
+    // Check if name is being changed and if new name already exists in this tenant
+    if (updateDto.name && updateDto.name.trim() !== '' && updateDto.name.trim() !== existing.name) {
+      const { data: allAddOnGroups } = await supabase
+        .from('add_on_groups')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null);
+
+      if (allAddOnGroups && allAddOnGroups.length > 0) {
+        const addOnGroupIds = allAddOnGroups.map(g => g.id);
+        const { data: nameExists } = await supabase
+          .from('add_ons')
+          .select('id')
+          .eq('name', updateDto.name.trim())
+          .neq('id', id)
+          .in('add_on_group_id', addOnGroupIds)
+          .is('deleted_at', null)
+          .maybeSingle();
+
+        if (nameExists) {
+          throw new ConflictException('An add-on with this name already exists in this tenant');
+        }
+      }
     }
 
     const updateData: any = {};
@@ -2942,6 +3082,27 @@ export class MenuService {
       throw new ConflictException('Menu type already exists for this branch');
     }
 
+    // Check if menu name already exists for this tenant
+    if (createDto.name && createDto.name.trim() !== '') {
+      let nameCheckQuery = supabase
+        .from('menus')
+        .select('id')
+        .eq('name', createDto.name.trim())
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null);
+      
+      if (branchId) {
+        nameCheckQuery = nameCheckQuery.eq('branch_id', branchId);
+      } else {
+        nameCheckQuery = nameCheckQuery.is('branch_id', null);
+      }
+      
+      const { data: existingMenuByName } = await nameCheckQuery.maybeSingle();
+
+      if (existingMenuByName) {
+        throw new ConflictException('A menu with this name already exists in this tenant');
+      }
+    }
 
     // Store menu name in menus table (create table if it doesn't exist - Supabase will handle it)
     // Use manual check-then-update-or-insert since partial unique indexes don't work with upsert onConflict
@@ -2974,6 +3135,36 @@ export class MenuService {
       let menuNameError;
       if (existingMenu && existingMenu.length > 0) {
         menuId = existingMenu[0].id;
+        
+        // Check if name is being changed and if new name already exists
+        const { data: currentMenu } = await supabase
+          .from('menus')
+          .select('name')
+          .eq('id', existingMenu[0].id)
+          .single();
+        
+        if (currentMenu && createDto.name.trim() !== currentMenu.name) {
+          let nameCheckQuery = supabase
+            .from('menus')
+            .select('id')
+            .eq('name', createDto.name.trim())
+            .neq('id', existingMenu[0].id)
+            .eq('tenant_id', tenantId)
+            .is('deleted_at', null);
+          
+          if (branchId) {
+            nameCheckQuery = nameCheckQuery.eq('branch_id', branchId);
+          } else {
+            nameCheckQuery = nameCheckQuery.is('branch_id', null);
+          }
+          
+          const { data: nameConflict } = await nameCheckQuery.maybeSingle();
+
+          if (nameConflict) {
+            throw new ConflictException('A menu with this name already exists in this tenant');
+          }
+        }
+        
         // Update existing menu
         const { error: updateError } = await supabase
           .from('menus')
@@ -4405,6 +4596,20 @@ export class MenuService {
   async createVariationGroup(tenantId: string, createDto: CreateVariationGroupDto, branchId?: string, skipTranslations = false) {
     const supabase = this.supabaseService.getServiceRoleClient();
 
+    // Check if variation group name already exists for this tenant
+    let nameCheckQuery = supabase
+      .from('variation_groups')
+      .select('id')
+      .eq('name', createDto.name.trim())
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    const { data: existingVariationGroupByName } = await nameCheckQuery.maybeSingle();
+
+    if (existingVariationGroupByName) {
+      throw new ConflictException('A variation group with this name already exists in this tenant');
+    }
+
     const variationGroupData: any = {
         tenant_id: tenantId,
         name: createDto.name.trim(),
@@ -4462,6 +4667,22 @@ export class MenuService {
 
     if (!existing) {
       throw new NotFoundException('Variation group not found');
+    }
+
+    // Check if name is being changed and if new name already exists
+    if (updateDto.name && updateDto.name.trim() !== '' && updateDto.name.trim() !== existing.name) {
+      const { data: nameExists } = await supabase
+        .from('variation_groups')
+        .select('id')
+        .eq('name', updateDto.name.trim())
+        .neq('id', id)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (nameExists) {
+        throw new ConflictException('A variation group with this name already exists in this tenant');
+      }
     }
 
     const updateData: any = {};
@@ -4672,10 +4893,34 @@ export class MenuService {
       throw new NotFoundException('Variation group not found');
     }
 
+    // Check if variation name already exists for this tenant
+    // We need to check across all variation groups in the tenant
+    const { data: allVariationGroups } = await supabase
+      .from('variation_groups')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+
+    if (allVariationGroups && allVariationGroups.length > 0) {
+      const variationGroupIds = allVariationGroups.map(g => g.id);
+      const { data: existingVariationByName } = await supabase
+        .from('variations')
+        .select('id')
+        .eq('name', createDto.name.trim())
+        .in('variation_group_id', variationGroupIds)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (existingVariationByName) {
+        throw new ConflictException('A variation with this name already exists in this tenant');
+      }
+    }
+
     const { data: variation, error } = await supabase
       .from('variations')
       .insert({
         variation_group_id: variationGroupId,
+        tenant_id: tenantId,
         name: createDto.name.trim(),
         recipe_multiplier: createDto.recipeMultiplier || 1.0,
         pricing_adjustment: createDto.pricingAdjustment || 0,
@@ -4741,6 +4986,31 @@ export class MenuService {
 
     if (!existing) {
       throw new NotFoundException('Variation not found');
+    }
+
+    // Check if name is being changed and if new name already exists in this tenant
+    if (updateDto.name && updateDto.name.trim() !== '' && updateDto.name.trim() !== existing.name) {
+      const { data: allVariationGroups } = await supabase
+        .from('variation_groups')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null);
+
+      if (allVariationGroups && allVariationGroups.length > 0) {
+        const variationGroupIds = allVariationGroups.map(g => g.id);
+        const { data: nameExists } = await supabase
+          .from('variations')
+          .select('id')
+          .eq('name', updateDto.name.trim())
+          .neq('id', id)
+          .in('variation_group_id', variationGroupIds)
+          .is('deleted_at', null)
+          .maybeSingle();
+
+        if (nameExists) {
+          throw new ConflictException('A variation with this name already exists in this tenant');
+        }
+      }
     }
 
     const updateData: any = {};

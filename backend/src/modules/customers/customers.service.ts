@@ -442,6 +442,20 @@ export class CustomersService {
       throw new BadRequestException('Customer with this phone number already exists');
     }
 
+    // Check if customer name already exists for this tenant
+    let nameCheckQuery = supabase
+      .from('customers')
+      .select('id')
+      .eq('name', createDto.name.trim())
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+    
+    const { data: existingCustomerByName } = await nameCheckQuery.maybeSingle();
+
+    if (existingCustomerByName) {
+      throw new ConflictException('A customer with this name already exists in this tenant');
+    }
+
     // Create customer
     const customerData: any = {
       tenant_id: tenantId,
@@ -591,6 +605,22 @@ export class CustomersService {
 
       if (phoneExists) {
         throw new BadRequestException('Phone number already exists');
+      }
+    }
+
+    // Check if name is being changed and if new name already exists
+    if (updateDto.name && updateDto.name.trim() !== '' && updateDto.name.trim() !== currentCustomer.name) {
+      const { data: nameExists } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('name', updateDto.name.trim())
+        .neq('id', customerId)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (nameExists) {
+        throw new ConflictException('A customer with this name already exists in this tenant');
       }
     }
 
