@@ -105,9 +105,10 @@ export const employeesApi = {
   deleteEmployee: baseEmployeesApi.delete,
 
   // Bulk Import
-  downloadBulkImportSample: async (): Promise<Blob> => {
+  downloadBulkImportSample: async (language: string = 'en'): Promise<Blob> => {
     const { data } = await apiClient.get(`${API_ENDPOINTS.EMPLOYEES}/bulk-import/sample`, {
       responseType: 'blob',
+      params: { language },
     });
     return data;
   },
@@ -120,6 +121,16 @@ export const employeesApi = {
         'Content-Type': 'multipart/form-data',
       },
       timeout: API_TIMEOUT_CONFIG.BULK_IMPORT,
+    });
+    return data;
+  },
+
+  // Export
+  exportEmployees: async (language?: string): Promise<Blob> => {
+    const params = new URLSearchParams();
+    if (language) params.append('language', language);
+    const { data } = await apiClient.get(`${API_ENDPOINTS.EMPLOYEES}/export?${params.toString()}`, {
+      responseType: 'blob',
     });
     return data;
   },

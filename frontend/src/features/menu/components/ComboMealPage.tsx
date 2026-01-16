@@ -34,6 +34,7 @@ import {
   IconToolsKitchen2,
   IconAlertCircle,
   IconFileSpreadsheet,
+  IconDownload,
 } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
@@ -42,7 +43,7 @@ import { useLanguageStore } from '@/lib/store/language-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useBranchStore } from '@/lib/store/branch-store';
 import { t } from '@/lib/utils/translations';
-import { useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
+import { useNotificationColors, useErrorColor, useSuccessColor } from '@/lib/hooks/use-theme-colors';
 import { useThemeColor } from '@/lib/hooks/use-theme-color';
 import { getBadgeColorForText } from '@/lib/utils/theme';
 import { onMenuDataUpdate, notifyMenuDataUpdate } from '@/lib/utils/menu-events';
@@ -57,6 +58,7 @@ export function ComboMealPage() {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
   const { selectedBranchId } = useBranchStore();
+  const notificationColors = useNotificationColors();
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
@@ -363,6 +365,36 @@ export function ComboMealPage() {
       <Group justify="space-between" mb="xl">
         <Title order={2}>{t('menu.comboMealManagement', language)}</Title>
         <Group gap="xs">
+          <Button
+            leftSection={<IconDownload size={16} />}
+            onClick={async () => {
+              try {
+                const blob = await menuApi.exportEntities('comboMeal', selectedBranchId || undefined, language);
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `combo-meals-export-${new Date().toISOString().split('T')[0]}.xlsx`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+                notifications.show({
+                  title: t('common.success' as any, language) || 'Success',
+                  message: t('bulkImport.exportSuccess', language) || 'Data exported successfully',
+                  color: notificationColors.success,
+                });
+              } catch (error: any) {
+                handleApiError(error, {
+                  defaultMessage: 'Failed to export combo meals',
+                  language,
+                  errorColor: notificationColors.error,
+                });
+              }
+            }}
+            variant="light"
+          >
+            {t('bulkImport.export', language) || 'Export'}
+          </Button>
           <Button
             leftSection={<IconFileSpreadsheet size={16} />}
             onClick={() => setBulkImportOpened(true)}
@@ -737,7 +769,7 @@ export function ComboMealPage() {
         entityType="comboMeal"
         entityName={t('menu.comboMeals', language) || 'Combo Meals'}
         downloadSample={async () => {
-          return await menuApi.downloadBulkImportSample('comboMeal');
+          return await menuApi.downloadBulkImportSample('comboMeal', language);
         }}
         uploadFile={async (file: File) => {
           return await menuApi.bulkImportComboMeals(file, selectedBranchId || undefined);

@@ -34,6 +34,7 @@ import {
   IconCircleCheck,
   IconCircleX,
   IconFileSpreadsheet,
+  IconDownload,
 } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
@@ -550,12 +551,41 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
           </Grid.Col>
           <Grid.Col span={{ base: 12, md: 3 }}>
             <Group gap="xs" justify="flex-end">
+              <Button
+                leftSection={<IconDownload size={16} />}
+                onClick={async () => {
+                  try {
+                    const blob = await employeesApi.exportEmployees(language);
+                    const url = window.URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `employees-export-${new Date().toISOString().split('T')[0]}.xlsx`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    window.URL.revokeObjectURL(url);
+                    notifications.show({
+                      title: t('common.success' as any, language) || 'Success',
+                      message: t('bulkImport.exportSuccess', language) || 'Data exported successfully',
+                      color: notificationColors.success,
+                    });
+                  } catch (error: any) {
+                    handleApiError(error, {
+                      defaultMessage: 'Failed to export employees',
+                      language,
+                      errorColor: notificationColors.error,
+                    });
+                  }
+                }}
+                variant="light"
+              >
+                {t('bulkImport.export', language) || 'Export'}
+              </Button>
               <PermissionGuard resource="employees" action="create">
                 <Button
                   leftSection={<IconFileSpreadsheet size={16} />}
                   onClick={() => setBulkImportOpened(true)}
                   variant="light"
-                  fullWidth
                 >
                   {t('bulkImport.bulkImport', language) || 'Bulk Import'}
                 </Button>
@@ -935,7 +965,7 @@ export function EmployeesPage({ addTrigger }: EmployeesPageProps) {
         entityType="employee"
         entityName={t('employees.employees', language) || 'Employees'}
         downloadSample={async () => {
-          return await employeesApi.downloadBulkImportSample();
+          return await employeesApi.downloadBulkImportSample(language);
         }}
         uploadFile={async (file: File) => {
           return await employeesApi.bulkImportEmployees(file);

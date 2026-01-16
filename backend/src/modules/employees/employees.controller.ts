@@ -32,6 +32,21 @@ export class EmployeesController {
     );
   }
 
+  @Get('export')
+  @ApiOperation({ summary: 'Export all employees to Excel' })
+  async exportEmployees(
+    @CurrentUser() user: any,
+    @Query('language') language: string = 'en',
+    @Res() res: Response,
+  ) {
+    const buffer = await this.employeesService.exportEmployees(user.tenantId, language);
+    const filename = `employees-export-${new Date().toISOString().split('T')[0]}.xlsx`;
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get employee by ID' })
   getEmployeeById(
@@ -73,9 +88,10 @@ export class EmployeesController {
   @ApiOperation({ summary: 'Download sample Excel file for bulk import' })
   async downloadBulkImportSample(
     @CurrentUser() user: any,
+    @Query('language') language: string = 'en',
     @Res() res: Response,
   ) {
-    const buffer = await this.employeesService.generateBulkImportSample(user.tenantId);
+    const buffer = await this.employeesService.generateBulkImportSample(user.tenantId, language);
     const filename = 'bulk-import-employees-sample.xlsx';
     
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

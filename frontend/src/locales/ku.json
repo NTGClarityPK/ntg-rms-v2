@@ -1245,7 +1245,29 @@
     "errors": "هەڵەکان",
     "moreErrors": "... و {count} هەڵەی تر",
     "bulkImport": "هاوردەی کۆمەڵی",
-    "bulkImportDescription": "هاوردەی چەند تۆمارێک لە جارێکدا بە بەکارهێنانی Excel"
+    "bulkImportDescription": "هاوردەی چەند تۆمارێک لە جارێکدا بە بەکارهێنانی Excel",
+    "export": "دەرهێنان",
+    "exportSuccess": "زانیارییەکان بە سەرکەوتوویی دەرهێنرا",
+    "fields": {
+      "name": "ناو",
+      "description": "باساندن",
+      "categoryName": "ناوی پۆل",
+      "basePrice": "نرخی بنەڕەتی",
+      "stockType": "جۆری بار",
+      "stockQuantity": "بڕی بار",
+      "menuNames": "ناوی لیستی خواردن",
+      "ageLimit": "سنووری تەمەن",
+      "labels": "نیشانەکان",
+      "addOnGroupNames": "ناوی گروپی زیادکراوەکان",
+      "variationGroupNames": "ناوی گروپی گۆڕانکارییەکان",
+      "isActive": "چالاک",
+      "foodItemNames": "ناوی مادەی خواردن",
+      "pricePerPerson": "نرخ بۆ هەر کەس",
+      "minPersons": "کەمترین کەس",
+      "duration": "ماوە (خولەک)",
+      "displayOrder": "ڕیزبەندی پیشاندان",
+      "discountPercentage": "ڕێژەی داشکان"
+    }
   }
 }
 

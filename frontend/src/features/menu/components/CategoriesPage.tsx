@@ -25,7 +25,7 @@ import {
   Progress,
   Loader,
 } from '@mantine/core';
-import { IconPlus, IconEdit, IconTrash, IconUpload, IconToolsKitchen2, IconAlertCircle, IconFileSpreadsheet } from '@tabler/icons-react';
+import { IconPlus, IconEdit, IconTrash, IconUpload, IconToolsKitchen2, IconAlertCircle, IconFileSpreadsheet, IconDownload } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { menuApi, Category } from '@/lib/api/menu';
@@ -316,6 +316,36 @@ export function CategoriesPage() {
       )}
       <Group justify="flex-end">
         <Button
+          leftSection={<IconDownload size={16} />}
+          onClick={async () => {
+            try {
+              const blob = await menuApi.exportEntities('category', selectedBranchId || undefined, language);
+              const url = window.URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = `categories-export-${new Date().toISOString().split('T')[0]}.xlsx`;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              window.URL.revokeObjectURL(url);
+              notifications.show({
+                title: t('common.success' as any, language) || 'Success',
+                message: t('bulkImport.exportSuccess', language) || 'Data exported successfully',
+                color: notificationColors.success,
+              });
+            } catch (error: any) {
+              handleApiError(error, {
+                defaultMessage: 'Failed to export categories',
+                language,
+                errorColor: notificationColors.error,
+              });
+            }
+          }}
+          variant="light"
+        >
+          {t('bulkImport.export', language) || 'Export'}
+        </Button>
+        <Button
           leftSection={<IconFileSpreadsheet size={16} />}
           onClick={() => setBulkImportOpened(true)}
           variant="light"
@@ -602,7 +632,7 @@ export function CategoriesPage() {
         entityType="category"
         entityName={t('menu.categories', language) || 'Categories'}
         downloadSample={async () => {
-          return await menuApi.downloadBulkImportSample('category');
+          return await menuApi.downloadBulkImportSample('category', language);
         }}
         uploadFile={async (file: File) => {
           return await menuApi.bulkImportCategories(file, selectedBranchId || undefined);

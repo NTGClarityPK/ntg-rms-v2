@@ -780,14 +780,167 @@ export class EmployeesService {
   /**
    * Generate sample Excel file for bulk import
    */
-  async generateBulkImportSample(tenantId: string): Promise<Buffer> {
+  async generateBulkImportSample(tenantId: string, language: string = 'en'): Promise<Buffer> {
     const fields = this.getBulkImportFields();
     
     return this.bulkImportService.generateSampleExcel({
       entityType: 'employee',
       fields,
       translateFields: ['name'], // Only name needs translation for employees
+      language,
     });
+  }
+
+  /**
+   * Get translated role name based on role name and language
+   * Translations match the locale files exactly
+   */
+  private getTranslatedRoleName(roleName: string, language: string): string {
+    const roleTranslations: Record<string, Record<string, string>> = {
+      manager: {
+        en: 'Manager',
+        ar: 'مدير',
+        fr: 'Directeur',
+        ku: 'بەڕێوەبەر',
+      },
+      cashier: {
+        en: 'Cashier',
+        ar: 'أمين الصندوق',
+        fr: 'Caissier',
+        ku: 'سندوقچی',
+      },
+      kitchen_staff: {
+        en: 'Kitchen Staff',
+        ar: 'طاقم المطبخ',
+        fr: 'Personnel de cuisine',
+        ku: 'کارمەندی چێشتخانە',
+      },
+      waiter: {
+        en: 'Waiter',
+        ar: 'نادل',
+        fr: 'Serveur',
+        ku: 'گارسۆن',
+      },
+      delivery: {
+        en: 'Delivery',
+        ar: 'توصيل',
+        fr: 'Livraison',
+        ku: 'گەیاندن',
+      },
+      tenant_owner: {
+        en: 'Owner',
+        ar: 'المالك',
+        fr: 'Propriétaire',
+        ku: 'خاوەن',
+      },
+    };
+
+    const normalizedRoleName = roleName.toLowerCase().trim();
+    const translations = roleTranslations[normalizedRoleName];
+    
+    if (translations && translations[language]) {
+      return translations[language];
+    }
+    
+    // Fallback to English if translation not found
+    return translations?.en || roleName;
+  }
+
+  /**
+   * Export employees to Excel
+   */
+  async exportEmployees(
+    tenantId: string,
+    language: string = 'en',
+  ): Promise<Buffer> {
+    // Get all employees (no pagination for export)
+    const employeesResponse = await this.getEmployees(tenantId, {}, undefined, language);
+    const employees = Array.isArray(employeesResponse) ? employeesResponse : employeesResponse.data || [];
+
+    // Fetch roles and branches for mapping
+    const roles = await this.rolesService.getRoles();
+    const supabase = this.supabaseService.getServiceRoleClient();
+    const { data: branches } = await supabase
+      .from('branches')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
+
+    // Translate branch names
+    const branchTranslationsMap = new Map<string, string>();
+    if (language !== 'en' && branches && branches.length > 0) {
+      await Promise.all(
+        branches.map(async (branch: any) => {
+          try {
+            const nameTranslation = await this.translationService.getTranslation({
+              entityType: 'branch',
+              entityId: branch.id,
+              languageCode: language,
+              fieldName: 'name',
+              fallbackLanguage: 'en',
+            });
+            branchTranslationsMap.set(branch.id, nameTranslation || branch.name);
+          } catch (err) {
+            branchTranslationsMap.set(branch.id, branch.name);
+          }
+        })
+      );
+    } else {
+      // For English, just use the name directly
+      branches?.forEach((branch: any) => {
+        branchTranslationsMap.set(branch.id, branch.name);
+      });
+    }
+
+    // Transform employees to export format
+    const exportData = employees.map((employee: any) => {
+      // Extract role names with hardcoded translations
+      const roleNames = employee.roles?.map((r: any) => {
+        // Use role name (not displayName) for translation lookup
+        const roleName = r.name || '';
+        if (!roleName) return '';
+        
+        // Get translated role name using hardcoded translations
+        return this.getTranslatedRoleName(roleName, language);
+      }).filter(Boolean) || [];
+
+      // Extract branch names with translations
+      const branchNames = employee.branches?.map((b: any) => {
+        // Try to get translated name from map, fallback to branch name property
+        const translatedName = branchTranslationsMap.get(b.id);
+        if (translatedName) return translatedName;
+        // Fallback to branch name if translation not found
+        return b.name || '';
+      }).filter(Boolean) || [];
+
+      return {
+        email: employee.email || '',
+        name: employee.name || '',
+        roleNames: roleNames.join(','),
+        branchNames: branchNames.join(','),
+        phone: employee.phone || '',
+        employeeId: employee.employeeId || '',
+        nationalId: employee.nationalId || '',
+        dateOfBirth: employee.dateOfBirth || '',
+        employmentType: employee.employmentType || '',
+        joiningDate: employee.joiningDate || '',
+        salary: employee.salary || '',
+        isActive: employee.isActive ? 'true' : 'false',
+        createAuthAccount: '', // Not applicable for export
+        password: '', // Never export passwords
+      };
+    });
+
+    const fields = this.getBulkImportFields();
+    return this.bulkImportService.generateExportExcel(
+      {
+        entityType: 'employee',
+        fields,
+        translateFields: ['name'],
+      },
+      exportData,
+      language,
+    );
   }
 
   /**

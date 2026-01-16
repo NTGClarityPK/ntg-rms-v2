@@ -1213,7 +1213,29 @@
     "errors": "Errors",
     "moreErrors": "... and {count} more errors",
     "bulkImport": "Bulk Import",
-    "bulkImportDescription": "Import multiple records at once using Excel"
+    "bulkImportDescription": "Import multiple records at once using Excel",
+    "export": "Export",
+    "exportSuccess": "Data exported successfully",
+    "fields": {
+      "name": "Name",
+      "description": "Description",
+      "categoryName": "Category Name",
+      "basePrice": "Base Price",
+      "stockType": "Stock Type",
+      "stockQuantity": "Stock Quantity",
+      "menuNames": "Menu Names",
+      "ageLimit": "Age Limit",
+      "labels": "Labels",
+      "addOnGroupNames": "Add-On Group Names",
+      "variationGroupNames": "Variation Group Names",
+      "isActive": "Is Active",
+      "foodItemNames": "Food Item Names",
+      "pricePerPerson": "Price Per Person",
+      "minPersons": "Minimum Persons",
+      "duration": "Duration (minutes)",
+      "displayOrder": "Display Order",
+      "discountPercentage": "Discount Percentage"
+    }
   }
 
 }

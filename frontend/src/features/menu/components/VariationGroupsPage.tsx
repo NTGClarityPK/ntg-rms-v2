@@ -32,6 +32,7 @@ import {
   IconList,
   IconTable,
   IconFileSpreadsheet,
+  IconDownload,
 } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
@@ -54,6 +55,7 @@ export function VariationGroupsPage() {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
   const { selectedBranchId } = useBranchStore();
+  const notificationColors = useNotificationColors();
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
@@ -484,13 +486,45 @@ export function VariationGroupsPage() {
   return (
     <Stack gap="md">
       <Group justify="space-between">
-        <Button
-          leftSection={<IconFileSpreadsheet size={16} />}
-          onClick={() => setBulkImportGroupsOpened(true)}
-          variant="light"
-        >
-          {t('bulkImport.bulkImport', language) || 'Bulk Import Groups'}
-        </Button>
+        <Group gap="xs">
+          <Button
+            leftSection={<IconDownload size={16} />}
+            onClick={async () => {
+              try {
+                const blob = await menuApi.exportEntities('variationGroupAndVariation', selectedBranchId || undefined, language);
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `variation-groups-export-${new Date().toISOString().split('T')[0]}.xlsx`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+                notifications.show({
+                  title: t('common.success' as any, language) || 'Success',
+                  message: t('bulkImport.exportSuccess', language) || 'Data exported successfully',
+                  color: notificationColors.success,
+                });
+              } catch (error: any) {
+                handleApiError(error, {
+                  defaultMessage: 'Failed to export variation groups',
+                  language,
+                  errorColor: notificationColors.error,
+                });
+              }
+            }}
+            variant="light"
+          >
+            {t('bulkImport.export', language) || 'Export'}
+          </Button>
+          <Button
+            leftSection={<IconFileSpreadsheet size={16} />}
+            onClick={() => setBulkImportGroupsOpened(true)}
+            variant="light"
+          >
+            {t('bulkImport.bulkImport', language) || 'Bulk Import Groups'}
+          </Button>
+        </Group>
         <Button
           leftSection={<IconPlus size={16} />}
           onClick={() => handleOpenGroupModal()}
@@ -994,7 +1028,7 @@ export function VariationGroupsPage() {
         entityType="variationGroup"
         entityName={t('menu.variationGroups', language) || 'Variation Groups'}
         downloadSample={async () => {
-          return await menuApi.downloadBulkImportSample('variationGroup');
+          return await menuApi.downloadBulkImportSample('variationGroup', language);
         }}
         uploadFile={async (file: File) => {
           return await menuApi.bulkImportVariationGroups(file, selectedBranchId || undefined);
@@ -1014,7 +1048,7 @@ export function VariationGroupsPage() {
           entityType="variation"
           entityName={t('menu.variations', language) || 'Variations'}
           downloadSample={async () => {
-            return await menuApi.downloadBulkImportSample('variation');
+            return await menuApi.downloadBulkImportSample('variation', language);
           }}
           uploadFile={async (file: File) => {
             return await menuApi.bulkImportVariations(file);

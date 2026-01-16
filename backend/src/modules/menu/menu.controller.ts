@@ -690,6 +690,7 @@ export class MenuController {
   async downloadBulkImportSample(
     @CurrentUser() user: any,
     @Param('entityType') entityType: string,
+    @Query('language') language: string = 'en',
     @Res() res: Response,
   ) {
     const validTypes = ['category', 'addOnGroup', 'addon', 'variationGroup', 'variation', 'foodItem', 'menu', 'buffet', 'comboMeal', 'addOnGroupAndAddOn', 'variationGroupAndVariation'];
@@ -697,7 +698,7 @@ export class MenuController {
       return res.status(400).json({ message: `Invalid entity type. Valid types: ${validTypes.join(', ')}` });
     }
 
-    const buffer = await this.menuService.generateBulkImportSample(entityType);
+    const buffer = await this.menuService.generateBulkImportSample(entityType, language);
     const filename = `bulk-import-${entityType}-sample.xlsx`;
     
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -987,5 +988,26 @@ export class MenuController {
       throw new BadRequestException('Excel file is required');
     }
     return this.menuService.bulkImportComboMeals(user.tenantId, file.buffer, branchId);
+  }
+
+  // ============================================
+  // EXPORT ENDPOINTS
+  // ============================================
+
+  @Get('export/:entityType')
+  @ApiOperation({ summary: 'Export entities to Excel' })
+  async exportEntities(
+    @CurrentUser() user: any,
+    @Param('entityType') entityType: string,
+    @Query('branchId') branchId: string | undefined,
+    @Query('language') language: string = 'en',
+    @Res() res: Response,
+  ) {
+    const buffer = await this.menuService.exportEntities(user.tenantId, entityType, branchId, language);
+    const filename = `${entityType}-export-${new Date().toISOString().split('T')[0]}.xlsx`;
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
   }
 }

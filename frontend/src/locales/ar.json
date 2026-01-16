@@ -1201,7 +1201,29 @@
     "errors": "الأخطاء",
     "moreErrors": "... و {count} أخطاء أخرى",
     "bulkImport": "استيراد مجمع",
-    "bulkImportDescription": "استيراد عدة سجلات في وقت واحد باستخدام Excel"
+    "bulkImportDescription": "استيراد عدة سجلات في وقت واحد باستخدام Excel",
+    "export": "تصدير",
+    "exportSuccess": "تم تصدير البيانات بنجاح",
+    "fields": {
+      "name": "الاسم",
+      "description": "الوصف",
+      "categoryName": "اسم الفئة",
+      "basePrice": "السعر الأساسي",
+      "stockType": "نوع المخزون",
+      "stockQuantity": "كمية المخزون",
+      "menuNames": "أسماء القوائم",
+      "ageLimit": "حد العمر",
+      "labels": "العلامات",
+      "addOnGroupNames": "أسماء مجموعات الإضافات",
+      "variationGroupNames": "أسماء مجموعات التنويعات",
+      "isActive": "نشط",
+      "foodItemNames": "أسماء الأصناف الغذائية",
+      "pricePerPerson": "السعر لكل شخص",
+      "minPersons": "الحد الأدنى للأشخاص",
+      "duration": "المدة (بالدقائق)",
+      "displayOrder": "ترتيب العرض",
+      "discountPercentage": "نسبة الخصم"
+    }
   }
 
 }

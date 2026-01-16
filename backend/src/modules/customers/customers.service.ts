@@ -917,14 +917,103 @@ export class CustomersService {
   /**
    * Generate sample Excel file for bulk import
    */
-  async generateBulkImportSample(): Promise<Buffer> {
+  async generateBulkImportSample(language: string = 'en'): Promise<Buffer> {
     const fields = this.getBulkImportFields();
     
     return this.bulkImportService.generateSampleExcel({
       entityType: 'customer',
       fields,
       translateFields: ['name'], // Only name needs translation for customers
+      language,
     });
+  }
+
+  /**
+   * Export customers to Excel
+   */
+  async exportCustomers(
+    tenantId: string,
+    branchId: string | undefined,
+    language: string = 'en',
+  ): Promise<Buffer> {
+    const supabase = this.supabaseService.getServiceRoleClient();
+
+    // Get all customers (no pagination for export)
+    let query = supabase
+      .from('customers')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false });
+
+    if (branchId) {
+      query = query.eq('branch_id', branchId);
+    }
+
+    const { data: customers, error } = await query;
+
+    if (error) {
+      throw new InternalServerErrorException(`Failed to fetch customers: ${error.message}`);
+    }
+
+    // Transform customers to export format
+    const exportData = await Promise.all(
+      (customers || []).map(async (customer: any) => {
+        // Get translations
+        let translatedName = customer.name;
+        let translatedNotes = customer.notes;
+
+        if (language !== 'en') {
+          try {
+            const allTranslations = await this.translationService.getEntityTranslations(
+              EntityType.CUSTOMER,
+              customer.id,
+            );
+            if (allTranslations?.name?.[language]) translatedName = allTranslations.name[language];
+            if (allTranslations?.notes?.[language]) translatedNotes = allTranslations.notes[language];
+          } catch (err) {
+            // Use original values if translation fails
+          }
+        }
+
+        // Get default address
+        const { data: addresses } = await supabase
+          .from('customer_addresses')
+          .select('*')
+          .eq('customer_id', customer.id)
+          .eq('is_default', true)
+          .limit(1)
+          .single();
+
+        const address = addresses || null;
+
+        return {
+          name: translatedName,
+          phone: customer.phone || '',
+          email: customer.email || '',
+          dateOfBirth: customer.date_of_birth || '',
+          preferredLanguage: customer.preferred_language || '',
+          notes: translatedNotes || '',
+          address: address?.address || '',
+          city: address?.city || '',
+          state: address?.state || '',
+          country: address?.country || '',
+          latitude: address?.latitude || '',
+          longitude: address?.longitude || '',
+        };
+      }),
+    );
+
+    const fields = this.getBulkImportFields();
+    return this.bulkImportService.generateExportExcel(
+      {
+        entityType: 'customer',
+        fields,
+        translateFields: ['name'],
+      },
+      exportData,
+      language,
+    );
   }
 
   /**

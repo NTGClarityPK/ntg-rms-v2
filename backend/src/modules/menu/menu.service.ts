@@ -1,13 +1,16 @@
-import { 
-  Injectable, 
-  NotFoundException, 
-  BadRequestException, 
-  ConflictException 
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+  forwardRef,
+  Inject
 } from '@nestjs/common';
 import { SupabaseService } from '../../database/supabase.service';
 import { StorageService } from './utils/storage.service';
 import { BulkImportService, FieldDefinition } from './utils/bulk-import.service';
 import { TranslationService } from '../translations/services/translation.service';
+import { EntityType } from '../translations/dto/create-translation.dto';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateFoodItemDto } from './dto/create-food-item.dto';
@@ -5198,7 +5201,7 @@ export class MenuService {
         { name: 'basePrice', label: 'Base Price', required: true, type: 'number', description: 'Base price', example: '10.00' },
         { name: 'stockType', label: 'Stock Type', required: false, type: 'string', description: 'unlimited or limited', example: 'unlimited' },
         { name: 'stockQuantity', label: 'Stock Quantity', required: false, type: 'number', description: 'Stock quantity (if limited)' },
-        { name: 'menuTypes', label: 'Menu Types', required: false, type: 'array', description: 'Comma-separated menu types', example: 'breakfast,lunch' },
+        { name: 'menuNames', label: 'Menu Names', required: false, type: 'array', description: 'Comma-separated menu names', example: 'Breakfast,Lunch' },
         { name: 'ageLimit', label: 'Age Limit', required: false, type: 'number', description: 'Age limit' },
         { name: 'labels', label: 'Labels', required: false, type: 'array', description: 'Comma-separated labels', example: 'spicy,vegetarian' },
         { name: 'addOnGroupNames', label: 'Add-On Group Names', required: false, type: 'array', description: 'Comma-separated add-on group names', example: 'Extra Toppings,Spice Level' },
@@ -5206,8 +5209,7 @@ export class MenuService {
         { name: 'isActive', label: 'Is Active', required: false, type: 'boolean', description: 'Whether item is active', example: 'true' },
       ],
       menu: [
-        { name: 'menuType', label: 'Menu Type', required: true, type: 'string', description: 'Menu type (lowercase, underscore only)', example: 'breakfast' },
-        { name: 'name', label: 'Name', required: false, type: 'string', description: 'Menu name' },
+        { name: 'name', label: 'Name', required: true, type: 'string', description: 'Menu name (used as menu type identifier)', example: 'Breakfast' },
         { name: 'foodItemNames', label: 'Food Item Names', required: false, type: 'array', description: 'Comma-separated food item names', example: 'Pizza,Margherita Pizza' },
         { name: 'isActive', label: 'Is Active', required: false, type: 'boolean', description: 'Whether menu is active', example: 'true' },
       ],
@@ -5217,7 +5219,7 @@ export class MenuService {
         { name: 'pricePerPerson', label: 'Price Per Person', required: true, type: 'number', description: 'Price per person', example: '25.00' },
         { name: 'minPersons', label: 'Minimum Persons', required: false, type: 'number', description: 'Minimum number of persons' },
         { name: 'duration', label: 'Duration (minutes)', required: false, type: 'number', description: 'Duration in minutes' },
-        { name: 'menuTypes', label: 'Menu Types', required: true, type: 'array', description: 'Comma-separated menu types', example: 'breakfast,lunch' },
+        { name: 'menuNames', label: 'Menu Names', required: true, type: 'array', description: 'Comma-separated menu names', example: 'Breakfast,Lunch' },
         { name: 'displayOrder', label: 'Display Order', required: false, type: 'number', description: 'Display order', example: '0' },
         { name: 'isActive', label: 'Is Active', required: false, type: 'boolean', description: 'Whether buffet is active', example: 'true' },
       ],
@@ -5226,7 +5228,7 @@ export class MenuService {
         { name: 'description', label: 'Description', required: false, type: 'string', description: 'Combo meal description' },
         { name: 'basePrice', label: 'Base Price', required: true, type: 'number', description: 'Base price', example: '15.00' },
         { name: 'foodItemNames', label: 'Food Item Names', required: false, type: 'array', description: 'Comma-separated food item names', example: 'Pizza,Margherita Pizza' },
-        { name: 'menuTypes', label: 'Menu Types', required: false, type: 'array', description: 'Comma-separated menu types', example: 'breakfast,lunch' },
+        { name: 'menuNames', label: 'Menu Names', required: false, type: 'array', description: 'Comma-separated menu names', example: 'Breakfast,Lunch' },
         { name: 'discountPercentage', label: 'Discount Percentage', required: false, type: 'number', description: 'Discount percentage', example: '10' },
         { name: 'displayOrder', label: 'Display Order', required: false, type: 'number', description: 'Display order', example: '0' },
         { name: 'isActive', label: 'Is Active', required: false, type: 'boolean', description: 'Whether combo meal is active', example: 'true' },
@@ -5239,7 +5241,7 @@ export class MenuService {
   /**
    * Generate sample Excel file for bulk import
    */
-  async generateBulkImportSample(entityType: string): Promise<Buffer> {
+  async generateBulkImportSample(entityType: string, language: string = 'en'): Promise<Buffer> {
     // Map variationGroup to variationGroupAndVariation since bulk import now handles both
     const actualEntityType = entityType === 'variationGroup' ? 'variationGroupAndVariation' : entityType;
     
@@ -5250,6 +5252,7 @@ export class MenuService {
       entityType: actualEntityType,
       fields,
       translateFields,
+      language,
     });
   }
 
@@ -5271,6 +5274,51 @@ export class MenuService {
       variationGroupAndVariation: ['variationGroupName', 'variationName'],
     };
     return translateFieldsMap[entityType] || [];
+  }
+
+  /**
+   * Get translated field definitions for export
+   */
+  private getTranslatedFieldDefinitions(entityType: string, language: string = 'en'): FieldDefinition[] {
+    const fields = this.getBulkImportFields(entityType);
+
+    // If language is English, return the original fields
+    if (language === 'en') {
+      return fields;
+    }
+
+    // Translation mappings for field labels
+    const fieldTranslations: Record<string, Record<string, string>> = {
+      'name': { 'ar': 'الاسم', 'ku': 'ناو', 'fr': 'Nom' },
+      'description': { 'ar': 'الوصف', 'ku': 'باساندن', 'fr': 'Description' },
+      'categoryName': { 'ar': 'اسم الفئة', 'ku': 'ناوی پۆل', 'fr': 'Nom de la catégorie' },
+      'basePrice': { 'ar': 'السعر الأساسي', 'ku': 'نرخی بنەڕەتی', 'fr': 'Prix de base' },
+      'stockType': { 'ar': 'نوع المخزون', 'ku': 'جۆری بار', 'fr': 'Type de stock' },
+      'stockQuantity': { 'ar': 'كمية المخزون', 'ku': 'بڕی بار', 'fr': 'Quantité en stock' },
+      'menuNames': { 'ar': 'أسماء القوائم', 'ku': 'ناوی لیستی خواردن', 'fr': 'Noms des menus' },
+      'ageLimit': { 'ar': 'حد العمر', 'ku': 'سنووری تەمەن', 'fr': 'Limite d\'âge' },
+      'labels': { 'ar': 'العلامات', 'ku': 'نیشانەکان', 'fr': 'Étiquettes' },
+      'addOnGroupNames': { 'ar': 'أسماء مجموعات الإضافات', 'ku': 'ناوی گروپی زیادکراوەکان', 'fr': 'Noms des groupes d\'ajouts' },
+      'variationGroupNames': { 'ar': 'أسماء مجموعات التنويعات', 'ku': 'ناوی گروپی گۆڕانکارییەکان', 'fr': 'Noms des groupes de variations' },
+      'isActive': { 'ar': 'نشط', 'ku': 'چالاک', 'fr': 'Actif' },
+      'foodItemNames': { 'ar': 'أسماء الأصناف الغذائية', 'ku': 'ناوی مادەی خواردن', 'fr': 'Noms des plats' },
+      'pricePerPerson': { 'ar': 'السعر لكل شخص', 'ku': 'نرخ بۆ هەر کەس', 'fr': 'Prix par personne' },
+      'minPersons': { 'ar': 'الحد الأدنى للأشخاص', 'ku': 'کەمترین کەس', 'fr': 'Minimum de personnes' },
+      'duration': { 'ar': 'المدة (بالدقائق)', 'ku': 'ماوە (خولەک)', 'fr': 'Durée (minutes)' },
+      'displayOrder': { 'ar': 'ترتيب العرض', 'ku': 'ڕیزبەندی پیشاندان', 'fr': 'Ordre d\'affichage' },
+      'discountPercentage': { 'ar': 'نسبة الخصم', 'ku': 'ڕێژەی داشکان', 'fr': 'Pourcentage de remise' },
+    };
+
+    // Create translated field definitions
+    return fields.map(field => {
+      const translations = fieldTranslations[field.name];
+      const translatedLabel = translations?.[language] || field.label;
+
+      return {
+        ...field,
+        label: translatedLabel,
+      };
+    });
   }
 
   /**
@@ -7935,36 +7983,76 @@ export class MenuService {
       variationGroupNameToIdMap.set(group.name.toLowerCase(), group.id);
     });
 
-    // Fetch all distinct menu types from database for validation (from both menus and menu_items tables)
-    const [menusResult, menuItemsResult] = await Promise.all([
-      supabase
-        .from('menus')
-        .select('menu_type')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null),
-      supabase
-        .from('menu_items')
-        .select('menu_type')
-        .eq('tenant_id', tenantId)
-    ]);
+    // Fetch all menus with their names and types for menu name to menu type mapping
+    let menusQuery = supabase
+      .from('menus')
+      .select('id, menu_type, name')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
     
+    if (branchId) {
+      menusQuery = menusQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+    
+    const { data: menusData } = await menusQuery;
+    
+    // Create map from menu name (case-insensitive) to menu_type
+    const menuNameToTypeMap = new Map<string, string>();
     const validMenuTypes = new Set<string>();
     
-    // Add menu types from menus table
-    (menusResult.data || []).forEach(menu => {
-      if (menu.menu_type) {
-        validMenuTypes.add(menu.menu_type.toLowerCase());
+    // Default menu type to name mapping (for fallback)
+    const defaultMenuNames: Record<string, string> = {
+      'all_day': 'All Day',
+      'breakfast': 'Breakfast',
+      'lunch': 'Lunch',
+      'dinner': 'Dinner',
+      'kids_special': "Kids' Special",
+    };
+    
+    // Process menus from database
+    if (menusData) {
+      for (const menu of menusData) {
+        if (menu.menu_type) {
+          const menuTypeLower = menu.menu_type.toLowerCase();
+          validMenuTypes.add(menuTypeLower);
+          
+          // Map stored name to menu_type
+          if (menu.name) {
+            menuNameToTypeMap.set(menu.name.toLowerCase().trim(), menuTypeLower);
+          }
+          
+          // Also map default name to menu_type (for backward compatibility)
+          const defaultName = defaultMenuNames[menuTypeLower];
+          if (defaultName) {
+            menuNameToTypeMap.set(defaultName.toLowerCase().trim(), menuTypeLower);
+          }
+          
+          // Fetch translations for this menu and add them to the map
+          try {
+            const translations = await this.translationService.getEntityTranslations(EntityType.MENU, menu.id);
+            if (translations?.name) {
+              // Add all language translations to the map
+              Object.values(translations.name).forEach((translatedName: string) => {
+                if (translatedName) {
+                  menuNameToTypeMap.set(translatedName.toLowerCase().trim(), menuTypeLower);
+                }
+              });
+            }
+          } catch (err) {
+            // Ignore translation errors
+          }
+        }
+      }
+    }
+    
+    // Also add default menu types if they don't exist in database (for backward compatibility)
+    Object.entries(defaultMenuNames).forEach(([menuType, defaultName]) => {
+      const menuTypeLower = menuType.toLowerCase();
+      if (!validMenuTypes.has(menuTypeLower)) {
+        validMenuTypes.add(menuTypeLower);
+        menuNameToTypeMap.set(defaultName.toLowerCase().trim(), menuTypeLower);
       }
     });
-    
-    // Add menu types from menu_items table (for legacy support)
-    (menuItemsResult.data || []).forEach(item => {
-      if (item.menu_type) {
-        validMenuTypes.add(item.menu_type.toLowerCase());
-      }
-    });
-    
-    // Only use menu types that exist in the database - no hardcoded fallback
 
     // Valid stock types
     const validStockTypes = ['daily_limited', 'limited', 'unlimited'];
@@ -8050,48 +8138,57 @@ export class MenuService {
           row.stockType = stockTypeLower;
         }
 
-        // Validate menu types - STRICT: if provided, ALL must be valid
-        // Check if menuTypes field exists and has a value (even if empty string/null, we need to process it)
+        // Validate menu names - STRICT: if provided, ALL must be valid
+        // Check if menuNames field exists and has a value (even if empty string/null, we need to process it)
         // Excel might set empty cells to empty string '', null, or undefined, or omit the field entirely
-        const menuTypesValue = row.menuTypes;
-        const hasMenuTypesField = menuTypesValue !== undefined || 'menuTypes' in row;
+        const menuNamesValue = row.menuNames;
+        const hasMenuNamesField = menuNamesValue !== undefined || 'menuNames' in row;
         
-        if (hasMenuTypesField) {
+        if (hasMenuNamesField) {
           // Convert to array if it's a string (comma-separated)
-          let menuTypesArray: string[] = [];
-          if (Array.isArray(menuTypesValue)) {
-            menuTypesArray = menuTypesValue;
-          } else if (typeof menuTypesValue === 'string') {
-            // Handle empty string - treat as empty array (to allow clearing menu types)
-            menuTypesArray = menuTypesValue.trim() === '' ? [] : menuTypesValue.split(',').map(m => m.trim()).filter(m => m);
-          } else if (menuTypesValue === null || menuTypesValue === undefined) {
-            // Treat null/undefined as empty array (to allow clearing menu types)
-            menuTypesArray = [];
+          let menuNamesArray: string[] = [];
+          if (Array.isArray(menuNamesValue)) {
+            menuNamesArray = menuNamesValue;
+          } else if (typeof menuNamesValue === 'string') {
+            // Handle empty string - treat as empty array (to allow clearing menu names)
+            menuNamesArray = menuNamesValue.trim() === '' ? [] : menuNamesValue.split(',').map(m => m.trim()).filter(m => m);
+          } else if (menuNamesValue === null || menuNamesValue === undefined) {
+            // Treat null/undefined as empty array (to allow clearing menu names)
+            menuNamesArray = [];
           }
           
-          // Always validate and normalize, even if empty array (to allow clearing menu types)
-          const invalidMenuTypes: string[] = [];
+          // Convert menu names to menu types
+          const invalidMenuNames: string[] = [];
           const normalizedMenuTypes: string[] = [];
           
-          for (const menuType of menuTypesArray) {
-            const menuTypeLower = String(menuType).trim().toLowerCase();
-            if (!validMenuTypes.has(menuTypeLower)) {
-              invalidMenuTypes.push(String(menuType));
+          for (const menuName of menuNamesArray) {
+            const menuNameLower = String(menuName).trim().toLowerCase();
+            const menuType = menuNameToTypeMap.get(menuNameLower);
+            if (!menuType) {
+              invalidMenuNames.push(String(menuName));
             } else {
-              normalizedMenuTypes.push(menuTypeLower);
+              normalizedMenuTypes.push(menuType);
             }
           }
           
-          // STRICT: If ANY menu type is invalid, fail the entire row
-          if (invalidMenuTypes.length > 0) {
-            throw new Error(`Invalid menu types: ${invalidMenuTypes.join(', ')}. Valid menu types are: ${Array.from(validMenuTypes).join(', ')}`);
+          // STRICT: If ANY menu name is invalid, fail the entire row
+          if (invalidMenuNames.length > 0) {
+            const validMenuNames = Array.from(new Set(Array.from(menuNameToTypeMap.keys()).map(k => {
+              // Find original case from menus data
+              const menu = menusData?.find(m => 
+                m.name?.toLowerCase().trim() === k || 
+                defaultMenuNames[m.menu_type?.toLowerCase()]?.toLowerCase().trim() === k
+              );
+              return menu?.name || defaultMenuNames[k] || k;
+            })));
+            throw new Error(`Invalid menu names: ${invalidMenuNames.join(', ')}. Valid menu names are: ${validMenuNames.join(', ')}`);
           }
           
           // Always update row with normalized menu types (even if empty array - this allows clearing menu types)
           // This ensures the update logic knows menuTypes was explicitly provided
           row.menuTypes = normalizedMenuTypes;
         } else {
-          // If menuTypes field doesn't exist in row, explicitly set to undefined to skip update
+          // If menuNames field doesn't exist in row, explicitly set to undefined to skip update
           row.menuTypes = undefined;
         }
 
@@ -8593,11 +8690,11 @@ export class MenuService {
       const row = rows[i];
       try {
         // Validate required fields
-        if (!row.menuType || row.menuType.trim() === '') {
-          throw new Error('Menu type is required');
+        if (!row.name || row.name.trim() === '') {
+          throw new Error('Menu name is required');
         }
 
-        const menuTypeNormalized = row.menuType.trim().toLowerCase();
+        const menuTypeNormalized = row.name.trim().toLowerCase().replace(/\s+/g, '_');
 
         // Validate food items FIRST before creating/updating menu
         let foodItemIds: string[] = [];
@@ -8638,7 +8735,7 @@ export class MenuService {
         const menuData: any = {
           tenant_id: tenantId,
           menu_type: menuTypeNormalized,
-          name: row.name || menuTypeNormalized, // Use menuType as fallback if name not provided
+          name: row.name.trim(), // Use the original name as both menu_type and name
           is_active: row.isActive !== undefined ? row.isActive : true,
           updated_at: new Date().toISOString(),
         };
@@ -8824,32 +8921,76 @@ export class MenuService {
     const rows = await this.bulkImportService.parseExcelFile(fileBuffer, config);
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Fetch valid menu types from database to ensure they exist (from both menus and menu_items tables)
-    const [menusResult, menuItemsResult] = await Promise.all([
-      supabase
-        .from('menus')
-        .select('menu_type')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null),
-      supabase
-        .from('menu_items')
-        .select('menu_type')
-        .eq('tenant_id', tenantId)
-    ]);
+    // Fetch all menus with their names and types for menu name to menu type mapping
+    let menusQuery = supabase
+      .from('menus')
+      .select('id, menu_type, name')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null);
     
+    if (branchId) {
+      menusQuery = menusQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    } else {
+      menusQuery = menusQuery.is('branch_id', null);
+    }
+    
+    const { data: menusData } = await menusQuery;
+    
+    // Create map from menu name (case-insensitive) to menu_type
+    const menuNameToTypeMap = new Map<string, string>();
     const validMenuTypesFromDb = new Set<string>();
     
-    // Add menu types from menus table
-    (menusResult.data || []).forEach(menu => {
-      if (menu.menu_type) {
-        validMenuTypesFromDb.add(menu.menu_type.toLowerCase());
-      }
-    });
+    // Default menu type to name mapping (for fallback)
+    const defaultMenuNames: Record<string, string> = {
+      'all_day': 'All Day',
+      'breakfast': 'Breakfast',
+      'lunch': 'Lunch',
+      'dinner': 'Dinner',
+      'kids_special': "Kids' Special",
+    };
     
-    // Add menu types from menu_items table (for legacy support and completeness)
-    (menuItemsResult.data || []).forEach(item => {
-      if (item.menu_type) {
-        validMenuTypesFromDb.add(item.menu_type.toLowerCase());
+    // Process menus from database
+    if (menusData) {
+      for (const menu of menusData) {
+        if (menu.menu_type) {
+          const menuTypeLower = menu.menu_type.toLowerCase();
+          validMenuTypesFromDb.add(menuTypeLower);
+          
+          // Map stored name to menu_type
+          if (menu.name) {
+            menuNameToTypeMap.set(menu.name.toLowerCase().trim(), menuTypeLower);
+          }
+          
+          // Also map default name to menu_type (for backward compatibility)
+          const defaultName = defaultMenuNames[menuTypeLower];
+          if (defaultName) {
+            menuNameToTypeMap.set(defaultName.toLowerCase().trim(), menuTypeLower);
+          }
+          
+          // Fetch translations for this menu and add them to the map
+          try {
+            const translations = await this.translationService.getEntityTranslations(EntityType.MENU, menu.id);
+            if (translations?.name) {
+              // Add all language translations to the map
+              Object.values(translations.name).forEach((translatedName: string) => {
+                if (translatedName) {
+                  menuNameToTypeMap.set(translatedName.toLowerCase().trim(), menuTypeLower);
+                }
+              });
+            }
+          } catch (err) {
+            // Ignore translation errors
+          }
+        }
+      }
+    }
+    
+    // Also add default menu types if they don't exist in database (for backward compatibility)
+    Object.entries(defaultMenuNames).forEach(([menuType, defaultName]) => {
+      const menuTypeLower = menuType.toLowerCase();
+      if (!validMenuTypesFromDb.has(menuTypeLower)) {
+        validMenuTypesFromDb.add(menuTypeLower);
+        menuNameToTypeMap.set(defaultName.toLowerCase().trim(), menuTypeLower);
       }
     });
 
@@ -8908,45 +9049,53 @@ export class MenuService {
           throw new Error('Name is required');
         }
 
-        // STRICT: Validate menu types are required and exist
-        if (!row.menuTypes || row.menuTypes === null || row.menuTypes === '') {
-          throw new Error('Menu types are required');
+        // STRICT: Validate menu names are required and exist
+        if (!row.menuNames || row.menuNames === null || row.menuNames === '') {
+          throw new Error('Menu names are required');
         }
 
         // Convert to array if it's a string (comma-separated)
-        let menuTypesArray: string[] = [];
-        if (Array.isArray(row.menuTypes)) {
-          menuTypesArray = row.menuTypes;
-        } else if (typeof row.menuTypes === 'string') {
-          menuTypesArray = row.menuTypes.split(',').map(m => m.trim()).filter(m => m);
+        let menuNamesArray: string[] = [];
+        if (Array.isArray(row.menuNames)) {
+          menuNamesArray = row.menuNames;
+        } else if (typeof row.menuNames === 'string') {
+          menuNamesArray = row.menuNames.split(',').map(m => m.trim()).filter(m => m);
         }
 
-        if (menuTypesArray.length === 0) {
-          throw new Error('Menu types are required and cannot be empty');
+        if (menuNamesArray.length === 0) {
+          throw new Error('Menu names are required and cannot be empty');
         }
 
-        // Validate all menu types exist in database
-        const invalidMenuTypes: string[] = [];
+        // Convert menu names to menu types
+        const invalidMenuNames: string[] = [];
         const normalizedMenuTypes: string[] = [];
         
-        for (const menuType of menuTypesArray) {
-          const menuTypeLower = String(menuType).trim().toLowerCase();
-          // Check if menu type exists in database
-          if (!validMenuTypesFromDb.has(menuTypeLower)) {
-            invalidMenuTypes.push(String(menuType));
+        for (const menuName of menuNamesArray) {
+          const menuNameLower = String(menuName).trim().toLowerCase();
+          const menuType = menuNameToTypeMap.get(menuNameLower);
+          if (!menuType) {
+            invalidMenuNames.push(String(menuName));
           } else {
-            normalizedMenuTypes.push(menuTypeLower);
+            normalizedMenuTypes.push(menuType);
           }
         }
 
-        // STRICT: If ANY menu type is invalid or doesn't exist in DB, fail the entire row
-        if (invalidMenuTypes.length > 0) {
-          throw new Error(`Menu types not found in database: ${invalidMenuTypes.join(', ')}`);
+        // STRICT: If ANY menu name is invalid, fail the entire row
+        if (invalidMenuNames.length > 0) {
+          const validMenuNames = Array.from(new Set(Array.from(menuNameToTypeMap.keys()).map(k => {
+            // Find original case from menus data
+            const menu = menusData?.find(m => 
+              m.name?.toLowerCase().trim() === k || 
+              defaultMenuNames[m.menu_type?.toLowerCase()]?.toLowerCase().trim() === k
+            );
+            return menu?.name || defaultMenuNames[k] || k;
+          })));
+          throw new Error(`Invalid menu names: ${invalidMenuNames.join(', ')}. Valid menu names are: ${validMenuNames.join(', ')}`);
         }
 
         // Ensure we have valid menu types after validation
         if (normalizedMenuTypes.length === 0) {
-          throw new Error('Menu types are required and must exist in database');
+          throw new Error('Menu names are required and must exist in database');
         }
 
         // Validate required fields
@@ -9149,43 +9298,76 @@ export class MenuService {
     const rows = await this.bulkImportService.parseExcelFile(fileBuffer, config);
     const supabase = this.supabaseService.getServiceRoleClient();
 
-    // Fetch valid menu types from database dynamically (from both menus and menu_items tables)
-    let menuTypesQuery = supabase
+    // Fetch all menus with their names and types for menu name to menu type mapping
+    let menusQuery = supabase
       .from('menus')
-      .select('menu_type')
+      .select('id, menu_type, name')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null);
     
     if (branchId) {
-      menuTypesQuery = menuTypesQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+      menusQuery = menusQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
     } else {
-      menuTypesQuery = menuTypesQuery.is('branch_id', null);
+      menusQuery = menusQuery.is('branch_id', null);
     }
     
-    const { data: existingMenus } = await menuTypesQuery;
+    const { data: menusData } = await menusQuery;
+    
+    // Create map from menu name (case-insensitive) to menu_type
+    const menuNameToTypeMap = new Map<string, string>();
     const validMenuTypesFromDb = new Set<string>();
-    (existingMenus || []).forEach(menu => {
-      if (menu.menu_type) {
-        validMenuTypesFromDb.add(menu.menu_type.toLowerCase());
-      }
-    });
-
-    // Also fetch menu types from menu_items table (food items can be assigned to menu types)
-    let menuItemsQuery = supabase
-      .from('menu_items')
-      .select('menu_type')
-      .eq('tenant_id', tenantId);
     
-    if (branchId) {
-      menuItemsQuery = menuItemsQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
-    } else {
-      menuItemsQuery = menuItemsQuery.is('branch_id', null);
+    // Default menu type to name mapping (for fallback)
+    const defaultMenuNames: Record<string, string> = {
+      'all_day': 'All Day',
+      'breakfast': 'Breakfast',
+      'lunch': 'Lunch',
+      'dinner': 'Dinner',
+      'kids_special': "Kids' Special",
+    };
+    
+    // Process menus from database
+    if (menusData) {
+      for (const menu of menusData) {
+        if (menu.menu_type) {
+          const menuTypeLower = menu.menu_type.toLowerCase();
+          validMenuTypesFromDb.add(menuTypeLower);
+          
+          // Map stored name to menu_type
+          if (menu.name) {
+            menuNameToTypeMap.set(menu.name.toLowerCase().trim(), menuTypeLower);
+          }
+          
+          // Also map default name to menu_type (for backward compatibility)
+          const defaultName = defaultMenuNames[menuTypeLower];
+          if (defaultName) {
+            menuNameToTypeMap.set(defaultName.toLowerCase().trim(), menuTypeLower);
+          }
+          
+          // Fetch translations for this menu and add them to the map
+          try {
+            const translations = await this.translationService.getEntityTranslations(EntityType.MENU, menu.id);
+            if (translations?.name) {
+              // Add all language translations to the map
+              Object.values(translations.name).forEach((translatedName: string) => {
+                if (translatedName) {
+                  menuNameToTypeMap.set(translatedName.toLowerCase().trim(), menuTypeLower);
+                }
+              });
+            }
+          } catch (err) {
+            // Ignore translation errors
+          }
+        }
+      }
     }
     
-    const { data: existingMenuItems } = await menuItemsQuery;
-    (existingMenuItems || []).forEach(item => {
-      if (item.menu_type) {
-        validMenuTypesFromDb.add(item.menu_type.toLowerCase());
+    // Also add default menu types if they don't exist in database (for backward compatibility)
+    Object.entries(defaultMenuNames).forEach(([menuType, defaultName]) => {
+      const menuTypeLower = menuType.toLowerCase();
+      if (!validMenuTypesFromDb.has(menuTypeLower)) {
+        validMenuTypesFromDb.add(menuTypeLower);
+        menuNameToTypeMap.set(defaultName.toLowerCase().trim(), menuTypeLower);
       }
     });
 
@@ -9273,33 +9455,41 @@ export class MenuService {
           throw new Error('Base price is required');
         }
 
-        // Validate menu types if provided
+        // Validate menu names if provided
         let normalizedMenuTypes: string[] = [];
-        if (row.menuTypes !== undefined && row.menuTypes !== null && row.menuTypes !== '') {
+        if (row.menuNames !== undefined && row.menuNames !== null && row.menuNames !== '') {
           // Convert to array if it's a string (comma-separated)
-          let menuTypesArray: string[] = [];
-          if (Array.isArray(row.menuTypes)) {
-            menuTypesArray = row.menuTypes;
-          } else if (typeof row.menuTypes === 'string') {
-            menuTypesArray = row.menuTypes.split(',').map(m => m.trim()).filter(m => m);
+          let menuNamesArray: string[] = [];
+          if (Array.isArray(row.menuNames)) {
+            menuNamesArray = row.menuNames;
+          } else if (typeof row.menuNames === 'string') {
+            menuNamesArray = row.menuNames.split(',').map(m => m.trim()).filter(m => m);
           }
 
-          if (menuTypesArray.length > 0) {
-            const invalidMenuTypes: string[] = [];
+          if (menuNamesArray.length > 0) {
+            const invalidMenuNames: string[] = [];
             
-            for (const menuType of menuTypesArray) {
-              const menuTypeLower = String(menuType).trim().toLowerCase();
-              // Check if menu type exists in database
-              if (!validMenuTypesFromDb.has(menuTypeLower)) {
-                invalidMenuTypes.push(String(menuType));
+            for (const menuName of menuNamesArray) {
+              const menuNameLower = String(menuName).trim().toLowerCase();
+              const menuType = menuNameToTypeMap.get(menuNameLower);
+              if (!menuType) {
+                invalidMenuNames.push(String(menuName));
               } else {
-                normalizedMenuTypes.push(menuTypeLower);
+                normalizedMenuTypes.push(menuType);
               }
             }
 
-            // STRICT: If ANY menu type is invalid or doesn't exist in DB, fail the entire row
-            if (invalidMenuTypes.length > 0) {
-              throw new Error(`Menu types not found in database: ${invalidMenuTypes.join(', ')}`);
+            // STRICT: If ANY menu name is invalid, fail the entire row
+            if (invalidMenuNames.length > 0) {
+              const validMenuNames = Array.from(new Set(Array.from(menuNameToTypeMap.keys()).map(k => {
+                // Find original case from menus data
+                const menu = menusData?.find(m => 
+                  m.name?.toLowerCase().trim() === k || 
+                  defaultMenuNames[m.menu_type?.toLowerCase()]?.toLowerCase().trim() === k
+                );
+                return menu?.name || defaultMenuNames[k] || k;
+              })));
+              throw new Error(`Invalid menu names: ${invalidMenuNames.join(', ')}. Valid menu names are: ${validMenuNames.join(', ')}`);
             }
           }
         }
@@ -9544,5 +9734,628 @@ export class MenuService {
     }
 
     return { success, failed, errors };
+  }
+
+  /**
+   * Get translated category type based on category type and language
+   * Translations match the locale files exactly (en.json, ar.json, fr.json, ku.json)
+   */
+  private getTranslatedCategoryType(categoryType: string, language: string): string {
+    const categoryTypeTranslations: Record<string, Record<string, string>> = {
+      food: {
+        en: 'Food',
+        ar: 'طعام',
+        fr: 'Nourriture',
+        ku: 'خواردن',
+      },
+      beverage: {
+        en: 'Beverage',
+        ar: 'مشروب',
+        fr: 'Boisson',
+        ku: 'خواردنەوە',
+      },
+      dessert: {
+        en: 'Dessert',
+        ar: 'حلوى',
+        fr: 'Dessert',
+        ku: 'شیرینی',
+      },
+    };
+
+    const normalizedCategoryType = categoryType.toLowerCase().trim();
+    const translations = categoryTypeTranslations[normalizedCategoryType];
+    
+    if (translations && translations[language]) {
+      return translations[language];
+    }
+    
+    // Fallback to English if translation not found
+    return translations?.en || categoryType;
+  }
+
+  /**
+   * Get translated selection type (single/multiple) based on language
+   * Translations match the locale files exactly (en.json, ar.json, fr.json, ku.json)
+   */
+  private getTranslatedSelectionType(selectionType: string, language: string): string {
+    const selectionTypeTranslations: Record<string, Record<string, string>> = {
+      single: {
+        en: 'Single',
+        ar: 'واحد',
+        fr: 'Unique',
+        ku: 'واحد',
+      },
+      multiple: {
+        en: 'Multiple',
+        ar: 'متعدد',
+        fr: 'Multiple',
+        ku: 'متعدد',
+      },
+    };
+
+    const normalizedSelectionType = selectionType.toLowerCase().trim();
+    const translations = selectionTypeTranslations[normalizedSelectionType];
+    
+    if (translations && translations[language]) {
+      return translations[language];
+    }
+    
+    // Fallback to English if translation not found
+    return translations?.en || selectionType;
+  }
+
+  /**
+   * Get translated stock type (limited/unlimited/daily_limited) based on language
+   * Translations match the locale files exactly (en.json, ar.json, fr.json, ku.json)
+   */
+  private getTranslatedStockType(stockType: string, language: string): string {
+    const stockTypeTranslations: Record<string, Record<string, string>> = {
+      limited: {
+        en: 'Limited',
+        ar: 'محدود',
+        fr: 'Limité',
+        ku: 'محدود',
+      },
+      unlimited: {
+        en: 'Unlimited',
+        ar: 'غير محدود',
+        fr: 'Illimité',
+        ku: 'بێ قیاس',
+      },
+      daily_limited: {
+        en: 'Daily Limited',
+        ar: 'محدود يومي',
+        fr: 'Limité quotidien',
+        ku: 'سنووردار ڕۆژانە',
+      },
+    };
+
+    const normalizedStockType = stockType.toLowerCase().trim();
+    const translations = stockTypeTranslations[normalizedStockType];
+    
+    if (translations && translations[language]) {
+      return translations[language];
+    }
+    
+    // Fallback to English if translation not found
+    return translations?.en || stockType;
+  }
+
+  /**
+   * Get translated menu type (breakfast/lunch/dinner/kidsSpecial/allDay) based on language
+   * Translations match the locale files exactly (en.json, ar.json, fr.json, ku.json)
+   */
+  private getTranslatedMenuType(menuType: string, language: string): string {
+    const menuTypeTranslations: Record<string, Record<string, string>> = {
+      breakfast: {
+        en: 'Breakfast',
+        ar: 'الإفطار',
+        fr: 'Petit-déjeuner',
+        ku: 'نانەیانی',
+      },
+      lunch: {
+        en: 'Lunch',
+        ar: 'الغداء',
+        fr: 'Déjeuner',
+        ku: 'نانی نیوەڕۆ',
+      },
+      dinner: {
+        en: 'Dinner',
+        ar: 'العشاء',
+        fr: 'Dîner',
+        ku: 'نانی ئێوارە',
+      },
+      kidsspecial: {
+        en: 'Kids Special',
+        ar: 'خاص بالأطفال',
+        fr: 'Spécial enfants',
+        ku: 'تایبەتی منداڵان',
+      },
+      allday: {
+        en: 'All Day',
+        ar: 'طوال اليوم',
+        fr: 'Toute la journée',
+        ku: 'هەموو ڕۆژ',
+      },
+    };
+
+    // Normalize: convert to lowercase, trim, and replace underscores/hyphens with nothing
+    const normalizedMenuType = menuType.toLowerCase().trim().replace(/[_-]/g, '');
+    const translations = menuTypeTranslations[normalizedMenuType];
+    
+    if (translations && translations[language]) {
+      return translations[language];
+    }
+    
+    // Fallback to English if translation not found
+    return translations?.en || menuType;
+  }
+
+  /**
+   * Get translated label (vegetarian/vegan/glutenFree/halal/new/popular/chefsSpecial/spicy) based on language
+   * Translations match the locale files exactly (en.json, ar.json, fr.json, ku.json)
+   */
+  private getTranslatedLabel(label: string, language: string): string {
+    const labelTranslations: Record<string, Record<string, string>> = {
+      vegetarian: {
+        en: 'Vegetarian',
+        ar: 'نباتي',
+        fr: 'Végétarien',
+        ku: 'ڕووەکی',
+      },
+      vegan: {
+        en: 'Vegan',
+        ar: 'نباتي صرف',
+        fr: 'Végétalien',
+        ku: 'ڤیگان',
+      },
+      glutenfree: {
+        en: 'Gluten Free',
+        ar: 'خالي من الغلوتين',
+        fr: 'Sans gluten',
+        ku: 'بێ گلوتەن',
+      },
+      halal: {
+        en: 'Halal',
+        ar: 'حلال',
+        fr: 'Halal',
+        ku: 'حەلال',
+      },
+      new: {
+        en: 'New',
+        ar: 'جديد',
+        fr: 'Nouveau',
+        ku: 'نوێ',
+      },
+      popular: {
+        en: 'Popular',
+        ar: 'شائع',
+        fr: 'Populaire',
+        ku: 'باو',
+      },
+      chefsspecial: {
+        en: 'Chef\'s Special',
+        ar: 'خاص بالشيف',
+        fr: 'Spécialité du chef',
+        ku: 'تایبەتی شێف',
+      },
+      spicy: {
+        en: 'Spicy',
+        ar: 'حار',
+        fr: 'Épicé',
+        ku: 'توند',
+      },
+    };
+
+    const normalizedLabel = label.toLowerCase().trim().replace(/\s+/g, '');
+    const translations = labelTranslations[normalizedLabel];
+    
+    if (translations && translations[language]) {
+      return translations[language];
+    }
+    
+    // Fallback to English if translation not found
+    return translations?.en || label;
+  }
+
+  /**
+   * Get translated add-on group category (Add/Remove/Change) based on language
+   * Translations match the locale files exactly (en.json, ar.json, fr.json, ku.json)
+   */
+  private getTranslatedAddOnGroupCategory(category: string, language: string): string {
+    const categoryTranslations: Record<string, Record<string, string>> = {
+      add: {
+        en: 'Add',
+        ar: 'إضافة',
+        fr: 'Ajouter',
+        ku: 'زیادکردن',
+      },
+      remove: {
+        en: 'Remove',
+        ar: 'إزالة',
+        fr: 'Retirer',
+        ku: 'سڕینەوە',
+      },
+      change: {
+        en: 'Change',
+        ar: 'تغيير',
+        fr: 'Changer',
+        ku: 'گۆڕان',
+      },
+    };
+
+    const normalizedCategory = category.toLowerCase().trim();
+    const translations = categoryTranslations[normalizedCategory];
+    
+    if (translations && translations[language]) {
+      return translations[language];
+    }
+    
+    // Fallback to English if translation not found
+    return translations?.en || category;
+  }
+
+  /**
+   * Export entities to Excel
+   */
+  async exportEntities(
+    tenantId: string,
+    entityType: string,
+    branchId: string | undefined,
+    language: string = 'en',
+  ): Promise<Buffer> {
+    const supabase = this.supabaseService.getServiceRoleClient();
+    const actualEntityType = entityType === 'variationGroup' ? 'variationGroupAndVariation' : entityType;
+    const fields = this.getTranslatedFieldDefinitions(actualEntityType, language);
+    const translateFields = this.getTranslateFields(actualEntityType);
+
+    let exportData: Array<Record<string, any>> = [];
+
+    switch (actualEntityType) {
+      case 'category': {
+        const categories = await this.getCategories(tenantId, undefined, branchId, language);
+        const categoriesList = Array.isArray(categories) ? categories : categories.data || [];
+        exportData = await Promise.all(categoriesList.map(async (cat: any) => ({
+          name: cat.name || '',
+          description: cat.description || '',
+          categoryType: cat.categoryType ? this.getTranslatedCategoryType(cat.categoryType, language) : '',
+          isActive: cat.isActive ? 'true' : 'false',
+        })));
+        break;
+      }
+      case 'addOnGroup': {
+        const groups = await this.getAddOnGroups(tenantId, undefined, branchId, language);
+        const groupsList = Array.isArray(groups) ? groups : groups.data || [];
+        exportData = groupsList.map((group: any) => ({
+          name: group.name || '',
+          selectionType: group.selectionType ? this.getTranslatedSelectionType(group.selectionType, language) : '',
+          isRequired: group.isRequired ? 'true' : 'false',
+          minSelections: group.minSelections || 0,
+          maxSelections: group.maxSelections || 0,
+          category: group.category ? this.getTranslatedAddOnGroupCategory(group.category, language) : '',
+        }));
+        break;
+      }
+      case 'variationGroupAndVariation': {
+        const groups = await this.getVariationGroups(tenantId, undefined, branchId, language);
+        const groupsList = Array.isArray(groups) ? groups : groups.data || [];
+        exportData = [];
+        for (const group of groupsList) {
+          const variations = group.variations || [];
+          if (variations.length === 0) {
+            exportData.push({
+              variationGroupName: group.name || '',
+              variationName: '',
+              variationRecipeMultiplier: '',
+              variationPricingAdjustment: '',
+              variationDisplayOrder: '',
+            });
+          } else {
+            for (const variation of variations) {
+              exportData.push({
+                variationGroupName: group.name || '',
+                variationName: variation.name || '',
+                variationRecipeMultiplier: variation.recipeMultiplier || 1,
+                variationPricingAdjustment: variation.pricingAdjustment || 0,
+                variationDisplayOrder: variation.displayOrder || 0,
+              });
+            }
+          }
+        }
+        break;
+      }
+      case 'addOnGroupAndAddOn': {
+        const groups = await this.getAddOnGroups(tenantId, undefined, branchId, language);
+        const groupsList = Array.isArray(groups) ? groups : groups.data || [];
+        exportData = [];
+        for (const group of groupsList) {
+          const addOns = group.addOns || [];
+          const translatedSelectionType = group.selectionType ? this.getTranslatedSelectionType(group.selectionType, language) : '';
+          const translatedCategory = group.category ? this.getTranslatedAddOnGroupCategory(group.category, language) : '';
+          
+          if (addOns.length === 0) {
+            exportData.push({
+              addOnGroupName: group.name || '',
+              addOnGroupSelectionType: translatedSelectionType,
+              addOnGroupIsRequired: group.isRequired ? 'true' : 'false',
+              addOnGroupMinSelections: group.minSelections || 0,
+              addOnGroupMaxSelections: group.maxSelections || 0,
+              addOnGroupCategory: translatedCategory,
+              addOnName: '',
+              addOnPrice: '',
+              addOnIsActive: '',
+              addOnDisplayOrder: '',
+            });
+          } else {
+            for (const addOn of addOns) {
+              exportData.push({
+                addOnGroupName: group.name || '',
+                addOnGroupSelectionType: translatedSelectionType,
+                addOnGroupIsRequired: group.isRequired ? 'true' : 'false',
+                addOnGroupMinSelections: group.minSelections || 0,
+                addOnGroupMaxSelections: group.maxSelections || 0,
+                addOnGroupCategory: translatedCategory,
+                addOnName: addOn.name || '',
+                addOnPrice: addOn.price || 0,
+                addOnIsActive: addOn.isActive ? 'true' : 'false',
+                addOnDisplayOrder: addOn.displayOrder || 0,
+              });
+            }
+          }
+        }
+        break;
+      }
+      case 'foodItem': {
+        const items = await this.getFoodItems(tenantId, undefined, undefined, false, undefined, branchId, language);
+        const itemsList = Array.isArray(items) ? items : items.data || [];
+        
+        // Fetch all addon groups, variation groups, and menus once for efficiency
+        const [allAddOnGroups, allVariationGroups, allMenus] = await Promise.all([
+          this.getAddOnGroups(tenantId, undefined, branchId, language),
+          this.getVariationGroups(tenantId, undefined, branchId, language),
+          this.getMenus(tenantId, undefined, branchId, language),
+        ]);
+
+        const addOnGroupsList = Array.isArray(allAddOnGroups) ? allAddOnGroups : allAddOnGroups.data || [];
+        const variationGroupsList = Array.isArray(allVariationGroups) ? allVariationGroups : allVariationGroups.data || [];
+        const menusData = Array.isArray(allMenus) ? allMenus : allMenus.data || [];
+
+        // Create maps for quick lookup
+        const addOnGroupMap = new Map(addOnGroupsList.map((g: any) => [g.id, g.name]));
+        const variationGroupMap = new Map(variationGroupsList.map((g: any) => [g.id, g.name]));
+        
+        exportData = await Promise.all(itemsList.map(async (item: any) => {
+          const category = item.categoryId ? await this.getCategoryById(tenantId, item.categoryId, language).catch(() => null) : null;
+          
+          // Get addon group names from IDs
+          const addOnGroupNames = (item.addOnGroupIds || [])
+            .map((id: string) => addOnGroupMap.get(id) || id)
+            .filter(Boolean)
+            .join(',');
+          
+          // Get variation group names from variations (variationGroup is already the name)
+          const variationGroupNames = (item.variations || [])
+            .map((v: any) => v.variationGroup)
+            .filter(Boolean)
+            // Remove duplicates
+            .filter((value: string, index: number, self: string[]) => self.indexOf(value) === index)
+            .join(',');
+          
+          // Translate stock type
+          const translatedStockType = item.stockType ? this.getTranslatedStockType(item.stockType, language) : '';
+          
+          // Get translated menu names from menu types
+          const translatedMenuNames = await Promise.all(
+            (item.menuTypes || []).map(async (menuType: string) => {
+              // Find menu by menu_type
+              const menu = menusData?.find((m: any) => m.menu_type?.toLowerCase() === menuType.toLowerCase());
+              if (menu?.id) {
+                try {
+                  const translatedName = await this.translationService.getTranslation({
+                    entityType: 'menu',
+                    entityId: menu.id,
+                    languageCode: language,
+                    fieldName: 'name',
+                    fallbackLanguage: 'en',
+                  });
+                  return translatedName || menu.name || this.getTranslatedMenuType(menuType, language);
+                } catch (err) {
+                  return menu.name || this.getTranslatedMenuType(menuType, language);
+                }
+              }
+              return this.getTranslatedMenuType(menuType, language);
+            })
+          );
+          
+          const translatedMenuNamesStr = translatedMenuNames.join(',');
+          
+          // Translate labels
+          const translatedLabels = (item.labels || [])
+            .map((label: string) => this.getTranslatedLabel(label, language))
+            .join(',');
+          
+          return {
+            name: item.name || '',
+            description: item.description || '',
+            categoryName: category?.name || '',
+            basePrice: item.basePrice || 0,
+            stockType: translatedStockType,
+            stockQuantity: item.stockQuantity || 0,
+            menuNames: translatedMenuNamesStr,
+            ageLimit: item.ageLimit || '',
+            labels: translatedLabels,
+            addOnGroupNames,
+            variationGroupNames,
+            isActive: item.isActive ? 'true' : 'false',
+          };
+        }));
+        break;
+      }
+      case 'menu': {
+        const menus = await this.getMenus(tenantId, undefined, branchId, language);
+        const menusList = Array.isArray(menus) ? menus : menus.data || [];
+
+        // Get all menu types to fetch their food items
+        const menuTypes = menusList.map((menu: any) => menu.menuType);
+        const menuItemsMap = await this.getMenuItemsForTypes(tenantId, menuTypes, branchId);
+
+        // Get all unique food item IDs
+        const allFoodItemIds = new Set<string>();
+        Object.values(menuItemsMap).forEach((ids: string[]) => {
+          ids.forEach(id => allFoodItemIds.add(id));
+        });
+
+        // Fetch translated food item names if there are any items
+        let foodItemNamesMap = new Map<string, string>();
+        if (allFoodItemIds.size > 0) {
+          // Use getFoodItems to get properly translated names
+          const foodItems = await this.getFoodItems(tenantId, undefined, undefined, false, undefined, branchId, language);
+          const foodItemsList = Array.isArray(foodItems) ? foodItems : foodItems.data || [];
+
+          foodItemsList.forEach((item: any) => {
+            if (allFoodItemIds.has(item.id)) {
+              foodItemNamesMap.set(item.id, item.name);
+            }
+          });
+        }
+
+        exportData = menusList.map((menu: any) => {
+          // Get food item IDs for this menu
+          const foodItemIds = menuItemsMap[menu.menuType] || [];
+          // Convert IDs to names
+          const foodItemNames = foodItemIds
+            .map((id: string) => foodItemNamesMap.get(id))
+            .filter(Boolean)
+            .join(',');
+
+          return {
+            name: menu.name || '',
+            foodItemNames,
+            isActive: menu.isActive ? 'true' : 'false',
+          };
+        });
+        break;
+      }
+      case 'buffet': {
+        const buffets = await this.getBuffets(tenantId, undefined, branchId, language);
+        const buffetsList = Array.isArray(buffets) ? buffets : buffets.data || [];
+        
+        // Fetch all menus for menu name translation
+        let menusQuery = this.supabaseService.getServiceRoleClient()
+          .from('menus')
+          .select('id, menu_type, name')
+          .eq('tenant_id', tenantId)
+          .is('deleted_at', null);
+        
+        if (branchId) {
+          menusQuery = menusQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+        }
+        
+        const { data: menusData } = await menusQuery;
+        
+        exportData = await Promise.all(buffetsList.map(async (buffet: any) => {
+          // Get translated menu names from menu types
+          const translatedMenuNames = await Promise.all(
+            (buffet.menuTypes || []).map(async (menuType: string) => {
+              const menu = menusData?.find((m: any) => m.menu_type?.toLowerCase() === menuType.toLowerCase());
+              if (menu?.id) {
+                try {
+                  const translatedName = await this.translationService.getTranslation({
+                    entityType: 'menu',
+                    entityId: menu.id,
+                    languageCode: language,
+                    fieldName: 'name',
+                    fallbackLanguage: 'en',
+                  });
+                  return translatedName || menu.name || this.getTranslatedMenuType(menuType, language);
+                } catch (err) {
+                  return menu.name || this.getTranslatedMenuType(menuType, language);
+                }
+              }
+              return this.getTranslatedMenuType(menuType, language);
+            })
+          );
+          
+          return {
+            name: buffet.name || '',
+            description: buffet.description || '',
+            pricePerPerson: buffet.pricePerPerson || 0,
+            minPersons: buffet.minPersons || '',
+            duration: buffet.duration || '',
+            menuNames: translatedMenuNames.join(','),
+            displayOrder: buffet.displayOrder || 0,
+            isActive: buffet.isActive ? 'true' : 'false',
+          };
+        }));
+        break;
+      }
+      case 'comboMeal': {
+        const comboMeals = await this.getComboMeals(tenantId, undefined, branchId, language);
+        const comboMealsList = Array.isArray(comboMeals) ? comboMeals : comboMeals.data || [];
+        
+        // Fetch all menus for menu name translation
+        let menusQuery = this.supabaseService.getServiceRoleClient()
+          .from('menus')
+          .select('id, menu_type, name')
+          .eq('tenant_id', tenantId)
+          .is('deleted_at', null);
+        
+        if (branchId) {
+          menusQuery = menusQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+        }
+        
+        const { data: menusData } = await menusQuery;
+        
+        exportData = await Promise.all(comboMealsList.map(async (combo: any) => {
+          const foodItemNames = (combo.foodItems || []).map((item: any) => item.name).filter(Boolean).join(',');
+          
+          // Get translated menu names from menu types
+          const translatedMenuNames = await Promise.all(
+            (combo.menuTypes || []).map(async (menuType: string) => {
+              const menu = menusData?.find((m: any) => m.menu_type?.toLowerCase() === menuType.toLowerCase());
+              if (menu?.id) {
+                try {
+                  const translatedName = await this.translationService.getTranslation({
+                    entityType: 'menu',
+                    entityId: menu.id,
+                    languageCode: language,
+                    fieldName: 'name',
+                    fallbackLanguage: 'en',
+                  });
+                  return translatedName || menu.name || this.getTranslatedMenuType(menuType, language);
+                } catch (err) {
+                  return menu.name || this.getTranslatedMenuType(menuType, language);
+                }
+              }
+              return this.getTranslatedMenuType(menuType, language);
+            })
+          );
+          
+          return {
+            name: combo.name || '',
+            description: combo.description || '',
+            basePrice: combo.basePrice || 0,
+            foodItemNames,
+            menuNames: translatedMenuNames.join(','),
+            discountPercentage: combo.discountPercentage || '',
+            displayOrder: combo.displayOrder || 0,
+            isActive: combo.isActive ? 'true' : 'false',
+          };
+        }));
+        break;
+      }
+      default:
+        throw new BadRequestException(`Unsupported entity type for export: ${entityType}`);
+    }
+
+    return this.bulkImportService.generateExportExcel(
+      {
+        entityType: actualEntityType,
+        fields,
+        translateFields,
+      },
+      exportData,
+      language,
+    );
   }
 }

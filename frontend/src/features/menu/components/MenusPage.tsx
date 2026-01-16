@@ -21,7 +21,7 @@ import {
   Grid,
   Loader,
 } from '@mantine/core';
-import { IconMenu2, IconAlertCircle, IconCheck, IconPlus, IconTrash, IconFileSpreadsheet } from '@tabler/icons-react';
+import { IconMenu2, IconAlertCircle, IconCheck, IconPlus, IconTrash, IconFileSpreadsheet, IconDownload } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { menuApi, FoodItem } from '@/lib/api/menu';
@@ -42,6 +42,7 @@ export function MenusPage() {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
   const { selectedBranchId } = useBranchStore();
+  const notificationColors = useNotificationColors();
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
@@ -448,6 +449,36 @@ export function MenusPage() {
         </Title>
         <Group gap="xs">
           <Button
+            leftSection={<IconDownload size={16} />}
+            onClick={async () => {
+              try {
+                const blob = await menuApi.exportEntities('menu', selectedBranchId || undefined, language);
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `menus-export-${new Date().toISOString().split('T')[0]}.xlsx`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+                notifications.show({
+                  title: t('common.success' as any, language) || 'Success',
+                  message: t('bulkImport.exportSuccess', language) || 'Data exported successfully',
+                  color: notificationColors.success,
+                });
+              } catch (error: any) {
+                handleApiError(error, {
+                  defaultMessage: 'Failed to export menus',
+                  language,
+                  errorColor: notificationColors.error,
+                });
+              }
+            }}
+            variant="light"
+          >
+            {t('bulkImport.export', language) || 'Export'}
+          </Button>
+          <Button
             leftSection={<IconFileSpreadsheet size={16} />}
             onClick={() => setBulkImportOpened(true)}
             variant="light"
@@ -689,7 +720,7 @@ export function MenusPage() {
         entityType="menu"
         entityName={t('menu.menus', language) || 'Menus'}
         downloadSample={async () => {
-          return await menuApi.downloadBulkImportSample('menu');
+          return await menuApi.downloadBulkImportSample('menu', language);
         }}
         uploadFile={async (file: File) => {
           return await menuApi.bulkImportMenus(file, selectedBranchId || undefined);

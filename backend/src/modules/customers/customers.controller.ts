@@ -37,6 +37,22 @@ export class CustomersController {
     );
   }
 
+  @Get('export')
+  @ApiOperation({ summary: 'Export all customers to Excel' })
+  async exportCustomers(
+    @CurrentUser() user: any,
+    @Query('branchId') branchId: string | undefined,
+    @Query('language') language: string = 'en',
+    @Res() res: Response,
+  ) {
+    const buffer = await this.customersService.exportCustomers(user.tenantId, branchId, language);
+    const filename = `customers-export-${new Date().toISOString().split('T')[0]}.xlsx`;
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get customer by ID with order history' })
   getCustomerById(
@@ -86,9 +102,10 @@ export class CustomersController {
   @ApiOperation({ summary: 'Download sample Excel file for bulk import' })
   async downloadBulkImportSample(
     @CurrentUser() user: any,
+    @Query('language') language: string = 'en',
     @Res() res: Response,
   ) {
-    const buffer = await this.customersService.generateBulkImportSample();
+    const buffer = await this.customersService.generateBulkImportSample(language);
     const filename = 'bulk-import-customers-sample.xlsx';
     
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

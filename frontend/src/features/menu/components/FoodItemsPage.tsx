@@ -39,6 +39,7 @@ import {
   IconCheck,
   IconSearch,
   IconFileSpreadsheet,
+  IconDownload,
 } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
@@ -66,6 +67,7 @@ export function FoodItemsPage() {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
   const { selectedBranchId } = useBranchStore();
+  const notificationColors = useNotificationColors();
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
@@ -709,6 +711,36 @@ export function FoodItemsPage() {
           style={{ flex: 1, maxWidth: 400 }}
         />
         <Group gap="xs">
+          <Button
+            leftSection={<IconDownload size={16} />}
+            onClick={async () => {
+              try {
+                const blob = await menuApi.exportEntities('foodItem', selectedBranchId || undefined, language);
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `food-items-export-${new Date().toISOString().split('T')[0]}.xlsx`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+                notifications.show({
+                  title: t('common.success' as any, language) || 'Success',
+                  message: t('bulkImport.exportSuccess', language) || 'Data exported successfully',
+                  color: notificationColors.success,
+                });
+              } catch (error: any) {
+                handleApiError(error, {
+                  defaultMessage: 'Failed to export food items',
+                  language,
+                  errorColor: notificationColors.error,
+                });
+              }
+            }}
+            variant="light"
+          >
+            {t('bulkImport.export', language) || 'Export'}
+          </Button>
           <Button
             leftSection={<IconFileSpreadsheet size={16} />}
             onClick={() => setBulkImportOpened(true)}
@@ -1547,7 +1579,7 @@ export function FoodItemsPage() {
         entityType="foodItem"
         entityName={t('menu.foodItems', language) || 'Food Items'}
         downloadSample={async () => {
-          return await menuApi.downloadBulkImportSample('foodItem');
+          return await menuApi.downloadBulkImportSample('foodItem', language);
         }}
         uploadFile={async (file: File) => {
           return await menuApi.bulkImportFoodItems(file, selectedBranchId || undefined);

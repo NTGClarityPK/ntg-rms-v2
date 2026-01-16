@@ -493,9 +493,10 @@ export const menuApi = {
   },
 
   // Bulk Import
-  downloadBulkImportSample: async (entityType: string): Promise<Blob> => {
+  downloadBulkImportSample: async (entityType: string, language: string = 'en'): Promise<Blob> => {
     const { data } = await apiClient.get(`/menu/bulk-import/${entityType}/sample`, {
       responseType: 'blob',
+      params: { language },
     });
     return data;
   },
@@ -624,6 +625,17 @@ export const menuApi = {
         'Content-Type': 'multipart/form-data',
       },
       timeout: API_TIMEOUT_CONFIG.BULK_IMPORT,
+    });
+    return data;
+  },
+
+  // Export
+  exportEntities: async (entityType: string, branchId?: string, language?: string): Promise<Blob> => {
+    const params = new URLSearchParams();
+    if (branchId) params.append('branchId', branchId);
+    if (language) params.append('language', language);
+    const { data } = await apiClient.get(`/menu/export/${entityType}?${params.toString()}`, {
+      responseType: 'blob',
     });
     return data;
   },

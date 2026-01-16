@@ -33,6 +33,7 @@ import {
   IconAlertCircle,
   IconList,
   IconFileSpreadsheet,
+  IconDownload,
 } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
@@ -56,6 +57,7 @@ export function AddOnGroupsPage() {
   const { language } = useLanguageStore();
   const { user } = useAuthStore();
   const { selectedBranchId } = useBranchStore();
+  const notificationColors = useNotificationColors();
   const errorColor = useErrorColor();
   const successColor = useSuccessColor();
   const primaryColor = useThemeColor();
@@ -544,13 +546,45 @@ export function AddOnGroupsPage() {
         <Progress value={100} animated color={primaryColor} size="xs" radius={0} style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000 }} />
       )}
       <Group justify="space-between">
-        <Button
-          leftSection={<IconFileSpreadsheet size={16} />}
-          onClick={() => setBulkImportGroupsOpened(true)}
-          variant="light"
-        >
-          {t('bulkImport.bulkImport', language) || 'Bulk Import Groups'}
-        </Button>
+        <Group gap="xs">
+          <Button
+            leftSection={<IconDownload size={16} />}
+            onClick={async () => {
+              try {
+                const blob = await menuApi.exportEntities('addOnGroupAndAddOn', selectedBranchId || undefined, language);
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `addon-groups-export-${new Date().toISOString().split('T')[0]}.xlsx`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+                notifications.show({
+                  title: t('common.success' as any, language) || 'Success',
+                  message: t('bulkImport.exportSuccess', language) || 'Data exported successfully',
+                  color: notificationColors.success,
+                });
+              } catch (error: any) {
+                handleApiError(error, {
+                  defaultMessage: 'Failed to export add-on groups',
+                  language,
+                  errorColor: notificationColors.error,
+                });
+              }
+            }}
+            variant="light"
+          >
+            {t('bulkImport.export', language) || 'Export'}
+          </Button>
+          <Button
+            leftSection={<IconFileSpreadsheet size={16} />}
+            onClick={() => setBulkImportGroupsOpened(true)}
+            variant="light"
+          >
+            {t('bulkImport.bulkImport', language) || 'Bulk Import Groups'}
+          </Button>
+        </Group>
         <Button
           leftSection={<IconPlus size={16} />}
           onClick={() => handleOpenGroupModal()}
@@ -1138,7 +1172,7 @@ export function AddOnGroupsPage() {
         entityType="addOnGroupAndAddOn"
         entityName={t('menu.addOnGroupsAndAddOns', language) || 'Add-on Groups & Add-ons'}
         downloadSample={async () => {
-          return await menuApi.downloadBulkImportSample('addOnGroupAndAddOn');
+          return await menuApi.downloadBulkImportSample('addOnGroupAndAddOn', language);
         }}
         uploadFile={async (file: File) => {
           const result = await menuApi.bulkImportAddOnGroupsAndAddOns(file, selectedBranchId || undefined);

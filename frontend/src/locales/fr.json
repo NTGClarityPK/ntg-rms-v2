@@ -1213,6 +1213,28 @@
     "errors": "Erreurs",
     "moreErrors": "... et {count} erreurs supplémentaires",
     "bulkImport": "Import en masse",
-    "bulkImportDescription": "Importer plusieurs enregistrements à la fois en utilisant Excel"
+    "bulkImportDescription": "Importer plusieurs enregistrements à la fois en utilisant Excel",
+    "export": "Exporter",
+    "exportSuccess": "Données exportées avec succès",
+    "fields": {
+      "name": "Nom",
+      "description": "Description",
+      "categoryName": "Nom de la catégorie",
+      "basePrice": "Prix de base",
+      "stockType": "Type de stock",
+      "stockQuantity": "Quantité en stock",
+      "menuNames": "Noms des menus",
+      "ageLimit": "Limite d'âge",
+      "labels": "Étiquettes",
+      "addOnGroupNames": "Noms des groupes d'ajouts",
+      "variationGroupNames": "Noms des groupes de variations",
+      "isActive": "Actif",
+      "foodItemNames": "Noms des plats",
+      "pricePerPerson": "Prix par personne",
+      "minPersons": "Minimum de personnes",
+      "duration": "Durée (minutes)",
+      "displayOrder": "Ordre d'affichage",
+      "discountPercentage": "Pourcentage de remise"
+    }
   }
 }

@@ -34,6 +34,7 @@ import {
   IconMapPin,
   IconInfoCircle,
   IconFileSpreadsheet,
+  IconDownload,
 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { customersApi, Customer, CreateCustomerDto, UpdateCustomerDto } from '@/lib/api/customers';
@@ -398,6 +399,36 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
             onChange={(e) => setSearchQuery(e.currentTarget.value)}
             style={{ flex: 1 }}
           />
+          <Button
+            leftSection={<IconDownload size={16} />}
+            onClick={async () => {
+              try {
+                const blob = await customersApi.exportCustomers(selectedBranchId || undefined, language);
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `customers-export-${new Date().toISOString().split('T')[0]}.xlsx`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+                notifications.show({
+                  title: t('common.success' as any, language) || 'Success',
+                  message: t('bulkImport.exportSuccess', language) || 'Data exported successfully',
+                  color: notificationColors.success,
+                });
+              } catch (error: any) {
+                handleApiError(error, {
+                  defaultMessage: 'Failed to export customers',
+                  language,
+                  errorColor: notificationColors.error,
+                });
+              }
+            }}
+            variant="light"
+          >
+            {t('bulkImport.export', language) || 'Export'}
+          </Button>
           <Button
             leftSection={<IconFileSpreadsheet size={16} />}
             onClick={() => setBulkImportOpened(true)}
@@ -992,7 +1023,7 @@ export function CustomersPage({ addTrigger }: CustomersPageProps) {
           entityType="customer"
           entityName={t('customers.customers', language) || 'Customers'}
           downloadSample={async () => {
-            return await customersApi.downloadBulkImportSample();
+            return await customersApi.downloadBulkImportSample(language);
           }}
           uploadFile={async (file: File) => {
             return await customersApi.bulkImportCustomers(file, selectedBranchId || undefined);
