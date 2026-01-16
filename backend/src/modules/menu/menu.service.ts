@@ -2249,27 +2249,17 @@ export class MenuService {
       throw new NotFoundException('Add-on group not found');
     }
 
-    // Check if add-on name already exists for this tenant
-    // We need to check across all add-on groups in the tenant
-    const { data: allAddOnGroups } = await supabase
-      .from('add_on_groups')
+    // Check if add-on name already exists within this specific add-on group
+    const { data: existingAddOnByName } = await supabase
+      .from('add_ons')
       .select('id')
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null);
+      .eq('name', createDto.name.trim())
+      .eq('add_on_group_id', createDto.addOnGroupId)
+      .is('deleted_at', null)
+      .maybeSingle();
 
-    if (allAddOnGroups && allAddOnGroups.length > 0) {
-      const addOnGroupIds = allAddOnGroups.map(g => g.id);
-      const { data: existingAddOnByName } = await supabase
-        .from('add_ons')
-        .select('id')
-        .eq('name', createDto.name.trim())
-        .in('add_on_group_id', addOnGroupIds)
-        .is('deleted_at', null)
-        .maybeSingle();
-
-      if (existingAddOnByName) {
-        throw new ConflictException('An add-on with this name already exists in this tenant');
-      }
+    if (existingAddOnByName) {
+      throw new ConflictException('An add-on with this name already exists in this add-on group');
     }
 
     // Insert add-on directly (tenant_id is now in the table, so we can use direct insert)
@@ -2347,28 +2337,19 @@ export class MenuService {
       throw new NotFoundException('Add-on not found');
     }
 
-    // Check if name is being changed and if new name already exists in this tenant
+    // Check if name is being changed and if new name already exists within this specific add-on group
     if (updateDto.name && updateDto.name.trim() !== '' && updateDto.name.trim() !== existing.name) {
-      const { data: allAddOnGroups } = await supabase
-        .from('add_on_groups')
+      const { data: nameExists } = await supabase
+        .from('add_ons')
         .select('id')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null);
+        .eq('name', updateDto.name.trim())
+        .eq('add_on_group_id', addOnGroupId)
+        .neq('id', id)
+        .is('deleted_at', null)
+        .maybeSingle();
 
-      if (allAddOnGroups && allAddOnGroups.length > 0) {
-        const addOnGroupIds = allAddOnGroups.map(g => g.id);
-        const { data: nameExists } = await supabase
-          .from('add_ons')
-          .select('id')
-          .eq('name', updateDto.name.trim())
-          .neq('id', id)
-          .in('add_on_group_id', addOnGroupIds)
-          .is('deleted_at', null)
-          .maybeSingle();
-
-        if (nameExists) {
-          throw new ConflictException('An add-on with this name already exists in this tenant');
-        }
+      if (nameExists) {
+        throw new ConflictException('An add-on with this name already exists in this add-on group');
       }
     }
 
@@ -4893,27 +4874,17 @@ export class MenuService {
       throw new NotFoundException('Variation group not found');
     }
 
-    // Check if variation name already exists for this tenant
-    // We need to check across all variation groups in the tenant
-    const { data: allVariationGroups } = await supabase
-      .from('variation_groups')
+    // Check if variation name already exists within this specific variation group
+    const { data: existingVariationByName } = await supabase
+      .from('variations')
       .select('id')
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null);
+      .eq('name', createDto.name.trim())
+      .eq('variation_group_id', variationGroupId)
+      .is('deleted_at', null)
+      .maybeSingle();
 
-    if (allVariationGroups && allVariationGroups.length > 0) {
-      const variationGroupIds = allVariationGroups.map(g => g.id);
-      const { data: existingVariationByName } = await supabase
-        .from('variations')
-        .select('id')
-        .eq('name', createDto.name.trim())
-        .in('variation_group_id', variationGroupIds)
-        .is('deleted_at', null)
-        .maybeSingle();
-
-      if (existingVariationByName) {
-        throw new ConflictException('A variation with this name already exists in this tenant');
-      }
+    if (existingVariationByName) {
+      throw new ConflictException('A variation with this name already exists in this variation group');
     }
 
     const { data: variation, error } = await supabase
@@ -4988,28 +4959,19 @@ export class MenuService {
       throw new NotFoundException('Variation not found');
     }
 
-    // Check if name is being changed and if new name already exists in this tenant
+    // Check if name is being changed and if new name already exists within this specific variation group
     if (updateDto.name && updateDto.name.trim() !== '' && updateDto.name.trim() !== existing.name) {
-      const { data: allVariationGroups } = await supabase
-        .from('variation_groups')
+      const { data: nameExists } = await supabase
+        .from('variations')
         .select('id')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null);
+        .eq('name', updateDto.name.trim())
+        .eq('variation_group_id', variationGroupId)
+        .neq('id', id)
+        .is('deleted_at', null)
+        .maybeSingle();
 
-      if (allVariationGroups && allVariationGroups.length > 0) {
-        const variationGroupIds = allVariationGroups.map(g => g.id);
-        const { data: nameExists } = await supabase
-          .from('variations')
-          .select('id')
-          .eq('name', updateDto.name.trim())
-          .neq('id', id)
-          .in('variation_group_id', variationGroupIds)
-          .is('deleted_at', null)
-          .maybeSingle();
-
-        if (nameExists) {
-          throw new ConflictException('A variation with this name already exists in this tenant');
-        }
+      if (nameExists) {
+        throw new ConflictException('A variation with this name already exists in this variation group');
       }
     }
 
@@ -6338,6 +6300,12 @@ export class MenuService {
     tenantId: string,
     fileBuffer: Buffer,
   ): Promise<{ success: number; failed: number; errors: string[] }> {
+    // Validate and store tenantId as const to prevent modification
+    if (!tenantId || typeof tenantId !== 'string' || tenantId.trim() === '') {
+      throw new BadRequestException('tenantId is required and must be a non-empty string');
+    }
+    const validatedTenantId = tenantId.trim();
+
     const config = {
       entityType: 'variation',
       fields: this.getBulkImportFields('variation'),
@@ -6351,7 +6319,7 @@ export class MenuService {
     const { data: variationGroups } = await supabase
       .from('variation_groups')
       .select('id, name')
-      .eq('tenant_id', tenantId)
+      .eq('tenant_id', validatedTenantId)
       .is('deleted_at', null);
     const groupNameToIdMap = new Map<string, string>();
     (variationGroups || []).forEach(group => {
@@ -6378,25 +6346,19 @@ export class MenuService {
           throw new Error(`Variation group not found: ${row.variationGroupName}`);
         }
 
-        const variationData: any = {
-          variation_group_id: groupId,
-          name: row.name,
-          recipe_multiplier: row.recipeMultiplier || 1,
-          pricing_adjustment: row.pricingAdjustment || 0,
-          display_order: row.displayOrder || 0,
-        };
-
-        const { data: variation, error } = await supabase
-          .from('variations')
-          .insert(variationData)
-          .select()
-          .single();
-
-        if (error) {
-          throw new Error(error.message);
+        // Use createVariation method to ensure proper validation (uniqueness per group)
+        try {
+          await this.createVariation(validatedTenantId, groupId, {
+            name: row.name.trim(),
+            recipeMultiplier: row.recipeMultiplier || 1,
+            pricingAdjustment: row.pricingAdjustment || 0,
+            displayOrder: row.displayOrder || 0,
+          }, true); // Skip translations since we'll handle them below
+          
+          success++;
+        } catch (createError: any) {
+          throw new Error(createError?.message || 'Failed to create variation');
         }
-
-        success++;
       } catch (error: any) {
         failed++;
         errors.push(`Row ${i + 2}: ${error.message}`);
@@ -6416,7 +6378,7 @@ export class MenuService {
         variationsToTranslate.map(v => ({ name: v.name })),
         'variation',
         ['name'],
-        tenantId,
+        validatedTenantId,
       ).then((translations) => {
         // Note: We can't perfectly match translations to variations since we don't track which rows succeeded
         // This is a limitation, but translations will still be created for successful variations
@@ -6439,7 +6401,7 @@ export class MenuService {
                     [{ fieldName: 'name', text: name }],
                     { name: nameTranslations },
                     undefined,
-                    tenantId,
+                    validatedTenantId,
                     'en',
                   ).catch((err) => {
                     console.warn(`Failed to store translations for variation:`, err.message);
@@ -6935,6 +6897,31 @@ export class MenuService {
             throw new Error(`tenantIdForInsert is invalid: ${tenantIdForInsert}`);
           }
 
+          // Validate uniqueness: Check if any add-on names already exist within their respective groups
+          for (const addOn of validAddOnsToCreate) {
+            const { data: existingAddOn } = await supabase
+              .from('add_ons')
+              .select('id')
+              .eq('name', addOn.name.trim())
+              .eq('add_on_group_id', addOn.groupId)
+              .is('deleted_at', null)
+              .maybeSingle();
+
+            if (existingAddOn) {
+              throw new Error(`An add-on with the name "${addOn.name}" already exists in this add-on group`);
+            }
+
+            // Also check for duplicates within the same batch
+            const duplicateInBatch = validAddOnsToCreate.filter(
+              a => a.groupId === addOn.groupId && 
+                   a.name.toLowerCase() === addOn.name.toLowerCase() &&
+                   a !== addOn
+            );
+            if (duplicateInBatch.length > 0) {
+              throw new Error(`Duplicate add-on name "${addOn.name}" found in the same add-on group within this import`);
+            }
+          }
+
           const addOnCreateData = validAddOnsToCreate.map(a => {
             const groupTenantId = groupTenantMap.get(a.groupId);
             
@@ -7247,6 +7234,19 @@ export class MenuService {
 
             variationsUpdated++;
           } else {
+            // Check if variation name already exists within this specific variation group
+            const { data: existingVariation } = await supabase
+              .from('variations')
+              .select('id')
+              .eq('name', variationName.trim())
+              .eq('variation_group_id', groupId)
+              .is('deleted_at', null)
+              .maybeSingle();
+
+            if (existingVariation) {
+              throw new Error(`A variation with this name already exists in this variation group`);
+            }
+
             // Create new variation
             const { data: variation, error: insertError } = await supabase
               .from('variations')
@@ -7659,6 +7659,31 @@ export class MenuService {
           
           if (!tenantIdForInsert || typeof tenantIdForInsert !== 'string' || tenantIdForInsert.trim() === '') {
             throw new Error(`tenantIdForInsert is invalid: ${tenantIdForInsert}`);
+          }
+
+          // Validate uniqueness: Check if any variation names already exist within their respective groups
+          for (const variation of validVariationsToCreate) {
+            const { data: existingVariation } = await supabase
+              .from('variations')
+              .select('id')
+              .eq('name', variation.name.trim())
+              .eq('variation_group_id', variation.groupId)
+              .is('deleted_at', null)
+              .maybeSingle();
+
+            if (existingVariation) {
+              throw new Error(`A variation with the name "${variation.name}" already exists in this variation group`);
+            }
+
+            // Also check for duplicates within the same batch
+            const duplicateInBatch = validVariationsToCreate.filter(
+              v => v.groupId === variation.groupId && 
+                   v.name.toLowerCase() === variation.name.toLowerCase() &&
+                   v !== variation
+            );
+            if (duplicateInBatch.length > 0) {
+              throw new Error(`Duplicate variation name "${variation.name}" found in the same variation group within this import`);
+            }
           }
 
           const variationCreateData = validVariationsToCreate.map(v => {
